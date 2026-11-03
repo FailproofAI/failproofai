@@ -1,0 +1,118 @@
+---
+title: "Evaluator SDK"
+description: "Execute seu próprio worker de avaliação, para juízes LLM e tudo mais que o Python hospedado não consegue fazer."
+icon: "gauge"
+---
+
+O Evaluator SDK executa avaliações na sua própria infraestrutura. Seu worker registra suas avaliações no Failproof AI, reivindica sessões conforme elas são concluídas, as pontua e envia os resultados — tudo via HTTPS de saída: nada se conecta a ele de fora. Use-o para o que o [Python hospedado](/pt-br/evaluations/write) não consegue fazer — juízes LLM, chamadas de modelo, pacotes, segredos e acesso à rede. Os resultados aparecem ao lado dos hospedados na [página de avaliações](/pt-br/sessions/evaluations), marcados como **customer**.
+
+Ele está incluído no `failproofai-sdk`, sob `failproofai_sdk.evaluator`; importar o SDK de rastreamento não o carrega.
+
+```bash
+pip install failproofai-sdk
+```
+
+## Escrever avaliações
+
+```python
+from failproofai_sdk.evaluator import ConditionResult, EvalResult, Evaluator, Metric, Score
+
+app = Evaluator(name="customer-production", version="2026.08.1")
+
+
+@app.eval(
+    "tool_efficiency",
+    version="1.0.0",
+    labels=["tools", "deterministic"],
+    when=lambda session: ConditionResult(session.count("tool_use") > 0, "no_tool_calls"),
+)
+def tool_efficiency(session):
+    calls = session.events_of_type("tool_use")
+    distinct = {e.payload.get("tool_name") for e in calls if e.payload.get("tool_name")}
+    value = len(distinct) / len(calls)
+    return EvalResult(
+        score=Score(value, passed=value >= 0.7),
+        metrics={"tool_call_count": Metric(len(calls), unit="events")},
+        reasoning=f"{len(distinct)} distinct tools across {len(calls)} calls",
+    )
+
+
+@app.eval(
+    "answer_relevance",
+    version="judge-v1",
+    labels=["llm_judge", "relevance"],
+    when=lambda session: ConditionResult(
+        session.count("human_input") > 0 and session.count("model_response") > 0,
+        "no_exchange",
+    ),
+    timeout_seconds=30,
+)
+async def answer_relevance(session):
+    question = session.events_of_type("human_input")[-1].payload.get("response")
+    answer = session.events_of_type("model_response")[-1].payload.get("content")
+    value, reasoning = await ask_judge(question, answer)  # your LLM call: a 0-1 score and why
+    return EvalResult(score=Score(value, passed=value >= 0.7), reasoning=reasoning)
+
+
+if __name__ == "__main__":
+    app.run_from_env()
+```
+
+- `@app.eval(key, version=...)` registra uma avaliação. A chave é o nome pelo qual seus resultados são exibidos; altere a versão sempre que a lógica mudar, e cada resultado mantém a versão que o gerou. Um único worker comporta até 100 avaliações.
+- `result_kind` é `"score"` por padrão. Para uma avaliação do tipo `"metric"` ou `"assertion"`, nomeie uma entrada de `metrics` ou `assertions` com a mesma chave: essa entrada será o resultado.
+- `when` decide se uma sessão é aplicável. Retorne `ConditionResult(False, "<reason>")` para ignorá-la; o motivo é registrado.
+- Uma avaliação pode ser uma função simples ou `async`, e `timeout_seconds` limita seu tempo de execução.
+- As chaves de payload — `tool_name`, `response` e `content` acima — são as que seus agentes enviam, portanto leia-as a partir de uma sessão real.
+
+## Executar o worker
+
+Coloque uma chave com a permissão `evaluations:run`, criada em **Administration → Keys**, na variável `FAILPROOFAI_EVALUATOR_TOKEN` — defina-a a partir do seu cofre de segredos em vez de digitá-la diretamente em um comando — e inicie o worker:
+
+```bash
+FAILPROOFAI_EVALUATOR_URL=https://app.befailproof.ai python evaluator.py
+```
+
+Sem o bloco `__main__`, `python -m failproofai_sdk.evaluator evaluator:app` faz o mesmo.
+
+| Variável | Padrão | Finalidade |
+| --- | --- | --- |
+| `FAILPROOFAI_EVALUATOR_URL` | obrigatório | Endereço do Failproof AI: `https://app.befailproof.ai` para Cloud. HTTPS, salvo se apontar para loopback |
+| `FAILPROOFAI_EVALUATOR_TOKEN` | obrigatório | Uma chave com `evaluations:run` |
+| `FAILPROOFAI_EVALUATOR_WORKER_ID` | `<hostname>-<pid>` | Identifica este worker |
+| `FAILPROOFAI_EVALUATOR_CONCURRENCY` | `1` | Sessões que este worker pontua simultaneamente |
+| `FAILPROOFAI_EVALUATOR_REQUEST_TIMEOUT_SECONDS` | `30` | Timeout para cada requisição ao Failproof AI |
+| `FAILPROOFAI_EVALUATOR_DRAIN_TIMEOUT_SECONDS` | `60` | Quanto tempo um worker em encerramento aguarda as execuções em andamento |
+| `FAILPROOFAI_EVALUATOR_ALLOW_INSECURE_HTTP` | `false` | Permite HTTP simples para uma URL que não seja loopback — veja o aviso abaixo |
+| `FAILPROOFAI_EVALUATOR_MODULE` | nenhum | O `module:attribute` para `python -m failproofai_sdk.evaluator` |
+
+<Warning>
+  `FAILPROOFAI_EVALUATOR_ALLOW_INSECURE_HTTP` envia tudo em texto simples. O worker carrega `FAILPROOFAI_EVALUATOR_TOKEN` como um cabeçalho `Authorization: Bearer` em cada requisição, e as transcrições que ele busca são as próprias sessões — portanto, qualquer pessoa no caminho lê ambos, e o token que obtiverem pode executar avaliações até que você o revogue. Use apenas em uma rede de desenvolvimento isolada. Em todos os outros ambientes, a URL deve ser HTTPS; loopback não exige nenhuma flag.
+</Warning>
+
+## Tipos de resultado
+
+| Tipo | Campos |
+| --- | --- |
+| `Score` | `value` (0 a 1), `passed`, `unit` (padrão `ratio`), `display_value`, `description` |
+| `Metric` | `value`, `unit`, `display_value`, `description` |
+| `Assertion` | `passed`, `description` |
+| `EvalResult` | `score`, `metrics`, `assertions`, `reasoning`, `summary`, `labels` |
+| `ConditionResult` | `applicable`, `reason_code` |
+
+Um `EvalResult` carrega pelo menos um score, métrica ou asserção, e no máximo 25, cada um sob uma chave única.
+
+## A sessão
+
+| Campo ou método | O que fornece |
+| --- | --- |
+| `session_id`, `agent_id`, `environment` | A identidade da sessão |
+| `started_at`, `ended_at` | Quando ela começou e terminou |
+| `event_count`, `events` | A transcrição completa e ordenada |
+| `count(event_type)` | Quantos eventos daquele tipo ela contém |
+| `events_of_type(event_type)` | Esses eventos, em ordem |
+
+Cada evento carrega `id`, `ts`, `event_type` e `payload`.
+
+## O evaluator legado
+
+O Evaluator SDK anterior — um serviço HTTP que o Failproof AI chamava em `EVALUATOR_ENDPOINT`, respondendo em `/evaluate` e consultado via `JobPending` — foi descontinuado. Construa novos evaluators usando este worker; operadores de uma instância self-hosted que ainda utilizam um serviço legado podem mantê-lo durante a transição.

@@ -52,16 +52,17 @@ Tagged JSON, `"type"` as the discriminant, camelCase field names.
 
 ```jsonc
 // Liveness/handshake check.
-{ "type": "ping", "protocolVersion": 1 }
+{ "type": "ping", "protocolVersion": 2 }
 
 // One hook evaluation request — one per `failproofai --hook <Event> --cli <cli>` invocation.
 {
   "type": "hook",
-  "protocolVersion": 1,
+  "protocolVersion": 2,
   "hookEvent": "PreToolUse",
   "cli": "claude",
   "stdin": "<raw stdin payload the calling agent CLI wrote to the one-shot failproofai process, forwarded verbatim>",
-  "cwd": "/path/to/session/cwd" // optional; see the note below
+  "cwd": "/path/to/session/cwd", // optional; see the note below
+  "agentSettingsPath": "/path/to/the/agent/settings" // optional; empty means unresolved
 }
 ```
 
@@ -71,14 +72,21 @@ long-lived process; its own `cwd` does not vary per request and must never be
 used to resolve project config or custom policies (this is the "process.cwd()
 hazard" the TS-side plan calls out explicitly).
 
+Protocol v2 carries the originating agent's settings path for both `hook` and
+native `policyEvaluation` requests. A missing path is unresolved, never
+inferred from the long-lived daemon's environment. A v1 daemon cannot be
+trusted with a v2 scoped request: it may discard this field and evaluate for
+the wrong profile. The v2 client rejects every v1 response and tells the
+operator to reinstall/restart the daemon before evaluation resumes.
+
 ### Daemon → client (`ServerMessage`)
 
 ```jsonc
-{ "type": "pong", "protocolVersion": 1 }
+{ "type": "pong", "protocolVersion": 2 }
 
 {
   "type": "hookResult",
-  "protocolVersion": 1,
+  "protocolVersion": 2,
   "exitCode": 0,
   "stdout": "...",
   "stderr": "..."
@@ -89,7 +97,7 @@ hazard" the TS-side plan calls out explicitly).
 // hookResult so the client can
 // tell "ran and decided" apart from "daemon couldn't evaluate at all" — the
 // latter is what drives the client's fail-closed path.
-{ "type": "error", "protocolVersion": 1, "message": "..." }
+{ "type": "error", "protocolVersion": 2, "message": "..." }
 ```
 
 ## Protocol versioning

@@ -1,0 +1,56 @@
+---
+title: "मूल्यांकन परिणाम पढ़ें"
+description: "समय के साथ मूल्यांकन स्कोर चार्ट करें, agents और environments की तुलना करें, देखें कि एक session को कम स्कोर क्यों मिला, और assistant से पूछें।"
+icon: "gauge"
+---
+
+हर मूल्यांकन के परिणाम, चाहे hosted हों या आपके स्वयं के worker से, एक ही जगहों पर आते हैं।
+
+## समय के साथ स्कोर की तुलना करें
+
+<Tabs>
+  <Tab title="Dashboard">
+    **Observe → evaluations** पर जाएँ।
+
+    - **Recent runs** प्रत्येक मूल्यांकन को सूचीबद्ध करता है जैसे ही वह आता है: चाहे वह एक hosted (**managed**) या आपके स्वयं के (**customer**) evaluator से आया हो, agent और session, मूल्यांकन और इसका संस्करण, इसकी स्थिति, और इसका स्कोर या metrics।
+    - **Score over time** वह प्लॉट करता है जो आप चाहते हैं। **add series** चुनें और एक agent, एक environment, एक मूल्यांकन, और एक statistic चुनें: avg, min, max, p50, p75, p90, p95, p99, stddev, या mode। प्रत्येक series एक लाइन है; इसे अपना स्वयं का **curve** दें ताकि इसे अलग चार्ट पर खींचा जा सके।
+
+    ![मूल्यांकन पृष्ठ: customer टैग किए गए हाल के रन, 0.5 और 0.8 पर संदर्भ लाइनों के साथ एक स्कोर समय के साथ चार्ट, और सभी agents और environments में finished_clean को average करने वाली एक series।](/images/dashboard/evaluations-chart.png)
+
+    एक समय सीमा और एक bin आकार सभी series पर लागू होता है। एक बेहतरीन bin एक घटना खोजता है; एक मोटा आकार एक प्रवृत्ति दिखाता है, और आप जो spikes ढूंढ रहे हैं उन्हें छिपा सकता है। एक bucket जहां कुछ भी स्कोर नहीं किया गया था लाइन में एक gap है, कभी zero नहीं, और संदर्भ लाइनें 0.5 और 0.8 को चिह्नित करती हैं।
+
+    दृश्य के हर भाग URL में रहता है: **share** इसे कॉपी करता है, और जो कोई भी इसे खोलता है वह बिल्कुल वह तुलना देखता है जो आपने बनाई है।
+  </Tab>
+  <Tab title="CLI">
+    ```bash
+    fp evals --agent-id checkout-agent --aggregate
+    fp evals --aggregate --env production --status error
+    fp evals --score helpfulness:0.8.. --since 7d
+    ```
+
+    स्वचालन के लिए `evals` से पहले global `--json` जोड़ें, उदाहरण के लिए `fp --json evals --aggregate --env production`।
+  </Tab>
+</Tabs>
+
+एक ही मूल्यांकन के लिए **avg** और **p90** को प्लॉट करें यह देखने के लिए कि क्या एक अच्छा औसत एक खराब tail को छिपा रहा है, या दो agents के लिए एक ही मूल्यांकन, या production और staging के लिए, उन्हें एक अक्ष पर तुलना करने के लिए। Costs, latencies, और token counts, जिनमें units होते हैं, **Observe → metrics** के तहत चार्ट होते हैं, एक chart प्रति unit।
+
+## देखें कि एक session को कम स्कोर क्यों मिला
+
+**Observe → sessions** से एक session खोलें; grid प्रत्येक session के स्कोर को ले जाता है और score range के आधार पर filter करता है। session का right rail मूल्यांकन सारांश के साथ शुरू होता है, फिर प्रत्येक स्कोर के लिए एक bar के साथ evaluator का reasoning इसके नीचे होता है।
+
+![एक session detail view जो पूर्ण trace के बगल में मूल्यांकन स्कोर और reasoning दिखाता है।](/images/dashboard/session-detail.png)
+
+## Assistant से पूछें
+
+सादे अंग्रेजी में मूल्यांकन डेटा के बारे में पूछें: "मुझे हाल के कुछ मूल्यांकनों के बारे में बताएं", या कौन से agents के स्कोर में गिरावट आ रही है। [assistant](/hi/sessions/assistant) परिणामों को पढ़ता और विश्लेषण करता है और tables के साथ उत्तर देता है जिन पर आप follow up कर सकते हैं, और एक सार्थक प्रश्न एक [query](/hi/sessions/queries) या एक [dashboard](/hi/sessions/dashboards) बन सकता है।
+
+![मूल्यांकन पृष्ठ assistant के बगल में, जो "मुझे हाल के कुछ मूल्यांकनों के बारे में बताएं" का उत्तर totals, statuses, और scores की एक सारांश के साथ देता है।](/images/dashboard/evaluations-assistant.png)
+
+## देखें और कार्य करें
+
+- **Dashboards**, **Analyze → dashboards** के तहत, आप जिन स्कोर को feature करते हैं उन्हें trend करते हैं, प्रत्येक agent और environment के लिए, पूरे संगठन के लिए।
+
+  ![एक quality dashboard जो औसत मूल्यांकन स्कोर और समय के साथ trends दिखाता है।](/images/dashboard/dashboard-quality.png)
+
+- **Alerts** आपको सूचित करता है जब एक स्कोर एक threshold को पार करता है। [alerts](/hi/audits/alerts) देखें।
+- जब एक स्कोर कई sessions में गिरता है, [एक audit चलाएँ](/hi/audits/run) यह पता लगाने के लिए कि क्यों; जब कारण एक repeatable action है, [एक policy लिखें](/hi/policies/editor)।

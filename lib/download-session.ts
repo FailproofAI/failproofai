@@ -2,8 +2,8 @@
  * Per-CLI dispatcher for the dashboard's Download Logs endpoint.
  *
  * Returns either a real on-disk path (so the route can `createReadStream` and
- * stream the bytes verbatim) or a synthesized JSONL body (used only by
- * OpenCode, whose transcripts live in SQLite rather than on disk).
+ * stream the bytes verbatim) or a synthesized JSON/JSONL body for agents whose
+ * transcripts live in SQLite.
  *
  * Per-CLI session loaders / transcript finders already exist in their own
  * files; this module is the thin glue that picks the right one. Imports of
@@ -34,7 +34,12 @@ export const GOOSE_SESSION_RE = /^\d{8}_\d+$/;
 
 export type DownloadSource =
   | { kind: "file"; path: string }
-  | { kind: "synthesized"; body: string; contentType: string; extension: string };
+  | {
+      kind: "synthesized";
+      body: string;
+      contentType: string;
+      extension: string;
+    };
 
 /** Validate a session ID against the per-CLI shape. OpenCode uses `ses_*`
  *  prefixes; everyone else is a UUID. */
@@ -98,7 +103,12 @@ export async function resolveDownloadSource(
     const result = await getOpenCodeSessionExport(sessionId);
     if (!result) return null;
     const body = JSON.stringify(result, null, 2) + "\n";
-    return { kind: "synthesized", body, contentType: "application/json", extension: "json" };
+    return {
+      kind: "synthesized",
+      body,
+      contentType: "application/json",
+      extension: "json",
+    };
   }
 
   if (cli === "hermes") {
@@ -107,13 +117,35 @@ export async function resolveDownloadSource(
     const { getHermesSessionLog } = await import("./hermes-sessions");
     const result = await getHermesSessionLog(sessionId);
     if (!result) return null;
-    const body = result.rawLines.map((r) => JSON.stringify(r)).join("\n") + "\n";
-    return { kind: "synthesized", body, contentType: "application/x-ndjson", extension: "jsonl" };
+    const body =
+      result.rawLines.map((r) => JSON.stringify(r)).join("\n") + "\n";
+    return {
+      kind: "synthesized",
+      body,
+      contentType: "application/x-ndjson",
+      extension: "jsonl",
+    };
   }
 
   if (cli === "openclaw") {
-    // OpenClaw writes real JSONL transcripts on disk — stream the file verbatim.
-    const { findOpenClawTranscript } = await import("./openclaw-sessions");
+    // New OpenClaw versions keep live transcripts in SQLite. Export the exact
+    // event_json rows as JSONL; fall back to streaming archived JSONL files.
+    const { findOpenClawTranscript, listOpenClawAgents, openclawHome } =
+      await import("./openclaw-sessions");
+    const { readOpenClawSqliteTranscript } = await import("./openclaw-db");
+    const sqlite = await readOpenClawSqliteTranscript(
+      openclawHome(),
+      listOpenClawAgents(),
+      sessionId,
+    );
+    if (sqlite) {
+      return {
+        kind: "synthesized",
+        body: sqlite.eventJsonLines.join("\n") + "\n",
+        contentType: "application/x-ndjson",
+        extension: "jsonl",
+      };
+    }
     const path = findOpenClawTranscript(sessionId);
     return path ? { kind: "file", path } : null;
   }
@@ -131,13 +163,20 @@ export async function resolveDownloadSource(
     const { getDevinSessionLog } = await import("./devin-sessions");
     const result = await getDevinSessionLog(sessionId);
     if (!result) return null;
-    const body = result.rawLines.map((r) => JSON.stringify(r)).join("\n") + "\n";
-    return { kind: "synthesized", body, contentType: "application/x-ndjson", extension: "jsonl" };
+    const body =
+      result.rawLines.map((r) => JSON.stringify(r)).join("\n") + "\n";
+    return {
+      kind: "synthesized",
+      body,
+      contentType: "application/x-ndjson",
+      extension: "jsonl",
+    };
   }
 
   if (cli === "antigravity") {
     // Antigravity (agy) writes real JSONL transcripts on disk — stream verbatim.
-    const { findAntigravityTranscript } = await import("./antigravity-sessions");
+    const { findAntigravityTranscript } =
+      await import("./antigravity-sessions");
     const path = findAntigravityTranscript(sessionId);
     return path ? { kind: "file", path } : null;
   }
@@ -148,8 +187,14 @@ export async function resolveDownloadSource(
     const { getGooseSessionLog } = await import("./goose-sessions");
     const result = await getGooseSessionLog(sessionId);
     if (!result) return null;
-    const body = result.rawLines.map((r) => JSON.stringify(r)).join("\n") + "\n";
-    return { kind: "synthesized", body, contentType: "application/x-ndjson", extension: "jsonl" };
+    const body =
+      result.rawLines.map((r) => JSON.stringify(r)).join("\n") + "\n";
+    return {
+      kind: "synthesized",
+      body,
+      contentType: "application/x-ndjson",
+      extension: "jsonl",
+    };
   }
 
   // Exhaustive — but TypeScript can't always see CliId is exhausted across the

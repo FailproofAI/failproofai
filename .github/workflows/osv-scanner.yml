@@ -27,12 +27,19 @@ name: Supply Chain
 
 on:
   pull_request:
-    branches: [main]
+    branches: [main, staging, feat/tui-ux]
   push:
     branches: [main]
   schedule:
     - cron: "17 4 * * *" # daily, 04:17 UTC
   workflow_dispatch:
+
+# Supersede a superseded PR push: the scan re-reads both lockfiles from
+# scratch every run, so a stale one has nothing to contribute. Scheduled and
+# main runs key on their own ref and so never cancel each other.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 # Least privilege: the scan only needs to read the checked-out source.
 # contents:read is also available to Dependabot PRs (read-only token), so the
@@ -44,6 +51,7 @@ jobs:
   osv-scanner:
     name: OSV-Scanner
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -54,13 +62,24 @@ jobs:
       # nothing at all — not this job, which was only ever given `bun.lock`, and
       # not Dependabot, which had no `cargo` ecosystem — for a TLS stack that
       # compiles into a root-installed system service.
-      - name: Scan bun.lock and Cargo.lock for known-vulnerable / malicious dependencies
+      - name: Scan every lockfile for known-vulnerable / malicious dependencies
         id: scan
         uses: google/osv-scanner-action/osv-scanner-action@f4cfcc01edc9c8b756a9b873b7a623ca674da51e # v2.3.8
         with:
+          # `--config` is load-bearing, not tidiness. Without it the scanner
+          # resolves a config PER SCANNED FILE, relative to that file — so the
+          # root `osv-scanner.toml` governed `bun.lock` and `Cargo.lock` and
+          # reached neither `uv.lock`. An ignore written for a finding in
+          # `sdk/python/uv.lock` loaded, filtered nothing, and was reported as
+          # an "unused ignore" while the gate stayed red. Naming it once makes
+          # one allow-list authoritative for every lockfile below.
           scan-args: |-
+            --config=osv-scanner.toml
             --lockfile=bun.lock
             --lockfile=Cargo.lock
+            --lockfile=fp-cloud-cli/uv.lock
+            --lockfile=sdk/python/uv.lock
+            --lockfile=sdk/typescript/package-lock.json
       # Only the schedule run notifies — nothing on main touched the lockfile,
       # so nobody is watching it the way a PR author watches their own checks
       # or a push failure shows up against the commit they just merged. Same

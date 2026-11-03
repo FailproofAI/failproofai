@@ -1,0 +1,60 @@
+---
+title: "Eine Policy testen"
+description: "Führe einen Backtest eines Entwurfs gegen vorhandenen Traffic durch und beweise, dass er stoppt, was gestoppt werden soll, und zulässt, was durchgehen muss – bevor eine Maschine ihn durchsetzt."
+icon: "flask-conical"
+---
+
+Teste jede Policy auf zwei Arten: gegen den Traffic, den deine Agents bereits erzeugt haben, und gegen eine legitime Aktion, die durchgelassen werden muss. Eine Policy, die nur den unsicheren Fall gesehen hat, wurde nicht ausreichend getestet.
+
+## Den Entwurf einem Backtest unterziehen
+
+<Tabs>
+  <Tab title="Dashboard">
+    Der Policy-Editor spielt einen Entwurf gegen Aufrufe zurück, die deine Flotte bereits gemacht hat – bevor du ihn veröffentlichst.
+
+    1. Öffne den Entwurf unter **Admin → Policy-Editor**. Der Editor bestätigt, dass er als JavaScript geparst wird.
+    2. Wähle im Bereich **Backtest** die Agents und das Zeitfenster für die Wiedergabe – standardmäßig **alle Agents** und **30 Tage** – und lasse den letzten Filter auf **alles**, es sei denn, du möchtest die Auswahl eingrenzen.
+    3. Wähle **Backtest ausführen**.
+
+    ![Das Backtest-Panel unter einem Entwurf, der als JavaScript geparst wird, mit den drei Filtern und der Aktion „Backtest ausführen", oberhalb von „Version veröffentlichen".](/images/dashboard/policy-backtest.png)
+
+    Das Ergebnis zeigt, was der Entwurf mit diesen Aufrufen gemacht hätte – einschließlich der Anzahl **funktionierender** Aufrufe, die er unterbrochen hätte. Das sind False Positives, die gefunden werden, bevor ein Agent auf sie trifft: Verfeinere den Entwurf und führe den Test erneut aus, bis diese Zahl akzeptabel ist.
+  </Tab>
+  <Tab title="CLI">
+    Backtesting ist eine Dashboard-Funktion. Führe die Policy stattdessen über ein Terminal gegen selbst beschriebene Events aus (siehe unten).
+  </Tab>
+</Tabs>
+
+## Gegen ein selbst beschriebenes Event ausführen
+
+`fp policies test` führt eine Policy-Datei auf deinem Rechner gegen ein synthetisches Event aus und prüft die Entscheidung. Es wird nichts veröffentlicht und nichts erreicht die Cloud:
+
+```bash
+fp policies test ./checkout.policy.mjs --command "git push --force" --expect deny
+fp policies test ./checkout.policy.mjs --command "git push" --expect allow
+```
+
+Forme das Event mit `--event`, `--tool`, `--command` und `--file`. Der eigene `match`-Filter der Policy greift weiterhin, sodass eine Policy, die das beschriebene Event nicht abdeckt, `skipped` statt einer Entscheidung zurückgibt – in der Regel ein Zeichen dafür, dass ihr `match` enger ist als beabsichtigt.
+
+## Auf einem Rechner ausführen
+
+Setze sie als Nächstes auf deinem eigenen Rechner gegen deinen eigenen Agent durch:
+
+```bash
+failproofai policies --install --custom ./checkout.policy.mjs --scope project
+failproofai policies
+```
+
+Der erste Befehl validiert und installiert die Datei; der zweite bestätigt, dass sie geladen wurde – zusammen mit allem anderen, was hier durchgesetzt wird. Bitte den Agent, das zu tun, was die Policy stoppt, und beobachte, wie es abgelehnt wird; führe dann die legitime Version durch und beobachte, wie sie durchgeht. Niemand sonst wird beeinträchtigt.
+
+Prüfe auf einem mit der Cloud verbundenen Rechner beide Entscheidungen unter **Observe → Policy**: Filtere nach dem Policy-Namen und öffne dann jede verknüpfte Session, um den übereinstimmenden Tool-Input und den zurückgegebenen Grund zu bestätigen.
+
+## Testen, was Fehler verursacht
+
+Die Installation verweigert eine fehlende Datei, einen Syntaxfehler, einen unaufgelösten Import, eine Ausnahme auf oberster Ebene oder ein Modul, das beim Laden das Zeitlimit überschreitet – führe die Installation daher nach jeder Änderung an der Datei oder allem, was sie importiert, erneut aus. Zum Zeitpunkt der Durchsetzung wird dieselbe fehlerhafte Datei protokolliert und **übersprungen**, sodass alle anderen Policies weiter ausgeführt werden: Behandle eine Load-Warnung in Produktions-Logs als verlorene Durchsetzung. Convention-Dateien laden ohne den Installationsbefehl, daher füge in CI einen expliziten `failproofai policies --install --custom <file>`-Schritt ein – dieser lässt den Build bei einer fehlerhaften Policy fehlschlagen.
+
+Speise danach das ein, was Agents tatsächlich senden, nicht nur den erwarteten Input: fehlende Felder, alternative Tool-Namen wie `Write` und `Edit`, Windows-Pfade, fehlerhaften Input. Gib auf jedem Pfad ein bewusstes `allow`, `instruct` oder `deny` zurück, halte die Funktion deterministisch und begrenze jeden externen Aufruf mit einem kurzen Timeout.
+
+## Dann veröffentlichen und beobachten
+
+Ein Backtest zeigt, was die Policy mit dem vorhandenen Traffic gemacht hätte; er kann nicht zeigen, was noch nicht gesehener Traffic auslösen wird. Wähle **Version veröffentlichen** im Editor (oder führe `fp policies publish` aus), dann [stelle sie](/de/policies/deploy) zunächst im **Observe**-Modus bereit – ihre Urteile werden aufgezeichnet und nichts wird blockiert – und setze sie durch, sobald ihre Treffer unsichere Aktionen von gültigen trennen.

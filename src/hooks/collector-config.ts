@@ -13,7 +13,7 @@
  * the only thing that writes them.
  */
 import { credentialsFile, failproofaiHome as layoutHome } from "./fp-home";
-import { readCredentials, writeCredentials, updateConfig } from "./fp-config";
+import { readConfig, readCredentials, writeCredentials, updateConfig } from "./fp-config";
 
 /**
  * The hosted ingest endpoint — a COMPLETE endpoint, not a base to join onto.
@@ -42,6 +42,8 @@ export interface IngestCredential {
 export interface CollectorSettings {
   /** Ship agent session transcripts. Separate opt-in from having a key. */
   sessions: boolean;
+  agents?: Record<string, { sessions?: boolean }>;
+  otlp?: { enabled: boolean; port?: number };
   /** Ship hook activity. */
   hooks: boolean;
   hooksVerbosity?: "all" | "decisions" | "off";
@@ -58,6 +60,11 @@ export interface CollectorSettings {
 
 export function failproofaiHome(): string {
   return layoutHome();
+}
+
+export function agentSessionsEnabled(agent: string): boolean {
+  const collector = readConfig().collector;
+  return collector.agents?.[agent]?.sessions ?? collector.sessions;
 }
 
 export function ingestPath(): string {
@@ -122,13 +129,15 @@ export function writeCollectorSettings(settings: CollectorSettings): void {
       redact: settings.redact ?? "minimal",
       environment: settings.environment ?? "local",
       machineId: settings.machineId,
+      agents: settings.agents ?? readConfig().collector.agents,
+      otlp: settings.otlp ?? readConfig().collector.otlp,
     },
   });
 }
 
 export type KeyCheck =
   | { ok: true }
-  | { ok: false; reason: string };
+  | { ok: false; reason: string; status?: number };
 
 /**
  * Verify a key against the endpoint before writing it anywhere.
@@ -170,18 +179,19 @@ export async function validateIngestKey(
     if (res.status >= 300 && res.status < 400) {
       return {
         ok: false,
+        status: res.status,
         reason:
           "that URL redirects rather than accepting events — it looks like the dashboard, not the ingest API",
       };
     }
     if (res.status === 401 || res.status === 403) {
-      return { ok: false, reason: `the server rejected that key (${res.status})` };
+      return { ok: false, status: res.status, reason: `the server rejected that key (${res.status})` };
     }
     if (res.status === 404) {
-      return { ok: false, reason: `no ingest endpoint at that URL (404)` };
+      return { ok: false, status: res.status, reason: `no ingest endpoint at that URL (404)` };
     }
     if (!res.ok) {
-      return { ok: false, reason: `the server answered ${res.status}` };
+      return { ok: false, status: res.status, reason: `the server answered ${res.status}` };
     }
     // A 2xx is not enough either. Ingest answers `{"accepted":N,"skipped":M}`;
     // anything else returning 200 (a proxy, a static host, a catch-all router)

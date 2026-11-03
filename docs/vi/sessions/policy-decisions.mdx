@@ -1,0 +1,27 @@
+---
+title: "Quyết định chính sách"
+description: "Xem những chính sách nào được đánh giá, chặn, hướng dẫn hoặc cho phép."
+icon: "shield-check"
+---
+
+Policy decisions giải thích những gì thực thi đã làm. Sử dụng nó để xác minh một rollout, đo tỷ lệ chặn và tìm hoạt động không được bảo vệ.
+
+<Tabs>
+  <Tab title="Dashboard">
+    1. Đi đến **Observe → policy** và chọn khoảng thời gian và tùy chọn một máy.
+    2. Xem lại các hành động được đánh giá, các khối, tỷ lệ khối, quyết định Cloud, các hành động không được bảo vệ và hoạt động trong khi tạm dừng.
+    3. Lọc bảng ánh xạ chính sách và kiểm tra các gán đã triển khai.
+    4. Chọn một điểm biểu đồ để mở các quyết định và phiên của chúng.
+
+    ![Trang Policy hiển thị tổng số quyết định, bộ lọc máy, hoạt động thực thi theo thời gian và bảng ánh xạ chính sách.](/images/dashboard/policy-observe.png)
+  </Tab>
+  <Tab title="CLI">
+    ```bash
+    fp events --event-type hook_completed --env production --since 24h
+    fp events --search "deny" --since 24h
+    failproofai config --status
+    ```
+
+    Sử dụng `failproofai` cho trạng thái thực thi cục bộ của máy và `fp` cho điều tra sự kiện Cloud.
+  </Tab>
+</Tabs>

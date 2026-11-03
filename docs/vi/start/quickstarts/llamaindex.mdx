@@ -1,0 +1,48 @@
+---
+title: "LlamaIndex"
+description: "Cài đặt, cấu hình, và xem trace đầu tiên của bạn."
+icon: "/images/frameworks/llamaindex.svg"
+---
+
+Ba bước để có trace LlamaIndex đầu tiên. Để xem các bước quy trình, truy xuất, reaper và các tùy chọn, hãy xem [hướng dẫn đầy đủ](/vi/start/integrations/llamaindex).
+
+## Cài đặt
+
+```bash
+pip install 'failproofai-sdk[llamaindex]'
+```
+
+## Cấu hình
+
+LlamaIndex's agent API là async. Mỗi scope hoạt động dưới `async with` cũng như `with`.
+
+```python
+import asyncio
+
+import failproofai_sdk
+
+failproofai_sdk.configure(environment="production")
+failproofai_sdk.instrument()
+
+
+async def main():
+    async with failproofai_sdk.session():
+        await agent.run("...")
+
+
+asyncio.run(main())
+```
+
+<Warning>
+  Nếu không có một đối số bổ sung trên LLM của bạn, mọi số lượng token trong trace của bạn sẽ là null — `llama-index-llms-openai` không yêu cầu sử dụng khi nó stream. Xem [Token counts](/vi/start/integrations/llamaindex#token-counts).
+</Warning>
+
+## Kiểm tra việc nhận dữ liệu
+
+Chạy nó một lần, sau đó mở **Observe → Sessions** và chọn môi trường của bạn. Lần chạy của bạn sẽ xuất hiện dưới dạng trace được tái cấu trúc.
+
+Nếu không có dữ liệu nào đến, hãy xác nhận máy được kết nối bằng `failproofai config --status`.
+
+<Card title="Hướng dẫn LlamaIndex đầy đủ" icon="arrow-right" href="/vi/start/integrations/llamaindex">
+  Token counts, những gì được ghi lại, các bước quy trình, truy xuất, các tùy chọn và các vấn đề phổ biến.
+</Card>

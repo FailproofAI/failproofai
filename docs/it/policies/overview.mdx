@@ -1,0 +1,54 @@
+---
+title: "Policies"
+description: "Osserva, guida o blocca le azioni dell'agente prima che un errore noto si ripeta."
+icon: "shield-check"
+---
+
+Una policy valuta un evento hook dell'agente e restituisce una di tre decisioni:
+
+- `allow` consente all'azione di continuare.
+- `instruct` fornisce all'agente una guida correttiva.
+- `deny` blocca l'azione con una motivazione.
+
+## Dove si trovano le policy
+
+| Nel dashboard | Cosa fai lì |
+| --- | --- |
+| **Observe → policy** | Rivedi le decisioni dalle sessioni reali: quale policy ha corrisposto, su quale macchina e perché |
+| **Admin → policy editor** | Scrivi una policy, effettua un backtest rispetto al traffico passato, pubblica una versione immutabile e confronta le versioni in **library** |
+| **Admin → enforcement** | Distribuisci le versioni sulle macchine, in modalità observe o enforce |
+
+L'editor di policy è dove un errore diventa una regola. Descrivi la modalità di errore o incolla il codice della policy in **compose**, effettua un backtest della bozza rispetto al traffico che hai già, e pubblica una versione:
+
+![La vista compose dell'editor di policy con identità della policy, drafting assistito da AI, convalida del codice sorgente e controlli di pubblicazione.](/images/dashboard/policy-editor.png)
+
+Su una macchina, `failproofai policies` elenca tutto ciò che viene applicato lì. `fp policies` e `fp fleet` coprono l'editor e l'enforcement da un terminale — vedi il [Cloud CLI reference](/it/reference/cloud-cli).
+
+## Ottieni una policy
+
+Ci sono due modi per ottenerne una.
+
+<Columns cols={2}>
+  <Card title="Scrivi una policy" icon="file-pen-line" href="/it/policies/editor">
+    Lascia che Failproof AI ne rediga una da una rilevazione di audit, oppure scrivi il codice sorgente tu stesso, quindi rivedi e pubblica nell'editor.
+  </Card>
+  <Card title="Usa un policy pack" icon="package" href="/it/policies/packs">
+    Integra un policy pack di Failproof AI per il tuo caso d'uso, oppure un pack della community dall'hub delle policy, con un unico comando.
+  </Card>
+</Columns>
+
+## Poi distribuiscilo
+
+<Steps>
+  <Step title="Testalo">
+    Effettua un backtest della bozza rispetto al traffico che hai già, ed eseguila su un'azione che deve bloccare e una che deve consentire — tutto prima di pubblicare. Vedi [Test a policy](/it/policies/test).
+  </Step>
+  <Step title="Distribuiscilo">
+    Metti la versione sulle macchine in modalità **observe**, leggi le sue decisioni, quindi applica l'enforce. Vedi [Deploy a policy](/it/policies/deploy).
+  </Step>
+  <Step title="Versionamento e rollback">
+    Ogni pubblicazione è una versione nuova e immutabile, quindi un rollout che blocca lavoro valido viene annullato ridistribuendo l'ultima versione buona. Vedi [Versions and rollback](/it/policies/rollback).
+  </Step>
+</Steps>
+
+Per condividere le tue policy con altri team, [pubblicale come pack](/it/policies/publish-a-pack). Per scoprire cosa accade quando una policy non può essere valutata affatto, vedi [Failure behavior](/it/policies/failure-behavior).

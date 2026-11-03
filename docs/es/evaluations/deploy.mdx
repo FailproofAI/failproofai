@@ -1,0 +1,55 @@
+---
+title: "Desplegar y versionar una evaluación"
+description: "Despliega una versión inmutable, consulta lo que está activo, publica nuevas versiones, revierte cambios y puntúa sesiones que ya tienes."
+icon: "cloud-upload"
+---
+
+## Desplegarlo
+
+Selecciona **deploy `<key>@<version>`** en la parte inferior de la página de creación. La versión es inmutable una vez publicada: a partir de ese momento, cada sesión que finalice y a la que aplique su condición será puntuada por ella.
+
+## Ver qué está activo
+
+**Analyze → eval authoring** lista las definiciones alojadas de tu organización: las evaluaciones que el evaluador gestionado ejecuta para ella. Cada fila muestra:
+
+- su nombre, clave, versión y tipo de resultado
+- su checksum de fuente, que distingue las revisiones desplegadas sin necesidad de abrir el código
+- si es **condicional** o se ejecuta en **todas las sesiones completadas** — la condición es lo que delimita una evaluación a agentes o entornos concretos
+- su tiempo de espera máximo, sus etiquetas y cuándo se modificó por última vez
+
+![La lista de definiciones alojadas: nombre, clave, versión, tipo de resultado, checksum, tiempo de espera y alcance de cada evaluación, con opciones para nueva versión y habilitar o deshabilitar.](/images/dashboard/eval-definitions.png)
+
+Busca en la lista o filtrala por estado. Las evaluaciones que registra tu propio worker no aparecen aquí; sus resultados llevan la etiqueta **customer** en la [página de evaluaciones](/es/sessions/evaluations), mientras que las alojadas llevan **managed**.
+
+Una organización puede tener hasta 100 evaluaciones alojadas distintas habilitadas al mismo tiempo.
+
+## Publicar una nueva versión
+
+Selecciona **new version** en una fila. La página de creación se abre con el código de esa versión; modifícalo, pruébalo y despliégalo. Su clave y tipo de resultado se mantienen y no pueden cambiarse.
+
+Publicar una versión sucesora deshabilita la anterior y la conserva en la lista. Los resultados mantienen la versión que los produjo, por lo que un gráfico muestra exactamente cuándo entró en vigor la nueva lógica.
+
+## Revertir cambios
+
+Selecciona **disable** en la versión actual y **enable** en la que quieras restaurar. Nada se elimina y todos los resultados permanecen tal como estaban.
+
+## Detener una evaluación
+
+Selecciona **disable**. Sin ninguna versión habilitada, dejará de ejecutarse en nuevas sesiones. Para detener una evaluación que ejecuta tu propio worker, deja de registrarla: elimínala del worker o detén el worker.
+
+## Puntuar sesiones que ya tienes
+
+La ejecución de evaluaciones avanza hacia adelante: una versión desplegada ahora nunca puntúa una sesión que terminó antes de su despliegue. Para puntuar el historial, abre **score sessions you already have** en la página de creación de evaluaciones, elige una ventana de hasta 90 días y, opcionalmente, una evaluación concreta, y cuenta antes de ejecutar. El recuento es exactamente lo que se ejecutará, y cada par sesión-evaluación que contenga es una evaluación facturable.
+
+Solo rellena huecos. Una sesión que ya tiene un resultado para esa evaluación lo conserva, y ejecutar la misma ventana dos veces no puntúa nada nuevo.
+
+Para puntuar una sesión de nuevo — tras una corrección, o para una sesión que nunca terminó correctamente — selecciona **re-evaluate** en su página. El nuevo resultado se añade al historial de la sesión; los anteriores se conservan.
+
+## Permisos
+
+| Permiso | Te permite |
+| --- | --- |
+| `evaluations:read` | Ver resultados y abrir la página de creación de evaluaciones |
+| `evaluations:trigger` | Ver, desplegar, versionar, habilitar y deshabilitar definiciones alojadas; probarlas; puntuar el historial; re-evaluar una sesión |
+| `events:read` | Probar con sesiones reales y basar los borradores en tus claves de payload, además de `evaluations:trigger` |
+| `evaluations:run` | Ejecutar tu propio worker evaluador |

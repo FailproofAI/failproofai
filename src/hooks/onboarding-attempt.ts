@@ -43,6 +43,7 @@
 import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { dirname } from "node:path";
 import { onboardingAttemptFile } from "./fp-home";
+import { colorsEnabled, screenKit, type RenderOpts } from "./tui";
 import type { WizardAbort } from "./configure-wizard";
 
 /** Bumped only for a deliberate shape change; an unreadable record is ignored. */
@@ -157,10 +158,11 @@ export function blockerCleared(attempt: OnboardingAttempt, probe: RetryProbe): b
       // command would just repeat the hard-fail. Only a new release is a reason
       // to ask again (it might add support for this platform).
       return probe.cliVersion !== attempt.cliVersion;
-    case "not_a_tty":
     case "running_as_sudo":
-      // Both are properties of the invocation, not of the machine, so the next
-      // one may well be fine.
+      // A property of the invocation, not of the machine, so the next one may
+      // well be fine. (`not_a_tty` used to sit here too. It is gone because
+      // there is no such refusal any more: a run with no terminal has no
+      // questions to ask, so it applies rather than declining.)
       return true;
     default:
       return true;
@@ -168,13 +170,16 @@ export function blockerCleared(attempt: OnboardingAttempt, probe: RetryProbe): b
 }
 
 /** The one line shown instead of relaunching the wizard. */
-export function attemptHintLines(attempt: OnboardingAttempt): string[] {
+export function attemptHintLines(
+  attempt: OnboardingAttempt,
+  /** How to draw it. Defaults to what stdout, where the gate prints it, can show. */
+  render: RenderOpts = { color: colorsEnabled(process.stdout) },
+): string[] {
   const why: Record<string, string> = {
     needs_root: "it needs root to install the failproofaid service",
     daemon_failed: "the failproofaid service could not be started",
     cancelled: "it was cancelled",
     unsupported_platform: "failproofaid does not run on this platform",
-    not_a_tty: "there was no terminal to ask in",
     running_as_sudo: "it was run under sudo",
   };
   const detail = why[attempt.reason] ?? "it did not finish";
@@ -184,12 +189,9 @@ export function attemptHintLines(attempt: OnboardingAttempt): string[] {
   // hit the exact same hard-fail in the meantime.
   const action =
     attempt.reason === "unsupported_platform"
-      ? "Check for a failproofai update — this platform may be supported by a newer release."
-      : "Run `failproofai config` when you are ready.";
-  return [
-    ``,
-    `[failproofai] Setup is not finished — ${detail}.`,
-    `              ${action}`,
-    ``,
-  ];
+      ? "Check for an update to failproofai: a newer release may support this platform."
+      : "Run it when you are ready:  `failproofai config`";
+  // Printed above the command that was typed: one `▲` line and one fix line,
+  // like every notice (`screenKit().notice`).
+  return ["", ...screenKit(render).notice("caution", `Setup is not finished: ${detail}.\n${action}`), ""];
 }

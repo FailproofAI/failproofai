@@ -1,0 +1,208 @@
+---
+title: "Pydantic AI"
+sidebarTitle: "Pydantic AI"
+description: "Yazılan aracıları, araçları, model çağrılarını ve yeniden denemeleri enstrüman edin."
+icon: "/images/frameworks/pydantic-ai.svg"
+---
+
+## Yükle
+
+```bash
+pip install 'failproofai-sdk[pydantic-ai]'
+```
+
+Desteklenen: `pydantic-ai-slim` 2.0 ila 3.0. 2.0, `Agent(instrument=...)` özelliğini kaldırmış ve bu adaptörün üzerine inşa edildiği yetenek protokolünü tanıtmıştır, bu nedenle 1.x bu şekilde enstrüman edilemez.
+
+## Enstrüman Edin
+
+```python
+import failproofai_sdk
+from pydantic_ai import Agent
+
+failproofai_sdk.configure(environment="production")
+failproofai_sdk.instrument()          # herhangi bir Agent oluşturmadan önce
+
+agent = Agent("openai:gpt-4o-mini", system_prompt="Be terse.")
+
+with failproofai_sdk.session():
+    result = agent.run_sync("...")
+```
+
+<Warning>
+  `instrument()` herhangi bir `Agent` oluşturmadan önce çalışmalıdır. Yetenek, oluşturma sırasında eklenir, bu nedenle daha önce oluşturulmuş bir aracı hiçbir şey kaydetmez ve hiçbir hata olmadığı için hata vermez. Bu, bu adaptörle boş bir izlemenin en yaygın nedenidir.
+</Warning>
+
+Modül kapsamındaki aracılar bunun sorun olduğu yerdir:
+
+```python
+# agents.py
+agent = Agent("openai:gpt-4o-mini")   # import sırasında oluşturulur
+
+# main.py
+import failproofai_sdk
+failproofai_sdk.instrument()          # bunu ÖNCE çalıştırın
+import agents                         # şimdi aracı yeteneği alır
+```
+
+Başarılı olduğunu doğrulayın:
+
+```python
+print([type(c).__name__ for c in agent.root_capability.capabilities])
+# ['FailproofAI', 'ToolSearch', 'PendingMessageDrainCapability']
+```
+
+Pydantic AI, geçtiğiniz listeyi tek bir `root_capability` olarak birleştirir, bu nedenle okumanız için `agent.capabilities` özniteliği yoktur.
+
+Enstrüman edilirken oluşturulan Aracılar yeteneği tutar, bu nedenle onları yeniden oluşturmadan `uninstrument()` yapabilir ve yeniden enstrüman edebilirsiniz.
+
+## Kaydedilenleri
+
+| Pydantic AI | Failproof olayı |
+| --- | --- |
+| Aracı çalışması | `agent_start`, `agent_end` |
+| Model isteği | `model_request`, `model_response`, belirteç kullanımı ile |
+| Araç çağrısı | `tool_use`, `tool_result`, modelin gönderdiği argümanlar ile |
+| Bir araçtan `ModelRetry` | hata taşıyan `tool_result` |
+| İşlenmeyen istisna | `error`, ardından `failed` sonucu ile `agent_end` |
+
+Burada hook çifti ve insan-döngü çifti yoktur. Pydantic AI'ın köşeli parantez koymak için düğüm veya adım sınırı yoktur ve yerleşik insan duraklaması yoktur, bu nedenle eşleştirilecek hiçbir şey yoktur. İkisini de oluşturursanız, olayları kendiniz yayın — [Özel aracılar](/tr/reference/custom-agents) bölümüne bakın.
+
+`output_type`, izlemeyi etkilemez. Yazılı bir çalışma ve bir dize çalışması aynı olayları üretir.
+
+## Örnek
+
+```python
+import failproofai_sdk
+from pydantic import BaseModel
+from pydantic_ai import Agent, ModelRetry
+
+failproofai_sdk.configure(environment="production")
+failproofai_sdk.instrument()
+
+PRICE = {"widget": 42.0, "gadget": 17.5}
+STOCK = {"widget": 120, "gadget": 0}
+
+
+class Report(BaseModel):
+    headline: str
+    out_of_stock: list[str]
+
+
+agent = Agent(
+    "openai:gpt-4o-mini",
+    output_type=Report,
+    system_prompt="Use the tools for every number. If a tool fails, note it and continue.",
+)
+
+
+@agent.tool_plain
+def price_of(item: str) -> float:
+    """Unit price of an item. Valid: widget, gadget."""
+    return PRICE[item.lower().strip()]
+
+
+@agent.tool_plain
+def stock_of(item: str) -> int:
+    """Units in stock. Valid: widget, gadget."""
+    return STOCK[item.lower().strip()]
+
+
+@agent.tool_plain
+def restock_eta(item: str) -> str:
+    """Restock ETA. Not available."""
+    raise ModelRetry(f"no restock schedule for {item!r} — answer without it")
+
+
+with failproofai_sdk.session():
+    with failproofai_sdk.agent("inventory", goal="stock report"):
+        result = agent.run_sync(
+            "For widget and gadget, get price and stock. "
+            "For anything out of stock, try the restock ETA. Then produce the report."
+        )
+```
+
+İzlemede, `restock_eta` bir hata taşıyan `tool_result` olarak görünür, ardından modelin bunu geçiştiği başka bir model çağrısı gelir ve çalışma yine de `success` ile biter. Her iki gerçek de kaydedilir.
+
+## Hatalar, yeniden denemeler ve kontrol akışı
+
+Pydantic AI üç farklı şey için istisna atar ve adaptör bunları ayırır:
+
+| İstisna | Şu şekilde Davranılır | Sonuç |
+| --- | --- | --- |
+| `ModelRetry`, `ToolRetryError`, `ToolFailedError` | Gerçek araç hatası | hata taşıyan `tool_result`; çalışma yine de `success` ile bitebilir |
+| `SkipToolExecution`, `SkipToolValidation`, `SkipModelRequest`, `CallDeferred`, `ApprovalRequired` | Kontrol akışı | Hata değil; çalışma yönlendirilmektedir |
+| Başka herhangi bir şey | Bir hata | `error`, ardından `failed` sonucu ile `agent_end` |
+
+`ModelRetry` kasıtlı olarak ilk grupta yer almaktadır. Bu, bir denemesi gerçekten başarısız olduğu ve modelin yeniden denemeyi yapması istendiği anlamına gelir; bu, bir araç aralığının hata alanı için kullanılacak şeydir. Bunu kontrol akışı olarak sınıflandırmak, gerçek araç hatalarını yeşil bir çalışmanın arkasına gizlerdi.
+
+## Aralıklarınızı adlandırın
+
+Pydantic AI'ın kendi çalışma aralığı `agent` olarak adlandırılır. Çağrıyı seçtiğiniz bir etiketle vermek için sarın:
+
+```python
+with failproofai_sdk.session():
+    with failproofai_sdk.agent("inventory", goal="stock report"):
+        agent.run_sync("...")
+```
+
+Çerçevenin aralığı, `inventory` altında yuvalanır ve model ile araç olayları buraya bağlanır.
+
+`agent_id` düşük kardinalite tutun. Her pano yüzeyinde birincil cephe olduğu için, bir rol adı kullanın, asla bir UUID veya çalışma başına dize kullanmayın.
+
+## Oturumu Kontrol Edin
+
+Bu sırayla çözülür, ilk eşleşme kazanır:
+
+1. `instrument("pydantic_ai", session_id=...)`
+2. Çevreleyen `failproofai_sdk.session()` kapsamı
+3. Çalışmanın `conversation_id`, ardından `run_id`
+4. Oluşturulan bir `uuid4().hex`
+
+```python
+with failproofai_sdk.session(f"chat-{user_id}"):
+    agent.run_sync("...")
+```
+
+## Seçenekler
+
+```python
+failproofai_sdk.instrument(
+    "pydantic_ai",
+    session_id=None,          # her çalışmayı bir oturum kimliğine sabitle
+    capture_content=True,     # False, istekleri ve tamamlamaları yüklerden bırakır
+)
+```
+
+## Yaygın Sorunlar
+
+<AccordionGroup>
+  <Accordion title="Çalışma işe yarıyor ancak hiçbir olay görünmüyor">
+    `Agent` `instrument()` çalıştırılmadan önce oluşturuldu. Yukarıdaki uyarıya bakın ve `agent.root_capability.capabilities` öğesini kontrol edin.
+  </Accordion>
+
+  <Accordion title="Bir araçta düz bir istisna çalışmayı öldürür">
+    Bare `raise` yayılır; bu Pydantic AI'ın tasarımıdır. Modelin bunu geçişitmesine izin vermek için, üzerine hareket edebileceği bir iletiyle `ModelRetry` yükseltin. Hata her iki şekilde de kaydedilir.
+  </Accordion>
+
+  <Accordion title="Oluşturmadığım iç içe geçmiş bir aracı aralığı var">
+    O çocuk Pydantic AI'ın kendi çalışma aralığı ve model ile araç olaylarının bulunduğu yerdir. Tek bir aralık istiyorsanız kendi kapsamınızı bırakın, özel ad maliyetine katlanın.
+  </Accordion>
+
+  <Accordion title="Yığın izleri bir kesme işareti ile başlar">
+    Pydantic AI'ın async grafik yığını, yük alanı sınırından daha uzundur ve yığın izinin son satırı özel olarak hata kendisidir. Bu alan, arkasından ziyade ön tarafından kırpılır, bu nedenle ihtiyacınız olan satır hayatta kalır.
+  </Accordion>
+</AccordionGroup>
+
+## Sonraki
+
+<Columns cols={3}>
+  <Card title="Nasıl Çalışır" icon="workflow" href="/tr/start/integrations/custom-agents#going-deeper">
+    Çiftler, kimlikler, oturum yaşam döngüsü ve teslim.
+  </Card>
+  <Card title="İzleme Oku" icon="route" href="/tr/sessions/read-a-trace">
+    Yeni yakaladığınız oturum aracılığıyla nedenselliği izleyin.
+  </Card>
+  <Card title="Diğer Çerçeveler" icon="plug" href="/tr/start/integrations">
+    LangGraph, CrewAI, LlamaIndex ve özel aracılar.
+  </Card>
+</Columns>

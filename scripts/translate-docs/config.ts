@@ -71,8 +71,26 @@ export function getLanguageCodes(maxTier?: number): string[] {
   return langs.map((l) => l.code);
 }
 
-/** Return the default model for a given tier. Tier 1 gets Sonnet, Tier 2/3 gets Haiku. */
+/**
+ * Return the model for a given tier. Tier 1 gets Sonnet, Tier 2/3 gets Haiku.
+ *
+ * Both are overridable from the environment, PER TIER, because cost and quality
+ * do not want the same answer here. Tier 1 is Chinese, Japanese, Korean,
+ * Spanish, Portuguese, German and French — the languages most readers actually
+ * arrive in — and the tier split exists precisely so the cheap model is not
+ * asked to carry them. `--model` on the CLI flattens every tier to one model;
+ * these let the box spend differently on the two halves:
+ *
+ *   TRANSLATE_MODEL_TIER1=claude-sonnet-4-6     # quality where it is read
+ *   TRANSLATE_MODEL_TIER23=deepseek-v4-flash    # cheap for the long tail
+ *
+ * Any id the gateway serves over the Anthropic /v1/messages shape works — the
+ * translator speaks that API, not OpenAI's, so an id has to be reachable there
+ * (verified: deepseek-v4-pro and deepseek-v4-flash both are).
+ */
 export function getModelForTier(tier: number): string {
+  const override = tier <= 1 ? process.env.TRANSLATE_MODEL_TIER1 : process.env.TRANSLATE_MODEL_TIER23;
+  if (override && override.trim()) return override.trim();
   return tier <= 1 ? "claude-sonnet-4-6" : "claude-haiku-4-5";
 }
 

@@ -8,6 +8,14 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { readFileSync, existsSync } from "node:fs";
 import { execSync } from "node:child_process";
 
+// The listing reads installed packs to know which `policyParams` keys are real.
+// Mocked so this file does not depend on whoever runs it having a pack.
+vi.mock("../../src/hooks/pack-manifest", () => ({
+  readInstalledPacks: vi.fn(() => ({ packs: [], errors: [] })),
+  hasInstalledPacks: vi.fn(() => false),
+  hasInstalledRegexPacks: vi.fn(() => false),
+}));
+
 vi.mock("node:fs", () => ({
   readFileSync: vi.fn(),
   writeFileSync: vi.fn(),
@@ -19,16 +27,6 @@ vi.mock("node:fs", () => ({
 vi.mock("node:child_process", () => ({
   execSync: vi.fn(),
 }));
-
-vi.mock("../../src/hooks/install-prompt", async () => {
-  const actual = await vi.importActual<typeof import("../../src/hooks/install-prompt")>(
-    "../../src/hooks/install-prompt",
-  );
-  return {
-    ...actual,
-    promptPolicySelection: vi.fn(() => Promise.resolve(["block-sudo"])),
-  };
-});
 
 vi.mock("../../src/hooks/integrations", () => ({
   detectInstalledClis: vi.fn(() => ["claude"]),
@@ -149,6 +147,26 @@ describe("new telemetry events — manager", () => {
   });
 
   it("fires policy_params_validation_warning when an unknown key is in policyParams", async () => {
+    // The names a `policyParams` key may use are the policies an installed pack
+    // carries — with none installed there is nothing to call a typo against, so
+    // the warning correctly stays quiet. Give it a pack to check against.
+    const { readInstalledPacks } = await import("../../src/hooks/pack-manifest");
+    vi.mocked(readInstalledPacks).mockReturnValue({
+      packs: [
+        {
+          id: "acme/ops",
+          version: "1.0.0",
+          source: "github:acme/ops@v1.0.0",
+          path: "/tmp/none.mjs",
+          sha256: "0".repeat(64),
+          effect: "enforce",
+          policies: [
+            { name: "block-prod-deploy", description: "d", category: "Ops", defaultEnabled: true, match: {} },
+          ],
+        },
+      ],
+      errors: [],
+    } as never);
     vi.mocked(existsSync).mockReturnValue(false);
     const { readMergedHooksConfig } = await import("../../src/hooks/hooks-config");
     vi.mocked(readMergedHooksConfig).mockReturnValue({

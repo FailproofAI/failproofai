@@ -389,8 +389,32 @@ fn user_events(
         json!([{ "role": "user", "content": text }]),
     );
     with_session_context(&mut m, meta);
-    vec![Value::Object(m)]
+    let mut out = vec![Value::Object(m)];
+    // A person wrote it only if the session row SAYS where it came from and
+    // that is not an automated source. An orphan row (no session row) or a
+    // NULL source has no such record, so it ships as a request only.
+    let source = meta.and_then(|s| s.source.as_deref());
+    if source.is_some_and(|s| !AUTOMATED_SOURCES.contains(&s))
+        && let Some(mut envelope) = base("human_input", ms, 1, row, agent_id, environment)
+    {
+        with_session_context(&mut envelope, meta);
+        out.push(crate::sources::human_input(
+            envelope,
+            &row.id.to_string(),
+            text,
+        ));
+    }
+    out
 }
+
+/// `sessions.source` values whose `user` rows no person wrote. A deny-list
+/// rather than an allow-list because every chat gateway Hermes adds (slack,
+/// telegram, … — each a person typing) arrives as a new source name. Measured
+/// on a production install over 7 days: cron 824, webhook 230, subagent 20
+/// sessions against telegram 34, cli 28, slack 4. `oneshot` is `hermes -z`, the
+/// print-only scripting mode (v0.21.5) — the counterpart of `claude -p` and
+/// `codex exec`, which are treated the same way.
+const AUTOMATED_SOURCES: &[&str] = &["cron", "subagent", "webhook", "oneshot"];
 
 /// An `assistant` row is text, or tool calls, or (defensively) both.
 ///

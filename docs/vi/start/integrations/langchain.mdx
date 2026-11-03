@@ -1,0 +1,244 @@
+---
+title: "LangChain và LangGraph"
+sidebarTitle: "LangChain và LangGraph"
+description: "Instrument các đồ thị, nút, công cụ, trình truy xuất và lệnh gọi mô hình chỉ bằng một lệnh gọi."
+icon: "/images/frameworks/langchain.svg"
+---
+
+Một adapter phục vụ cả hai. LangGraph chạy trên trình quản lý callback của `langchain-core`, vì vậy việc instrument một cái sẽ instrument cái kia.
+
+## Cài đặt
+
+```bash
+pip install 'failproofai-sdk[langgraph]'
+```
+
+Đối với LangChain không có LangGraph, hãy sử dụng `failproofai-sdk[langchain]`.
+
+Được hỗ trợ: `langchain-core` 1.4.7 đến 2.0, `langgraph` 1.2 đến 2.0. Ngoài phạm vi đó, adapter vẫn cài đặt và cảnh báo một lần.
+
+## Instrument
+
+```python
+import failproofai_sdk
+
+failproofai_sdk.configure(environment="production")
+failproofai_sdk.instrument()
+
+with failproofai_sdk.session():
+    graph.invoke({"messages": [HumanMessage("...")]})
+```
+
+`instrument()` đăng ký một tracer thông qua `langchain_core.tracers.context.register_configure_hook`. LangChain tiêm nó vào mọi trình quản lý callback mà nó xây dựng, vì vậy các đồ thị, công cụ và mô hình được ghi lại mà không cần thay đổi bất kỳ trang gọi nào — bao gồm những cái bên trong các thư viện mà bạn không viết.
+
+## Những gì được ghi lại
+
+| LangChain hoặc LangGraph | Sự kiện Failproof |
+| --- | --- |
+| Root run | `agent_start`, `agent_end` |
+| Nút LangGraph | `hook_triggered`, `hook_completed` |
+| Đồ thị con được biên dịch | `agent_start`, `agent_end` lồng nhau |
+| Chạy công cụ | `tool_use`, `tool_result` |
+| Chạy trình truy xuất | `tool_use`, `tool_result`, output được tóm tắt |
+| Chạy mô hình chat hoặc LLM | `model_request`, `model_response`, với sử dụng token |
+| Token được phát trực tuyến | Gập vào phản hồi dưới dạng số lượng chunk và thời gian đến token đầu tiên. Số lượng token cần `ChatOpenAI(stream_usage=True)` — xem bên dưới |
+| `interrupt()` | `human_wait`, `agent_pause` |
+| `Command(resume=...)` | `agent_resume`, `human_input`, tương quan trên `Interrupt.id` — bao gồm khi quá trình tiếp tục xảy ra trong một quy trình khác đối với cùng một checkpointer |
+| Ngoại lệ không được xử lý | `error`, sau đó `agent_end` với kết quả `failed` |
+
+**Một nút trở thành hook, không phải agent lồng nhau.** `agent_id` là khía cạnh chính trên mọi bề mặt dashboard — việc nâng cao `retrieve`, `grade_documents` và `should_continue` thành các agent sẽ làm ngập nó, và gắn nhãn phiên sau bất kỳ nút nào tình cờ chạy trước tiên.
+
+Các span hook được hiển thị theo cách tương tự và vẫn cung cấp cho bạn chế độ xem độ trễ trên mỗi nút.
+
+<Note>
+  **Đặt tên các nút tùy thích của bạn.** Một lần chạy của nút được xác định bởi *hình dạng* của nó — một lần chạy không phải lá mang thẻ bước riêng của LangGraph — không bao giờ bằng tên của nó.
+</Note>
+
+| Bạn viết | Những gì được ghi lại |
+| --- | --- |
+| `add_node("lookup_population", ToolNode([...]))` | Công cụ |
+| `add_node("ChatOpenAI", ...)` | Lệnh gọi mô hình |
+
+Đặt tên một nút theo tên của thứ mà nó chạy từng làm cho sự kiện của thứ đó biến mất. Nó không còn làm như vậy nữa.
+
+### Phát trực tuyến
+
+`.stream()` và `.astream()` không phát ra các sự kiện trên mỗi token. Chúng gập vào `model_response` đóng:
+
+| Trường | Mang |
+| --- | --- |
+| `fw_chunks` | Có bao nhiêu chunk đến |
+| `fw_ttft_ms` | Thời gian đến token đầu tiên |
+
+### Số lượng token trên phản hồi được phát trực tuyến
+
+Vấn đề riêng biệt, và dễ bị bỏ lỡ: OpenAI chỉ gửi sử dụng trên phản hồi được phát trực tuyến **khi được yêu cầu**.
+
+```python
+ChatOpenAI(model="gpt-4o-mini", stream_usage=True)   # nếu không có cái này, không có token
+```
+
+Adapter ghi lại những gì framework trao cho nó. Nếu không có cờ đó, không có gì để ghi lại, và `model_response` đến mà không có số lượng token.
+
+## Ví dụ
+
+```python
+import failproofai_sdk
+from langchain_core.messages import HumanMessage
+from langchain_core.tools import tool
+from langchain_openai import ChatOpenAI
+from langgraph.prebuilt import ToolNode, create_react_agent
+
+failproofai_sdk.configure(environment="production")
+failproofai_sdk.instrument()
+
+
+@tool
+def price_of(item: str) -> float:
+    """Return the unit price of an item in USD."""
+    return {"widget": 42.0, "gadget": 17.5}[item.lower().strip()]
+
+
+@tool
+def stock_of(item: str) -> int:
+    """Return the units of an item currently in stock."""
+    return {"widget": 120, "gadget": 0}[item.lower().strip()]
+
+
+tools = ToolNode([price_of, stock_of], handle_tool_errors=True)
+graph = create_react_agent(ChatOpenAI(model="gpt-4o-mini"), tools)
+
+with failproofai_sdk.session():
+    with failproofai_sdk.agent("analyst", goal="price and stock report"):
+        result = graph.invoke({
+            "messages": [HumanMessage("Price and stock for widget and gadget?")]
+        })
+```
+
+## Đặt tên span của bạn
+
+Theo mặc định, span gốc lấy tên của chính đồ thị. Bọc nó để có được nhãn mà bạn chọn:
+
+```python
+with failproofai_sdk.session():
+    with failproofai_sdk.agent("analyst", goal="price and stock report"):
+        graph.invoke(...)
+```
+
+Đối với các thiết lập đa agent, hãy lồng các phạm vi. Mỗi worker trở thành một span con mang `parent_id`:
+
+```python
+with failproofai_sdk.session():
+    with failproofai_sdk.agent("supervisor"):
+        with failproofai_sdk.agent("researcher"):
+            research_graph.invoke(...)
+        with failproofai_sdk.agent("writer"):
+            writer_graph.invoke(...)
+```
+
+Giữ `agent_id` có độ cardinality thấp. Hãy sử dụng một vai trò hoặc tên nút, không bao giờ một UUID hoặc một chuỗi cho mỗi lần chạy.
+
+## Kiểm soát phiên
+
+ID phiên giải quyết theo thứ tự này, trận đấu đầu tiên thắng:
+
+1. `instrument("langchain", session_id=...)`
+2. `config={"metadata": {"failproofai_sdk_session_id": ...}}`
+3. Phạm vi `failproofai_sdk.session()` bao quanh
+4. `metadata["session_id"]`, `metadata["conversation_id"]`, hoặc `metadata["thread_id"]`
+5. ID chạy gốc
+
+Nó không bao giờ được tạo từ đầu, vì một id tổng hợp chia một lần chạy trên nhiều phiên.
+
+```python
+graph.invoke(
+    {"messages": [...]},
+    config={"metadata": {"failproofai_sdk_session_id": f"chat-{user_id}"}},
+)
+```
+
+## Tùy chọn
+
+```python
+failproofai_sdk.instrument(
+    "langchain",
+    session_id=None,          # pin every run to one session id
+    include_chains=set(),     # allowlist intermediate chains as hook pairs
+    capture_content=True,     # False drops prompts and completions from payloads
+    graph_callbacks=True,     # first-class interrupt and resume, needs langgraph 1.2+
+)
+```
+
+Đặt `capture_content=False` cho dữ liệu được quy định. Cấu trúc, thời gian, số lượng token, tên công cụ và kết quả vẫn được ghi lại; nội dung tin nhắn không.
+
+`include_chains` chỉ áp dụng cho các lần chạy **lồng nhau**. Một runnable mà bạn gọi ở cấp độ top level là root của phiên, vì vậy nó trở thành span agent thay vì cặp hook, và việc đặt tên cho nó ở đây không có hiệu lực.
+
+## Con người trong vòng lặp
+
+`interrupt()` tạo ra bốn sự kiện, và không có cặp nào là dư thừa:
+
+```python
+from langgraph.types import Command, interrupt
+
+def approve(state):
+    decision = interrupt({"prompt": "Ship it?", "options": ["yes", "no"]})
+    return {"approved": decision == "yes"}
+
+with failproofai_sdk.session():
+    graph.invoke(state, config)                    # human_wait, agent_pause
+    graph.invoke(Command(resume="yes"), config)    # agent_resume, human_input
+```
+
+`human_wait` đến `human_input` mang lời nhắc và câu trả lời (cả hai bị bỏ dưới `capture_content=False`, cùng với nguồn tài liệu truy xuất — số lượng tài liệu vẫn tồn tại). `agent_pause` đến `agent_resume` là cặp duy nhất có nguồn cung cấp thời gian tạm dừng, vì vậy nếu không có nó, một khoảng chờ con người mười phút sẽ được tính là thời gian agent hoạt động. Span gốc vẫn mở trên khoảng cách, giữ cả hai lệnh gọi trong một phiên.
+
+## Các vấn đề thường gặp
+
+<AccordionGroup>
+  <Accordion title="Một công cụ nâng cao làm hỏng toàn bộ đồ thị">
+    `create_react_agent` truyền bá ngoại lệ. Để cho phép mô hình thấy lỗi và tiếp tục, hãy xây dựng nút công cụ một cách tường minh:
+
+    ```python
+    from langgraph.prebuilt import ToolNode, create_react_agent
+
+    tools = ToolNode([price_of, stock_of], handle_tool_errors=True)
+    graph = create_react_agent(model, tools)
+    ```
+
+    Lỗi được ghi lại dưới dạng `tool_result` mang một lỗi theo bất kỳ cách nào. Điều này chỉ quyết định xem lần chạy có tồn tại sau đó hay không.
+  </Accordion>
+
+  <Accordion title="Một agent được đặt tên theo lớp mô hình xuất hiện trong dấu vết">
+    Một `llm.invoke()` trực tiếp bên ngoài bất kỳ đồ thị nào không có chạy cha, vì vậy nó mở một span gốc và phát ra cặp mô hình của nó bên trong nó. Dashboard cha rời đến một agent mở, vì vậy span là cố ý. Đặt tên cho nó:
+
+    ```python
+    with failproofai_sdk.agent("summariser"):
+        summary = ChatOpenAI(model="gpt-4o-mini").invoke([HumanMessage(text)])
+    ```
+  </Accordion>
+
+  <Accordion title="Mỗi sự kiện xuất hiện hai lần">
+    Bạn đã truyền một trình xử lý Failproof trong `config={"callbacks": [...]}` cũng như gọi `instrument()`. Xóa nó. Hệ thống hook cấu hình đã bao gồm mọi trình quản lý callback trong quy trình.
+  </Accordion>
+
+  <Accordion title="Các phê duyệt của con người hiển thị dưới dạng lỗi">
+    Họ không. LangGraph tăng `GraphInterrupt` qua cùng một đường dẫn như một ngoại lệ thực sự, vì vậy mỗi lần tạm dừng đều đến với tracer như một callback lỗi. Bất kỳ lớp con nào của `GraphBubbleUp` được coi là luồng điều khiển thay thế, vì vậy việc phê duyệt không vẽ một lỗi màu đỏ.
+  </Accordion>
+
+  <Accordion title="Không có gì được ghi lại">
+    Kiểm tra theo thứ tự này: `instrument()` chạy trước khi đồ thị thực thi; có một `with failproofai_sdk.session():` xung quanh lệnh gọi; `FAILPROOFAI_SDK_STRICT=1` đặt, vì vậy một hook bị suy giảm sẽ tăng thay vì bị nuốt.
+  </Accordion>
+</AccordionGroup>
+
+## Tiếp theo
+
+<Columns cols={3}>
+  <Card title="Cách nó hoạt động" icon="workflow" href="/vi/start/integrations/custom-agents#going-deeper">
+    Cặp, id, vòng đời phiên và giao hàng.
+  </Card>
+  <Card title="Đọc một dấu vết" icon="route" href="/vi/sessions/read-a-trace">
+    Làm theo nhân quả thông qua phiên bạn vừa chụp.
+  </Card>
+  <Card title="Các framework khác" icon="plug" href="/vi/start/integrations">
+    CrewAI, LlamaIndex, Pydantic AI và các agent tùy chỉnh.
+  </Card>
+</Columns>

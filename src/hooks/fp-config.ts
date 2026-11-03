@@ -22,8 +22,21 @@
  * someone opens when something is wrong. That guidance now lives in
  * `failproofai config --status` and the docs, which is a worse place for it.
  */
-import { chmodSync, existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
+import {
+  chmodSync,
+  closeSync,
+  constants as fsConstants,
+  existsSync,
+  fstatSync,
+  mkdirSync,
+  openSync,
+  readFileSync,
+  readSync,
+  statSync,
+  writeFileSync,
+} from "node:fs";
 import { dirname } from "node:path";
+import { writeJsonAtomically } from "../../lib/atomic-write";
 import { version as cliVersion } from "../../package.json";
 import {
   LAYOUT_VERSION,
@@ -269,6 +282,14 @@ export interface FpConfig {
   };
   collector: {
     sessions: boolean;
+    /**
+     * Per-agent transcript transport overrides. Orthogonal to `agents.selected`,
+     * which gates collection: a traced agent using OTEL keeps its hooks, but
+     * must not also send transcripts. Retain the original OTEL key layout so
+     * upgrades and recovery snapshots can restore the previous preference.
+     */
+    agents?: Record<string, { sessions?: boolean }>;
+    otlp?: { enabled: boolean; port?: number };
     hooks: boolean;
     hooksVerbosity: "all" | "decisions" | "off";
     redact: "minimal" | "off";
@@ -356,6 +377,23 @@ export interface FpConfig {
     /** Days between scheduled runs. Wall clock, so it survives suspend. */
     intervalDays: number;
   };
+  /**
+   * Which agents failproofai traces: the remembered answer to `failproofai
+   * config`'s "which agents should failproofai trace?".
+   *
+   * `selected` drives every per-agent thing at once — which CLIs get hooks,
+   * which harnesses the daemon's collector reads, and which `backfill` re-sends.
+   * `seen` is every agent that was detected at the last setup, which is how a
+   * newly installed agent is recognised and offered as "new on this machine".
+   * Ids are the integration ids (`claude`, `codex`, …).
+   *
+   * ABSENT means today's behaviour, everything, and that is what every machine
+   * set up before this existed has. So `writeConfig` emits nothing in that case,
+   * and the daemon — which reads `agents.selected` from this same file — keeps
+   * collecting every harness. The direction matters: an unreadable or missing
+   * selection must never quietly switch tracing OFF.
+   */
+  agents?: { selected: string[]; seen: string[] };
 }
 
 /**
@@ -429,6 +467,45 @@ function readSources(raw: unknown): FpConfig["collector"]["sources"] {
     if (paths.length > 0) out[name] = { extraPaths: paths };
   }
   return Object.keys(out).length > 0 ? out : undefined;
+}
+
+function readAgentSessions(raw: unknown): FpConfig["collector"]["agents"] {
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return undefined;
+  const agents = Object.fromEntries(Object.entries(raw).flatMap(([agent, settings]) => {
+    if (!settings || typeof settings !== "object" || Array.isArray(settings)) return [];
+    const sessions = (settings as Record<string, unknown>).sessions;
+    return typeof sessions === "boolean" ? [[agent, { sessions }]] : [];
+  }));
+  return Object.keys(agents).length ? agents : undefined;
+}
+
+function readOtlpSettings(raw: unknown): FpConfig["collector"]["otlp"] {
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return undefined;
+  const settings = raw as Record<string, unknown>;
+  return {
+    enabled: settings.enabled === true,
+    ...(typeof settings.port === "number" && Number.isInteger(settings.port) ? { port: settings.port } : {}),
+  };
+}
+
+/**
+ * `agents` → the in-memory shape. Kept as written (strings only, de-duplicated
+ * in order): the daemon owns the list of real agent ids and warns about an
+ * unknown one, so dropping it here would hide that warning behind a value the
+ * CLI had already rewritten — the same reasoning as {@link readSources}.
+ *
+ * `undefined` unless `selected` is an array, because absent means everything
+ * and a garbage value must fail in that direction too.
+ */
+function readAgents(raw: unknown): FpConfig["agents"] {
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return undefined;
+  const ids = (v: unknown): string[] =>
+    Array.isArray(v)
+      ? [...new Set(v.filter((e): e is string => typeof e === "string" && e.trim() !== ""))]
+      : [];
+  const table = raw as Record<string, unknown>;
+  if (!Array.isArray(table.selected)) return undefined;
+  return { selected: ids(table.selected), seen: ids(table.seen) };
 }
 
 /**
@@ -520,6 +597,8 @@ export function projectConfig(parsed: Record<string, unknown>): FpConfig {
           typeof collector.environment === "string" ? collector.environment : "local",
         machineId: typeof collector.machine_id === "string" ? collector.machine_id : undefined,
         sources: readSources(collector.sources),
+        agents: readAgentSessions(collector.agents),
+        otlp: readOtlpSettings(collector.otlp),
       },
       // Only an explicit `false` switches it off. Absent, or any other value,
       // reads as on — the shipped default, and what a config with no
@@ -540,6 +619,7 @@ export function projectConfig(parsed: Record<string, unknown>): FpConfig {
             ? audit.reports_consented_at
             : undefined,
       },
+      agents: readAgents(parsed.agents),
       // Same shape as `audit.auto` above and for the same reason: only an
       // explicit `true` opts in. Anything else — absent, misspelled, `"yes"` —
       // reads as off, because the failure direction is a machine that starts
@@ -582,10 +662,15 @@ const OWNED_CONFIG_KEYS: readonly (readonly string[])[] = [
   ["collector", "environment"],
   ["collector", "machine_id"],
   ["collector", "sources", "*", "extra_paths"],
+  ["collector", "agents", "*", "sessions"],
+  ["collector", "otlp", "enabled"],
+  ["collector", "otlp", "port"],
   ["telemetry", "enabled"],
   ["audit", "auto"],
   ["audit", "interval_days"],
   ["audit", "reports_consented_at"],
+  ["agents", "selected"],
+  ["agents", "seen"],
 ];
 
 const isPlainObject = (v: unknown): v is Record<string, unknown> =>
@@ -657,6 +742,8 @@ export function writeConfig(config: FpConfig, raw?: Record<string, unknown>): vo
       // Omitted when unset rather than written null: the Rust side treats an
       // absent machine_id as "derive one", and an explicit null is not that.
       ...(c.machineId ? { machine_id: c.machineId } : {}),
+      ...(c.agents ? { agents: c.agents } : {}),
+      ...(c.otlp ? { otlp: c.otlp } : {}),
       // Extra capture paths per harness. Emitted ONLY when non-empty, so a
       // machine that never configured one gets a file byte-identical to what
       // this function produced before the field existed — the same reasoning as
@@ -696,6 +783,12 @@ export function writeConfig(config: FpConfig, raw?: Record<string, unknown>): vo
         ? {}
         : { reports_consented_at: config.audit.reportsConsentedAt }),
     },
+    // Written ONLY when a selection exists — absent means "every agent", and a
+    // machine that never chose keeps a file byte-identical to what this
+    // function wrote before the field existed.
+    ...(config.agents
+      ? { agents: { selected: config.agents.selected, seen: config.agents.seen } }
+      : {}),
   };
   // Start from the previous bytes, strip the keys this build owns — so an
   // omission above really removes — then lay the projection on top. What is left
@@ -714,6 +807,8 @@ export function updateConfig(patch: {
   collector?: Partial<FpConfig["collector"]>;
   telemetry?: Partial<FpConfig["telemetry"]>;
   audit?: Partial<FpConfig["audit"]>;
+  /** Replace the agent selection; `null` removes it (back to "every agent"). */
+  agents?: FpConfig["agents"] | null;
 }): FpConfig {
   // `readConfigRaw`, not `readConfig` — this is the function EVERY mutation path
   // goes through (the wizard, `harness add-path`, `healDaemonFlag`, the telemetry
@@ -726,14 +821,30 @@ export function updateConfig(patch: {
     collector: { ...current.collector, ...patch.collector },
     telemetry: { ...current.telemetry, ...patch.telemetry },
     audit: { ...current.audit, ...patch.audit },
+    // Carried forward when the patch does not name it. Every other mutation
+    // path goes through here — the wizard's own connect step among them — and
+    // a selection dropped by an unrelated write would silently turn tracing
+    // back on for every agent the user switched off.
+    agents: patch.agents === undefined ? current.agents : (patch.agents ?? undefined),
   };
   writeConfig(next, raw);
   return next;
 }
 
+/**
+ * Whether failproofai traces this agent: hooked, collected and backfilled.
+ * True for every agent when no selection has been saved, which is today's
+ * behaviour and what every machine set up before the selection existed has.
+ */
+export function isAgentTraced(id: string, config: FpConfig = readConfig()): boolean {
+  return !config.agents || config.agents.selected.includes(id);
+}
+
 // ── credentials.json ─────────────────────────────────────────────────────────
 
 export interface FpCredentials {
+  /** Successful connection time, epoch milliseconds; resets stale refusal status. */
+  connectedAt?: number;
   cloud?: { url: string; machineId: string; token: string; machineLabel?: string };
   /**
    * Which organisation this machine's credentials report into, as the server
@@ -750,9 +861,29 @@ export interface FpCredentials {
    * the one a key pasted from the wrong org gets silently wrong. Absent against
    * a server predating introspect, and in files written by an older CLI.
    */
-  org?: { id?: string; slug?: string; name?: string };
+  org?: { id?: string; slug?: string; name?: string; since?: number };
   ingest?: { url: string; key: string };
   auth?: { baseUrl?: string; sessionToken?: string; expiresAt?: number; email?: string };
+  /**
+   * The key Jev's FailproofAI Cloud route sends, and the Cloud ORIGIN it was
+   * verified against. Written by connect only when introspect reports
+   * `jev:evaluate`; cleared by disconnect. See {@link readJevCloudCredential}.
+   *
+   * A slot of its own, not a reuse of `[cloud]` or `[ingest]`, although it holds
+   * the same key today: those two are written under their own permission checks
+   * and can hold DIFFERENT keys (see `cloud-connection.ts`), and "which of the
+   * two backs Jev" is a question nobody reading the file should have to answer.
+   * One slot per capability keeps revoking one from ever silently re-routing
+   * another.
+   */
+  jev?: JevCloudCredential;
+}
+
+/** The `jev` slot of `credentials.json`. */
+export interface JevCloudCredential {
+  /** The Cloud origin the key was verified against, e.g. `https://app.befailproof.ai`. */
+  url: string;
+  key: string;
 }
 
 /**
@@ -766,6 +897,7 @@ export interface FpCredentials {
  * only local answer to "where does this machine's data go?".
  */
 const OWNED_CREDENTIAL_KEYS: readonly (readonly string[])[] = [
+  ["connectedAt"],
   ["cloud", "url"],
   ["cloud", "machine_id"],
   ["cloud", "machine_label"],
@@ -773,8 +905,11 @@ const OWNED_CREDENTIAL_KEYS: readonly (readonly string[])[] = [
   ["org", "id"],
   ["org", "slug"],
   ["org", "name"],
+  ["org", "since"],
   ["ingest", "url"],
   ["ingest", "key"],
+  ["jev", "url"],
+  ["jev", "key"],
   ["auth", "base_url"],
   ["auth", "session_token"],
   ["auth", "expires_at"],
@@ -806,6 +941,25 @@ export function readCredentials(): FpCredentials {
 }
 
 /**
+ * Whether FailproofAI Cloud sets this machine's Jev mode: it is connected for
+ * policies (a machine id in `credentials.json`). Cloud then runs Jev in enforce
+ * while a Jev policy is deployed here and switches it off when none is; local
+ * mode settings do not apply. Never throws.
+ */
+export function cloudManagesJevMode(): boolean {
+  try {
+    const cloud = readCredentials().cloud;
+    return Boolean(cloud?.url && cloud.machineId);
+  } catch {
+    return false;
+  }
+}
+
+/** The one line a local mode switch answers with on such a machine. */
+export const CLOUD_MANAGED_JEV_MODE =
+  "Jev mode is managed by FailproofAI Cloud on this machine: enforce while a Jev policy is deployed here, off when none is.";
+
+/**
  * Project a parsed credentials object onto {@link FpCredentials}.
  *
  * Split out for the reason {@link projectConfig} is: the layout-2 → 3 carry
@@ -820,6 +974,9 @@ export function projectCredentials(parsed: Record<string, unknown>): FpCredentia
     const ingest = parsed.ingest as Record<string, unknown> | undefined;
     const auth = parsed.auth as Record<string, unknown> | undefined;
     const out: FpCredentials = {};
+    if (typeof parsed.connectedAt === "number" && Number.isSafeInteger(parsed.connectedAt) && parsed.connectedAt >= 0) {
+      out.connectedAt = parsed.connectedAt;
+    }
     if (
       cloud &&
       typeof cloud.url === "string" &&
@@ -837,12 +994,16 @@ export function projectCredentials(parsed: Record<string, unknown>): FpCredentia
       // Every field independently optional: a server may send fewer than three,
       // and a partial org record is still better than none for `--status`.
       const pick = (v: unknown) => (typeof v === "string" && v ? v : undefined);
-      const built = { id: pick(org.id), slug: pick(org.slug), name: pick(org.name) };
-      if (built.id || built.slug || built.name) out.org = built;
+      const since = typeof org.since === "number" && Number.isSafeInteger(org.since) && org.since >= 0
+        ? org.since : undefined;
+      const built = { id: pick(org.id), slug: pick(org.slug), name: pick(org.name), ...(since !== undefined ? { since } : {}) };
+      if (built.id || built.slug || built.name || since !== undefined) out.org = built;
     }
     if (ingest && typeof ingest.url === "string" && typeof ingest.key === "string" && ingest.url && ingest.key) {
       out.ingest = { url: ingest.url, key: ingest.key };
     }
+    const jev = projectJevSlot(parsed.jev);
+    if (jev) out.jev = jev;
     if (auth) {
       out.auth = {
         baseUrl: typeof auth.base_url === "string" ? auth.base_url : undefined,
@@ -865,6 +1026,7 @@ export function projectCredentials(parsed: Record<string, unknown>): FpCredentia
  */
 export function writeCredentials(creds: FpCredentials, raw?: Record<string, unknown>): void {
   const out: Record<string, unknown> = {};
+  if (creds.connectedAt !== undefined) out.connectedAt = creds.connectedAt;
   if (creds.cloud) {
     out.cloud = {
       url: creds.cloud.url,
@@ -876,11 +1038,15 @@ export function writeCredentials(creds: FpCredentials, raw?: Record<string, unkn
   if (creds.ingest) {
     out.ingest = { url: creds.ingest.url, key: creds.ingest.key };
   }
-  if (creds.org && (creds.org.id || creds.org.slug || creds.org.name)) {
+  if (creds.jev) {
+    out.jev = { url: creds.jev.url, key: creds.jev.key };
+  }
+  if (creds.org && (creds.org.id || creds.org.slug || creds.org.name || creds.org.since !== undefined)) {
     out.org = {
       ...(creds.org.id ? { id: creds.org.id } : {}),
       ...(creds.org.slug ? { slug: creds.org.slug } : {}),
       ...(creds.org.name ? { name: creds.org.name } : {}),
+      ...(creds.org.since !== undefined ? { since: creds.org.since } : {}),
     };
   }
   if (creds.auth && (creds.auth.sessionToken || creds.auth.email)) {
@@ -906,7 +1072,7 @@ export function writeCredentials(creds: FpCredentials, raw?: Record<string, unkn
   } catch {
     // Not fatal: the file's own 0600 is the primary protection.
   }
-  writeFileSync(credentialsFile(), `${JSON.stringify(merged, null, 2)}\n`, { mode: 0o600 });
+  writeJsonAtomically(credentialsFile(), merged);
   try {
     chmodSync(credentialsFile(), 0o600);
   } catch {
@@ -918,6 +1084,232 @@ export function writeCredentials(creds: FpCredentials, raw?: Record<string, unkn
 export function hasCloudCredentials(): boolean {
   const c = readCredentials();
   return Boolean(c.cloud || c.ingest);
+}
+
+// ── The Jev slot ─────────────────────────────────────────────────────────────
+//
+// The one credential in this file that a HOOK reads. Everything else here is
+// read by the daemon or a CLI command; this is read by `inspectJevConfig` on
+// every gated tool call of a machine whose `jev.json` names the FailproofAI
+// Cloud provider — and the key it yields is what lets Jev's answers clear a
+// deny. So it is read the way `jev.json` itself is (`semantic/jev-config.ts`),
+// not the way `readCredentials` reads: a file or directory other users could
+// have written is REFUSED rather than read, because a routing credential for a
+// tier that can clear denies must not be one somebody else chose.
+//
+// And only from `credentialsFile()`, never from `FAILPROOFAI_CLOUD_CREDENTIALS`.
+// That override relocates the policy credential for the daemon and CI; honoured
+// here it would be an environment variable choosing the key Jev spends, which a
+// repository's `.claude/settings.json` can set for a session. `FAILPROOFAI_HOME`
+// is not an exception to that rule for the reason `jev-config.ts` gives: it
+// moves the whole layout, `jev.json` included.
+//
+// # A slot counts only while the connection it came with is still there
+//
+// The slot is written by `config --token` and cleared by `config --disconnect`
+// — by THIS build. An older one (1.0.7-beta.2 and before) knows nothing about
+// it: its disconnect clears `[cloud]` and `[ingest]` and carries the `jev`
+// table over as a key it does not own. So downgrade, disconnect, upgrade, and
+// a machine its owner disconnected would find a Cloud key and a Cloud
+// `jev.json` both still in place, and Jev would start spending on an org the
+// machine had left. So the slot is read as usable only when a FailproofAI Cloud
+// connection on the SAME origin — a policy (`[cloud]`) or reporting
+// (`[ingest]`) credential — is in the same file. A key carrying `jev:evaluate`
+// always carries `events:add` and `policies:pull` too (the server refuses it
+// otherwise), so a live Jev connection always has one of them.
+//
+// And that connection must hold the SAME KEY. The origin alone does not say
+// whose connection it is: on hosted FailproofAI Cloud every organisation shares
+// one origin. An older build's `config --token` with another org's key
+// rewrites `[cloud]` and `[ingest]` to that key and carries the `jev` table
+// over untouched, so the origin still matches while the machine now reports
+// into the other org — and Jev would go on spending the first org's budget.
+// This build's connect writes one key to all three (a partial connect may
+// leave one of `[cloud]`/`[ingest]` holding an earlier key, never both), so a
+// live slot always has a same-origin credential holding its key.
+//
+// Only from this file, for the reason above: under `FAILPROOFAI_CLOUD_CREDENTIALS`
+// the policy credential lives elsewhere, and an environment variable must not
+// be able to re-arm a slot either. The reporting credential is always here,
+// and connecting a Jev key writes it.
+
+/** Same bound `jev.json` gets; no legitimate `credentials.json` is near it. */
+const MAX_CREDENTIALS_BYTES = 64 * 1024;
+/**
+ * Non-blocking, so a FIFO in the file's place cannot hang a hook in `open()`.
+ * A function, not a module-level constant: this module is imported everywhere,
+ * and reading `fs.constants` at import time would make every importer depend on
+ * it — including test doubles of `node:fs` that never needed it before.
+ */
+const credentialsOpenFlags = (): number => fsConstants.O_RDONLY | (fsConstants.O_NONBLOCK ?? 0);
+/** Group- or world-WRITE bits on the directory: whoever has them can replace the file. */
+const DIR_WRITABLE_BY_OTHERS = 0o022;
+
+export type JevCloudCredentialRead =
+  | { status: "ok"; path: string; credential: JevCloudCredential }
+  /**
+   * No usable Jev credential: no file, no `jev` slot, or a slot no live
+   * connection backs (see "A slot counts only while…" above).
+   */
+  | {
+      status: "absent";
+      path: string;
+      /**
+       * This machine IS connected to FailproofAI Cloud — a policy or reporting
+       * credential is stored — just not with a Jev key. Tells "connected, but
+       * the key does not carry Jev" apart from "not connected at all".
+       */
+      connected: boolean;
+      /** A `jev` slot is there, but no connection on its origin holding its key is: it is ignored. */
+      orphaned?: true;
+    }
+  | {
+      status: "refused";
+      path: string;
+      /** The file's permission bits, when they are the reason. */
+      mode: number | null;
+      reason: "too-open" | "unreadable" | "too-large" | "not-json";
+      problem: string;
+      /** The command that fixes it, when one does. */
+      fix?: string;
+    };
+
+/** A `jev` table with two non-empty strings, or null. Shape only; `jev-config.ts` validates the values. */
+function projectJevSlot(raw: unknown): JevCloudCredential | null {
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return null;
+  const { url, key } = raw as Record<string, unknown>;
+  return typeof url === "string" && url && typeof key === "string" && key ? { url, key } : null;
+}
+
+/**
+ * The `jev` slot, read owner-only.
+ *
+ * The file is opened once and every check runs against that descriptor, so the
+ * permissions checked are the permissions of the bytes read — the same shape
+ * as `inspectJevConfig`, for the same reason. Never throws.
+ */
+export function readJevCloudCredential(): JevCloudCredentialRead {
+  const path = credentialsFile();
+  let fd: number;
+  try {
+    fd = openSync(path, credentialsOpenFlags());
+  } catch (err) {
+    const code = (err as NodeJS.ErrnoException).code;
+    if (code === "ENOENT" || code === "ENOTDIR") return { status: "absent", path, connected: false };
+    return { status: "refused", path, mode: null, reason: "unreadable", problem: `cannot open ${path} (${code ?? "error"})` };
+  }
+  let text: string;
+  try {
+    const st = fstatSync(fd);
+    if (!st.isFile()) return { status: "refused", path, mode: null, reason: "unreadable", problem: `${path} is not a regular file` };
+    // On Windows `mode` is synthesized and would refuse every file while
+    // protecting nothing; Jev setup is refused there anyway.
+    const meaningful = process.platform !== "win32";
+    const mode = st.mode & 0o777;
+    if (meaningful && (mode & 0o077) !== 0) {
+      return {
+        status: "refused",
+        path,
+        mode,
+        reason: "too-open",
+        problem:
+          `${path} is ${mode.toString(8).padStart(4, "0")}; it holds the key Jev sends to FailproofAI Cloud, ` +
+          `so it must be owner-only (chmod 600 ${path})`,
+        fix: `chmod 600 ${path}`,
+      };
+    }
+    if (meaningful) {
+      let dirMode: number | null = null;
+      try {
+        const m = statSync(dirname(path)).mode & 0o777;
+        if ((m & DIR_WRITABLE_BY_OTHERS) !== 0) dirMode = m;
+      } catch {
+        // No permission to stat it: the read below reports what it can.
+      }
+      if (dirMode !== null) {
+        return {
+          status: "refused",
+          path,
+          mode,
+          reason: "too-open",
+          problem:
+            `its directory ${dirname(path)} is ${dirMode.toString(8).padStart(4, "0")} — other users can write there, ` +
+            `so they can put their own credentials in its place; it must be owner-only (chmod 700 ${dirname(path)})`,
+          fix: `chmod 700 ${dirname(path)}`,
+        };
+      }
+    }
+    if (st.size > MAX_CREDENTIALS_BYTES) {
+      return { status: "refused", path, mode, reason: "too-large", problem: `${path} is larger than ${MAX_CREDENTIALS_BYTES} bytes` };
+    }
+    const buf = Buffer.alloc(st.size);
+    let off = 0;
+    while (off < buf.length) {
+      const n = readSync(fd, buf, off, buf.length - off, off);
+      if (n === 0) break;
+      off += n;
+    }
+    text = buf.subarray(0, off).toString("utf8");
+  } catch (err) {
+    return { status: "refused", path, mode: null, reason: "unreadable", problem: `cannot read ${path} (${(err as NodeJS.ErrnoException).code ?? "error"})` };
+  } finally {
+    try {
+      closeSync(fd);
+    } catch {
+      // Nothing useful to do.
+    }
+  }
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(text);
+  } catch {
+    return { status: "refused", path, mode: null, reason: "not-json", problem: `${path} is not valid JSON` };
+  }
+  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+    return { status: "refused", path, mode: null, reason: "not-json", problem: `${path} does not hold a JSON object` };
+  }
+  const fields = parsed as Record<string, unknown>;
+  // The same projection `readCredentials` uses, so "a cloud block without a
+  // token is not a cloud block" means the same thing here as everywhere else.
+  const others = projectCredentials(fields);
+  const connections = [
+    others.cloud ? { origin: originOrNull(others.cloud.url), key: others.cloud.token } : null,
+    others.ingest ? { origin: originOrNull(others.ingest.url), key: others.ingest.key } : null,
+  ].filter((c): c is { origin: string; key: string } => c !== null && c.origin !== null);
+  const connected = connections.length > 0;
+  const credential = projectJevSlot(fields.jev);
+  if (!credential) return { status: "absent", path, connected };
+  const slotOrigin = originOrNull(credential.url);
+  // The same origin AND the same key: see "A slot counts only while…" above.
+  const backed = slotOrigin !== null && connections.some((c) => c.origin === slotOrigin && c.key === credential.key);
+  if (!backed) return { status: "absent", path, connected, orphaned: true };
+  return { status: "ok", path, credential };
+}
+
+/** A URL's origin, or null for a missing or unparseable one. */
+function originOrNull(url: string | undefined): string | null {
+  if (!url) return null;
+  try {
+    const origin = new URL(url).origin;
+    return origin === "null" ? null : origin;
+  } catch {
+    return null;
+  }
+}
+
+/** Store the `jev` slot (0600, owner-only home), keeping every other credential. */
+export function writeJevCloudCredential(credential: JevCloudCredential): string {
+  writeCredentials({ ...readCredentials(), jev: { url: credential.url, key: credential.key } });
+  return credentialsFile();
+}
+
+/** Remove the `jev` slot. True if there was one. Every other credential stays. */
+export function clearJevCloudCredential(): boolean {
+  const current = readCredentials();
+  if (!current.jev) return false;
+  const { jev: _dropped, ...rest } = current;
+  writeCredentials(rest);
+  return true;
 }
 
 function writeFileAt(path: string, contents: string): void {

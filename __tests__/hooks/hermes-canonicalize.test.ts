@@ -16,6 +16,21 @@ describe("Hermes tool canonicalization", () => {
     expect(canonicalizeToolName("search_files", "hermes")).toBe("Grep");
   });
 
+  it("maps the tools Hermes 0.21 renamed to what their old names produce", () => {
+    // 0.20.0 names process / cronjob / todo; 0.21.x process_manage /
+    // cronjob_manage / todo_list. One policy must match both versions.
+    for (const [renamed, original] of [
+      ["process_manage", "process"],
+      ["cronjob_manage", "cronjob"],
+      ["todo_list", "todo"],
+    ] as const) {
+      expect(canonicalizeToolName(renamed, "hermes")).toBe(canonicalizeToolName(original, "hermes"));
+    }
+    expect(canonicalizeToolName("todo_list", "hermes")).toBe("TodoWrite");
+    expect(canonicalizeToolName("process_manage", "hermes")).toBe("process");
+    expect(canonicalizeToolName("cronjob_manage", "hermes")).toBe("cronjob");
+  });
+
   it("maps Hermes's `path` arg to `file_path` for Read/Write/Edit so path builtins fire", () => {
     // Input keys are canonicalized under the CANONICAL tool name (the handler
     // canonicalizes the name first).

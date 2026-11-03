@@ -1,0 +1,50 @@
+---
+title: "Agentes personalizados"
+description: "Envolva seu agente em três blocos `with` e ele começa a registrar."
+icon: "code"
+---
+
+Para um agente que você mesmo escreveu, ou um framework para o qual o Failproof AI não possui adaptador.
+
+Você envolve o trabalho que já realiza em blocos `with`. Cada um registra quando começou, quando terminou e quanto tempo levou — você não precisa chamar mais nada.
+
+## Instalação
+
+```bash
+pip install failproofai-sdk
+```
+
+Sem extras e sem dependências.
+
+## Instrumentação
+
+```python
+import failproofai_sdk
+
+failproofai_sdk.configure(environment="production")
+
+with failproofai_sdk.session():                 # uma execução
+    with failproofai_sdk.agent("planner"):      # uma unidade de trabalho
+        with failproofai_sdk.tool_call("search", input={"q": q}) as t:
+            t.output = search(q)                # uma chamada de ferramenta
+```
+
+Leia de cima para baixo e o significado fica claro:
+
+| Envolva com | Para indicar |
+| --- | --- |
+| `session()` | Estes eventos pertencem à mesma execução |
+| `agent()` | Algo está realizando trabalho — dê um nome que você reconheceria em uma lista |
+| `tool_call()` | Esta é uma ferramenta, e aqui está o que ela retornou |
+
+Aninhe-os da forma que seu código aninhar. Você nunca precisa passar ids manualmente: cada bloco se lembra do contexto em que está inserido, então tudo que você registrar automaticamente associa a execução e o agente corretos. `async with` funciona exatamente da mesma forma.
+
+## Verifique se chegou
+
+Execute uma vez, depois abra **Observe → Sessions** e selecione seu ambiente. Sua execução aparece como um trace reconstruído.
+
+Se nada chegar, confirme que a máquina está conectada com `failproofai config --status`.
+
+<Card title="Guia completo para agentes personalizados" icon="arrow-right" href="/pt-br/start/integrations/custom-agents">
+  Todos os métodos de eventos, o que acontece quando seu código lança uma exceção, um exemplo completo, threads e async, e como instrumentar um framework sem adaptador.
+</Card>

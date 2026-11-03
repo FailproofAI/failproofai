@@ -1,0 +1,27 @@
+---
+title: "Models"
+description: "השווה בין latency של מודלים, tokens, שימוש בקונטקסט, והפצת תעבורה."
+icon: "cpu"
+---
+
+השתמש ב-Models כדי לראות האם אמינות או עלות השתנו עם מודל, agent, סביבה, או טווח זמן.
+
+<Tabs>
+  <Tab title="Dashboard">
+    1. עבור ל-**Observe → Models**.
+    2. קבע את טווח הזמן, ואז סנן לפי סביבה, מודל, agent, או session ID.
+    3. בדוק את latency, צריכת tokens, שימוש בחלון הקונטקסט, והפצת מודלים.
+    4. בחר נקודת תרשים או קטע הפצה כדי לפתוח את האירועים התואמים.
+
+    ![עמוד Models המציג views של latency, percentile, token, cost, context-window, ו-model-distribution.](/images/dashboard/models.png)
+  </Tab>
+  <Tab title="CLI">
+    ```bash
+    fp list models
+    fp events --event-type model_request,model_response --env production --since 24h
+    fp --json events --fields ts,agent_id,session_id,event_type,output_tokens,context_fill
+    ```
+
+    השתמש בשאילתה שמורה עבור aggregates ברמת מודל שאינם חשופים כפקודת CLI ייעודית.
+  </Tab>
+</Tabs>

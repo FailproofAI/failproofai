@@ -1,0 +1,42 @@
+---
+title: "Pydantic AI"
+description: "Установите, инструментируйте и просмотрите вашу первую трассировку."
+icon: "/images/frameworks/pydantic-ai.svg"
+---
+
+Три шага к вашей первой трассировке Pydantic AI. Информацию о инструментах, повторных попытках, потоковой передаче и опциях см. в [полном руководстве](/ru/start/integrations/pydantic-ai).
+
+## Установка
+
+```bash
+pip install 'failproofai-sdk[pydantic-ai]'
+```
+
+## Инструментирование
+
+```python
+import failproofai_sdk
+from pydantic_ai import Agent
+
+failproofai_sdk.configure(environment="production")
+failproofai_sdk.instrument()          # перед созданием любого Agent
+
+agent = Agent("openai:gpt-4o-mini", system_prompt="Be terse.")
+
+with failproofai_sdk.session():
+    result = agent.run_sync("...")
+```
+
+<Warning>
+  `instrument()` должна выполняться **перед** созданием `Agent`. Возможность добавляется при создании, поэтому агент, созданный ранее, не записывает ничего — и это не приводит к ошибке, потому что ошибки нет. Это наиболее частая причина пустой трассировки с этим адаптером, и именно модульные агенты создают эту проблему: импортируйте `failproofai_sdk` и вызовите `instrument()` перед импортом модуля, который их создает.
+</Warning>
+
+## Проверьте доставку
+
+Запустите один раз, затем откройте **Observe → Sessions** и выберите вашу среду. Ваш запуск появится как восстановленная трассировка.
+
+Если ничего не приходит, убедитесь, что машина подключена, используя `failproofai config --status`.
+
+<Card title="Полное руководство Pydantic AI" icon="arrow-right" href="/ru/start/integrations/pydantic-ai">
+  Что записывается, инструменты и повторные попытки, потоковая передача, именование диапазонов, опции и типичные проблемы.
+</Card>

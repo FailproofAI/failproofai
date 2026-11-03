@@ -1,0 +1,42 @@
+---
+title: "Pydantic AI"
+description: "インストール、計測、最初のトレースを確認する。"
+icon: "/images/frameworks/pydantic-ai.svg"
+---
+
+最初の Pydantic AI トレースまで3ステップです。ツール、リトライ、ストリーミング、オプションについては[完全ガイド](/ja/start/integrations/pydantic-ai)をご覧ください。
+
+## インストール
+
+```bash
+pip install 'failproofai-sdk[pydantic-ai]'
+```
+
+## 計測
+
+```python
+import failproofai_sdk
+from pydantic_ai import Agent
+
+failproofai_sdk.configure(environment="production")
+failproofai_sdk.instrument()          # before constructing any Agent
+
+agent = Agent("openai:gpt-4o-mini", system_prompt="Be terse.")
+
+with failproofai_sdk.session():
+    result = agent.run_sync("...")
+```
+
+<Warning>
+  `instrument()` は `Agent` を構築する**前**に実行する必要があります。この機能は構築時に付加されるため、それより前に生成されたエージェントは何も記録しません。エラーも発生しないため、問題が起きたように見えません。これはこのアダプターで空のトレースになる最も一般的な原因であり、モジュールスコープのエージェントで特に問題になります。`failproofai_sdk` をインポートし、エージェントを構築するモジュールをインポートする前に `instrument()` を呼び出してください。
+</Warning>
+
+## 到達を確認する
+
+一度実行したら、**Observe → Sessions** を開いて環境を選択してください。実行結果が再構築されたトレースとして表示されます。
+
+何も届かない場合は、`failproofai config --status` でマシンの接続状態を確認してください。
+
+<Card title="Pydantic AI 完全ガイド" icon="arrow-right" href="/ja/start/integrations/pydantic-ai">
+  記録される内容、ツールとリトライ、ストリーミング、スパンの命名、オプション、よくある問題。
+</Card>

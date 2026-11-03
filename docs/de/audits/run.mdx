@@ -1,0 +1,67 @@
+---
+title: "Audit ausführen und überprüfen"
+description: "Einen Audit ausführen, die Abdeckung prüfen und die resultierenden Ergebnisse inspizieren."
+icon: "play"
+---
+
+Führe einen Audit aus, sobald Ziel und Population konkret genug sind, dass ein anderer Operator weiß, wie ein gültiger Befund aussieht.
+
+## Ausführen und inspizieren
+
+<Tabs>
+  <Tab title="Dashboard">
+    1. Gehe zu **Analyze → Audits**, öffne den Audit und wähle **run now**. Eine Warteschlangenmeldung bedeutet, dass der Dispatcher ihn in Kürze startet.
+    2. Öffne den neuen Durchlauf, um Status, Zeitfenster, Dauer, Anzahl der Befunde und Bericht einzusehen.
+    3. Wähle eine Evidence-Session aus, um den genauen Trace zu öffnen.
+    4. Kehre zur Audit-Seite zurück, um Einstellungen zu bearbeiten, den Zeitplan zu deaktivieren oder ältere Durchläufe zu inspizieren.
+
+    ![Eine Audit-Detailseite mit offenen Befunden, letztem und nächstem Durchlaufstatus, Sweep-Fenster, Kontext, Sofortausführungs-Steuerung und sortierten Befunden.](/images/dashboard/audit-detail.png)
+  </Tab>
+  <Tab title="CLI">
+    ```bash
+    fp audits run checkout-reliability
+    fp audits runs checkout-reliability --limit 10
+    fp --json audits runs checkout-reliability
+    fp audits findings --audit checkout-reliability
+    ```
+
+    Siehe die [`fp audits`-Referenz](/de/reference/cloud-cli#audits) für Verlauf, Befunde und Triage-Befehle.
+  </Tab>
+</Tabs>
+
+## Vor der Ausführung
+
+- Stelle sicher, dass im gewählten Zeitfenster Sessions vorhanden sind.
+- Überprüfe die Umgebungs- und Agent-Filter.
+- Prüfe, ob der Referenzkontext aktuell ist.
+- Stelle sicher, dass das Ziel eine Fehlerart beschreibt, nicht ein gewünschtes Ergebnis.
+
+## Den Durchlauf auswerten
+
+Beginne mit dem Durchlaufstatus, der Session-Abdeckung und ob die Modellanalyse ausgeführt wurde. Inspiziere dann für jeden Befund: Schweregrad, Beschreibung, Evidence-Sessions, unterstützende Abfragen und den vorgeschlagenen Präventionspfad.
+
+Verwende den Befundstatus, um Arbeiten zu bestätigen, stummzuschalten, abzuweisen, zu beheben, wiederzueröffnen oder zuzuweisen. Bewahre die Evidence auch dann auf, wenn ein Befund abgewiesen wird – sie erklärt, warum die Entscheidung so getroffen wurde.
+
+## Einen leeren oder verzögerten Durchlauf interpretieren
+
+| Durchlaufzustand | Bedeutung | Maßnahme |
+| --- | --- | --- |
+| Analyse ausgeführt, keine Befunde | Die ausgewählte Evidence hat bei der konfigurierten Sensitivität keinen Befund unterstützt. | Bestätige, dass der Scope repräsentative Sessions enthält, und betrachte das Ergebnis als gesund – es sei denn, Ziel oder Kontext waren zu vage. |
+| Modellanalyse übersprungen oder fehlgeschlagen | Der Durchlauf endet mit null Befunden, hat aber keine agentische Untersuchung durchgeführt. Der deterministische Credential- und PII-Scan meldet weiterhin Treffer in den Durchlaufstatistiken, erstellt aber keine Befunde. | Behebe den Analysedienst oder die Konfiguration und führe den Audit erneut aus. Interpretiere das leere Ergebnis nicht als Beweis dafür, dass die Population gesund ist. |
+| Modellanalyse deaktiviert | Der Durchlauf endet erfolgreich mit null Befunden. Der deterministische Scan ersetzt die Modellanalyse nicht und öffnet keine Befunde. | Aktiviere die Modellanalyse oder deaktiviere den Audit, anstatt auf einen Audit zu vertrauen, der keine Befunde liefern kann. |
+| Keine Analysekapazität sofort verfügbar | Der Audit bleibt in der Warteschlange und wiederholt den Versuch, anstatt die Population zu überspringen. | Warte auf freie Kapazität oder verteile die Audit-Anker. Self-Hosted-Operatoren sollten die Audit-Agent-Replikas und die entsprechende Dispatcher-Kapazität skalieren. |
+| Kapazität für das gesamte Wiederholungsfenster nicht verfügbar | Der Durchlauf gibt auf, produziert null Befunde und sendet eine Fehlerbenachrichtigung, sofern E-Mail-Zustellung verfügbar ist. | Prüfe, ob die Audit-Flotte ausgelastet ist oder wiederholt neu startet. |
+
+Wenn die Analyse nicht ausgeführt wird, halten `since_last`-Audits dieses nicht analysierte Fenster für den nächsten erfolgreichen Durchlauf offen. Bestehende Befunde werden nicht zurückgezogen, da eine übersprungene Analyse kein Beweis dafür ist, dass der Fehler verschwunden ist.
+
+## Fehlerbenachrichtigungen verstehen
+
+Ein fehlgeschlagener Durchlauf oder ein fehlgeschlagener Modellanalyseschritt nutzt die im Audit hinterlegten E-Mail-Empfänger. Wenn der Audit keinen E-Mail-Kanal hat, fällt Failproof AI auf die Einstellung `alerts.email_default_recipients` der Organisation zurück, damit ein still defekter Audit weiterhin einen Eskalationspfad hat.
+
+E-Mail muss für die Organisation aktiviert und SMTP konfiguriert sein. Andernfalls wird der Fehler nur protokolliert und keine E-Mail kann zugestellt werden. Durchlauffehler verschieben den festen Zeitplananker des Audits nicht.
+
+Jeder Durchlauf speichert außerdem den genauen [Agent-Kontext](/de/audits/agent-contracts), der für jeden Agenten verwendet wurde, als Contract-Snapshot. Spätere Bearbeitungen ändern den mit einem früheren Durchlauf aufgezeichneten Evidence-Standard nicht.
+
+<Warning>
+  Leite aus einem unverifizierten Befund keine blockierende Policy direkt ab. Öffne die zitierten Traces und bestätige, dass die Regel unsicheres Verhalten von legitimer Arbeit trennt.
+</Warning>

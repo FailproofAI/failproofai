@@ -1,0 +1,56 @@
+---
+title: "Leer resultados de evaluaciones"
+description: "Visualiza puntuaciones a lo largo del tiempo, compara agentes y entornos, descubre por qué una sesión obtuvo una puntuación baja y consulta al asistente."
+icon: "gauge"
+---
+
+Los resultados de cada evaluación, ya sea alojada o de tu propio worker, llegan a los mismos lugares.
+
+## Comparar puntuaciones a lo largo del tiempo
+
+<Tabs>
+  <Tab title="Dashboard">
+    Ve a **Observe → evaluations**.
+
+    - **Recent runs** lista cada evaluación a medida que llega: si proviene de un evaluador alojado (**managed**) o del tuyo propio (**customer**), el agente y la sesión, la evaluación y su versión, su estado, y su puntuación o métricas.
+    - **Score over time** grafica lo que solicites. Selecciona **add series** y elige un agente, un entorno, una evaluación y una estadística: avg, min, max, p50, p75, p90, p95, p99, stddev o mode. Cada serie es una línea; asígnale su propia **curve** para mostrarla en un gráfico separado.
+
+    ![La página de evaluaciones: ejecuciones recientes etiquetadas como customer, un gráfico de puntuación a lo largo del tiempo con líneas de referencia en 0.5 y 0.8, y una serie que promedia finished_clean en todos los agentes y entornos.](/images/dashboard/evaluations-chart.png)
+
+    Un único rango de tiempo y un tamaño de intervalo se aplican a todas las series. Un intervalo fino detecta un incidente; uno más amplio muestra una tendencia y puede ocultar los picos que estás buscando. Un intervalo donde no se registró ninguna puntuación aparece como una brecha en la línea, nunca como un cero; las líneas de referencia marcan 0.5 y 0.8.
+
+    Cada parte de la vista vive en la URL: **share** la copia, y quien la abra verá exactamente la comparación que construiste.
+  </Tab>
+  <Tab title="CLI">
+    ```bash
+    fp evals --agent-id checkout-agent --aggregate
+    fp evals --aggregate --env production --status error
+    fp evals --score helpfulness:0.8.. --since 7d
+    ```
+
+    Agrega `--json` global antes de `evals` para automatización, por ejemplo `fp --json evals --aggregate --env production`.
+  </Tab>
+</Tabs>
+
+Grafica **avg** y **p90** para la misma evaluación y comprueba si un buen promedio está ocultando una cola deficiente, o grafica la misma evaluación para dos agentes distintos, o para producción y staging, y compáralos en un mismo eje. Los costos, las latencias y los conteos de tokens, que llevan unidades, se grafican en **Observe → metrics**, un gráfico por unidad.
+
+## Ver por qué una sesión obtuvo una puntuación baja
+
+Abre una sesión desde **Observe → sessions**; la cuadrícula muestra las puntuaciones de cada sesión y permite filtrar por rango de puntuación. El panel derecho de la sesión comienza con el resumen de la evaluación, seguido de una barra por puntuación con el razonamiento del evaluador debajo.
+
+![Vista detallada de una sesión con puntuaciones de evaluación y razonamiento junto al trazado completo.](/images/dashboard/session-detail.png)
+
+## Consultar al asistente
+
+Pregunta sobre datos de evaluación en lenguaje natural: "cuéntame sobre algunas de las evaluaciones recientes", o qué agentes están viendo sus puntuaciones caer. El [asistente](/es/sessions/assistant) lee y analiza los resultados, y responde con tablas sobre las que puedes hacer seguimiento; una pregunta que valga la pena conservar puede convertirse en una [consulta](/es/sessions/queries) o un [dashboard](/es/sessions/dashboards).
+
+![La página de evaluaciones junto al asistente, que responde a "cuéntame sobre algunas de las evaluaciones recientes" con un resumen de totales, estados y puntuaciones.](/images/dashboard/evaluations-assistant.png)
+
+## Monitorear y actuar
+
+- Los **Dashboards**, en **Analyze → dashboards**, muestran la tendencia de las puntuaciones que destacas, por agente y entorno, para toda la organización.
+
+  ![Un dashboard de calidad que muestra puntuaciones de evaluación promedio y tendencias a lo largo del tiempo.](/images/dashboard/dashboard-quality.png)
+
+- Las **Alerts** te notifican cuando una puntuación supera un umbral. Consulta [alerts](/es/audits/alerts).
+- Cuando una puntuación decae en muchas sesiones, [ejecuta una auditoría](/es/audits/run) para averiguar por qué; cuando la causa es una acción repetible, [escribe una política](/es/policies/editor).

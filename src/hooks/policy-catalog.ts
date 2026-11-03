@@ -1,0 +1,749 @@
+/**
+ * The builtin policy CATALOG: what each policy is, never what it does.
+ *
+ * Split out of `builtin-policies.ts` so the metadata every consumer actually
+ * reads — the setup picker, `failproofai policies`, the presets, the audit
+ * report, the dashboard's server action — can be listed, searched and rendered
+ * without loading a single policy implementation. That is what lets a machine
+ * browse the catalog offline while the executable half moves to a fetched pack.
+ *
+ * ## Rules this file lives by
+ *
+ * - **Pure data.** No functions, no RegExp, no computed values. Every entry is
+ *   a literal, so this module can be read, serialized, and eventually shipped
+ *   as a manifest rather than as code.
+ * - **No value import from `builtin-policies.ts`.** Type-only imports are fine.
+ *   `policy-evaluator.ts` builds `POLICY_PARAMS_MAP` from `BUILTIN_POLICIES` at
+ *   MODULE SCOPE, so an import cycle here is a ReferenceError under ESM and a
+ *   `.filter of undefined` under the CJS bundle — thrown at import time, on the
+ *   hook critical path.
+ * - **Order is load-bearing and must not be sorted or regrouped.** Policy
+ *   evaluation short-circuits on the first deny, so this array's order decides
+ *   which policy name reaches the agent, the activity log, PostHog and the audit
+ *   report. First appearance of each `category` is also what orders the sections
+ *   in the TUI picker and the dashboard.
+ * - **Absent optionals stay absent.** `beta`, `alwaysOn` and `params` are read
+ *   with `in` and `undefined` checks; default-filling them changes behaviour and
+ *   fails existing tests.
+ * - **Every entry states its `authority`,** even though absent already means
+ *   `hard`: whether Jev may clear a builtin's verdict is a decision to make per
+ *   policy, not a default to inherit. `reviewable` only where a semantic policy
+ *   genuinely covers the same concern, named in `reviewedBy`. The table and the
+ *   reasoning are in `docs/policies/authority.mdx`; `alwaysOn` is hard whatever
+ *   it says here.
+ *
+ * `params.default` values are handed to policies BY REFERENCE, so this must stay
+ * one module-level const — never a factory minting fresh defaults per call.
+ */
+import type { PolicyCatalogEntry, PolicyParamsSchema } from "./policy-types";
+
+/**
+ * ── On `authority` and `reviewedBy` in this file ──
+ *
+ * `reviewable` means Jev may CLEAR this policy's verdict, and only through the
+ * semantic checks named here — every one of which must have been asked.
+ *
+ * Both ways of getting a pairing wrong are silent, and the asymmetry between
+ * them is what decides these rows:
+ *
+ *   - a check that is never ASKED never clears, so the block becomes permanent
+ *   - a check that is asked and does not FIRE answers "no concern", and no
+ *     concern CLEARS — so naming a check that does not model this policy's
+ *     shapes does not review the policy, it switches it off for exactly the
+ *     inputs that check does not understand
+ *
+ * And an `instruct`-mode check can never answer deny. So the test is not "can
+ * the named reviewer keep this block" but "is there anything left that can
+ * deny": a deny-mode name in the conjunction, or a deny-mode check covering the
+ * same concern independently, or a policy that never denied in the first place.
+ * `block-work-on-main` fails all three and is hard for that reason.
+ *
+ * Each row's own comment says which of those applies. The reasoning was worked
+ * out policy by policy in FailproofAI/jev-policies' DECISIONS.md.
+ */
+export const POLICY_CATALOG: PolicyCatalogEntry[] = [
+  {
+    name: "sanitize-jwt",
+    description: "Stop Claude from reading JWTs in tool responses",
+    displayTitle: "Redacted JWT tokens from tool output",
+    impact: "Stops the agent from echoing auth tokens it saw in command output.",
+    match: { events: ["PostToolUse"] },
+    authority: "hard",
+    defaultEnabled: true,
+    category: "Sanitize",
+  },
+  {
+    name: "sanitize-api-keys",
+    description: "Stop Claude from reading API keys (OpenAI, Anthropic, GitHub, AWS, Stripe, Google) in tool responses",
+    displayTitle: "Redacted API keys from tool output",
+    impact: "Catches OpenAI / Anthropic / GitHub / AWS / Stripe / Google keys before the model sees them.",
+    match: { events: ["PostToolUse"] },
+    authority: "hard",
+    defaultEnabled: true,
+    category: "Sanitize",
+    params: {
+      additionalPatterns: {
+        type: "pattern[]",
+        description: "Additional API key patterns to scrub, each with { regex, label }",
+        default: [],
+      },
+    } satisfies PolicyParamsSchema,
+  },
+  {
+    name: "sanitize-connection-strings",
+    description: "Stop Claude from reading database connection strings with embedded credentials in tool responses",
+    displayTitle: "Redacted database connection strings from tool output",
+    impact: "Strips embedded DB credentials before they reach the model context.",
+    match: { events: ["PostToolUse"] },
+    authority: "hard",
+    defaultEnabled: true,
+    category: "Sanitize",
+  },
+  {
+    name: "sanitize-private-key-content",
+    description: "Stop Claude from reading PEM private key content in tool responses",
+    displayTitle: "Redacted PEM private keys from tool output",
+    impact: "Prevents private key bodies from being echoed into chat context.",
+    match: { events: ["PostToolUse"] },
+    authority: "hard",
+    defaultEnabled: true,
+    category: "Sanitize",
+  },
+  {
+    name: "sanitize-bearer-tokens",
+    displayTitle: "Redacted bearer tokens from tool output",
+    impact: "Strips Authorization: Bearer values before they hit the model.",
+    description: "Stop Claude from reading Authorization Bearer tokens in tool responses",
+    match: { events: ["PostToolUse"] },
+    authority: "hard",
+    defaultEnabled: true,
+    category: "Sanitize",
+  },
+  {
+    name: "protect-env-vars",
+    displayTitle: "Tried to dump environment variables to chat",
+    impact: "Env vars often contain secrets; blocking `env` / `printenv` keeps them out of the model context.",
+    description: "Prevent commands that read environment variables",
+    match: { events: ["PreToolUse"], toolNames: ["Bash"] },
+    authority: "reviewable",
+    reviewedBy: ["env-secrets-dump", "secret-exposure"],
+    defaultEnabled: true,
+    category: "Environment",
+  },
+  {
+    name: "block-env-files",
+    displayTitle: "Tried to read or write a .env file",
+    impact: "`.env` files routinely contain API keys and DB credentials.",
+    description: "Block reading/writing .env files",
+    match: { events: ["PreToolUse"] },
+    authority: "reviewable",
+    reviewedBy: ["secret-exposure"],
+    defaultEnabled: true,
+    category: "Environment",
+  },
+  {
+    name: "block-read-outside-cwd",
+    displayTitle: "Tried to read files outside your project directory",
+    impact: "Stops the agent from peeking at neighboring repos or your home directory.",
+    description: "Block file reads outside the session working directory",
+    match: { events: ["PreToolUse"], toolNames: ["Read", "Glob", "Grep", "Bash"] },
+    authority: "reviewable",
+    reviewedBy: ["read-outside-workspace"],
+    defaultEnabled: false,
+    category: "Environment",
+    params: {
+      allowPaths: {
+        type: "string[]",
+        description: "Absolute paths outside cwd that are allowed to be read",
+        default: [],
+      },
+    } satisfies PolicyParamsSchema,
+  },
+  {
+    name: "block-sudo",
+    displayTitle: "Tried to run a command with sudo",
+    impact: "Sudo gives the agent root — blocked unless explicitly allow-listed.",
+    description: "Block sudo commands",
+    // PermissionRequest is Codex's escalation-approval event; fire the same
+    // sudo guard there so Codex sandbox bypasses are blocked too.
+    match: { events: ["PreToolUse", "PermissionRequest"], toolNames: ["Bash"] },
+    // Hard, although `privilege-escalation` is deny-mode and its probe is a strict superset
+    // of this matcher — so the pairing would pass the "is there anything left that can
+    // deny" test. The reason it stays hard is the OTHER clearing path: that check is
+    // `userCanOverride: true`, so a human naming the operation clears it, and this policy
+    // is `defaultEnabled: true`. Reviewable would therefore turn "sudo is blocked" into
+    // "sudo is blocked unless you asked for it" on every machine with Jev configured.
+    // Measured against what that buys: the false-block reduction on the labelled corpus
+    // came from `block-read-outside-cwd`, `protect-env-vars` and `block-env-files`, which
+    // were already reviewable. Sudo contributed nothing to it, so the trade is a headline
+    // guarantee for no measured gain. The nine opt-in policies that ARE reviewable here
+    // reach only people who switched them on deliberately.
+    authority: "hard",
+    defaultEnabled: true,
+    category: "Dangerous Commands",
+    params: {
+      allowPatterns: {
+        type: "string[]",
+        description: "Sudo command patterns to allow, matched token-by-token (e.g. 'sudo systemctl status')",
+        default: [],
+      },
+    } satisfies PolicyParamsSchema,
+  },
+  {
+    name: "block-curl-pipe-sh",
+    displayTitle: "Tried to pipe a downloaded script straight to a shell",
+    impact: "`curl ... | sh` runs unverified remote code on your machine.",
+    description: "Block piping downloads to shell",
+    match: { events: ["PreToolUse"], toolNames: ["Bash"] },
+    // Hard, for the same reason as `block-sudo` above: the `remote-code-execution` pairing is
+    // sound, but the check is overridable by an explicit request and this policy is on by
+    // default, so reviewable would mean "piping a download to a shell is blocked unless you
+    // asked for it". The substring false positive it has — `grep -rn "curl x | sh"` is
+    // denied — is real and is the argument for pairing it; it is also rare enough not to
+    // pay for weakening the default.
+    authority: "hard",
+    defaultEnabled: true,
+    category: "Dangerous Commands",
+  },
+  {
+    name: "block-rm-rf",
+    displayTitle: "Tried to recursively delete a system path",
+    impact: "Catches catastrophic `rm -rf /` and Windows equivalents.",
+    description: "Prevent catastrophic deletions",
+    match: { events: ["PreToolUse"], toolNames: ["Bash"] },
+    // Reviewable: `destructive-deletion` is deny-mode, and its second probe is this
+    // policy's path-depth heuristic done properly — `irreplaceable`'s false criteria
+    // (build output, dist/, caches, node_modules, virtualenvs, coverage, temp files) is
+    // exactly this heuristic's error term. `rm -rf /` keeps both probes true and stays
+    // denied; `rm -rf node_modules` is the false block this pairing exists to remove.
+    authority: "reviewable",
+    reviewedBy: ["destructive-deletion"],
+    defaultEnabled: false,
+    category: "Dangerous Commands",
+    params: {
+      allowPaths: {
+        type: "string[]",
+        description: "Paths that are allowed to be recursively deleted",
+        default: [],
+      },
+    } satisfies PolicyParamsSchema,
+  },
+  {
+    name: "block-failproofai-commands",
+    displayTitle: "Tried to disable, pause or modify failproofai itself",
+    impact: "An agent that can pause or remove enforcement can switch off every other policy.",
+    description: "Block failproofai CLI commands, self-pause and uninstallation",
+    // PermissionRequest is carried over from the merged-in `block-self-pause`.
+    // It is a real enforcement point on Copilot and Devin, and dropping it would
+    // have left this guard blind on both.
+    // Write/Edit are here because the Bash-only surface left the shortest way
+    // through this guard unguarded: the agent never needs a shell to overwrite
+    // `~/.failproofai/policies-config.json` with `{"enabledPolicies":[]}` — it
+    // just writes the file. Every CLI canonicalizes its own file tool's path
+    // key to `file_path`, so one branch covers all of them.
+    match: {
+      events: ["PreToolUse", "PermissionRequest"],
+      toolNames: ["Bash", "Write", "Edit", "NotebookEdit"],
+    },
+    defaultEnabled: true,
+    alwaysOn: true,
+    authority: "hard",
+    category: "Dangerous Commands",
+  },
+  {
+    name: "block-kubectl",
+    displayTitle: "Tried to run a Kubernetes command",
+    impact: "kubectl can change live cluster state — gated unless allow-listed.",
+    description: "Block kubectl commands (Kubernetes cluster mutations)",
+    match: { events: ["PreToolUse"], toolNames: ["Bash"] },
+    // Reviewable: `production-infra-change` is deny-mode and names kubectl explicitly. This
+    // policy denies the whole CLI, read-only subcommands included; the probe's false
+    // criteria is the split a regex cannot make — get, list, describe, logs, status,
+    // plan, diff, validate, whoami, --dry-run.
+    authority: "reviewable",
+    reviewedBy: ["production-infra-change"],
+    defaultEnabled: false,
+    category: "Infra Commands",
+    params: {
+      allowPatterns: {
+        type: "string[]",
+        description: "kubectl command patterns to allow, matched token-by-token (e.g. 'kubectl get *', 'kubectl describe *')",
+        default: [],
+      },
+    } satisfies PolicyParamsSchema,
+  },
+  {
+    name: "block-terraform",
+    displayTitle: "Tried to run a Terraform/OpenTofu command",
+    impact: "Terraform mutates real infrastructure — gated unless allow-listed.",
+    description: "Block terraform and tofu (OpenTofu) commands",
+    match: { events: ["PreToolUse"], toolNames: ["Bash"] },
+    // Reviewable: same pairing as `block-kubectl`; the probe names terraform and tofu, and
+    // clears `terraform plan` and `terraform validate`.
+    authority: "reviewable",
+    reviewedBy: ["production-infra-change"],
+    defaultEnabled: false,
+    category: "Infra Commands",
+    params: {
+      allowPatterns: {
+        type: "string[]",
+        description: "terraform/tofu command patterns to allow (e.g. 'terraform plan', 'terraform validate')",
+        default: [],
+      },
+    } satisfies PolicyParamsSchema,
+  },
+  {
+    name: "block-aws-cli",
+    displayTitle: "Tried to run an AWS CLI command",
+    impact: "AWS CLI can spend money or break prod — gated.",
+    description: "Block aws CLI commands",
+    match: { events: ["PreToolUse"], toolNames: ["Bash"] },
+    // Reviewable: same pairing; the probe names aws, and clears `aws sts
+    // get-caller-identity` and `aws s3 ls`.
+    authority: "reviewable",
+    reviewedBy: ["production-infra-change"],
+    defaultEnabled: false,
+    category: "Infra Commands",
+    params: {
+      allowPatterns: {
+        type: "string[]",
+        description: "aws CLI command patterns to allow (e.g. 'aws s3 ls *', 'aws sts get-caller-identity')",
+        default: [],
+      },
+    } satisfies PolicyParamsSchema,
+  },
+  {
+    name: "block-gcloud",
+    displayTitle: "Tried to run a Google Cloud command",
+    impact: "gcloud can spend money or break prod — gated.",
+    description: "Block gcloud (Google Cloud) CLI commands",
+    match: { events: ["PreToolUse"], toolNames: ["Bash"] },
+    // Reviewable: same pairing; the probe names gcloud, and clears `gcloud auth list` and
+    // `gcloud config list`.
+    authority: "reviewable",
+    reviewedBy: ["production-infra-change"],
+    defaultEnabled: false,
+    category: "Infra Commands",
+    params: {
+      allowPatterns: {
+        type: "string[]",
+        description: "gcloud command patterns to allow (e.g. 'gcloud auth list', 'gcloud config list')",
+        default: [],
+      },
+    } satisfies PolicyParamsSchema,
+  },
+  {
+    name: "block-az-cli",
+    displayTitle: "Tried to run an Azure CLI command",
+    impact: "az can spend money or break prod — gated.",
+    description: "Block az (Azure) CLI commands",
+    match: { events: ["PreToolUse"], toolNames: ["Bash"] },
+    // Reviewable: same pairing; the probe names az, and clears `az account show`.
+    authority: "reviewable",
+    reviewedBy: ["production-infra-change"],
+    defaultEnabled: false,
+    category: "Infra Commands",
+    params: {
+      allowPatterns: {
+        type: "string[]",
+        description: "az CLI command patterns to allow (e.g. 'az account show', 'az group list')",
+        default: [],
+      },
+    } satisfies PolicyParamsSchema,
+  },
+  {
+    name: "block-helm",
+    displayTitle: "Tried to run a Helm command",
+    impact: "Helm releases mutate cluster state — gated.",
+    description: "Block helm commands",
+    match: { events: ["PreToolUse"], toolNames: ["Bash"] },
+    // Reviewable: same pairing; the probe names helm, and clears `helm list` and
+    // `helm status`.
+    authority: "reviewable",
+    reviewedBy: ["production-infra-change"],
+    defaultEnabled: false,
+    category: "Infra Commands",
+    params: {
+      allowPatterns: {
+        type: "string[]",
+        description: "helm command patterns to allow (e.g. 'helm list', 'helm status *')",
+        default: [],
+      },
+    } satisfies PolicyParamsSchema,
+  },
+  {
+    name: "block-gh-pipeline",
+    displayTitle: "Tried to run a privileged GitHub CLI pipeline command",
+    impact: "Catches `gh workflow run`, `gh pr merge`, `gh secret set`, etc.",
+    description: "Block gh CLI pipeline-trigger subcommands (workflow run, run rerun/cancel, pr merge, release create/delete, cache delete, secret set/delete)",
+    match: { events: ["PreToolUse"], toolNames: ["Bash"] },
+    authority: "hard",
+    defaultEnabled: false,
+    category: "Infra Commands",
+    params: {
+      allowPatterns: {
+        type: "string[]",
+        description: "gh pipeline command patterns to allow (e.g. specific scripted invocations); read-only gh subcommands like 'gh pr view' and 'gh run list' are not matched by this policy",
+        default: [],
+      },
+    } satisfies PolicyParamsSchema,
+  },
+  {
+    name: "block-secrets-write",
+    displayTitle: "Tried to write a secret-key file",
+    impact: "Stops the agent from creating `.pem`, `id_rsa`, `credentials.json`, etc.",
+    description: "Block writing secret key files",
+    match: { events: ["PreToolUse"], toolNames: ["Write"] },
+    // Reviewable: `secret-exposure` is deny-mode and `write` is in its `appliesTo`, so a
+    // real private key still comes back deny. What clears is this matcher's substring
+    // problem — `/credentials/` and `id_rsa` unanchored against a whole path, which
+    // catches `src/auth/credentials.ts`. `credential-exfiltration` would have been a
+    // dead name here: it applies to shell and network, and a file write is neither.
+    authority: "reviewable",
+    reviewedBy: ["secret-exposure"],
+    defaultEnabled: false,
+    category: "Dangerous Commands",
+    params: {
+      additionalPatterns: {
+        type: "string[]",
+        description: "Additional filename patterns (substrings) to block",
+        default: [],
+      },
+    } satisfies PolicyParamsSchema,
+  },
+  {
+    name: "block-push-master",
+    displayTitle: "Tried to push directly to main/master",
+    impact: "Direct pushes to a protected branch bypass review.",
+    description: "Block pushing to main/master",
+    match: { events: ["PreToolUse"], toolNames: ["Bash"] },
+    authority: "hard",
+    defaultEnabled: true,
+    category: "Git",
+    params: {
+      protectedBranches: {
+        type: "string[]",
+        description: "Branch names to protect from direct pushes",
+        default: ["main", "master"],
+      },
+    } satisfies PolicyParamsSchema,
+  },
+  {
+    name: "block-force-push",
+    displayTitle: "Tried to force-push",
+    impact: "Force-pushes rewrite history and can clobber teammates' work.",
+    description: "Prevent force-pushing to any branch",
+    match: { events: ["PreToolUse"], toolNames: ["Bash"] },
+    // Reviewable: `git-history-rewrite` is deny-mode and its probe is a superset of this
+    // matcher — it counts `--force-with-lease` (which `isForcePushFlag` deliberately
+    // treats as safe), a `+refspec`, and a remote-branch delete, and says `git -C dir`
+    // and an absolute binary path change nothing. A real force-push stays blocked; what
+    // clears is the user asking to force-push their own branch.
+    authority: "reviewable",
+    reviewedBy: ["git-history-rewrite"],
+    defaultEnabled: false,
+    category: "Git",
+  },
+  {
+    name: "block-work-on-main",
+    displayTitle: "Tried to commit or merge on main/master",
+    impact: "Work should land via PR — direct commits skip review.",
+    description: "Block git commits and merges on main/master branch",
+    match: { events: ["PreToolUse"], toolNames: ["Bash"] },
+    // Hard, although `commit-on-protected-branch` covers exactly this concern.
+    // That check is `mode: "instruct"`, and an instruct-mode reviewer can never
+    // answer deny — so the conjunction had one reachable outcome, cleared, and
+    // marking this reviewable did not hand the decision to Jev. It switched the
+    // policy off on every machine that configured Jev, while the mark said
+    // otherwise.
+    //
+    // The engine has since changed under that argument: a reviewer that FIRES
+    // with nobody consenting now keeps the block (`combine.ts`, "A check that
+    // fired without consent keeps the floor"), so an instruct-only reviewer is
+    // no longer "off". `block-read-outside-cwd`, which also has only an
+    // instruct reviewer, stays reviewable on exactly that rule: it clears when
+    // the read is requested or the check finds nothing, and keeps the deny on
+    // an unrequested read it flags. Making this one reviewable again is a
+    // product call nobody has made.
+    authority: "hard",
+    defaultEnabled: false,
+    category: "Git",
+    params: {
+      protectedBranches: {
+        type: "string[]",
+        description: "Branch names where commits/merges are blocked",
+        default: ["main", "master"],
+      },
+    } satisfies PolicyParamsSchema,
+  },
+  {
+    name: "warn-git-amend",
+    displayTitle: "Used git commit --amend",
+    impact: "Amending after a push rewrites history that others may have pulled.",
+    description: "Warns before amending git commits, which rewrites history",
+    match: { events: ["PreToolUse"], toolNames: ["Bash"] },
+    authority: "reviewable",
+    reviewedBy: ["git-history-rewrite"],
+    defaultEnabled: false,
+    category: "Git",
+  },
+  {
+    name: "warn-git-stash-drop",
+    displayTitle: "Tried to drop or clear git stash",
+    impact: "Stash deletions are permanent and silent.",
+    description: "Warns before permanently deleting stashed changes",
+    match: { events: ["PreToolUse"], toolNames: ["Bash"] },
+    authority: "hard",
+    defaultEnabled: false,
+    category: "Git",
+  },
+  {
+    name: "warn-git-clean",
+    displayTitle: "Tried to delete untracked or ignored files with git clean",
+    impact: "`git clean -fdx` takes `.env`, local config and unstaged work — git never had a copy of any of it.",
+    description: "Warns before git clean deletes untracked directories (-d) or ignored files (-x / -X)",
+    match: { events: ["PreToolUse"], toolNames: ["Bash"] },
+    // Hard, and deliberately NOT `reviewable` through `destructive-deletion`,
+    // although that check is the one whose whole subject is deleting data that
+    // cannot be regenerated.
+    //
+    // Measured on a real machine, through the real hook, with a Jev config
+    // present, on `git clean -fdx`:
+    //
+    //     jev:    ok decision=allow applied=two-tier 495ms
+    //     probes: destructive-deletion.destroys=0.94  beyond_task=0.79  task_step=0.78
+    //
+    // `destroys` came back 0.94 — the check sees the destruction; its own
+    // instructions name `git clean -fdx` by example. The policy still did not
+    // fire, because evidence is the MIN over a policy's probes and the partner
+    // probe `irreplaceable` came back low (it is absent from the probe line,
+    // which lists only what answered above the display floor). That is not a
+    // tuning accident: `git clean` carries NO path operand, so `facts.paths` is
+    // empty (measured — `extractPaths` skips `clean` as not path-like and
+    // `-fdx` as a flag), while `irreplaceable` is written to read
+    // `facts.paths[].relation` and to answer false for "only regenerable data
+    // inside the project: build output, dist/, caches, node_modules, …". With
+    // nothing to point at, the false branch is the honest answer to the
+    // question as written.
+    //
+    // A named check that is asked and does not fire answers "no concern", and
+    // that CLEARS (`combine.ts`, "A check that fired without consent keeps the
+    // floor"). So
+    // pairing this policy with `destructive-deletion` would not hand the
+    // decision to Jev — it would switch the policy off on every machine that
+    // configured Jev, which is exactly the `block-work-on-main` mistake. The
+    // test is "is there anything left that can DENY", and no other deny-mode
+    // semantic check covers untracked-file deletion, so a clear would leave the
+    // concern enforced by nothing. Hard until the probe is recalibrated against
+    // the corpus; the proposed wording and why it needs a replay are in
+    // `PROBE-FOLLOWUP.md`.
+    authority: "hard",
+    // Off by default, and `instruct` rather than `deny`, because `git clean
+    // -fdx` is a command developers run on purpose and often — it is the
+    // standard way to get a genuinely clean tree before a build. A default-on
+    // deny would fire on ordinary work, and a guard people switch off protects
+    // nothing; every policy in this category except `block-push-master` is
+    // default-off for the same reason, and `block-read-outside-cwd` was
+    // demoted out of the audit's archetype signal for being exactly this kind
+    // of ambient. What IS worth saying every time it is enabled is that the
+    // blast radius is wider than the operator usually means, so the policy
+    // warns and names what goes.
+    defaultEnabled: false,
+    category: "Git",
+    params: {
+      destructiveFlags: {
+        type: "string[]",
+        description:
+          "git clean flag letters that make it worth warning about, checked alongside --force. Narrow to ['x','X'] to allow `git clean -fd`, or widen with 'f' to warn on a bare `git clean -f`.",
+        default: ["d", "x", "X"],
+      },
+    } satisfies PolicyParamsSchema,
+  },
+  {
+    name: "warn-all-files-staged",
+    displayTitle: "Staged all files with git add -A / .",
+    impact: "Wide stages routinely catch generated files or secrets you didn't intend to commit.",
+    description: "Warns before staging all working tree files with git add -A / . / --all",
+    match: { events: ["PreToolUse"], toolNames: ["Bash"] },
+    authority: "hard",
+    defaultEnabled: false,
+    category: "Git",
+  },
+  {
+    name: "warn-destructive-sql",
+    displayTitle: "Ran destructive SQL (DROP / TRUNCATE / DELETE without WHERE)",
+    impact: "Easy way to wipe a table by accident.",
+    description: "Warn before executing destructive SQL (DROP/TRUNCATE/DELETE without WHERE) via database clients",
+    match: { events: ["PreToolUse"], toolNames: ["Bash"] },
+    authority: "reviewable",
+    reviewedBy: ["database-destruction"],
+    defaultEnabled: false,
+    category: "Database",
+  },
+  {
+    name: "warn-schema-alteration",
+    displayTitle: "Altered a database schema column",
+    impact: "ALTER TABLE operations can lock tables and break readers.",
+    description: "Warns before SQL schema changes (ALTER TABLE with column or rename operations)",
+    match: { events: ["PreToolUse"], toolNames: ["Bash"] },
+    authority: "hard",
+    defaultEnabled: false,
+    category: "Database",
+  },
+  {
+    name: "warn-package-publish",
+    displayTitle: "Tried to publish a package",
+    impact: "Publishes are irreversible — `npm publish` / `cargo publish` shouldn't happen without intent.",
+    description: "Warn before publishing packages to public registries (npm, PyPI, crates.io, RubyGems, etc.)",
+    match: { events: ["PreToolUse"], toolNames: ["Bash"] },
+    authority: "hard",
+    defaultEnabled: false,
+    category: "Packages & System",
+  },
+  {
+    name: "warn-global-package-install",
+    displayTitle: "Installed a package globally",
+    impact: "`npm i -g`, `cargo install`, `pip --user` pollute your machine outside the project.",
+    description: "Warns before installing packages globally (npm -g, cargo install, etc.)",
+    match: { events: ["PreToolUse"], toolNames: ["Bash"] },
+    authority: "reviewable",
+    reviewedBy: ["system-modification"],
+    defaultEnabled: false,
+    category: "Packages & System",
+  },
+  {
+    name: "prefer-package-manager",
+    displayTitle: "Used a non-preferred package manager",
+    impact: "Mixing package managers creates lockfile churn for your team.",
+    description: "Blocks non-preferred package managers and tells Claude to use an allowed one (e.g., uv instead of pip)",
+    match: { events: ["PreToolUse"], toolNames: ["Bash"] },
+    authority: "hard",
+    defaultEnabled: false,
+    category: "Packages & System",
+    params: {
+      allowed: {
+        type: "string[]",
+        description: "Allowed package manager names (e.g. ['uv', 'bun']). Any detected manager not in this list is blocked.",
+        default: [],
+      },
+      blocked: {
+        type: "string[]",
+        description: "Additional manager names to block beyond the built-in list (e.g. ['pdm', 'pipx']).",
+        default: [],
+      },
+    } satisfies PolicyParamsSchema,
+  },
+  {
+    name: "warn-large-file-write",
+    displayTitle: "Wrote a file larger than the configured threshold",
+    impact: "Catches accidentally large file writes (logs, binaries, model dumps).",
+    description: "Warn before writing files larger than 1MB (configurable via thresholdKb param)",
+    match: { events: ["PreToolUse"], toolNames: ["Write"] },
+    authority: "hard",
+    defaultEnabled: false,
+    category: "Packages & System",
+    params: {
+      thresholdKb: {
+        type: "number",
+        description: "File size threshold in KB above which a warning is issued",
+        default: 1024,
+      },
+    } satisfies PolicyParamsSchema,
+  },
+  {
+    name: "warn-background-process",
+    displayTitle: "Started a long-lived background process",
+    impact: "Catches `nohup` / `&` / `screen` / `tmux` / `disown` patterns that the agent often forgets to clean up.",
+    description: "Warns before starting detached or background processes",
+    match: { events: ["PreToolUse"], toolNames: ["Bash"] },
+    authority: "hard",
+    defaultEnabled: false,
+    category: "Packages & System",
+  },
+  {
+    name: "warn-repeated-tool-calls",
+    displayTitle: "Called the same tool 3+ times with identical arguments",
+    impact: "Usually a sign of a stuck loop burning tokens.",
+    description: "Warn when the same tool is called 3+ times with identical parameters",
+    match: { events: ["PreToolUse"] },
+    authority: "hard",
+    defaultEnabled: false,
+    category: "AI Behavior",
+  },
+  {
+    name: "require-commit-before-stop",
+    displayTitle: "Stopped with uncommitted changes",
+    impact: "Work not in a commit is invisible to teammates and easy to lose.",
+    description: "Require all changes to be committed before Claude stops",
+    match: { events: ["Stop"] },
+    authority: "hard",
+    defaultEnabled: false,
+    category: "Workflow",
+  },
+  {
+    name: "require-push-before-stop",
+    displayTitle: "Stopped with unpushed commits",
+    impact: "Local-only commits won't trigger CI or be reviewable.",
+    description: "Require all commits to be pushed to remote before Claude stops",
+    match: { events: ["Stop"] },
+    authority: "hard",
+    defaultEnabled: false,
+    category: "Workflow",
+    params: {
+      remote: {
+        type: "string",
+        description: "Remote name to push to (default: origin)",
+        default: "origin",
+      },
+      baseBranch: {
+        type: "string",
+        description: "Base branch to compare against (default: main)",
+        default: "main",
+      },
+    } satisfies PolicyParamsSchema,
+  },
+  {
+    name: "require-pr-before-stop",
+    displayTitle: "Stopped without a PR for the branch",
+    impact: "Branches without PRs don't get reviewed.",
+    description: "Require a pull request to exist for the current branch before Claude stops",
+    match: { events: ["Stop"] },
+    authority: "hard",
+    defaultEnabled: false,
+    category: "Workflow",
+    params: {
+      baseBranch: {
+        type: "string",
+        description: "Base branch to compare against (default: main)",
+        default: "main",
+      },
+    } satisfies PolicyParamsSchema,
+  },
+  {
+    name: "require-no-conflicts-before-stop",
+    displayTitle: "Stopped with a branch that conflicts with main",
+    impact: "Conflicting branches can't merge — surface them early.",
+    description: "Require the current branch to merge cleanly with the base branch before Claude stops",
+    match: { events: ["Stop"] },
+    authority: "hard",
+    defaultEnabled: false,
+    category: "Workflow",
+    params: {
+      baseBranch: {
+        type: "string",
+        description: "Base branch to check for conflicts against (default: main)",
+        default: "main",
+      },
+    } satisfies PolicyParamsSchema,
+  },
+  {
+    name: "require-ci-green-before-stop",
+    displayTitle: "Stopped with failing CI",
+    impact: "Failing CI blocks deploy.",
+    description: "Require CI checks to pass on the current HEAD commit before Claude stops (ignores stale runs on prior commits)",
+    match: { events: ["Stop"] },
+    authority: "hard",
+    defaultEnabled: false,
+    category: "Workflow",
+  },
+];

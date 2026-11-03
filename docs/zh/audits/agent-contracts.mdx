@@ -1,0 +1,82 @@
+---
+title: "Agent 上下文"
+description: "告知审计每个 agent 的职责、产出及禁止行为。"
+icon: "bot"
+---
+
+Agent 上下文用于告知审计每个 agent 的存在目的、必须产出的内容以及绝对禁止的行为。Failproof AI 以每个 agent 一份合约的形式存储此上下文。
+
+Agent 上下文归属于组织，而非某次具体审计。你只需为每个 agent 编写一次，所有范围涵盖该 agent 的模型驱动审计均可使用。
+
+## 添加 Agent 上下文
+
+<Tabs>
+  <Tab title="控制台">
+    1. 前往 **Analyze → audits**，选择 **agents**，然后选择会话所报告的 agent ID。
+    2. 选择 **add content** 或 **edit**。
+    3. 描述该 agent 的用途、必须产出的内容、"完成"的定义、运行频率以及绝对禁止的行为。
+    4. 保存上下文后返回审计表单，确认所选 agent 已显示为已覆盖状态。
+
+    ![审计 Agents 抽屉，用于为 agent 添加目的、节奏、产出、完成条件及禁止行为。](/images/dashboard/agent-context.png)
+
+    你也可以在创建或编辑审计时，通过 **agents** 抽屉添加或编辑 agent 上下文。该上下文独立保存，并立即对所有适用的审计生效。
+  </Tab>
+  <Tab title="CLI">
+    Cloud CLI 目前尚未提供合约相关命令。请使用公开 API，并携带具有 `audits:read` 和 `audits:write` 权限的密钥：
+
+    ```bash
+    curl -X POST "https://app.befailproof.ai/v1/audits/contracts" \
+      -H "Authorization: Bearer $FAILPROOFAI_KEY" \
+      -H "Content-Type: application/json" \
+      -d '{
+        "agent_id": "nightly-reconciler",
+        "enabled": true,
+        "body": "# Purpose\nReconcile yesterday's payouts.\n\n## Outputs\nPublish a signed summary.\n\n## Must not\nNever modify ledger entries."
+      }'
+    ```
+
+    使用 `GET /v1/audits/contracts` 列出所有合约；使用 `GET /v1/audits/contracts/{id}` 获取单个合约。通过 `PUT` 更新时为完全替换，需同时提供 `agent_id` 和 `body`。
+  </Tab>
+</Tabs>
+
+## 编写有效的上下文
+
+将上下文控制在 5,000 个字符以内，并确保内容可测试。有效的上下文通常包含以下要素：
+
+- **Purpose（目的）：** agent 存在的原因
+- **Outputs（产出）：** 必须生成的工件或执行的操作
+- **Done when（完成条件）：** 判定本次运行成功的条件
+- **Cadence（节奏）：** 运行频率或触发时机
+- **Must not（禁止行为）：** 任何情况下均不可接受的操作和结果
+
+```markdown
+---
+agent: nightly-reconciler
+purpose: Reconcile yesterday's payouts and publish a signed summary.
+cadence: Once daily after 02:00 UTC. Never more than once.
+---
+
+## Outputs
+- A signed reconciliation summary in the finance channel.
+
+## Done when
+- Every payout is matched or explicitly flagged.
+
+## Must not
+- Modify ledger entries. Report discrepancies instead.
+```
+
+Agent 上下文声明的是预期行为，它无法指定分析应得出何种结论，也无法限制其检查的证据范围。没有上下文的 agent 仍会正常接受审计，但 Failproof AI 无法依据组织特定意图来评判其行为。
+
+## 暂停或修改 Agent 上下文
+
+- 当审计应临时忽略某份上下文时，可将其**暂停**。暂停操作可撤销。
+- 当 agent 的职责发生变化时，**编辑**上下文。新内容将适用于后续所有运行。
+- 若某个持续运行的 agent 始终未使用其上下文，请检查 **last matched**。这通常意味着其 agent ID 与遥测数据不匹配。
+- 仅当文本必须被永久销毁时，才通过 API 执行**删除**操作。控制台有意提供暂停而非删除功能。
+
+每次审计运行都会存储其所使用的 agent 上下文快照。对当前合约资源进行编辑、暂停或删除，不会改写早期发现结论的依据。
+
+<Info>
+  读取合约需要 `audits:read` 权限。创建、编辑、暂停或删除合约需要 `audits:write` 权限。
+</Info>

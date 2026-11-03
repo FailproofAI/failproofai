@@ -1,0 +1,29 @@
+---
+title: "Metriche"
+description: "Traccia metriche di grandezza come latenza, costo e utilizzo di token."
+icon: "ruler"
+---
+
+Metriche è per valori con unità. Valutazioni è per punteggi e giudizi.
+
+<Tabs>
+  <Tab title="Dashboard">
+    1. Vai a **Observe → Metrics**.
+    2. Seleziona **add series** e scegli un agente, ambiente, metrica, statistica e curva.
+    3. Aggiungi serie per confrontare agenti o ambienti; unità diverse ricevono assi separati.
+    4. Seleziona un punto per aprire valutazioni e sessioni corrispondenti, oppure seleziona **share** per copiare la vista esatta.
+
+    ![La pagina Metrics che confronta due serie di costo per unità di output con controlli temporali, selettori di aggregazione, curve e un'azione di condivisione.](/images/dashboard/metrics-series.png)
+  </Tab>
+  <Tab title="CLI">
+    Non esiste ancora un comando dedicato per le metriche di grandezza. Scopri le chiavi disponibili e ispeziona sessioni o valutazioni:
+
+    ```bash
+    fp list score_filters
+    fp --json evals --since 24h
+    fp --json sessions --since 24h
+    ```
+
+    Usa `fp query` per l'aggregazione metrica personalizzata.
+  </Tab>
+</Tabs>

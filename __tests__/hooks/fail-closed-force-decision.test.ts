@@ -34,6 +34,16 @@ vi.mock("../../src/hooks/hook-logger", async (importOriginal) => {
     }),
   };
 });
+vi.mock("../../src/hooks/pack-manifest", () => ({
+  // Isolation, not convenience: unmocked, `readInstalledPacks` reads the REAL
+  // ~/.failproofai/policies/packs of whoever runs the suite, so these tests would
+  // pass on a clean machine and behave differently on one with a pack installed.
+  readInstalledPacks: vi.fn(() => ({ packs: [], errors: [] })),
+  // The handler asks this per event to decide whether the migration shim
+  // still applies. Mirrors the mocked readInstalledPacks above.
+  hasInstalledPacks: vi.fn(() => false),
+  hasInstalledRegexPacks: vi.fn(() => false),
+}));
 
 import { evaluateHookEvent } from "../../src/hooks/handler";
 
@@ -196,9 +206,8 @@ describe("the fail-closed verdict is enforcing on every supported CLI", () => {
  *
  * The logic lives in `bin/failproofai.mjs`, which cannot be imported by vitest
  * (a bare `package.json` import and extensionless TypeScript specifiers — see
- * CLAUDE.md), so its shape is asserted from source, the same way
- * `dogfood-configs.test.ts` guards the committed hook configs. Both properties
- * here regressed silently once already.
+ * CLAUDE.md), so its shape is asserted from source. Both properties here
+ * regressed silently once already.
  */
 describe("bin/failproofai.mjs --hook error boundary", () => {
   const source = readFileSync(

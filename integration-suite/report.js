@@ -102,6 +102,22 @@ else if (worst === "yellow" || worst === "grey") hdr = "🟡 all enforcing where
 else hdr = `🟢 all ${results.length} enforcing`;
 lines.push("", hdr);
 
+// The box runs a PUBLISHED image now rather than cloning main at each fire, so
+// "this ran today" and "this tested today's code" came apart. A build that
+// breaks leaves the last good image in place and the run goes green against
+// whatever commit that image carries — the one failure mode the old
+// clone-per-run shape could not have. job-entrypoint.sh works out the age; a
+// report that cannot say how old its own code is has to say THAT rather than
+// quietly imply freshness.
+if (process.env.CANARY_IMAGE_STALE === "1") {
+  const age = process.env.CANARY_IMAGE_AGE_DAYS || "?";
+  const sha = process.env.CANARY_FP_SHA || "unknown";
+  lines.push(
+    `⚠️ _this ran from an image built ${age === "?" ? "at an unreadable date" : `${age} days ago`}` +
+      ` (\`${sha}\`) — check build-canary-images, the box may be testing stale code_`,
+  );
+}
+
 // Start from the previous state so CLIs omitted from a subset run (run.sh cursor
 // devin) keep their green gating records instead of being wiped + needlessly re-probed.
 const newState = { lastRun: new Date().toISOString(), clis: { ...(prev.clis || {}) } };

@@ -1,0 +1,48 @@
+---
+title: "LlamaIndex"
+description: "Install, instrument, and see your first trace."
+icon: "/images/frameworks/llamaindex.svg"
+---
+
+Three steps to your first LlamaIndex trace. For workflow steps, retrieval, the reaper, and options, see [the full guide](/start/integrations/llamaindex).
+
+## Install
+
+```bash
+pip install 'failproofai-sdk[llamaindex]'
+```
+
+## Instrument
+
+LlamaIndex's agent API is async. Every scope works under `async with` as well as `with`.
+
+```python
+import asyncio
+
+import failproofai_sdk
+
+failproofai_sdk.configure(environment="production")
+failproofai_sdk.instrument()
+
+
+async def main():
+    async with failproofai_sdk.session():
+        await agent.run("...")
+
+
+asyncio.run(main())
+```
+
+<Warning>
+  Without one extra argument on your LLM, every token count in your trace is null — `llama-index-llms-openai` does not request usage when it streams. See [Token counts](/start/integrations/llamaindex#token-counts).
+</Warning>
+
+## Check it arrived
+
+Run it once, then open **Observe → Sessions** and select your environment. Your run appears as a reconstructed trace.
+
+If nothing arrives, confirm the machine is connected with `failproofai config --status`.
+
+<Card title="Full LlamaIndex guide" icon="arrow-right" href="/start/integrations/llamaindex">
+  Token counts, what gets recorded, workflow steps, retrieval, options, and common problems.
+</Card>

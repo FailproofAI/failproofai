@@ -1,0 +1,37 @@
+---
+title: "CrewAI"
+description: "Cài đặt, thiết lập theo dõi, và xem trace đầu tiên của bạn."
+icon: "/images/frameworks/crewai.svg"
+---
+
+Ba bước để có trace CrewAI đầu tiên của bạn. Để tìm hiểu về những gì mỗi sự kiện mang theo, các luồng và khắc phục sự cố, xem [hướng dẫn đầy đủ](/vi/start/integrations/crewai).
+
+## Cài đặt
+
+```bash
+pip install 'failproofai-sdk[crewai]'
+```
+
+## Thiết lập theo dõi
+
+```python
+import failproofai_sdk
+
+failproofai_sdk.configure(environment="production")
+failproofai_sdk.instrument()
+
+with failproofai_sdk.session():
+    Crew(agents=[analyst, writer], tasks=[gather, summarise]).kickoff()
+```
+
+Không có gì thay đổi về crew, agents, tasks, hoặc tools của bạn. `instrument()` đăng ký theo dõi event bus ở cấp độ module của CrewAI.
+
+## Kiểm tra dữ liệu đã tới
+
+Chạy một lần, sau đó mở **Observe → Sessions** và chọn môi trường của bạn. Lần chạy của bạn sẽ xuất hiện dưới dạng một trace được tái tạo.
+
+Nếu không có dữ liệu nào tới, hãy xác nhận máy được kết nối bằng cách chạy `failproofai config --status`.
+
+<Card title="Hướng dẫn CrewAI đầy đủ" icon="arrow-right" href="/vi/start/integrations/crewai">
+  Những gì được ghi lại, các luồng, sử dụng token, đặt tên span, các tùy chọn và các vấn đề thường gặp.
+</Card>

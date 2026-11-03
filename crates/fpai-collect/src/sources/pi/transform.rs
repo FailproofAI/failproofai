@@ -309,7 +309,17 @@ fn user_events(
         "messages".into(),
         json!([{ "role": "user", "content": text }]),
     );
-    vec![Value::Object(m)]
+    let mut out = vec![Value::Object(m)];
+    // pi keeps what it injects in records of its own (`custom`, skipped
+    // above), so every `user` message is one the person typed.
+    if let Some(envelope) = base(ctx, "human_input", ts, 1, offset) {
+        out.push(crate::sources::human_input(
+            envelope,
+            &offset.to_string(),
+            &text,
+        ));
+    }
+    out
 }
 
 /// An `assistant` message is prose and/or tool calls, plus token usage.

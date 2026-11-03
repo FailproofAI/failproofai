@@ -65,6 +65,19 @@ pub struct TailState {
     /// deterministic AND drop the oldest first; a map keyed by random ids would
     /// evict in an order unrelated to age.
     pub pending_tools: Vec<(String, String)>,
+    /// What a Codex session header said about who drives the session:
+    /// `Some(true)` for a sub-agent or a `codex exec` run, `Some(false)` for a
+    /// person, `None` when this cursor never read the header. Only `Some(false)`
+    /// lets a user turn become a `human_input`. Carried here because the header
+    /// is line 1 and the turns come later; persisted, so a resumed read decides
+    /// the same way. `None` is what a cursor saved before this field existed
+    /// resumes with — mid-file, past a header it will never re-read — and such a
+    /// session emits no `human_input` rather than guess.
+    pub automated: Option<bool>,
+    /// The record kind and text of the last `human_input` a Codex session
+    /// emitted — so a version that writes one prompt as BOTH `user_message` and
+    /// an `item_completed` UserMessage yields it once, not twice.
+    pub last_human_input: Option<(String, String)>,
 }
 
 /// Most in-flight tool calls remembered per session. Bounds the cursor file
@@ -120,6 +133,10 @@ pub struct FileCursor {
     /// either.
     #[serde(default)]
     pub agent_start_emitted: bool,
+    /// OTEL resume cutoff already applied to this cursor. A later handoff must
+    /// advance an existing transcript cursor as well as newly discovered ones.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub sessions_resume_after: Option<u64>,
     /// Whether `agent_end` has been emitted. Cleared if the file grows again,
     /// so a resumed session can end a second time rather than freezing.
     #[serde(default)]
@@ -151,6 +168,19 @@ pub struct FileCursor {
     pub head_fingerprint: Option<u64>,
     #[serde(default)]
     pub state: TailState,
+    /// Last OpenClaw SQLite transcript sequence durably spooled.
+    ///
+    /// The SQLite store is ordered per session, so its adapter uses a
+    /// synthetic `(dev, inode)` key per `(database, session_id)` and carries
+    /// the real row position here. `None` means no row has been consumed yet;
+    /// OpenClaw sequences begin at zero.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub sqlite_seq: Option<i64>,
+    /// OpenClaw rotates this token whenever it destructively rewrites a
+    /// transcript. A changed generation invalidates the sequence, byte offset
+    /// and transform state together and forces a deterministic re-read.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub sqlite_generation: Option<String>,
 }
 
 /// Bytes of a file's head that [`FileCursor::head_fingerprint`] covers.
@@ -317,6 +347,20 @@ impl CursorStore {
         }
     }
 
+    /// Retain cursors selected by a source-specific liveness check.
+    ///
+    /// Some sources multiplex many logical sessions through one physical file.
+    /// `retain_existing` cannot prune one deleted logical session while that
+    /// shared file still exists, so those sources supply the identities that
+    /// were confirmed live by a successful poll.
+    pub fn retain_matching(&mut self, mut keep: impl FnMut(&FileCursor) -> bool) {
+        let before = self.cursors.len();
+        self.cursors.retain(|_, cursor| keep(cursor));
+        if self.cursors.len() != before {
+            self.dirty = true;
+        }
+    }
+
     /// Forget every cursor whose file was modified at or after `since`, so the
     /// next read starts those files from byte 0.
     ///
@@ -348,6 +392,26 @@ impl CursorStore {
         });
         let dropped = before - self.cursors.len();
         if dropped > 0 {
+            self.dirty = true;
+        }
+        dropped
+    }
+
+    /// Forget every cursor, so the next read starts every file — or, for a
+    /// SQLite source, the whole database — from the beginning.
+    ///
+    /// What re-adding an agent acts through. [`forget_modified_since`] cannot do
+    /// that job: a file appended to while the agent was not traced, but last
+    /// modified before the window, keeps its stale offset and resumes there,
+    /// shipping what was written while nobody asked for it. Forgetting
+    /// everything hands the decision to the first-sight window instead, which is
+    /// exactly how a brand-new agent behaves.
+    ///
+    /// [`forget_modified_since`]: CursorStore::forget_modified_since
+    pub fn forget_all(&mut self) -> usize {
+        let dropped = self.cursors.len();
+        if dropped > 0 {
+            self.cursors.clear();
             self.dirty = true;
         }
         dropped
@@ -615,6 +679,69 @@ mod tests {
 
         s.retain_existing();
         assert_eq!(s.len(), 1, "a cursor for a deleted page must be dropped");
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    /// A file at `dir/name` whose mtime is `age` ago.
+    fn aged(dir: &Path, name: &str, age: std::time::Duration) -> PathBuf {
+        let path = dir.join(name);
+        std::fs::write(&path, "x").unwrap();
+        std::fs::File::options()
+            .write(true)
+            .open(&path)
+            .unwrap()
+            .set_modified(SystemTime::now() - age)
+            .unwrap();
+        path
+    }
+
+    #[test]
+    fn a_windowed_rewind_forgets_only_files_touched_since() {
+        let dir = tmpdir("forget-since");
+        let day = std::time::Duration::from_secs(86_400);
+        let fresh = aged(&dir, "fresh.jsonl", std::time::Duration::from_secs(60));
+        let old = aged(&dir, "old.jsonl", 30 * day);
+
+        let mut s = CursorStore::load(dir.clone());
+        s.set(cursor(&fresh, 1, 1, 10));
+        s.set(cursor(&old, 1, 2, 10));
+        // An unreadable mtime is kept: forgetting it is how a rewind turns into
+        // re-shipping a whole history.
+        s.set(cursor(&dir.join("gone.jsonl"), 1, 3, 10));
+        s.save().unwrap();
+
+        assert_eq!(s.forget_modified_since(SystemTime::now() - day), 1);
+        s.save().unwrap();
+        let reloaded = CursorStore::load(dir.clone());
+        assert_eq!(reloaded.len(), 2);
+        assert!(
+            reloaded.resume(1, 2, &old).is_some(),
+            "an old file keeps its offset"
+        );
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    #[test]
+    fn forgetting_everything_reaches_old_files_too_and_persists() {
+        let dir = tmpdir("forget-all");
+        let old = aged(
+            &dir,
+            "old.jsonl",
+            std::time::Duration::from_secs(90 * 86_400),
+        );
+        let mut s = CursorStore::load(dir.clone());
+        s.set(cursor(&old, 1, 1, 10));
+        s.set(cursor(&dir.join("gone.jsonl"), 1, 2, 10));
+        s.save().unwrap();
+
+        assert_eq!(s.forget_all(), 2);
+        assert!(s.is_dirty(), "a forgotten cursor must reach disk");
+        s.save().unwrap();
+        assert!(CursorStore::load(dir.clone()).is_empty());
+
+        // Nothing left to forget is not a change, and writes nothing.
+        assert_eq!(s.forget_all(), 0);
+        assert!(!s.is_dirty());
         std::fs::remove_dir_all(&dir).ok();
     }
 

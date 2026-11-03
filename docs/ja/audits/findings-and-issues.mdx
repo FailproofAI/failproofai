@@ -1,0 +1,96 @@
+---
+title: "調査結果と課題"
+description: "監査の証拠を、担当者が明確な追跡可能な改善作業に変換します。"
+icon: "clipboard-check"
+---
+
+調査結果とは、監査が証拠に基づいて失敗を記述したものです。課題とは、それに対応するための継続的なワークフローです。
+
+## トリアージと作業の割り当て
+
+<Tabs>
+  <Tab title="ダッシュボード">
+    1. **Analyze → Audits** を開き、完了した実行を選択して、調査結果を選択します。分析、推奨事項、セッション、証拠クエリを確認できます。
+    2. 証拠を確認した後、調査結果を承認、割り当て、却下、ミュート、解決、または再オープンします。
+    3. **Analyze → Issues** に移動し、ステータス、重大度、または担当者で継続的な受信トレイをフィルタリングします。
+    4. 課題を開いて割り当て、コメントやサブスクライバーを追加し、修正が確認された後に解決します。
+
+    まず調査結果のサマリーを確認してください。失敗の説明、推奨される対応、重大度、ランキングが、監査で検査されるべきセッションと一致しているかどうかを確認します。
+
+    ![重大度、発生回数、根本原因分析、推奨アクション、ランキング要因、証拠を含む監査調査結果。](/images/dashboard/audit-finding.png)
+
+    次に、サマリーだけで判断するのではなく、影響を受けたセッションを開いてください。リンクされたトレースに、調査結果を裏付ける正確なイベントとペイロードが表示されます。
+
+    ![監査調査結果からリンクされたセッション。関連するエラー、イベントメタデータ、生のペイロードが表示されています。](/images/dashboard/audit-linked-session.png)
+
+    証拠を確認した後、Issues を使用して対応に担当者を割り当て、将来の監査実行とは独立して追跡します。
+
+    ![発火中、承認済み、解決済みの作業が重大度と担当者とともに表示された Issues 受信トレイ。](/images/dashboard/incidents.png)
+
+    課題を開いて調査メモを記録し、サブスクライバーに通知し、対応履歴を保存します。改善策がデプロイされ確認されてから初めて解決してください。
+
+    ![ソース、違反の証拠、担当者、サブスクライバー、タイムライン、コメントを含む課題の詳細ビュー。](/images/dashboard/incident-detail.png)
+  </Tab>
+  <Tab title="CLI">
+    ```bash
+    fp audits findings --audit checkout-reliability --status open
+    fp audits finding <finding-id>
+    fp audits ack <finding-id> --reason "owner assigned"
+    fp audits assign <finding-id> --to engineer@example.com
+
+    fp issues list
+    fp issues show <issue-id>
+    fp issues assign <issue-id> --assignee engineer@example.com
+    fp issues comment-add <issue-id> --body "policy is in observe mode"
+    fp issues resolve <issue-id> --yes
+    ```
+
+    `fp issues subscribe <issue-id>`、`fp issues unsubscribe <issue-id>`、`fp issues subscribers <issue-id>` を使用してウォッチャーを管理します。
+
+    監査調査結果については [Cloud CLI 監査・課題リファレンス](/ja/reference/cloud-cli#audits)、課題管理については [`fp issues`](/ja/reference/cloud-cli#issues) を参照してください。
+  </Tab>
+</Tabs>
+
+## 調査結果のレビュー
+
+以下が含まれていることを確認してください：
+
+- 一度限りのタイトルではなく、安定した失敗パターン
+- 重大度と運用上の影響
+- 影響を受けたセッション ID またはサポートクエリ
+- 動作を再現するための十分なコンテキスト
+- 証拠と一致した提案対応
+
+## 課題を使って対応を管理する
+
+調査結果に担当者の割り当て、ディスカッション、ステータス変更、コメント、またはサブスクライバーが必要な場合は、課題を作成またはリンクします。課題はアラートインシデントや手動で報告された問題も表すことができます。そのため、主要なナビゲーションではなく監査対応の下に配置されています。
+
+改善策がデプロイされ確認されたら課題を解決します。監査対象の母集団に対して失敗パターンが対処されたら調査結果を解決します。これらのタイミングは異なる場合があります。
+
+## 課題をポリシードラフトに変換する
+
+<Tabs>
+  <Tab title="ダッシュボード">
+    1. 課題を開き、調査結果、引用されたセッション、根本原因、推奨事項を確認します。
+    2. **generate policy** を選択し、候補判定結果と提案された強制インテントをレビューします。**no policy** という結果は、その動作がアラート、ワークフローの変更、または人間の対応を必要とする可能性があることを意味します。
+    3. **write this policy** を選択し、**publish version** を選択する前に **Admin → policy editor** で生成されたソースをレビューおよびテストします。候補チェックに同意しない場合は **open the editor anyway** を使用してください。
+    4. **Admin → enforcement** に移動し、**observe** モードでバージョンをデプロイして、強制する前に **Observe → policy** でその決定を確認します。
+
+    課題のタイトル、調査結果の説明、根本原因、推奨事項、候補インテントがドラフトの作成に役立ちます。自動的に公開またはデプロイされることはありません。
+  </Tab>
+  <Tab title="CLI">
+    ダッシュボードで課題を開く前に、CLI を使用して証拠を確認してください：
+
+    ```bash
+    fp issues show <issue-id>
+    fp audits finding <finding-id>
+    fp events --session-id <session-id> --full --all
+    ```
+
+    ポリシー候補の判定、Cloud への公開、フリートへのデプロイはダッシュボードのワークフローです。同等のポリシーソースをローカルで先に検証したい場合は `failproofai policies --install --custom <file>` を使用してください。
+  </Tab>
+</Tabs>
+
+<Card title="ポリシーを作成する" icon="shield-plus" href="/ja/policies/editor">
+  確認された繰り返し可能なアクションパターンをポリシーバージョンに変換します。
+</Card>

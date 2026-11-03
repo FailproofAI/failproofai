@@ -1,0 +1,102 @@
+---
+title: "स्थानीय कॉन्फ़िगरेशन"
+description: "नीति के दायरे, पैरामीटर, कस्टम फाइलें, और मशीन-स्तरीय Failproof AI सेटिंग्स को नियंत्रित करें।"
+icon: "file-cog"
+---
+
+Failproof AI एक रिपोजिटरी जो कमिट कर सकती है — हुक वायरिंग, नीति पैरामीटर, कस्टम नीतियां — को मशीन स्थिति जैसे क्रेडेंशियल्स, इंस्टॉल किए गए पैक्स, और डेमन से अलग रखता है।
+
+## एक दायरा चुनें
+
+एक दायरा यह तय करता है कि हुक कहां वायर किए गए हैं, और आप पैरामीटर और कस्टम नीति पाथ को किस कॉन्फ़िगरेशन फाइल में लिखते हैं:
+
+- **User** इस मशीन पर सभी प्रोजेक्ट्स में लागू होता है।
+- **Project** रिपोजिटरी के अंतर्गत होता है और इसे कमिट किया जा सकता है।
+- **Local** एक प्रोजेक्ट को एक उपयोगकर्ता के लिए ओवरराइड करता है और इसे gitignored रहना चाहिए।
+
+```bash
+failproofai policies --install --cli claude --scope project   # wire hooks for this repository
+failproofai policies --install --cli claude --scope user      # or for every project on this machine
+failproofai policies
+```
+
+प्रत्येक हार्नेस स्थानीय दायरे का समर्थन नहीं करता; CLI एक दायरे को अस्वीकार करता है जिसे चुने गए हार्नेस का प्रतिनिधित्व नहीं कर सकता।
+
+कौन सी पैक नीतियां चालू हैं यह **नहीं** स्कोप की गई है। स्विच इंस्टॉल किए गए पैक के साथ दर्ज किया जाता है, इसलिए `failproofai policies add <name>` पूरी मशीन के लिए एक नीति को चालू करता है, चाहे `--scope` कुछ भी कहे।
+
+| दायरा | नीति कॉन्फ़िगरेशन फाइल |
+| --- | --- |
+| Project | `<project>/.failproofai/policies-config.json` |
+| Local | `<project>/.failproofai/policies-config.local.json` |
+| User | `~/.failproofai/policies-config.json` |
+
+नीति पैरामीटर पहले दायरे का उपयोग करते हैं जो उस नीति के लिए पैरामीटर को परिभाषित करता है, project → local → user क्रम में। स्पष्ट कस्टम नीति पाथ पहले दायरे का उपयोग करते हैं जो उन्हें परिभाषित करता है।
+
+## नीति पैरामीटर को कॉन्फ़िगर करें
+
+<Tabs>
+  <Tab title="Dashboard">
+    स्थानीय डैशबोर्ड में नीति को खोलें, इसके समर्थित पैरामीटर को संपादित करें, और चुने गए दायरे में सहेजें। एक मेल खाने वाली और गैर-मेल खाने वाली एजेंट कार्रवाई चलाएं, फिर **Observe → policy** में निर्णय का निरीक्षण करें।
+
+  </Tab>
+  <Tab title="CLI">
+    चुने गए दायरे की `policies-config.json` को संपादित करें, फिर `failproofai policies` चलाएं: यह एक `policyParams` प्रविष्टि के बारे में चेतावनी देता है जो एक नीति का नाम देता है जो कोई इंस्टॉल किया गया पैक नहीं ले जाता। यह एक प्रविष्टि के अंदर कुंजियों की जांच नहीं करता है, इसलिए नीचे दी गई तालिका के विरुद्ध उनकी वर्तनी जांचें।
+
+    ```json
+    {
+      "policyParams": {
+        "block-rm-rf": {
+          "allowPaths": ["/tmp/build-output"]
+        }
+      }
+    }
+    ```
+
+    ```bash
+    failproofai policies
+    ```
+  </Tab>
+</Tabs>
+
+### Failproof AI नीतियां जो पैरामीटर स्वीकार करती हैं
+
+प्रत्येक नीति अपने स्वयं के पैरामीटर प्रकारों को मान्य करती है।
+
+| नीति | पैरामीटर | प्रकार और डिफ़ॉल्ट |
+| --- | --- | --- |
+| `sanitize-api-keys` | `additionalPatterns` | `pattern[]`, `[]`; प्रविष्टियां `regex` और `label` रखती हैं |
+| `block-read-outside-cwd` | `allowPaths` | `string[]`, `[]` |
+| `block-sudo` | `allowPatterns` | `string[]`, `[]` |
+| `block-rm-rf` | `allowPaths` | `string[]`, `[]` |
+| Infrastructure blockers | `allowPatterns` | `string[]`, `[]` |
+| `block-secrets-write` | `additionalPatterns` | `string[]`, `[]` |
+| `block-push-master` | `protectedBranches` | `string[]`, `["main", "master"]` |
+| `block-work-on-main` | `protectedBranches` | `string[]`, `["main", "master"]` |
+| `prefer-package-manager` | `allowed`, `blocked` | `string[]`, `[]` |
+| `warn-large-file-write` | `thresholdKb` | `number`, `1024` |
+| `require-push-before-stop` | `remote`, `baseBranch` | `string`, `"origin"`; `string`, `"main"` |
+| `require-pr-before-stop` | `baseBranch` | `string`, `"main"` |
+| `require-no-conflicts-before-stop` | `baseBranch` | `string`, `"main"` |
+
+<Warning>
+  एक अनुमति पैटर्न एजेंट को जो कर सकता है उसे व्यापक बनाता है। किसी फ्लीट में इसे तैनात करने से पहले लक्ष्य हार्नेस पर सटीक टोकनाइजेशन और कमांड वेरिएंट का परीक्षण करें।
+</Warning>
+
+## मशीन फाइलों को समझें
+
+`~/.failproofai` अलग-अलग विश्वास सीमाओं के लिए अलग-अलग फाइलें रखता है:
+
+| पाथ | उद्देश्य |
+| --- | --- |
+| `config.json` | गैर-गोपनीय डेमन, ऑडिट, और टेलीमेट्री सेटिंग्स |
+| `credentials.json` | क्लाउड क्रेडेंशियल्स; मालिक-केवल अनुमतियों के साथ संग्रहीत |
+| `policies-config.json` | उपयोगकर्ता-दायरा पैरामीटर और स्पष्ट कस्टम नीति पाथ |
+| `policies/` | उपयोगकर्ता सम्मेलन नीतियां, इंस्टॉल किए गए पैक्स और उनकी कौन सी नीतियां चालू हैं, और क्लाउड-प्रबंधित नीति कलाकृतियां |
+| `hook-activity/` | स्थानीय नीति निर्णय लॉग |
+| `state/` | डेमन स्पूल, स्वास्थ्य, विराम, और रनटाइम स्थिति |
+
+एक कंटेनर या अलग-थलग परीक्षण के लिए पूर्ण मशीन लेआउट को स्थानांतरित करने के लिए `FAILPROOFAI_HOME` का उपयोग करें। अलग-अलग स्थिति निर्देशिकाओं को स्वतंत्र रूप से स्थानांतरित न करें।
+
+<Warning>
+  कभी भी `credentials.json` को कमिट न करें। प्रोजेक्ट नीति कॉन्फ़िगरेशन और प्रोजेक्ट सम्मेलन नीतियों को केवल प्रवर्तन कोड के रूप में समीक्षा करने के बाद कमिट करें।
+</Warning>

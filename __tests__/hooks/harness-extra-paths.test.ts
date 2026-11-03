@@ -14,6 +14,9 @@ import { tmpdir } from "node:os";
 import { readConfig, writeConfig, DEFAULT_CONFIG } from "@/src/hooks/fp-config";
 import { configFile } from "@/src/hooks/fp-home";
 import { HARNESS_KEYS, addPath, removePath, listPaths, runHarnessCommand } from "@/src/hooks/harness-cli";
+import { updateConfig } from "@/src/hooks/fp-config";
+import { writeCollectorSettings } from "@/src/hooks/collector-config";
+import { setDaemonConfigured } from "@/src/hooks/daemon-service";
 
 describe("harness extra paths", () => {
   let home: string;
@@ -31,7 +34,7 @@ describe("harness extra paths", () => {
     rmSync(home, { recursive: true, force: true });
   });
 
-  // ── the list that cannot be allowed to drift ───────────────────────────
+  // ━━ the list that cannot be allowed to drift ━━━━━━━━━━━━━━━━━━━━━━━━━━─
 
   // Two hand-maintained copies of one list, in two languages, with nothing
   // generating either. A name here the daemon does not know writes a table
@@ -49,7 +52,7 @@ describe("harness extra paths", () => {
     expect([...rustKeys].sort()).toEqual([...HARNESS_KEYS].sort());
   });
 
-  // ── the default-path-only regression ───────────────────────────────────
+  // ━━ the default-path-only regression ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━─
 
   it("writes no [collector.sources] table when nothing is configured", () => {
     writeConfig(DEFAULT_CONFIG);
@@ -75,7 +78,7 @@ describe("harness extra paths", () => {
     expect(readFileSync(configFile(), "utf8")).toBe(before);
   });
 
-  // ── round trips ────────────────────────────────────────────────────────
+  // ━━ round trips ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
   it("round-trips a labelled path through real TOML", () => {
     addPath("claude", "work=/srv/team/.claude/projects");
@@ -140,7 +143,7 @@ describe("harness extra paths", () => {
     expect(readConfig().collector.sources?.claude.extraPaths).toEqual(["k=/srv/a=b/projects"]);
   });
 
-  // ── rejections ─────────────────────────────────────────────────────────
+  // ━━ rejections ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━─
 
   it("refuses an unknown harness and names the real ones", () => {
     const r = addPath("claud", "/srv/x");
@@ -181,7 +184,7 @@ describe("harness extra paths", () => {
     expect(addPath("claude", "label=").exitCode).toBe(1);
   });
 
-  // ── removal ────────────────────────────────────────────────────────────
+  // ━━ removal ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
   it("removes by label, by path, or by the whole entry", () => {
     for (const target of ["w", "/srv/x", "w=/srv/x"]) {
@@ -206,7 +209,7 @@ describe("harness extra paths", () => {
     expect(readConfig().collector.sources?.claude.extraPaths).toEqual(["b=/srv/b"]);
   });
 
-  // ── list ───────────────────────────────────────────────────────────────
+  // ━━ list ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━─
 
   it("says so plainly when nothing is configured", () => {
     const r = listPaths();
@@ -218,10 +221,12 @@ describe("harness extra paths", () => {
     addPath("claude", "work=/srv/team");
     addPath("hermes", "/srv/hermes-prod/state.db");
     const out = listPaths().lines.join("\n");
-    expect(out).toContain("claude:");
+    // An UPPERCASE heading per agent with its count, the shape every listing
+    // has in the 2026-10 design (it was a `━━ claude` rule before that).
+    expect(out).toMatch(/^CLAUDE {2}1 extra path$/m);
     expect(out).toContain("/srv/team");
     expect(out).toContain("work-*");
-    expect(out).toContain("hermes:");
+    expect(out).toMatch(/^HERMES {2}1 extra path$/m);
     expect(out).toContain("derived from the folder name");
   });
 
@@ -240,7 +245,7 @@ describe("harness extra paths", () => {
     expect(out).toContain("claud");
   });
 
-  // ── dispatch ───────────────────────────────────────────────────────────
+  // ━━ dispatch ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━─
 
   it("rejects an unknown subcommand and prints usage", () => {
     const r = runHarnessCommand(["frobnicate"]);
@@ -259,7 +264,7 @@ describe("harness extra paths", () => {
     expect(runHarnessCommand(["remove-path", "claude", "w"]).exitCode).toBe(0);
   });
 
-  // ── malformed config on disk ───────────────────────────────────────────
+  // ━━ malformed config on disk ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━─
 
   it("ignores a sources table that is not shaped like one", () => {
     writeConfig(DEFAULT_CONFIG);
@@ -340,5 +345,75 @@ describe("harness extra paths", () => {
       expect(text).not.toContain("now also capturing");
       expect(text).toContain("validates it on the next read");
     });
+  });
+});
+
+describe("extra paths survive every config.json write that `config` and `update` make", () => {
+  let home: string;
+  let prevHome: string | undefined;
+
+  beforeEach(() => {
+    prevHome = process.env.FAILPROOFAI_HOME;
+    home = mkdtempSync(join(tmpdir(), "fpai-hx-cfg-"));
+    process.env.FAILPROOFAI_HOME = home;
+  });
+
+  afterEach(() => {
+    if (prevHome === undefined) delete process.env.FAILPROOFAI_HOME;
+    else process.env.FAILPROOFAI_HOME = prevHome;
+    rmSync(home, { recursive: true, force: true });
+  });
+
+  it("keeps every harness path through a Cloud connect, collector settings, daemon install and disconnect", () => {
+    expect(addPath("hermes", "prod=/srv/hermes-prod/state.db").exitCode).toBe(0);
+    expect(addPath("claude", "work=/srv/team/.claude/projects").exitCode).toBe(0);
+    const before = readConfig().collector.sources;
+    expect(before).toBeDefined();
+
+    // `failproofai config` connecting to Cloud (cloud-connection.ts)
+    updateConfig({ mode: "cloud" });
+    writeCollectorSettings({ sessions: true, hooks: true, hooksVerbosity: "decisions", machineId: "m-1" });
+    // `config` / `update` installing or refreshing the daemon (daemon-service.ts)
+    setDaemonConfigured(true, "1.0.9");
+    // a re-run of `config` that changes the collector choices again
+    writeCollectorSettings({ sessions: false, hooks: true });
+    // uninstalling the daemon, then disconnecting
+    setDaemonConfigured(false);
+    updateConfig({ mode: "oss" });
+
+    expect(readConfig().collector.sources).toEqual(before);
+    expect(readFileSync(configFile(), "utf-8")).toContain("/srv/hermes-prod/state.db");
+  });
+});
+
+describe("an agent that is not traced", () => {
+  // The daemon starts no task for an agent outside agents.selected, extra
+  // paths included, so a configured path would otherwise read as captured.
+  let home: string;
+  let prevHome: string | undefined;
+  beforeEach(() => {
+    prevHome = process.env.FAILPROOFAI_HOME;
+    home = mkdtempSync(join(tmpdir(), "fpai-hx-untraced-"));
+    process.env.FAILPROOFAI_HOME = home;
+  });
+  afterEach(() => {
+    if (prevHome === undefined) delete process.env.FAILPROOFAI_HOME;
+    else process.env.FAILPROOFAI_HOME = prevHome;
+    rmSync(home, { recursive: true, force: true });
+  });
+
+  it("is said next to its paths and when one is added", async () => {
+    const { updateConfig } = await import("../../src/hooks/fp-config");
+    updateConfig({ agents: { selected: ["codex"], seen: ["codex"] } });
+    const added = addPath("claude", "work=/srv/team").lines.join("\n");
+    expect(added).toContain("▲ Claude Code isn't traced, so nothing is captured from its paths until it is.");
+    expect(listPaths().lines.join("\n")).toContain("Claude Code isn't traced");
+    updateConfig({ agents: { selected: ["codex", "claude"], seen: ["codex"] } });
+    expect(listPaths().lines.join("\n")).not.toContain("isn't traced");
+  });
+
+  it("no longer claims harness list shows what is captured", () => {
+    const text = addPath("claude", "/srv/x").lines.join("\n");
+    expect(text).not.toContain("shows what is actually being captured");
   });
 });

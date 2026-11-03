@@ -1,0 +1,52 @@
+---
+title: "Esegui il tuo primo controllo di guasto"
+description: "Crea un audit dal dashboard Cloud o dalla CLI di fp e rivedi i suoi primi risultati."
+icon: "scan-search"
+---
+
+Un audit trasforma un insieme di sessioni in risultati di guasto classificati e supportati da prove. Inizia con una singola domanda di guasto mirata.
+
+<Tabs>
+  <Tab title="Dashboard">
+    <Steps>
+      <Step title="Apri Audit">
+        Nella barra laterale Cloud, vai a **Analyze → Audits**. Seleziona **new audit**.
+      </Step>
+      <Step title="Configura l'audit">
+        Inserisci un nome e un obiettivo di guasto diretto, ad esempio "trova sessioni di produzione che ritentano la stessa chiamata di pagamento fallita senza modificare l'input o escalare." Seleziona l'agente, l'ambiente, l'intervallo di tempo e la pianificazione. Aggiungi un breve briefing e URL di riferimento quando l'auditor ha bisogno delle tue regole di workflow.
+      </Step>
+      <Step title="Crea e attendi l'esecuzione">
+        Seleziona **create audit**. La prima esecuzione viene messa in coda immediatamente. Apri la scheda audit per guardarla passare da in coda a in esecuzione a completata.
+      </Step>
+    </Steps>
+
+    Dopo il completamento dell'esecuzione, apri un risultato e rivedi le prove della sessione. Puoi quindi riconoscerlo, assegnarlo, dismisserlo, silenziarlo o risolverlo.
+
+    ![Un risultato audit completato che mostra la descrizione del guasto, l'azione consigliata, le prove di supporto e le sessioni interessate.](/images/dashboard/audit-finding.png)
+  </Tab>
+  <Tab title="CLI">
+    ```bash
+    fp audits create payment-retry-failures \
+      --description "Find production sessions that retry a failed payment call without changing input or escalating" \
+      --scope '{"environments":["production"]}' \
+      --text "Escalate after two unchanged payment failures"
+
+    fp audits list
+    fp audits runs payment-retry-failures
+    fp audits findings --audit payment-retry-failures
+    fp audits finding <finding-id>
+    ```
+
+    Aggiungi contesto di riferimento, quindi aggiornalo quando la fonte cambia:
+
+    ```bash
+    fp audits context-set payment-retry-failures --url https://example.com/payment-runbook
+    fp audits context-refresh payment-retry-failures
+    fp audits run payment-retry-failures
+    ```
+
+    Usa `fp audits ack <finding-id>`, `fp audits assign <finding-id> --to <email>`, `fp audits dismiss <finding-id>`, `fp audits mute <finding-id>`, `fp audits resolve <finding-id>`, o `fp audits reopen <finding-id>` per spostare un risultato attraverso il triage.
+  </Tab>
+</Tabs>
+
+Successivamente, [previeni il tuo primo guasto con una policy](/it/start/first-policy) per un'azione confermata e ripetibile.

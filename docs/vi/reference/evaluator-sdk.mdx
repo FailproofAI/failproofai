@@ -1,0 +1,118 @@
+---
+title: "Evaluator SDK"
+description: "Chạy worker đánh giá của riêng bạn, cho các LLM judges và bất cứ điều gì mà hosted Python không thể làm."
+icon: "gauge"
+---
+
+Evaluator SDK chạy các đánh giá trên cơ sở hạ tầng của riêng bạn. Worker của bạn đăng ký các đánh giá của nó với Failproof AI, nhận các phiên khi chúng hoàn thành, chấm điểm chúng, và gửi kết quả, tất cả qua HTTPS đi ra: không có gì kết nối vào nó. Sử dụng nó cho những điều mà [hosted Python](/vi/evaluations/write) không thể làm — LLM judges, lệnh gọi mô hình, các gói, secrets, và truy cập mạng. Các kết quả của nó xuất hiện bên cạnh các kết quả hosted trên [trang evaluations](/vi/sessions/evaluations), được gắn thẻ **customer**.
+
+Nó được cung cấp trong `failproofai-sdk`, dưới `failproofai_sdk.evaluator`; nhập SDK tracing không tải nó.
+
+```bash
+pip install failproofai-sdk
+```
+
+## Viết các evaluations
+
+```python
+from failproofai_sdk.evaluator import ConditionResult, EvalResult, Evaluator, Metric, Score
+
+app = Evaluator(name="customer-production", version="2026.08.1")
+
+
+@app.eval(
+    "tool_efficiency",
+    version="1.0.0",
+    labels=["tools", "deterministic"],
+    when=lambda session: ConditionResult(session.count("tool_use") > 0, "no_tool_calls"),
+)
+def tool_efficiency(session):
+    calls = session.events_of_type("tool_use")
+    distinct = {e.payload.get("tool_name") for e in calls if e.payload.get("tool_name")}
+    value = len(distinct) / len(calls)
+    return EvalResult(
+        score=Score(value, passed=value >= 0.7),
+        metrics={"tool_call_count": Metric(len(calls), unit="events")},
+        reasoning=f"{len(distinct)} distinct tools across {len(calls)} calls",
+    )
+
+
+@app.eval(
+    "answer_relevance",
+    version="judge-v1",
+    labels=["llm_judge", "relevance"],
+    when=lambda session: ConditionResult(
+        session.count("human_input") > 0 and session.count("model_response") > 0,
+        "no_exchange",
+    ),
+    timeout_seconds=30,
+)
+async def answer_relevance(session):
+    question = session.events_of_type("human_input")[-1].payload.get("response")
+    answer = session.events_of_type("model_response")[-1].payload.get("content")
+    value, reasoning = await ask_judge(question, answer)  # your LLM call: a 0-1 score and why
+    return EvalResult(score=Score(value, passed=value >= 0.7), reasoning=reasoning)
+
+
+if __name__ == "__main__":
+    app.run_from_env()
+```
+
+- `@app.eval(key, version=...)` đăng ký một evaluation. Key là thứ mà các kết quả của nó được biểu diễn; thay đổi phiên bản bất cứ khi nào logic thay đổi, và mỗi kết quả giữ phiên bản đã tạo ra nó. Một worker chứa tối đa 100 evaluations.
+- `result_kind` là `"score"` trừ khi bạn nói cách khác. Đối với một evaluation `"metric"` hoặc `"assertion"`, đặt tên một mục `metrics` hoặc `assertions` theo key: mục đó là kết quả của nó.
+- `when` quyết định xem một phiên có áp dụng hay không. Trả về `ConditionResult(False, "<reason>")` để bỏ qua một phiên, và lý do được ghi lại.
+- Một evaluation có thể là một hàm thông thường hoặc `async`, và `timeout_seconds` giới hạn nó.
+- Các khóa payload — `tool_name`, `response`, và `content` ở trên — là bất cứ thứ gì agents của bạn gửi, vì vậy hãy đọc chúng từ một phiên thực.
+
+## Chạy worker
+
+Đặt một khóa với quyền `evaluations:run`, được tạo dưới **Administration → Keys**, trong `FAILPROOFAI_EVALUATOR_TOKEN` — đặt nó từ secret store của bạn thay vì gõ nó vào một lệnh — và khởi động worker:
+
+```bash
+FAILPROOFAI_EVALUATOR_URL=https://app.befailproof.ai python evaluator.py
+```
+
+Không có khối `__main__`, `python -m failproofai_sdk.evaluator evaluator:app` làm điều tương tự.
+
+| Biến | Mặc định | Mục đích |
+| --- | --- | --- |
+| `FAILPROOFAI_EVALUATOR_URL` | bắt buộc | Nơi Failproof AI: `https://app.befailproof.ai` cho Cloud. HTTPS trừ khi nó trỏ tới loopback |
+| `FAILPROOFAI_EVALUATOR_TOKEN` | bắt buộc | Một khóa có `evaluations:run` |
+| `FAILPROOFAI_EVALUATOR_WORKER_ID` | `<hostname>-<pid>` | Đặt tên cho worker này |
+| `FAILPROOFAI_EVALUATOR_CONCURRENCY` | `1` | Số phiên mà worker này chấm điểm cùng một lúc |
+| `FAILPROOFAI_EVALUATOR_REQUEST_TIMEOUT_SECONDS` | `30` | Timeout cho mỗi yêu cầu tới Failproof AI |
+| `FAILPROOFAI_EVALUATOR_DRAIN_TIMEOUT_SECONDS` | `60` | Thời gian một worker dừng chờ các chạy đang thực hiện |
+| `FAILPROOFAI_EVALUATOR_ALLOW_INSECURE_HTTP` | `false` | Cho phép HTTP thường cho một URL không phải loopback — xem cảnh báo bên dưới |
+| `FAILPROOFAI_EVALUATOR_MODULE` | none | Cái `module:attribute` cho `python -m failproofai_sdk.evaluator` |
+
+<Warning>
+  `FAILPROOFAI_EVALUATOR_ALLOW_INSECURE_HTTP` gửi mọi thứ ở dạng plaintext. Worker mang `FAILPROOFAI_EVALUATOR_TOKEN` như một header `Authorization: Bearer` trên mỗi yêu cầu, và các bản ghi mà nó tìm nạp là các phiên themselves — vì vậy bất cứ ai trên đường đi đều đọc được cả hai, và token mà họ đọc được sẽ chạy các evaluations cho đến khi bạn xoay nó. Chỉ sử dụng nó trên một mạng phát triển bị cô lập. Ở bất kỳ nơi nào khác URL phải là HTTPS; loopback không cần cờ.
+</Warning>
+
+## Các loại kết quả
+
+| Loại | Trường |
+| --- | --- |
+| `Score` | `value` (0 tới 1), `passed`, `unit` (mặc định `ratio`), `display_value`, `description` |
+| `Metric` | `value`, `unit`, `display_value`, `description` |
+| `Assertion` | `passed`, `description` |
+| `EvalResult` | `score`, `metrics`, `assertions`, `reasoning`, `summary`, `labels` |
+| `ConditionResult` | `applicable`, `reason_code` |
+
+Một `EvalResult` mang ít nhất một score, metric, hoặc assertion, và tối đa 25, mỗi cái dưới một khóa duy nhất.
+
+## Phiên
+
+| Trường hoặc phương thức | Cung cấp cho bạn |
+| --- | --- |
+| `session_id`, `agent_id`, `environment` | Nhận dạng của phiên |
+| `started_at`, `ended_at` | Khi nó bắt đầu và kết thúc |
+| `event_count`, `events` | Bảng ghi đầy đủ, có thứ tự |
+| `count(event_type)` | Số lượng sự kiện của loại đó mà nó chứa |
+| `events_of_type(event_type)` | Những sự kiện đó, theo thứ tự |
+
+Mỗi sự kiện mang `id`, `ts`, `event_type`, và `payload`.
+
+## Evaluator cũ
+
+Evaluator SDK trước đó — một dịch vụ HTTP mà Failproof AI gọi tại `EVALUATOR_ENDPOINT`, trả lời `/evaluate` và được thăm dò qua `JobPending` — đã bị loại bỏ. Xây dựng các evaluator mới trên worker này; các nhà khai thác một instance tự lưu trữ chạy một dịch vụ cũ có thể giữ nó qua quá trình chuyển đổi.

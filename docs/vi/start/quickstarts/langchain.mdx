@@ -1,0 +1,39 @@
+---
+title: "LangChain và LangGraph"
+description: "Cài đặt, cấu hình và xem trace đầu tiên của bạn."
+icon: "/images/frameworks/langchain.svg"
+---
+
+Ba bước để có trace LangChain hoặc LangGraph đầu tiên của bạn. Để biết thêm về streaming, human-in-the-loop, đặt tên span và các tùy chọn khác, xem [hướng dẫn đầy đủ](/vi/start/integrations/langchain).
+
+## Cài đặt
+
+```bash
+pip install 'failproofai-sdk[langgraph]'
+```
+
+Để sử dụng LangChain mà không cần LangGraph, hãy dùng `failproofai-sdk[langchain]`.
+
+## Cấu hình
+
+```python
+import failproofai_sdk
+
+failproofai_sdk.configure(environment="production")
+failproofai_sdk.instrument()
+
+with failproofai_sdk.session():
+    graph.invoke({"messages": [HumanMessage("...")]})
+```
+
+Không cần thay đổi tại điểm gọi. `instrument()` đăng ký một tracer mà LangChain tiêm vào mọi callback manager mà nó xây dựng, vì vậy các graph, công cụ và mô hình đều bị ghi lại — bao gồm cả những cái bên trong các thư viện bạn không viết.
+
+## Kiểm tra nó đã tới
+
+Chạy nó một lần, sau đó mở **Observe → Sessions** và chọn môi trường của bạn. Lần chạy của bạn xuất hiện dưới dạng một trace được tái tạo.
+
+Nếu không có gì tới, hãy xác nhận máy được kết nối bằng `failproofai config --status`.
+
+<Card title="Hướng dẫn LangChain đầy đủ" icon="arrow-right" href="/vi/start/integrations/langchain">
+  Những gì được ghi lại, streaming, số lượng token, đặt tên span, kiểm soát phiên và human in the loop.
+</Card>

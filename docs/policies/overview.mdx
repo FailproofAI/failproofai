@@ -1,0 +1,58 @@
+---
+title: "Policies"
+description: "Observe, guide, or block agent actions before a known failure repeats."
+icon: "shield-check"
+---
+
+A policy evaluates an agent hook event and returns one of three decisions:
+
+- `allow` lets the action continue.
+- `instruct` gives the agent corrective guidance.
+- `deny` blocks the action with a reason.
+
+## Where policies live
+
+| In the dashboard | What you do there |
+| --- | --- |
+| **Observe → policy** | Review decisions from real sessions: which policy matched, on which machine, and why |
+| **Admin → policy editor** | Write a policy, backtest it against past traffic, publish an immutable version, and compare versions in **library** |
+| **Admin → enforcement** | Put versions on machines, in observe or enforce mode |
+
+The policy editor is where a failure becomes a rule. Describe the failure mode or paste policy source in **compose**, backtest the draft against traffic you already have, and publish a version:
+
+![The Policy editor compose view with policy identity, AI-assisted drafting, source validation, and publishing controls.](/images/dashboard/policy-editor.png)
+
+On a machine, `failproofai policies` lists everything enforcing there. `fp policies` and `fp fleet` cover the editor and enforcement from a terminal — see the [Cloud CLI reference](/reference/cloud-cli).
+
+## Get a policy
+
+There are two ways to get one.
+
+<Columns cols={2}>
+  <Card title="Write a policy" icon="file-pen-line" href="/policies/editor">
+    Let Failproof AI draft one from an audit finding, or write the source yourself, then review and publish it in the editor.
+  </Card>
+  <Card title="Use a policy pack" icon="package" href="/policies/packs">
+    Plug in a Failproof AI policy pack for your use case, or a community pack from the policy hub, in one command.
+  </Card>
+</Columns>
+
+## Review tool calls with Jev
+
+Jev reads a gated tool call in the context of your request. It can flag a concern that a string-matching policy missed or clear a deny from a policy explicitly marked **reviewable**. Hard policies remain final. [Start with Jev policies](/policies/jev), then use the [integration reference](/reference/jev) when you need provider or configuration details.
+
+## Then ship it
+
+<Steps>
+  <Step title="Test it">
+    Backtest the draft against traffic you already have, and run it against an action it must stop and one it must allow — all before you publish. See [Test a policy](/policies/test).
+  </Step>
+  <Step title="Deploy it">
+    Put the version on machines in **observe** mode, read its decisions, then enforce. See [Deploy a policy](/policies/deploy).
+  </Step>
+  <Step title="Version and roll back">
+    Every publish is a new, immutable version, so a rollout that blocks valid work is undone by redeploying the last good one. See [Versions and rollback](/policies/rollback).
+  </Step>
+</Steps>
+
+To share your policies with other teams, [publish them as a pack](/policies/publish-a-pack). For what happens when a policy cannot be evaluated at all, see [Failure behavior](/policies/failure-behavior).

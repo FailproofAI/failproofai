@@ -1,0 +1,54 @@
+---
+title: "Công thức kiểm toán"
+description: "Mục tiêu ban đầu để điều tra các trường hợp tác nhân thất bại phổ biến."
+icon: "book-open-check"
+---
+
+Sử dụng những công thức này làm mục tiêu ban đầu, sau đó thêm tác nhân, môi trường và quy trình làm việc dự kiến của bạn.
+
+<Tabs>
+  <Tab title="Dashboard">
+    Đi tới **Analyze → Audits → New audit**, sao chép một công thức vào mô tả hoặc tóm tắt, sau đó thêm môi trường, tác nhân, thời gian lùi lại và URL tham chiếu liên quan. Tạo kiểm toán và kiểm tra lần chạy đầu tiên trước khi lên lịch.
+
+    Biểu mẫu kiểm toán mới biến công thức thành một bài kiểm tra thất bại có thể thực thi bằng cách thêm phạm vi, ngữ cảnh, tần suất và thông báo.
+
+    ![Biểu mẫu kiểm toán mới được cấu hình với mục tiêu tập trung, lịch trình, phạm vi tác nhân và môi trường, ngữ cảnh và các kênh thông báo.](/images/dashboard/audit-new.png)
+
+    Sau khi tạo, hãy xác nhận kiểm toán xuất hiện trong danh sách với trạng thái và lịch trình dự kiến trước khi dựa vào các lần chạy định kỳ.
+
+    ![Trang Audits nơi xuất hiện công thức kiểm toán dành riêng cho quy trình làm việc sau khi tạo.](/images/dashboard/audits.png)
+
+    Mở lần chạy đầu tiên và tinh chỉnh công thức nếu phát hiện của nó rộng hơn hoặc hẹp hơn so với chế độ thất bại dự định.
+  </Tab>
+  <Tab title="CLI">
+    Lưu công thức dưới dạng tệp văn bản và đính kèm nó trong quá trình tạo:
+
+    ```bash
+    fp audits create retry-loop-review \
+      --scope '{"environments":["production"]}' \
+      --text-file ./retry-loop-audit.txt \
+      --schedule-interval-secs 86400
+    ```
+  </Tab>
+</Tabs>
+
+<AccordionGroup>
+  <Accordion title="Vòng lặp thử lại lặp lại">
+    Tìm các phiên trong đó tác nhân lặp lại cùng một cuộc gọi công cụ thất bại mà không thay đổi đầu vào, lựa chọn công cụ thay thế hoặc leo thang cho con người.
+  </Accordion>
+  <Accordion title="Sử dụng công cụ không chính xác">
+    Tìm các phiên trong đó công cụ được chọn không phù hợp với nhiệm vụ được nêu, hoặc khi đầu vào công cụ vi phạm các điều kiện tiên quyết bắt buộc của quy trình làm việc.
+  </Accordion>
+  <Accordion title="Truy cập dữ liệu không an toàn">
+    Tìm các phiên đọc, ghi hoặc truyền dữ liệu nhạy cảm bên ngoài các đường dẫn và dịch vụ được phê duyệt cho tác nhân này.
+  </Accordion>
+  <Accordion title="Từ bỏ nhiệm vụ">
+    Tìm các phiên kết thúc mà không có kết quả được yêu cầu, lỗi rõ ràng hoặc bàn giao rõ ràng cho con người.
+  </Accordion>
+  <Accordion title="Suy thoái chi phí hoặc độ trễ">
+    Tìm các phiên có mô hình, công cụ hoặc tổng thời gian vượt quá ngân sách dự kiến và xác định mẫu sự kiện chịu trách nhiệm.
+  </Accordion>
+  <Accordion title="Bỏ lỡ leo thang cho con người">
+    Tìm các phiên trong đó độ tin cậy, thất bại lặp lại hoặc hướng dẫn chính sách cần có quyết định con người nhưng tác nhân tiếp tục tự trị.
+  </Accordion>
+</AccordionGroup>

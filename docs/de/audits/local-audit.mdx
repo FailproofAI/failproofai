@@ -1,0 +1,74 @@
+---
+title: "Lokale Agent-Historie prüfen"
+description: "Unterstützte Agent-CLI-Historien offline scannen und riskantes oder verschwenderisches Verhalten lokal überprüfen."
+icon: "laptop-minimal-check"
+---
+
+Führen Sie ein lokales Audit durch, um sofort und vertraulich zu prüfen, bevor Sie einen Rechner mit Failproof AI Cloud verbinden. Es scannt die Agent-Historien, die bereits auf Ihrem Rechner gespeichert sind, repliziert die Tool-Aktivitäten anhand integrierter Richtlinien und öffnet ein lokales Ergebnis-Dashboard.
+
+## Interaktives Audit starten
+
+<Tabs>
+  <Tab title="Dashboard">
+    Das lokale Audit wird über die CLI gestartet, da es Historien auf dem aktuellen Rechner auffinden muss. Führen Sie `failproofai audit` aus; nach dem Scan startet Failproof AI das mitgelieferte Dashboard und öffnet **http://localhost:8020/audit**.
+
+    Überprüfen Sie in der Audit-Ansicht die Anzahl der Sitzungen, Tool-Aufrufe, Projekte und Policy-Treffer. Beginnen Sie mit häufigen Befunden, und untersuchen Sie dann das betroffene Projekt und die Agent-Historie, bevor Sie die Durchsetzung aktivieren.
+
+    <Info>Das lokale Audit-Dashboard ist von **Analyse → Audits** in Failproof AI Cloud getrennt. Lokale Audits verbleiben auf dem Rechner und erfordern weder ein Konto noch eine Netzwerkverbindung.</Info>
+  </Tab>
+  <Tab title="CLI">
+    ```bash
+    npm install -g failproofai
+    failproofai audit
+    ```
+
+    Der Befehl führt einen vollständigen Scan aller gefundenen unterstützten Historien durch. Der aktuelle Befehl akzeptiert keine Filter wie `--since`, `--cli`, `--project`, `--port` oder `--no-open`.
+
+    Lassen Sie den Prozess laufen, während Sie das lokale Dashboard verwenden. Drücken Sie <kbd>Ctrl</kbd>+<kbd>C</kbd>, wenn Sie fertig sind.
+  </Tab>
+</Tabs>
+
+Die aktuellen Audit-Adapter können Historien von Claude Code, Codex, GitHub Copilot CLI, Cursor, OpenCode, Pi, Hermes, OpenClaw, Factory, Devin, Antigravity und Goose lesen. Es werden nur lokal verfügbare Historien gescannt.
+
+## Wiederkehrende lokale Audits planen
+
+<Tabs>
+  <Tab title="Dashboard">
+    Öffnen Sie **Einstellungen** im lokalen Dashboard, aktivieren Sie geplante Audits, wählen Sie das Intervall aus und geben Sie die E-Mail-Adresse an, die Befunde erhalten soll. Dashboard und CLI aktualisieren dieselbe Rechnerkonfiguration.
+  </Tab>
+  <Tab title="CLI">
+    Wöchentliches Audit aktivieren und Befunde an die angegebene Adresse senden:
+
+    ```bash
+    failproofai audit --schedule 7 --email reliability@example.com
+    failproofai audit --status
+    ```
+
+    Das Intervall akzeptiert 1–90 Tage und ist standardmäßig 7, wenn es weggelassen wird. Bei der ersten Einrichtung werden Sie bei Bedarf angemeldet; `--email` gibt die Berichtsadresse an, ohne eine Eingabeaufforderung anzuzeigen.
+
+    Zeitplan stoppen, ohne die lokale Audit-Historie zu löschen:
+
+    ```bash
+    failproofai audit --no-schedule
+    ```
+  </Tab>
+</Tabs>
+
+Der Daemon führt geplante Scans im Hintergrund durch, aktualisiert das im lokalen Dashboard verwendete zwischengespeicherte Ergebnis und sendet den konfigurierten Bericht per E-Mail. Verwenden Sie `failproofai audit`, wenn Sie sofort einen interaktiven Scan ausführen möchten.
+
+## Von lokalen Belegen zu Cloud-Betrieb wechseln
+
+Ein lokales Audit ist eine schnelle Ausgangsbasis. Verbinden Sie den Rechner mit Failproof AI Cloud, wenn Sie gemeinsame Traces, wiederkehrende Populations-Audits, Befunde und Issues, Benachrichtigungen, organisationsweite Richtlinienbereitstellung oder Fleet-Health benötigen.
+
+<CardGroup cols={2}>
+  <Card title="Cloud-Audit erstellen" icon="scan-search" href="/de/audits/setup">
+    Definieren Sie ein wiederkehrendes Ziel, eine Population, ein Beweisfenster und Reaktionskanäle.
+  </Card>
+  <Card title="Richtlinie aktivieren" icon="shield-check" href="/de/start/first-policy">
+    Lokal validieren, gezielt veröffentlichen und zunächst für eine kleine Rechnergruppe bereitstellen.
+  </Card>
+</CardGroup>
+
+<Warning>
+  Audit-Ergebnisse sind Belege zur Überprüfung, kein Beweis dafür, dass jede gemeldete Aktion unsicher ist. Überprüfen Sie den Kontext, bevor Sie einen Befund in eine blockierende Durchsetzung umwandeln.
+</Warning>

@@ -1,0 +1,39 @@
+---
+title: "LangChain ו-LangGraph"
+description: "התקנה, אינסטרומנטציה וצפייה בעקבות הראשון שלך."
+icon: "/images/frameworks/langchain.svg"
+---
+
+שלוש שלבים לעקבות LangChain או LangGraph הראשון שלך. עבור streaming, human-in-the-loop, span naming ואפשרויות נוספות, ראה [את המדריך המלא](/he/start/integrations/langchain).
+
+## התקנה
+
+```bash
+pip install 'failproofai-sdk[langgraph]'
+```
+
+עבור LangChain ללא LangGraph, השתמש ב-`failproofai-sdk[langchain]`.
+
+## אינסטרומנטציה
+
+```python
+import failproofai_sdk
+
+failproofai_sdk.configure(environment="production")
+failproofai_sdk.instrument()
+
+with failproofai_sdk.session():
+    graph.invoke({"messages": [HumanMessage("...")]})
+```
+
+ללא שינויים בנקודות הקריאה. `instrument()` רושם tracer שמוזן ב-LangChain לכל callback manager שהוא בונה, כך שגרפים, כלים ומודלים נתפסים — כולל אלה בתוך ספריות שלא כתבת.
+
+## בדוק שהגיע
+
+הרץ פעם אחת, ואז פתח את **Observe → Sessions** ובחר את הסביבה שלך. ההרצה שלך מופיעה כעקבות שפורקו.
+
+אם לא הגיע דבר, אשר שהמחשב מחובר עם `failproofai config --status`.
+
+<Card title="מדריך LangChain מלא" icon="arrow-right" href="/he/start/integrations/langchain">
+  מה מתועד, streaming, token counts, span naming, session control, אפשרויות ו-human in the loop.
+</Card>

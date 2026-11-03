@@ -8,6 +8,7 @@
 import { version } from "../../package.json";
 import { POSTHOG_API_KEY, POSTHOG_PRODUCT } from "../posthog-key";
 import { isTelemetryEnabled } from "../../lib/telemetry-enabled";
+import { jevOutcome, sanitizeJevActivity, type JevActivityFields } from "./jev-activity";
 
 const API_KEY = POSTHOG_API_KEY;
 const CAPTURE_URL = "https://us.i.posthog.com/capture/";
@@ -85,4 +86,44 @@ export async function flushHookTelemetry(): Promise<void> {
   while (pending.size > 0) {
     await Promise.allSettled([...pending]);
   }
+}
+
+/**
+ * The Jev (two-tier evaluator) properties for a hook telemetry event, built
+ * from the activity row's Jev fields — or `{}` when Jev was not involved, so
+ * spreading this into an event changes nothing on an unconfigured machine.
+ *
+ * Same rule as every other hook property: decisions, reason codes, policy and
+ * model names, and a latency — never command or prompt text. The row's fields
+ * go through the same normaliser the activity store applies on write, so a
+ * free-text fallback reason is reduced to its code here too.
+ *
+ * A call a hard policy denied before Jev's answer was read carries
+ * `jev_outcome: "not-consulted"`, and a call no semantic policy applied to (no
+ * request sent) `jev_outcome: "no-request"`; neither carries a Jev verdict,
+ * clears, latency or model: `jev_evaluator: "jev"` alone does not mean Jev
+ * answered (see `jevOutcome`).
+ *
+ * Meant to be spread into `hook_policy_triggered` by the handler:
+ * `{ ...existingProps, ...jevTelemetryProperties(activityEntry) }`.
+ */
+export function jevTelemetryProperties(entry: JevActivityFields): Record<string, unknown> {
+  const e = sanitizeJevActivity(entry);
+  const outcome = jevOutcome(e);
+  if (outcome === null) return {};
+  const props: Record<string, unknown> = { jev_evaluator: e.evaluator };
+  if (e.jevMode) props.jev_mode = e.jevMode;
+  if (outcome === "not-consulted" || outcome === "no-request") {
+    props.jev_outcome = outcome;
+    return props;
+  }
+  if (e.jevDecision) props.jev_decision = e.jevDecision;
+  if (e.jevCleared) {
+    props.jev_cleared = e.jevCleared;
+    props.jev_cleared_count = e.jevCleared.length;
+  }
+  if (e.jevFallbackReason) props.jev_fallback_reason = e.jevFallbackReason;
+  if (e.jevLatencyMs !== undefined) props.jev_latency_ms = e.jevLatencyMs;
+  if (e.jevModel) props.jev_model = e.jevModel;
+  return props;
 }

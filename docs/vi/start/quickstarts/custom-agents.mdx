@@ -1,0 +1,50 @@
+---
+title: "Các agent tùy chỉnh"
+description: "Bọc agent của bạn trong ba khối `with` và nó bắt đầu ghi lại."
+icon: "code"
+---
+
+Dành cho một agent bạn đã viết riêng, hoặc một framework mà Failproof AI không có adapter cho.
+
+Bạn bọc công việc mà bạn đã làm trong các khối `with`. Mỗi khối ghi lại thời điểm bắt đầu, thời điểm kết thúc và thời gian diễn ra — bạn không cần gọi bất cứ thứ gì khác.
+
+## Cài đặt
+
+```bash
+pip install failproofai-sdk
+```
+
+Không có thêm gì, và không có phụ thuộc.
+
+## Công cụ hóa
+
+```python
+import failproofai_sdk
+
+failproofai_sdk.configure(environment="production")
+
+with failproofai_sdk.session():                 # một lần chạy
+    with failproofai_sdk.agent("planner"):      # một đơn vị công việc
+        with failproofai_sdk.tool_call("search", input={"q": q}) as t:
+            t.output = search(q)                # một lệnh gọi công cụ
+```
+
+Đọc từ trên xuống dưới và nó nói lên ý nghĩa của nó:
+
+| Bọc nó trong | Để nói |
+| --- | --- |
+| `session()` | Những sự kiện này thuộc về cùng một lần chạy |
+| `agent()` | Cái gì đó đang làm công việc — hãy đặt cho nó một tên mà bạn sẽ nhận ra trong danh sách |
+| `tool_call()` | Đây là một công cụ, và đây là những gì nó trả về |
+
+Lồng chúng theo cách mã của bạn lồng nhau. Bạn không bao giờ truyền id xung quanh: mỗi khối nhớ nó nằm bên trong cái gì, vì vậy bất cứ thứ gì bạn ghi lại sẽ tự động nhận được đúng lần chạy và đúng agent. `async with` hoạt động hoàn toàn giống nhau.
+
+## Kiểm tra nó đã đến
+
+Chạy nó một lần, sau đó mở **Observe → Sessions** và chọn môi trường của bạn. Lần chạy của bạn xuất hiện dưới dạng một trace được tái tạo.
+
+Nếu không có gì đến, hãy xác nhận máy được kết nối bằng `failproofai config --status`.
+
+<Card title="Hướng dẫn đầy đủ cho các agent tùy chỉnh" icon="arrow-right" href="/vi/start/integrations/custom-agents">
+  Mọi phương thức sự kiện, những gì xảy ra khi mã của bạn tăng lên, một ví dụ có thực tế, luồng và async, và công cụ hóa một framework không có adapter.
+</Card>

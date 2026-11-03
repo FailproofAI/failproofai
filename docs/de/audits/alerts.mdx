@@ -1,0 +1,62 @@
+---
+title: "Alerts"
+description: "Wiederkehrende Ereignisse erkennen und Vorfälle an die richtigen Verantwortlichen weiterleiten."
+icon: "bell-ring"
+---
+
+Alerts überwachen eine messbare Bedingung und erstellen einen Vorfall, wenn diese ausgelöst wird. Verwende sie, wenn ein Fehler eine zeitnahe Reaktion erfordert – unabhängig davon, ob eine Policy ihn blockieren kann.
+
+## Alert erstellen und testen
+
+<Tabs>
+  <Tab title="Dashboard">
+    1. Gehe zu **Analyze → Alerts** und wähle **new alert**. Du kannst auch über die Glocke bei einem repräsentativen Fehler starten.
+    2. Gib Name, Schweregrad, Trigger-Typ, Bedingung, Auswertungsintervall, Überschreitungsanzahl, Zeitfenster und Kanäle ein.
+    3. Speichere den Alert, öffne seine Detailseite und führe **test** aus.
+    4. Gehe zu **Analyze → Issues**, um durch den Alert erstellte Vorfälle zu bestätigen, zuzuweisen, zu kommentieren, zu abonnieren und aufzulösen.
+
+    Der erste Teil des Formulars identifiziert den Alert und das Signal, das ihn auslösen soll.
+
+    ![Der erste Teil des new-alert-Formulars mit Name, Beschreibung, aktiviertem Zustand und Trigger-Typ.](/images/dashboard/alert-new-trigger.png)
+
+    Der zweite Teil steuert, wie lange die Bedingung bestehen muss, wie oft sie ausgewertet wird und wohin Benachrichtigungen gesendet werden.
+
+    ![Der zweite Teil des new-alert-Formulars mit Überschreitungslogik, Zeitplan, Schweregrad, Zustellkanälen und Erstell-Aktion.](/images/dashboard/alert-new-routing.png)
+
+    Verwende nach dem Speichern die Alerts-Liste, um zu bestätigen, dass die Regel aktiviert ist und dass Trigger, Zeitfenster, Schweregrad und Kanäle deinen Absichten entsprechen.
+
+    ![Die Alerts-Seite mit Alert-Regeln und ihren Triggern, Auswertungszeiträumen, Kanälen und Schweregraden.](/images/dashboard/alerts.png)
+
+    Teste den Alert, bevor du ihn für die Produktionsreaktion einsetzt.
+  </Tab>
+  <Tab title="CLI">
+    ```bash
+    fp alerts create high-errors \
+      --trigger-kind metric_threshold \
+      --severity warning \
+      --trigger-spec '{"metric":"error_count","op":">","value":50,"window_secs":900}'
+
+    fp alerts show high-errors
+    fp alerts test high-errors
+    fp alerts update high-errors --severity critical --yes
+    ```
+
+    Verwende `fp alerts list`, um Regeln zu überprüfen, und `fp alerts delete <name>`, um eine zu entfernen.
+
+    Siehe die [`fp alerts`-Referenz](/de/reference/cloud-cli#alerts) für den vollständigen Befehlssatz.
+  </Tab>
+</Tabs>
+
+Alert-Bedingungen können auf Fehlern, Auswertungswerten, Auswertungskombinationen oder benutzerdefiniertem SQL basieren. Füge Empfänger hinzu, teste die Regel und öffne den resultierenden Vorfall, um ihn zu bestätigen, zuzuweisen, zu kommentieren, zu abonnieren und aufzulösen.
+
+## Gutes Alert-Design
+
+- Nenne die Bedingung und den betroffenen Workflow.
+- Lege die Umgebung explizit fest.
+- Setze ein Zeitfenster und einen Schwellenwert, der verhindert, auf ein einzelnes harmloses Ereignis zu reagieren.
+- Füge einen Link oder eine Abfrage hinzu, der Verantwortliche zu den betreffenden Sitzungen führt.
+- Weise vor der Aktivierung der Regel einen Verantwortlichen zu.
+
+<Tip>
+  Füge nach der Behebung eines Audit-Befunds einen Alert hinzu, wenn derselbe Fehler außerhalb des Geltungsbereichs der Policy erneut auftreten könnte.
+</Tip>

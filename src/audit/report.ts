@@ -263,16 +263,16 @@ export function formatMarkdown(result: AuditResult): string {
   out.push("## TL;DR");
   out.push("");
   if (totalHits === 0) {
-    out.push("Clean run — the AI coding agent didn't do anything `failproofai` catches in this window.");
+    out.push("Clean run — the agent didn't do anything `failproofai` catches in this window.");
   } else {
     out.push(
-      `Over ${result.transcripts.scanned} sessions, my AI coding agent did **${totalHits} things \`failproofai\` would have stopped**: ` +
-      `${totalProtected} were already blocked in real time by my current config; ` +
-      `**${totalSlipping} slipped through** (would've been caught if more policies were on).`,
+      `Over ${result.transcripts.scanned} sessions, my agent did **${totalHits} things \`failproofai\` caught**: ` +
+      `${totalProtected} were blocked in real time by my current config; ` +
+      `**${totalSlipping} slipped through** and were only caught by the audit.`,
     );
   }
   out.push("");
-  out.push("> [failproofai](https://github.com/FailproofAI/failproofai) is a hook-based policy engine for Claude Code, Codex, Copilot, Cursor, OpenCode, and Pi. The `audit` command replays past agent sessions through every builtin policy to surface patterns that were (or could've been) stopped.");
+  out.push("> [failproofai](https://github.com/FailproofAI/failproofai) is a hook-based policy engine for 12 agent harnesses — coding CLIs, chat gateways, and self-hosted assistants. The `audit` command replays past agent sessions through every builtin policy to surface patterns that were (or could've been) stopped.");
   out.push("");
 
   if (totalHits === 0) return out.join("\n");

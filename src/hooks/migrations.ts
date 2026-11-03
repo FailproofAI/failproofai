@@ -89,14 +89,14 @@ export const MIGRATIONS: readonly Migration[] = [
     from: 1,
     to: 3,
     describe:
-      "layout 1 → 3: carry the decision log out of cache/, keep the policy config in place, drop the layout-1 credential files",
+      "layout 1 → 3: carry the decision log out of cache/, keep the policy config in place, drop the layout-1 credential files, and install the policy pack that now does the enforcing — carrying the policies you had enabled into its selection",
     run: () => resetHome(1, 3),
   },
   {
     from: 2,
     to: 3,
     describe:
-      "layout 2 → 3: carry config.toml and credentials.toml into JSON, move custom-policies/ back up into policies/, nest the policy config at the root",
+      "layout 2 → 3: carry config.toml and credentials.toml into JSON, move custom-policies/ back up into policies/, nest the policy config at the root, and install the policy pack that now does the enforcing — carrying the policies you had enabled into its selection",
     run: () => resetHome(2, 3),
   },
   {

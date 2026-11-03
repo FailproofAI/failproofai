@@ -1,0 +1,222 @@
+---
+title: "カスタムエージェント"
+description: "failproofai-sdk の設定、イベントカタログ、相関ルール、デリバリーについて。"
+icon: "python"
+---
+
+各設定・メソッド・フィールドの役割を説明します。初めてインストゥルメンテーションを行う場合はガイドから始めてください。このページはリファレンスとしてご活用ください。
+
+<Columns cols={2}>
+  <Card title="カスタムエージェントガイド" icon="code" href="/ja/start/integrations/custom-agents">
+    インストール、インストゥルメンテーション、イベントメソッド、実装例、よくある問題について説明します。
+  </Card>
+  <Card title="フレームワークを使用していますか？" icon="plug" href="/ja/start/integrations">
+    LangChain、CrewAI、LlamaIndex、Pydantic AI は1回の呼び出しで自動的にインストゥルメント化されます。
+  </Card>
+</Columns>
+
+Python 3.11 以降が必要です。実行時の依存関係はありません。
+
+## インストール
+
+```bash
+pip install failproofai-sdk
+```
+
+このパッケージは `failproofai-sdk` としてインストールされ、Python では `failproofai_sdk` としてインポートします。`failproofai-sdk[langgraph]` などのフレームワーク用エクストラはフレームワーク本体もインストールしますが、アダプターは常にベースパッケージに含まれています。
+
+## Failproof デーモンへの接続
+
+<Tabs>
+  <Tab title="ダッシュボード">
+    1. **Admin → Keys** で `events:add` 権限を持つキーを作成します。
+    2. エージェントマシン上で [Failproof デーモンをクラウドに接続](/ja/start/setup#マシンをcloudに接続する) します。
+    3. インストゥルメントされたセッションを1回実行し、**Observe → Events** で正確な ID を確認します。
+    4. **Observe → Sessions** に移動して同じ環境を選択し、再構築されたトレースを開きます。
+
+    ![カスタム Python エージェントのセッションが実行グラフと順序付きイベントトレースとして再構築されている様子。](/images/dashboard/session-detail.png)
+  </Tab>
+  <Tab title="CLI">
+    `events:add` キーをシェルに読み込みます。`read -s` はエコーされないプロンプトで入力を受け取るため、コマンド履歴に残りません。
+
+    ```bash
+    read -rs FAILPROOFAI_CLOUD_TOKEN && export FAILPROOFAI_CLOUD_TOKEN
+    ```
+
+    次に、マシンをセットアップして接続状態を確認します。
+
+    ```bash
+    failproofai config
+    failproofai config --status
+    ```
+  </Tab>
+</Tabs>
+
+## 設定
+
+```python
+import failproofai_sdk
+
+failproofai_sdk.configure(
+    base_dir=None,
+    flush_interval=0.5,
+    environment="production",
+)
+```
+
+| 引数 | 説明 |
+| --- | --- |
+| `environment` | すべてのイベントに付与されるラベル（例: `production`、`staging`、`prod-eu`）。デフォルトは `dev`。 |
+| `flush_interval` | バックグラウンドスレッドがディスクに書き込む間隔（秒）。デフォルトは `0.5`。 |
+| `base_dir` | 書き込み先のディレクトリ。デフォルトはデーモンのスプールディレクトリ。特別な理由がない限り変更不要。 |
+
+環境変数でも設定できます。
+
+| 変数 | 説明 |
+| --- | --- |
+| `AGENTEYE_ENVIRONMENT` | コードを変更せずに `environment` を設定します。ラベルがアプリではなくデプロイ環境に属する場合に使用します。`configure()` の引数が優先されます。 |
+| `FAILPROOFAI_HOME` | スプールを含む Failproof AI のルートディレクトリを変更します。 |
+| `FAILPROOFAI_SDK_STRICT` | `1` に設定するとインストゥルメンテーションエラーがログ記録ではなく例外として発生します。 |
+| `FAILPROOFAI_SDK_STRICT_INTEGRATIONS` | `1` に設定するとフレームワークの互換性の問題が警告ではなく例外として発生します。 |
+
+<Warning>
+  **`environment` にカンマを含めないでください。** インジェストはこのフィールドをカンマで分割してフィルターを構築し、ラベルにカンマが含まれるイベントをすべてスキップします。結果として、実行全体がサイレントに消えてしまいます。`prod,eu` ではなく `prod-eu` と記述してください。
+
+  `configure(environment="prod,eu")` は即座に例外を発生させるため、すぐに気づけます。一方、`AGENTEYE_ENVIRONMENT` は例外を発生させられないため、1回警告を出して `dev` にフォールバックします。
+</Warning>
+
+イベントはメモリ内でキューに入れられ、バックグラウンドで `flush_interval` 秒ごとに書き込まれます。インタープリター終了時にも最終フラッシュが行われます。プロセスが強制終了された場合、未書き込みのイベントは失われます。
+
+## アイデンティティ
+
+すべてのイベントはセッションとエージェントに属します。**スコープが両方を自動的に設定する**ため、通常は明示的に渡す必要はありません。
+
+```python
+with failproofai_sdk.session():
+    with failproofai_sdk.agent("planner"):
+        failproofai_sdk.event.tool_use(tool_name="search", tool_call_id="c1")
+```
+
+`session_id` や `agent_id` を明示的に渡すことも可能で、その値が優先されます。スコープが設定されておらず、かつ引数として渡されていない場合、クラウドが静かに破棄するようなイベントを送信するのではなく、`TypeError` が発生します。
+
+<Note>
+  アイデンティティはコンテキスト変数として渡されます。`asyncio` のタスクには自動的に伝播されますが、**新しいスレッドには伝播されません**。ワーカースレッドは `failproofai_sdk.propagate()` でラップしてください。そうしないと、イベントが紐付けられなくなります。
+</Note>
+
+## イベントカタログ
+
+15 個のメソッドがあります。ほとんどは**ペア**になっています。開始メソッドを呼び出し、その後に終了メソッドを呼び出すと、SDK が経過時間を計測します。
+
+| | 開始 | 終了 |
+| --- | --- | --- |
+| **エージェント** | `agent_start` | `agent_end` |
+| | `agent_pause` | `agent_resume` |
+| **モデル** | `model_request` | `model_response` |
+| **ツール** | `tool_use` | `tool_result` |
+| **フック** | `hook_triggered` | `hook_completed` |
+| **ヒューマン** | `human_wait` | `human_input` |
+
+単独で使用するメソッドは `error`、`human_pause`、`human_interrupt` の3つです。
+
+<Accordion title="メソッドごとの全フィールド一覧" icon="table">
+
+すべてのメソッドは `session_id` と `agent_id` も受け取りますが、スコープが自動的に設定します。`None` のままのフィールドは JSON の `null` として送信されるのではなく、省略されます。すべてのメソッドは `None` を返します。
+
+| メソッド | 必須 | 省略可能 |
+| --- | --- | --- |
+| `agent_start` | — | `goal`, `parent_id` |
+| `agent_end` | — | `outcome`, `summary` |
+| `agent_pause` | `pause_id` | `reason`, `user_id` |
+| `agent_resume` | `pause_id` | `reason`, `user_id` |
+| `model_request` | — | `model`, `messages`, `system`, `tools`, `request_id` |
+| `model_response` | — | `model`, `stop_reason`, `input_tokens`, `output_tokens`, `content`, `role`, `request_id`, `duration_ms` |
+| `tool_use` | `tool_name`, `tool_call_id` | `input` |
+| `tool_result` | `tool_name`, `tool_call_id` | `output`, `error` |
+| `hook_triggered` | `hook_name`, `hook_id` | `trigger_event`, `input` |
+| `hook_completed` | `hook_name`, `hook_id` | `outcome`, `output`, `error` |
+| `error` | `error_type`, `message` | `traceback` |
+| `human_wait` | `input_id` | `prompt`, `options`, `reason` |
+| `human_input` | `input_id` | `response` |
+| `human_pause` | — | `reason`, `user_id` |
+| `human_interrupt` | — | `reason`, `user_id`, `at_step` |
+
+</Accordion>
+
+<Warning>
+  実行を失敗としてマークするには、`outcome` が `failed`、`error`、`timeout`、`rejected` のいずれかである必要があります。`"failure"` のような類似した値を含め、それ以外はすべて成功として扱われます。
+</Warning>
+
+## ペアリングと所要時間
+
+**ルールは1つ：終了イベントには開始イベントと同じ ID を渡してください。** これによってペアが作られ、SDK が経過時間を計測できるようになります。
+
+| ペア | マッチキー |
+| --- | --- |
+| `tool_use` → `tool_result` | `tool_call_id` |
+| `hook_triggered` → `hook_completed` | `hook_id` |
+| `agent_pause` → `agent_resume` | `pause_id` |
+| `human_wait` → `human_input` | `input_id` |
+| `model_request` → `model_response` | `request_id` |
+
+**`duration_ms` を自分で渡さないでください。** SDK が計測します。渡した場合は `ValueError` が発生します。
+
+例外は `model_response` のみです。実際のプロバイダーレイテンシはあなた自身しか知らないためです。ミリ秒単位の整数を渡してください。float を渡すと例外が発生します。このカラムは 32 ビット整数であり、float では値が空になってしまうためです。
+
+<Accordion title="エッジケース" icon="circle-help">
+
+- **ID は種類ごと、セッションごとに一意であれば十分です。** ツール呼び出しとフックが同じ ID を共有しても構いません。同時に実行中の2つのセッションが同じ ID を再利用しても衝突しません。
+- **ID はエージェントにスコープされません。** あるエージェント下で開かれ、別のエージェント下で閉じられたペアも正しくマッチします。これはマルチエージェントコードでは通常のケースです。
+- **`request_id` は省略可能ですが推奨します。** 指定しない場合、モデルイベントは到着順にペアリングされるため、同じエージェント内の2つの並行呼び出しが誤ってペアリングされる可能性があります。
+- **プロセスをまたぐペア** はクラウド上では正しくマッチしますが、SDK は計時できません。どちらのプロセスも両方の半分を見ていないためです。
+- **最大 10,000 個の開始イベントが終了イベントを待機できます。** それを超えると最も古いものが破棄されるため、リークが無制限に増大することはありません。
+
+</Accordion>
+
+## カスタムフィールド
+
+追加のキーワード引数を渡すと、そのイベントと一緒に保存されます。
+
+```python
+failproofai_sdk.event.tool_use(
+    tool_name="search", tool_call_id="c1",
+    fw_tenant="acme", fw_region="eu-west-1",     # your own
+)
+```
+
+後でクエリしたい場合は JSON 型を使用することをお勧めします。UUID、datetime、`Decimal`、set、bytes、モデルオブジェクトなど、それ以外の型は文字列として保存されます。
+
+<Warning>
+  **フィールド名にプレフィックスを付けてください。** エクストラは最後に適用されるため、`model`、`tool_name`、`outcome` といった名前のフィールドは実際の値を静かに上書きしてしまいます。フレームワークアダプターは `fw_` を使用しています。同じようにすれば衝突を防げます。
+
+  これは、スペルミスのある省略可能フィールドがエラーにならない理由でもあります。単に新しいカスタムフィールドになるだけです。クラウドで標準フィールドが見つからない場合は、まずスペルを確認してください。
+</Warning>
+
+以下の5つの名前は予約済みであり、使用できません: `timestamp`、`session_id`、`agent_id`、`type`、`environment`。
+
+## デリバリーと検証
+
+<Tabs>
+  <Tab title="ダッシュボード">
+    **Observe → Events** で、最初に `agent_start` が存在し、最後に `agent_end` が存在することを確認します。次に **Observe → Sessions** を開き、モデル、ツール、ヒューマン、フック、エラーの各イベントが意図した順序で表示されていることを確認します。トラブルシューティングの主キーとしてセッション ID を使用します。
+  </Tab>
+  <Tab title="CLI">
+    ```bash
+    failproofai flush --wait --timeout 60
+    failproofai config --status
+    fp sessions --since 1h --env production --session-id <session-id>
+    fp events --since 1h --session-id <session-id> --full
+    ```
+  </Tab>
+</Tabs>
+
+クラウドが空の場合は `$FAILPROOFAI_HOME/custom-agents/events` を、それ以外の場合は `~/.failproofai/custom-agents/events` を確認してください。JSONL ファイルが存在すれば SDK からの送信は確認できています。スプールが増え続けている場合はデーモンの設定やデリバリーの問題であり、スプールが空の場合はインストゥルメンテーションまたはプロセスのライフタイムの問題です。
+
+<Note>
+  スプールはデーモンが停止しているときにのみ確認してください。実行中のデーモンは数ミリ秒以内に各バッチを収集・削除するため、ディレクトリ一覧の表示がコレクターと競合し、実際に送信されたよりもはるかに少ないイベントしか表示されません。
+</Note>
+
+## カスタムランタイムでの障害防止
+
+監査の結果とリンクされたトレースを使用して、安全でないアクション、必要な証拠、および意図する対応を定義します。カスタムエンフォースメントインテグレーションは、実行前にアクションを公開し、その構造化された入力をポリシーエンジンに渡し、返された allow、instruct、deny の判断を適用する必要があります。
+
+[Failproof AI にお問い合わせ](mailto:support@befailproof.ai)いただければ、ランタイムのモデル・ツール・ライフサイクルの境界をポリシーフックにマッピングし、インテグレーションの検証をサポートします。

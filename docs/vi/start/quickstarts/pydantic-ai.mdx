@@ -1,0 +1,42 @@
+---
+title: "Pydantic AI"
+description: "Cài đặt, cấu hình, và xem trace đầu tiên của bạn."
+icon: "/images/frameworks/pydantic-ai.svg"
+---
+
+Ba bước để có trace Pydantic AI đầu tiên của bạn. Để biết về các công cụ, thử lại, streaming và các tùy chọn, xem [hướng dẫn đầy đủ](/vi/start/integrations/pydantic-ai).
+
+## Cài đặt
+
+```bash
+pip install 'failproofai-sdk[pydantic-ai]'
+```
+
+## Cấu hình
+
+```python
+import failproofai_sdk
+from pydantic_ai import Agent
+
+failproofai_sdk.configure(environment="production")
+failproofai_sdk.instrument()          # trước khi tạo Agent nào
+
+agent = Agent("openai:gpt-4o-mini", system_prompt="Be terse.")
+
+with failproofai_sdk.session():
+    result = agent.run_sync("...")
+```
+
+<Warning>
+  `instrument()` phải chạy **trước khi** bạn tạo một `Agent`. Khả năng này được thêm vào khi tạo, do đó một agent được tạo trước đó sẽ không ghi lại gì — không có lỗi, vì không có gì sai. Đây là nguyên nhân phổ biến nhất dẫn đến trace trống với adapter này, và các agent ở phạm vi mô-đun là nơi nó xảy ra: hãy nhập `failproofai_sdk` và gọi `instrument()` trước khi nhập mô-đun xây dựng chúng.
+</Warning>
+
+## Kiểm tra dữ liệu đã đến
+
+Chạy nó một lần, sau đó mở **Observe → Sessions** và chọn môi trường của bạn. Lần chạy của bạn sẽ xuất hiện dưới dạng một trace được tái tạo.
+
+Nếu không có gì đến, hãy xác nhận máy được kết nối với `failproofai config --status`.
+
+<Card title="Hướng dẫn đầy đủ về Pydantic AI" icon="arrow-right" href="/vi/start/integrations/pydantic-ai">
+  Những gì được ghi lại, các công cụ và thử lại, streaming, đặt tên span, các tùy chọn và các vấn đề thường gặp.
+</Card>

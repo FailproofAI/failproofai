@@ -1,0 +1,12 @@
+{
+  "name": "failproofai-it-vanilla",
+  "private": true,
+  "type": "module",
+  "description": "Integration fixture: a hand-instrumented agent with no framework (examples/research-agent.ts), on the real openai client, against the packed @failproofai/sdk.",
+  "dependencies": {
+    "openai": "7.23.0"
+  },
+  "devDependencies": {
+    "@types/node": "22.20.4"
+  }
+}

@@ -82,6 +82,9 @@ pub struct SpoolWriter {
     /// every event from every source passes through, which is why `machine_id`
     /// and `user` are stamped here too.
     label: Option<String>,
+    since_ms: Option<u64>,
+    source_mtime_ms: Option<i64>,
+    dropped_before_boundary: u64,
 }
 
 impl SpoolWriter {
@@ -93,6 +96,13 @@ impl SpoolWriter {
     /// across restarts. Without it a fresh run would reuse `seq` 0 and could
     /// clobber a batch the previous run had written but not yet uploaded.
     pub fn new(dir: PathBuf, max_batch_bytes: u64, prefix: &str, tag: &str) -> Self {
+        let since_ms =
+            dir.parent().and_then(Path::parent).and_then(
+                |home| match crate::config::load_boundary(home) {
+                    Ok(boundary) => boundary.map(|b| b.since),
+                    Err(_) => Some(u64::MAX), // unreadable identity: do not ship
+                },
+            );
         let run_id = SystemTime::now()
             .duration_since(UNIX_EPOCH)
             .map(|d| d.as_nanos())
@@ -113,7 +123,28 @@ impl SpoolWriter {
             machine_id: None,
             user: None,
             label: None,
+            since_ms,
+            source_mtime_ms: None,
+            dropped_before_boundary: 0,
         }
+    }
+
+    pub fn with_boundary(mut self, since_ms: Option<u64>) -> Self {
+        self.since_ms = since_ms;
+        self
+    }
+
+    pub fn with_source(mut self, path: &Path) -> Self {
+        self.set_source(path);
+        self
+    }
+
+    pub fn set_source(&mut self, path: &Path) {
+        self.source_mtime_ms = crate::org_boundary::mtime_ms(path);
+    }
+
+    pub fn dropped_before_boundary_count(&self) -> u64 {
+        self.dropped_before_boundary
     }
 
     /// Override the redaction mode. Only `Redact::Off` changes anything —
@@ -163,6 +194,12 @@ impl SpoolWriter {
 
     /// Append one event, rolling to a new batch first if it would not fit.
     pub async fn push(&mut self, mut event: Value) -> std::io::Result<()> {
+        if !crate::org_boundary::allowed(&event, self.since_ms, self.source_mtime_ms) {
+            self.dropped_before_boundary += 1;
+            tracing::debug!(source = %self.prefix, dropped = self.dropped_before_boundary,
+                "dropped an event recorded before the org boundary");
+            return Ok(());
+        }
         // The single choke point every event passes through, which is why
         // redaction happens here rather than in each transform: a source
         // cannot forget it, and a new source inherits it for free. It runs
@@ -679,5 +716,35 @@ mod tests {
         // The atomic-write contract depends on this exclusion.
         assert!(!is_batch_file(Path::new("/s/hooks-a-1-0.tmp")));
         assert!(!is_batch_file(Path::new("/s/hooks-a-1-0.jsonl.poison")));
+    }
+
+    #[tokio::test]
+    async fn drops_historical_and_idle_end_events_and_counts_mtime_fallback_drops() {
+        let dir = tmpdir("org-boundary");
+        let since = 1_791_936_000_000; // October 14, 2026
+        let mut w = SpoolWriter::new(dir.clone(), DEFAULT_MAX_BATCH_BYTES, "codex", "session")
+            .with_boundary(Some(since));
+        w.push(json!({"type":"agent_end","timestamp":"2026-10-13T23:59:59.999Z"}))
+            .await
+            .unwrap();
+        w.push(json!({"type":"model_response","timestamp":since - 1}))
+            .await
+            .unwrap();
+        w.push(json!({"type":"tool_use"})).await.unwrap();
+        w.push(json!({"type":"tool_use","timestamp":since}))
+            .await
+            .unwrap();
+        w.flush().await.unwrap();
+        assert_eq!(w.dropped_before_boundary_count(), 3);
+        let files = batches(&dir);
+        assert_eq!(files.len(), 1);
+        assert_eq!(
+            std::fs::read_to_string(dir.join(&files[0]))
+                .unwrap()
+                .lines()
+                .count(),
+            1
+        );
+        std::fs::remove_dir_all(dir).unwrap();
     }
 }

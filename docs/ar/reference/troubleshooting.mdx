@@ -1,0 +1,167 @@
+---
+title: "استكشاف الأخطاء"
+description: "تشخيص الجلسات المفقودة والسياسات المفقودة والتسليم الفاشل والإجراءات المحجوبة للوكيل."
+icon: "wrench"
+---
+
+<AccordionGroup>
+  <Accordion title="عدم ظهور جلسات في السحابة">
+    <Tabs>
+      <Tab title="لوحة التحكم">
+        افتح **Administration → Keys** وأكد أن مفتاح الآلة نشط وحاصل على `events:add`. ثم افتح **Observe → Events**، وسّع نطاق الوقت، وامسح مرشحات البيئة والوكيل. إذا كانت هناك أحداث، ابحث عن معرّف الجلسة ثم تحقق من **Observe → Sessions** للتجميع. إذا لم تكن هناك أحداث، شخّص مستودع Failproof من سطر الأوامر.
+
+        ![دفق الأحداث المباشر مع مرشحاته الأساسية وأحداث الوكيل الأخيرة الوصول.](/images/dashboard/events-stream-current.png)
+      </Tab>
+      <Tab title="CLI">
+        ```bash
+        failproofai config --status
+        failproofai flush --wait --timeout 60
+        fp list envs
+        fp events --since 24h --limit 20
+        fp sessions --since 24h --limit 20
+        ```
+
+        أكد تفعيل الالتقاط والمفتاح المكوّن يحتوي على `events:add`، ومرشح لوحة التحكم يطابق البيئة المُصدَّرة.
+      </Tab>
+    </Tabs>
+  </Accordion>
+  <Accordion title="أحداث Python SDK تبقى على القرص">
+    <Tabs>
+      <Tab title="لوحة التحكم">
+        امسح المرشحات في **Observe → Events** وابحث عن معرّف جلسة SDK الدقيق. إذا لم يظهر شيء، افحص مجموعة SDK ومستودع Failproof على الآلة المصدرية.
+      </Tab>
+      <Tab title="CLI">
+        ```bash
+        failproofai config --status
+        failproofai flush --wait
+        ```
+
+        أكد أن مستودع يعمل ومتصل — SDK يُجمّع بغض النظر عن ذلك. دليل التجميع **لا** يحتاج إلى الموجود مسبقاً (الكاتب ينشئه)، ولا متغير بيئة يحدده: `$FAILPROOFAI_HOME/custom-agents`، أو غير ذلك `~/.failproofai/custom-agents`، هو الجذر الوحيد، و`configure(base_dir=...)` هو الاستثناء الوحيد. إذا تم إيقاف العملية عن طريق `SIGKILL` أو أُنهيت بسبب عدم توفر الذاكرة، فقد فُقد كل ما كان مصطفاً — معالجة `SIGTERM` لتحديد ذلك.
+      </Tab>
+    </Tabs>
+  </Accordion>
+  <Accordion title="الآلة لا تستقبل السياسات">
+    <Tabs>
+      <Tab title="لوحة التحكم">
+        افتح **Admin → enforcement**، حدد الآلة، وقارن بين إصداراتها المعينة والمُبلَّغ عنها والسابقة. أكد أن نطاق النشر يشمل الآلة ومفتاحها يحتوي على `policies:pull`. يمكن لإدخال البيانات أن يعمل حتى عندما لا يعمل توصيل السياسة.
+
+      </Tab>
+      <Tab title="CLI">
+        ```bash
+        failproofai config --status
+        failproofai update
+        failproofai config --status
+        ```
+
+        أكد أن معرّف الآلة والتسمية يطابقان هدف لوحة التحكم. أعد الاتصال بمفتاح قادر على السياسة إذا كانت بيانات الاعتماد الحالية تمنح فقط إدخال الأحداث.
+      </Tab>
+    </Tabs>
+  </Accordion>
+  <Accordion title="تم رفض إجراء لأن المستودع غير متاح">
+    <Tabs>
+      <Tab title="لوحة التحكم">
+        افتح **Admin → enforcement** وافحص آخر وقت ظهور الآلة والإصدار المبلَّغ عنه. إذا كانت الآلة قديمة، تعامل معها كمشكلة مستودع محلية. لا تضعّف السياسة المنشورة فقط لتجاوز مستودع غير متاح.
+
+      </Tab>
+      <Tab title="CLI">
+        ```bash
+        failproofai config --status
+        failproofai update
+        failproofai config
+        failproofai config --status
+        ```
+
+        أعد تشغيل أو تحديث `failproofaid`؛ أعد تشغيل التكوين عندما تختلف إصدارات بروتوكول CLI والمستودع. مسار المستودع المكوّن يفشل بشكل مغلق بالتصميم.
+      </Tab>
+    </Tabs>
+  </Accordion>
+  <Accordion title="سياسة مخصصة لا تُحمَّل">
+    <Tabs>
+      <Tab title="لوحة التحكم">
+        بالنسبة للسياسة المُنشأة في السحابة، افتح **Admin → policy editor**، حدد المسودة، وراجع أخطاء التحقق قبل النشر. بالنسبة للسياسة المحلية، استخدم CLI للتحقق منها، ثم افتح **Observe → policy** بعد إجراء اختبار لتأكيد وصول القرارات.
+
+      </Tab>
+      <Tab title="CLI">
+        أكد أن اسم الملف ينتهي بـ `policies.js` أو `policies.mjs` أو `policies.ts`، والوحدة تستدعي `customPolicies.add(...)`، والاستيرادات تُحل من ملف السياسة.
+
+        ```bash
+        failproofai policies --install --custom ./checkout.policies.ts
+        failproofai policies
+        ```
+      </Tab>
+    </Tabs>
+  </Accordion>
+  <Accordion title="عملية تدقيق لا تُرجع نتائج">
+    <Tabs>
+      <Tab title="لوحة التحكم">
+        افتح **Analyze → audits**، حدد التشغيل، وتحقق مما إذا كان تحليل النموذج قد تم تشغيله. ثم قارن نطاقه والنافذة مع **Observe → sessions** وافتح تتبعات تمثيلية من تلك المجموعة السكانية.
+
+        النتيجة الفارغة ذات معنى فقط عندما يعمل التحليل بنجاح. إذا تم تخطي التحليل أو فشل، ينتج التشغيل عدم وجود نتائج ويبقي النافذة غير المُحللة مفتوحة لتشغيل ناجح مستقبلي. إذا كان تحليل النموذج معطلاً، لا ينتج التدقيق عن نتائج لأن بيان الاعتماد الحتمي وفحص PII يُسجلان الإحصائيات فقط ولا يرفعان النتائج بعد الآن.
+
+        ![نموذج التدقيق حيث تُعرّف البيئة والوكيل والدورة ونافذة التنظيف مجموعة جلسات السكان.](/images/dashboard/audit-new.png)
+      </Tab>
+      <Tab title="CLI">
+        ```bash
+        fp audits show <audit-name>
+        fp audits runs <audit-name>
+        fp sessions --since 24h --env production
+        fp audits context-show <audit-name>
+        fp audits run <audit-name>
+        fp audits findings --audit <audit-name>
+        ```
+
+        إذا ظل التشغيل في قائمة الانتظار، انتظر سعة audit-agent أو اطلب من مشغل النشر فحص أسطول التدقيق. يعيد التدقيق المصفوف المحاولة؛ لم يتم تخطيه على الفور.
+      </Tab>
+    </Tabs>
+  </Accordion>
+  <Accordion title="التقييمات عبر الإنترنت لا تعمل تلقائياً">
+    <Tabs>
+      <Tab title="لوحة التحكم">
+        افتح جلسة مكتملة وتحقق مما إذا كان التقييم اليدوي ناجحاً. السحابة المستضافة حالياً ليس لديها تحكم في نقطة نهاية المُقيِّم في لوحة التحكم؛ يجب على مشغل الخادم تكوينها.
+      </Tab>
+      <Tab title="CLI">
+        تحقق من المُقيِّم نفسه أولاً، ثم افحص حالات التقييم الأخيرة:
+
+        ```bash
+        curl https://evaluator.example.com/health
+        fp evals --since 1h
+        ```
+
+        على السحابة ذاتية الاستضافة، أكد أن `EVALUATOR_ENDPOINT` موجود على الخادم و`EVALUATOR_TOKEN` يطابق المُقيِّم. يتم تعطيل التقييم التلقائي عندما تكون نقطة النهاية غائبة.
+      </Tab>
+    </Tabs>
+  </Accordion>
+  <Accordion title="مصادقة Cloud CLI تستهدف المؤسسة الخاطئة">
+    <Tabs>
+      <Tab title="لوحة التحكم">
+        استخدم محول المؤسسة وأكد اللقب والأذونات المتوقعة قبل مقارنة النتائج مع CLI.
+      </Tab>
+      <Tab title="CLI">
+        ```bash
+        fp whoami
+        fp orgs current
+        fp orgs perms
+        ```
+
+        في وضع مفتاح API، حدد `fp --org <slug> --api-key <key> ...` أو عيّن `AGENTEYE_ORG`. حالة المؤسسة المُحفوظة لجلسة الإنسان يتم تجاهلها عن قصد لطلبات مفتاح API.
+      </Tab>
+    </Tabs>
+  </Accordion>
+  <Accordion title="سياسة تحجب عملاً صالحاً">
+    <Tabs>
+      <Tab title="لوحة التحكم">
+        افتح **Observe → policy**، احفظ القرار والجلسة المرتبطة، وحدد شرط الموجب الخاطئ. ثم افتح **Admin → enforcement** وأعد الآلات المتأثرة إلى الإصدار السابق. أنشئ إصدارة أضيق في **Policy editor**، اختبرها على نطاق صغير، وتوسع فقط بعد نجاح العمل الصالح.
+
+      </Tab>
+      <Tab title="CLI">
+        استرجاع نشر السحابة للخلف محصور على لوحة التحكم فقط. إيقاف جلسة محلية لا يعطل السياسات المُدارة من السحابة. إذا كانت لوحة التحكم غير متاحة، احفظ حالة الآلة والنشر واستعد لوحة التحكم بدلاً من إعادة محاولة الإجراء المحجوب بشكل متكرر.
+
+        ```bash
+        failproofai config --status
+        ```
+      </Tab>
+    </Tabs>
+  </Accordion>
+</AccordionGroup>
+
+عند الاتصال بالدعم، أرفق إصدار CLI والعطلة والبيئة ومعرّف الجلسة أو النشر ذي الصلة وإخراج `failproofai config --status` مع إزالة الأسرار.

@@ -1,0 +1,84 @@
+---
+title: "Tích hợp và tài liệu tham khảo"
+description: "Kết nối các harness agent được hỗ trợ, SDK, CLI, và HTTP API."
+icon: "braces"
+---
+
+Chọn tích hợp gần nhất với nơi agent của bạn đang chạy.
+
+<Columns cols={2}>
+  <Card title="Agent harnesses" icon="plug-zap" href="/vi/reference/harnesses">
+    Cài đặt hooks cho các CLI agent mã hóa và tự trị được hỗ trợ.
+  </Card>
+  <Card title="Agent frameworks và SDK" icon="plug" href="/vi/start/integrations">
+    Thiết bị LangGraph, CrewAI, LlamaIndex, Pydantic AI, hoặc một agent tùy chỉnh.
+  </Card>
+  <Card title="Tài liệu tham khảo Python SDK" icon="python" href="/vi/reference/custom-agents">
+    Cấu hình, danh mục sự kiện, quy tắc tương quan và phân phối.
+  </Card>
+  <Card title="Bảng điều khiển cục bộ" icon="monitor-cog" href="/vi/reference/local-dashboard">
+    Xem lại các dự án cục bộ, phiên, hoạt động chính sách và kiểm toán ngoại tuyến.
+  </Card>
+  <Card title="Failproof AI CLI" icon="terminal" href="/vi/reference/failproof-cli">
+    Cấu hình xử lý cục bộ, hooks, chính sách, kiểm toán, phân phối và trạng thái máy.
+  </Card>
+  <Card title="Failproof Cloud CLI" icon="cloud-cog" href="/vi/reference/cloud-cli#lệnh-cli">
+    Truy vấn và quản trị các phiên Cloud, kiểm toán, vấn đề, cảnh báo, khóa, người dùng và cài đặt.
+  </Card>
+  <Card title="Evaluator SDK" icon="gauge" href="/vi/reference/evaluator-sdk">
+    Chấm điểm các phiên hoàn thành hoặc không hoạt động bằng dịch vụ FastAPI.
+  </Card>
+  <Card title="Chính sách tùy chỉnh" icon="shield-plus" href="/vi/reference/policy-sdk">
+    Tạo và kiểm tra các quyết định allow, instruct và deny dành riêng cho quy trình làm việc.
+  </Card>
+  <Card title="Tự lưu trữ" icon="cloud-cog" href="/vi/reference/self-hosting">
+    Triển khai mặt phẳng điều khiển Cloud trên một cụm Kubernetes do khách hàng quản lý.
+  </Card>
+</Columns>
+
+[Tài liệu tham khảo HTTP API](/vi/reference/http-api) được tạo bao gồm bề mặt công khai `/v1`. Các trang được viết thủ công giải thích các quy trình làm việc trải dài trên nhiều endpoint hoặc sử dụng giao diện quản trị bên ngoài bề mặt công khai đó.
+
+## Kết nối một agent và xác minh dữ liệu
+
+<Tabs>
+  <Tab title="Dashboard">
+    1. Mở **Administration → Keys**, tạo một khóa với `events:add` và `policies:pull`, và sao chép bí mật.
+    2. Cấu hình tích hợp bằng cách sử dụng trang phù hợp ở trên.
+    3. Mở **Observe → Events** để xác nhận các sự kiện đến, sau đó **Observe → Sessions** để xác nhận chúng tạo thành các lần chạy hoàn chỉnh.
+    4. Lọc theo môi trường tích hợp và kiểm tra một phiên cho các trường model, tool, error và policy cần thiết cho kiểm toán.
+
+    Bắt đầu bằng ngăn kéo khóa. Các quyền được chọn xác định xem máy có thể gửi sự kiện và nhận chính sách được quản lý bởi Cloud hay không.
+
+    ![Ngăn kéo tạo khóa API mới được sử dụng để cấp quyền xử lý sự kiện và phân phối chính sách.](/images/dashboard/key-create.png)
+
+    Sau khi kết nối tích hợp, sử dụng danh sách Sessions để xác nhận rằng các sự kiện của nó được nhóm thành các lần chạy agent hoàn chỉnh trong môi trường dự kiến.
+
+    ![Danh sách Sessions được sử dụng để xác minh rằng một tích hợp mới kết nối đang báo cáo các lần chạy agent hoàn chỉnh.](/images/dashboard/sessions-list.png)
+
+    Mở một trong những phiên này trước khi coi tích hợp là hoàn chỉnh; bản theo dõi phải chứa bằng chứng model, tool, error và policy mà kiểm toán của bạn cần.
+  </Tab>
+  <Tab title="CLI">
+    Tạo một khóa máy, sau đó đọc bí mật mà nó in ra shell. `read -s` lấy nó ở một lời nhắc không in lại, vì vậy nó không bao giờ xuất hiện trong một lệnh hoặc lịch sử shell:
+
+    ```bash
+    fp keys create agent-production \
+      --add events:add \
+      --add policies:pull
+    read -rs FAILPROOFAI_CLOUD_TOKEN && export FAILPROOFAI_CLOUD_TOKEN
+    ```
+
+    Kết nối daemon Failproof và xác minh phiên đầu tiên:
+
+    ```bash
+    failproofai config
+
+    failproofai flush --wait
+    fp sessions --since 1h --env production
+    fp events --since 1h --env production --limit 20
+    ```
+
+    Sử dụng `fp --json sessions ...` khi một công cụ khác sẽ sử dụng kết quả. Các cờ toàn cầu như `--json`, `--org` và `--base-url` phải đứng trước lệnh.
+
+    Xem [tài liệu tham khảo Failproof AI CLI](/vi/reference/failproof-cli) cho các lệnh cục bộ và [tài liệu tham khảo Failproof Cloud CLI](/vi/reference/cloud-cli#lệnh-cli) cho các lệnh `fp`.
+  </Tab>
+</Tabs>

@@ -261,6 +261,7 @@ async fn poll_once(spec: &Spec, cursors: &mut CursorStore) -> Result<(u64, bool)
         spec.format.kind,
         &tag,
     )
+    .with_source(&spec.db_path)
     .with_label(spec.params.label.clone())
     .with_machine_id(spec.params.machine_id.clone())
     .with_user(spec.params.user.clone())

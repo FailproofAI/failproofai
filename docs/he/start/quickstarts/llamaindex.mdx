@@ -1,0 +1,48 @@
+---
+title: "LlamaIndex"
+description: "התקנה, כלי עבודה, וראה את העקבה הראשונה שלך."
+icon: "/images/frameworks/llamaindex.svg"
+---
+
+שלוש שלבים לעקבה LlamaIndex הראשונה שלך. עבור שלבי זרימת עבודה, אחזור, ה-reaper, ואפשרויות, ראה [את המדריך המלא](/he/start/integrations/llamaindex).
+
+## התקנה
+
+```bash
+pip install 'failproofai-sdk[llamaindex]'
+```
+
+## כלי עבודה
+
+ה-agent API של LlamaIndex הוא אסינכרוני. כל scope עובד גם תחת `async with` וגם `with`.
+
+```python
+import asyncio
+
+import failproofai_sdk
+
+failproofai_sdk.configure(environment="production")
+failproofai_sdk.instrument()
+
+
+async def main():
+    async with failproofai_sdk.session():
+        await agent.run("...")
+
+
+asyncio.run(main())
+```
+
+<Warning>
+  ללא ארגומנט נוסף אחד ב-LLM שלך, כל ספירת tokens בעקבה שלך היא null — `llama-index-llms-openai` לא מבקש שימוש כאשר הוא משדר. ראה [ספירות tokens](/he/start/integrations/llamaindex#token-counts).
+</Warning>
+
+## בדוק שזה הגיע
+
+הרץ זה פעם אחת, ואז פתח **Observe → Sessions** ובחר את הסביבה שלך. ההרצה שלך מופיעה כעקבה משוחזרת.
+
+אם לא מגיע כלום, אשר שהמכונה מחוברת עם `failproofai config --status`.
+
+<Card title="מדריך LlamaIndex מלא" icon="arrow-right" href="/he/start/integrations/llamaindex">
+  ספירות tokens, מה מתועד, שלבי זרימת עבודה, אחזור, אפשרויות, ובעיות נפוצות.
+</Card>

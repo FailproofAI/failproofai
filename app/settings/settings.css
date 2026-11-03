@@ -151,6 +151,51 @@
   margin: 0;
 }
 
+/* ── jev ──────────────────────────────────────────────────────────────────── */
+
+/* A full-width cell in the same console, below the two panels. The gap above it
+ * is the console's own 1px grid — this rule adds no border of its own. */
+.set-jev {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+/* Two columns at desktop: a provider or a mode needs about half the width an
+ * endpoint does, and stacking five controls in one column turns a short form
+ * into a scroll. */
+.set-jev-fields {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px 20px;
+}
+
+.set-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+}
+.set-field-label {
+  font-family: var(--font-mono);
+  font-size: 9.5px;
+  font-weight: 500;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--dim);
+}
+
+.set-jev-actions {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+
+@media (max-width: 640px) {
+  .set-jev-fields { grid-template-columns: 1fr; }
+}
+
 /* ── masthead ─────────────────────────────────────────────────────────────── */
 
 .set-mast {
@@ -226,6 +271,40 @@
 .set-num:focus-visible {
   outline: 2px solid var(--accent-pink);
   outline-offset: 1px;
+}
+
+/* `.set-num`'s box, stretched. Same background, same hairline, same square
+ * corners and the same pink focus ring — a second field style would read as a
+ * second form on one page. */
+.set-text,
+.set-select {
+  font-family: var(--font-mono);
+  font-size: 13px;
+  width: 100%;
+  padding: 6px 10px;
+  background: var(--bg);
+  border: 1px solid var(--line-2);
+  color: var(--ink);
+  border-radius: 0;
+}
+.set-text:focus-visible,
+.set-select:focus-visible {
+  outline: 2px solid var(--accent-pink);
+  outline-offset: 1px;
+}
+.set-text:disabled,
+.set-select:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+.set-text::placeholder {
+  color: var(--dim);
+}
+/* The native arrow is drawn by the platform and cannot be tokenised; leaving
+ * the control's own appearance in place is the one honest option, so the box
+ * around it is what carries the page's style. */
+.set-select {
+  cursor: pointer;
 }
 
 .set-link {

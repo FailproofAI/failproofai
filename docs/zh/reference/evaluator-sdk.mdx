@@ -1,0 +1,118 @@
+---
+title: "Evaluator SDK"
+description: "在您自己的基础设施上运行评估 Worker，用于 LLM 裁判以及托管 Python 无法完成的一切任务。"
+icon: "gauge"
+---
+
+Evaluator SDK 在您自己的基础设施上运行评估。您的 Worker 向 Failproof AI 注册评估项，在 Session 完成后认领它们、打分，并通过出站 HTTPS 提交结果——无需任何入站连接。它适用于[托管 Python](/zh/evaluations/write) 无法完成的场景——LLM 裁判、模型调用、第三方包、密钥和网络访问。其结果会与托管评估结果一并显示在[评估页面](/zh/sessions/evaluations)上，并标记为 **customer**。
+
+它包含在 `failproofai-sdk` 中，位于 `failproofai_sdk.evaluator` 下；导入 Tracing SDK 不会加载它。
+
+```bash
+pip install failproofai-sdk
+```
+
+## 编写评估
+
+```python
+from failproofai_sdk.evaluator import ConditionResult, EvalResult, Evaluator, Metric, Score
+
+app = Evaluator(name="customer-production", version="2026.08.1")
+
+
+@app.eval(
+    "tool_efficiency",
+    version="1.0.0",
+    labels=["tools", "deterministic"],
+    when=lambda session: ConditionResult(session.count("tool_use") > 0, "no_tool_calls"),
+)
+def tool_efficiency(session):
+    calls = session.events_of_type("tool_use")
+    distinct = {e.payload.get("tool_name") for e in calls if e.payload.get("tool_name")}
+    value = len(distinct) / len(calls)
+    return EvalResult(
+        score=Score(value, passed=value >= 0.7),
+        metrics={"tool_call_count": Metric(len(calls), unit="events")},
+        reasoning=f"{len(distinct)} distinct tools across {len(calls)} calls",
+    )
+
+
+@app.eval(
+    "answer_relevance",
+    version="judge-v1",
+    labels=["llm_judge", "relevance"],
+    when=lambda session: ConditionResult(
+        session.count("human_input") > 0 and session.count("model_response") > 0,
+        "no_exchange",
+    ),
+    timeout_seconds=30,
+)
+async def answer_relevance(session):
+    question = session.events_of_type("human_input")[-1].payload.get("response")
+    answer = session.events_of_type("model_response")[-1].payload.get("content")
+    value, reasoning = await ask_judge(question, answer)  # your LLM call: a 0-1 score and why
+    return EvalResult(score=Score(value, passed=value >= 0.7), reasoning=reasoning)
+
+
+if __name__ == "__main__":
+    app.run_from_env()
+```
+
+- `@app.eval(key, version=...)` 注册一个评估项。`key` 是其结果的显示名称；每次逻辑变更时更新版本号，每条结果都会保留生成它的版本信息。单个 Worker 最多可持有 100 个评估项。
+- `result_kind` 默认为 `"score"`，除非您另行指定。对于 `"metric"` 或 `"assertion"` 类型的评估，请在 `metrics` 或 `assertions` 中以与 key 相同的名称命名对应条目，该条目即为其结果。
+- `when` 决定一个 Session 是否适用。返回 `ConditionResult(False, "<reason>")` 可跳过该 Session，原因会被记录。
+- 评估函数可以是普通函数或 `async` 函数，`timeout_seconds` 限制其执行时间。
+- Payload 键——上面的 `tool_name`、`response` 和 `content`——由您的 Agent 发送的内容决定，请从真实 Session 中读取它们。
+
+## 运行 Worker
+
+在 **Administration → Keys** 下创建一个具有 `evaluations:run` 权限的密钥，将其放入 `FAILPROOFAI_EVALUATOR_TOKEN` 环境变量——请从您的密钥存储中设置，而不是直接在命令中输入——然后启动 Worker：
+
+```bash
+FAILPROOFAI_EVALUATOR_URL=https://app.befailproof.ai python evaluator.py
+```
+
+如果没有 `__main__` 代码块，`python -m failproofai_sdk.evaluator evaluator:app` 效果相同。
+
+| 变量 | 默认值 | 用途 |
+| --- | --- | --- |
+| `FAILPROOFAI_EVALUATOR_URL` | 必填 | Failproof AI 的地址：Cloud 版使用 `https://app.befailproof.ai`。除非指向回环地址，否则必须使用 HTTPS |
+| `FAILPROOFAI_EVALUATOR_TOKEN` | 必填 | 具有 `evaluations:run` 权限的密钥 |
+| `FAILPROOFAI_EVALUATOR_WORKER_ID` | `<hostname>-<pid>` | 该 Worker 的名称 |
+| `FAILPROOFAI_EVALUATOR_CONCURRENCY` | `1` | 该 Worker 同时评分的 Session 数量 |
+| `FAILPROOFAI_EVALUATOR_REQUEST_TIMEOUT_SECONDS` | `30` | 每次请求 Failproof AI 的超时时间 |
+| `FAILPROOFAI_EVALUATOR_DRAIN_TIMEOUT_SECONDS` | `60` | Worker 停止时等待进行中任务完成的时间 |
+| `FAILPROOFAI_EVALUATOR_ALLOW_INSECURE_HTTP` | `false` | 允许向非回环地址的 URL 发送明文 HTTP——请参阅下方警告 |
+| `FAILPROOFAI_EVALUATOR_MODULE` | 无 | 用于 `python -m failproofai_sdk.evaluator` 的 `module:attribute` |
+
+<Warning>
+  `FAILPROOFAI_EVALUATOR_ALLOW_INSECURE_HTTP` 会以明文传输所有数据。Worker 在每个请求中都会携带 `FAILPROOFAI_EVALUATOR_TOKEN` 作为 `Authorization: Bearer` 请求头，其获取的会话记录即为 Session 本身——因此，链路上的任何人都可以读取两者，而他们读取到的 Token 在您轮换之前都可用于运行评估。请仅在隔离的开发网络中使用此选项。其他所有场景下，URL 必须使用 HTTPS；回环地址无需此标志。
+</Warning>
+
+## 结果类型
+
+| 类型 | 字段 |
+| --- | --- |
+| `Score` | `value`（0 到 1）、`passed`、`unit`（默认 `ratio`）、`display_value`、`description` |
+| `Metric` | `value`、`unit`、`display_value`、`description` |
+| `Assertion` | `passed`、`description` |
+| `EvalResult` | `score`、`metrics`、`assertions`、`reasoning`、`summary`、`labels` |
+| `ConditionResult` | `applicable`、`reason_code` |
+
+一个 `EvalResult` 至少包含一个 Score、Metric 或 Assertion，最多 25 个，每个都位于唯一的键下。
+
+## Session 对象
+
+| 字段或方法 | 返回内容 |
+| --- | --- |
+| `session_id`、`agent_id`、`environment` | Session 的标识信息 |
+| `started_at`、`ended_at` | 开始和结束时间 |
+| `event_count`、`events` | 完整的有序事件记录 |
+| `count(event_type)` | 该类型事件的数量 |
+| `events_of_type(event_type)` | 该类型的所有事件，按顺序排列 |
+
+每个事件包含 `id`、`ts`、`event_type` 和 `payload`。
+
+## 旧版 Evaluator
+
+早期的 Evaluator SDK——由 Failproof AI 在 `EVALUATOR_ENDPOINT` 调用的 HTTP 服务，响应 `/evaluate` 并通过 `JobPending` 轮询——已停止支持。请基于此 Worker 构建新的评估器；自托管实例的运营者若仍在使用旧版服务，可在过渡期内继续使用。

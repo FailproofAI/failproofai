@@ -206,7 +206,24 @@ const HOW_IT_WORKS: ReadonlyArray<{ label: string; body: string }> = [
   },
 ];
 
-export default function SettingsClient({ initial }: { initial: ScheduledAuditView | null }) {
+export default function SettingsClient({
+  initial,
+  jevPanel,
+}: {
+  initial: ScheduledAuditView | null;
+  /**
+   * The Jev panel, rendered by the server page and handed in as an element
+   * rather than imported here.
+   *
+   * It is its own feature with its own file, its own actions and its own
+   * refresh — nothing on this page reads or writes what it does. Composing it
+   * in keeps that true in the code as well as in the design: this component
+   * does not import the Jev actions, so a test of the scheduled-audit panel
+   * neither renders nor touches Jev, and vice versa. Optional so the existing
+   * callers that only care about the audit panel keep working unchanged.
+   */
+  jevPanel?: ReactNode;
+}) {
   // Seeded from the server render, so the first paint already tells the truth
   // about whether scheduled audits are on. See the note in `page.tsx`.
   const [view, setView] = useState<ScheduledAuditView | null>(initial);
@@ -507,6 +524,10 @@ export default function SettingsClient({ initial }: { initial: ScheduledAuditVie
                 dashboard can reach <code>~/.failproofai/config.json</code>.
               </p>
             </div>
+            {/* A different file. An unreadable `config.json` says nothing about
+                `jev.json`, and hiding the panel that can turn a second
+                evaluator off would be the worst moment to hide it. */}
+            {jevPanel}
           </div>
         ) : (
           <div className="set-console">
@@ -653,6 +674,11 @@ export default function SettingsClient({ initial }: { initial: ScheduledAuditVie
                 </dl>
               </div>
             </div>
+
+            {/* Full width, below the two panels: Jev is a second evaluator for
+                the whole machine, not a property of the scheduled scan, and its
+                endpoint would not fit a half-width column anyway. */}
+            {jevPanel}
           </div>
         )}
 

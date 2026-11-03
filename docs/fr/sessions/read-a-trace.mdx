@@ -1,0 +1,48 @@
+---
+title: "Lire une trace"
+description: "Trouvez l'événement qui a modifié le déroulement d'une session agent."
+icon: "route"
+---
+
+Une trace transforme un flux d'événements plat en récit causal de l'exécution. Lisez-la à partir de la première divergence, et non en remontant depuis la dernière erreur.
+
+## Ouvrir la trace
+
+<Tabs>
+  <Tab title="Tableau de bord">
+    1. Accédez à **Observer → Sessions** et ouvrez une session.
+    2. Utilisez le résumé de profil pour vérifier le résultat, la durée, les erreurs et les scores d'évaluation.
+    3. Parcourez la chronologie et la minimap. Filtrez par type d'événement ou par période lorsque la session est volumineuse.
+    4. Sélectionnez un événement pour l'inspecter. Utilisez **exporter** pour obtenir le JSON de l'évaluateur, ou copiez l'URL de la page pour partager un lien direct vers la preuve sélectionnée.
+
+    ![Vue détaillée d'une session avec son graphe d'exécution, sa chronologie d'événements, son panneau d'évaluation et le récapitulatif des outils, modèles et hooks.](/images/dashboard/session-detail.png)
+  </Tab>
+  <Tab title="CLI">
+    ```bash
+    fp --json sessions --session-id <session-id>
+    fp events --session-id <session-id> --order asc --all
+    fp --json events --full --session-id <session-id> --all
+    ```
+
+    Commencez par le flux d'événements léger. Ne demandez les charges utiles complètes que lorsque les résumés d'événements ne contiennent pas suffisamment d'informations.
+  </Tab>
+</Tabs>
+
+<Steps>
+  <Step title="Situez-vous">
+    Confirmez l'agent, l'environnement, la durée, le résultat et le timing, puis recherchez les erreurs, les spans longs, les outils répétés, les attentes humaines et les décisions de politique refusées.
+  </Step>
+  <Step title="Développez le premier événement suspect">
+    Inspectez sa requête, sa réponse, l'entrée et la sortie de l'outil, ainsi que l'ID de corrélation. Le contenu sensible n'est visible que si la capture de transcription est activée et que vos permissions le permettent.
+  </Step>
+  <Step title="Examinez le contexte précédent">
+    La cause se trouve souvent dans l'événement précédent : une réponse de modèle incorrecte, un résultat d'outil manquant ou une hypothèse périmée.
+  </Step>
+  <Step title="Transformez les preuves en actions">
+    Ajoutez la session à un périmètre d'audit, associez-la à un problème ou utilisez le mode d'échec pour créer une politique.
+  </Step>
+</Steps>
+
+<Warning>
+  Une longue durée ne signifie pas toujours une latence du modèle. Distinguez le temps passé par le modèle, les outils, les hooks et les attentes humaines avant de décider quoi corriger.
+</Warning>

@@ -1,0 +1,84 @@
+---
+title: "イベントと設定"
+description: "イベントモデル、実行環境、ローカルストレージ、設定の境界についてのリファレンスです。"
+icon: "list-tree"
+---
+
+## イベントファミリー
+
+- エージェントの開始・終了・一時停止・再開
+- モデルへのリクエストとレスポンス
+- ツールの使用と結果
+- フックのトリガーと完了
+- 人間の待機・入力・一時停止・割り込み
+- 明示的なエラー
+
+すべてのイベントには、タイムスタンプ、セッションID、エージェントID、イベントタイプ、および実行環境が含まれます。イベント固有のフィールドには、モデル、ツール、相関ID、結果、コンテンツ、所要時間、またはエラーデータが含まれます。
+
+## イベントコントラクトの確認
+
+<Tabs>
+  <Tab title="ダッシュボード">
+    1. **Observe → Events** を開きます。
+    2. 短い時間範囲を設定し、実行環境・エージェント・イベントタイプでフィルタリングします。
+    3. イベントを選択して正規化されたフィールドと生のペイロードを確認し、そのセッションを開いて実行コンテキストを参照します。
+    4. ペアとなる所要時間が欠けている場合は、開始イベントと完了イベントが同じ相関IDを使用しているか確認します。
+
+    Eventsストリームを使ってデータを1つのエージェント実行に絞り込み、正規化されたイベントフィールドを確認します。
+
+    ![実行環境・エージェント・セッション・イベントタイプのフィルターが付いたライブEventsストリーム。](/images/dashboard/events-stream.png)
+
+    次に、イベントからそのセッションをたどります。トレースには直前と直後に何が起きたかが表示されるため、ペイロードだけでは判断が難しい場合に役立ちます。
+
+    ![イベントを実行コンテキストで検査するためにリンクされたセッショントレース。](/images/dashboard/session-detail.png)
+
+    ペアとなるイベントや所要時間が欠けている場合は、両方のビューで相関IDとタイムスタンプを照合します。
+  </Tab>
+  <Tab title="CLI">
+    有効なフィルター値を確認した後、1つのセッションのイベントペイロードをすべて取得します：
+
+    ```bash
+    fp list event_types
+    fp list envs
+    fp events --since 1h \
+      --env production \
+      --event-type tool_use,tool_result \
+      --session-id <session-id> \
+      --full
+    ```
+
+    機械可読な形式で確認するには `fp --json events ... --fields ts,event_type,session_id,payload` を使用します。
+  </Tab>
+</Tabs>
+
+## SDK予約フィールド
+
+`timestamp`、`session_id`、`agent_id`、`type`、`environment` はPython SDKのカスタムフィールドとして使用しないでください。ツール結果の所要時間など、ペアとなるイベントの所要時間はSDKによって計算されるため、手動で指定することはできません。
+
+## ローカルの境界
+
+- Failproof AI の状態は、明示的に設定が変更されない限り `~/.failproofai` に保存されます。
+- `failproofai-sdk` は常に `~/.failproofai/custom-agents` 配下にスプールします。`FAILPROOFAI_HOME` でホームディレクトリを変更できますが、`custom-agents` セグメントは常に末尾に追加されるため、スプールをその外に配置することはできません。SDKの `configure(base_dir=...)` を使用した場合のみ別の場所に書き込まれます。`AGENTEYE_HOME` は古い `agenteye-collector` が監視対象を決定するために参照するものであり、SDKの書き込み先には影響しません。
+- 環境ラベルはSDK設定または `AGENTEYE_ENVIRONMENT` を通じて設定できます。
+- デーモンの認証情報は、非シークレット設定とは別に保存されます。
+
+環境名は安定していてカーディナリティの低いものを使用してください。デーモンの環境ラベルにカンマは使用できません。
+
+## 環境ラベルの変更
+
+<Tabs>
+  <Tab title="ダッシュボード">
+    環境ラベルは、SDKまたはFailproofデーモンが送信する際に割り当てられます。変更後は **Observe → Sessions** を開き、環境フィルターを使用して新しいセッションに新しい値が反映されているか確認します。既存のセッションは元の環境を保持します。
+
+  </Tab>
+  <Tab title="CLI">
+    `failproofai-sdk` の場合は、コード内またはレガシー環境変数で実行環境を設定します。マシンレベルの設定を変更する際はデーモン設定を再実行してください。
+
+    ```bash
+    export AGENTEYE_ENVIRONMENT=production-us-east
+    failproofai config
+    failproofai config --status
+    fp sessions --since 1h --env production-us-east
+    ```
+  </Tab>
+</Tabs>

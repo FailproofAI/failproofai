@@ -1,0 +1,208 @@
+---
+title: "Pydantic AI"
+sidebarTitle: "Pydantic AI"
+description: "型付きエージェント、ツール、モデル呼び出し、リトライを計測します。"
+icon: "/images/frameworks/pydantic-ai.svg"
+---
+
+## インストール
+
+```bash
+pip install 'failproofai-sdk[pydantic-ai]'
+```
+
+対応バージョン：`pydantic-ai-slim` 2.0〜3.0。バージョン 2.0 で `Agent(instrument=...)` が削除され、このアダプターが依拠するケイパビリティプロトコルが導入されたため、1.x はこの方法では計測できません。
+
+## 計測の設定
+
+```python
+import failproofai_sdk
+from pydantic_ai import Agent
+
+failproofai_sdk.configure(environment="production")
+failproofai_sdk.instrument()          # before constructing any Agent
+
+agent = Agent("openai:gpt-4o-mini", system_prompt="Be terse.")
+
+with failproofai_sdk.session():
+    result = agent.run_sync("...")
+```
+
+<Warning>
+  `instrument()` は `Agent` を構築する前に実行する必要があります。ケイパビリティは構築時に付与されるため、それより前に作成されたエージェントにはケイパビリティが存在せず、何も記録されません。エラーも発生しないため原因が分かりにくいですが、このアダプターで空のトレースになる最も多い原因はこれです。
+</Warning>
+
+モジュールスコープのエージェントはこの問題が起きやすい典型例です：
+
+```python
+# agents.py
+agent = Agent("openai:gpt-4o-mini")   # constructed at import time
+
+# main.py
+import failproofai_sdk
+failproofai_sdk.instrument()          # run this FIRST
+import agents                         # now the agent gets the capability
+```
+
+正しく設定されたか確認するには：
+
+```python
+print([type(c).__name__ for c in agent.root_capability.capabilities])
+# ['FailproofAI', 'ToolSearch', 'PendingMessageDrainCapability']
+```
+
+Pydantic AI は渡したリストを単一の `root_capability` にマージするため、`agent.capabilities` 属性は存在しません。
+
+計測中に構築されたエージェントはケイパビリティを保持するため、`uninstrument()` して再計測してもエージェントを再構築する必要はありません。
+
+## 記録される内容
+
+| Pydantic AI | Failproof イベント |
+| --- | --- |
+| エージェントの実行 | `agent_start`、`agent_end` |
+| モデルリクエスト | `model_request`、`model_response`（トークン使用量含む） |
+| ツール呼び出し | `tool_use`、`tool_result`（モデルが送信した引数含む） |
+| ツールからの `ModelRetry` | エラーを持つ `tool_result` |
+| 未処理の例外 | `error`、その後 `agent_end`（結果: `failed`） |
+
+このアダプターにはフックペアやヒューマン・イン・ザ・ループのペアはありません。Pydantic AI にはブラケット対象となるノードやステップの境界がなく、組み込みの人間による一時停止機能もないため、対応するものが存在しません。いずれかを実装する場合は、イベントを自分で発行してください — [カスタムエージェント](/ja/reference/custom-agents)を参照。
+
+`output_type` はトレースに影響しません。型付き実行と文字列実行では同じイベントが生成されます。
+
+## 使用例
+
+```python
+import failproofai_sdk
+from pydantic import BaseModel
+from pydantic_ai import Agent, ModelRetry
+
+failproofai_sdk.configure(environment="production")
+failproofai_sdk.instrument()
+
+PRICE = {"widget": 42.0, "gadget": 17.5}
+STOCK = {"widget": 120, "gadget": 0}
+
+
+class Report(BaseModel):
+    headline: str
+    out_of_stock: list[str]
+
+
+agent = Agent(
+    "openai:gpt-4o-mini",
+    output_type=Report,
+    system_prompt="Use the tools for every number. If a tool fails, note it and continue.",
+)
+
+
+@agent.tool_plain
+def price_of(item: str) -> float:
+    """Unit price of an item. Valid: widget, gadget."""
+    return PRICE[item.lower().strip()]
+
+
+@agent.tool_plain
+def stock_of(item: str) -> int:
+    """Units in stock. Valid: widget, gadget."""
+    return STOCK[item.lower().strip()]
+
+
+@agent.tool_plain
+def restock_eta(item: str) -> str:
+    """Restock ETA. Not available."""
+    raise ModelRetry(f"no restock schedule for {item!r} — answer without it")
+
+
+with failproofai_sdk.session():
+    with failproofai_sdk.agent("inventory", goal="stock report"):
+        result = agent.run_sync(
+            "For widget and gadget, get price and stock. "
+            "For anything out of stock, try the restock ETA. Then produce the report."
+        )
+```
+
+トレースでは、`restock_eta` はエラーを持つ `tool_result` として表示され、その後にエージェントが回避策を取る別のモデル呼び出しが続き、実行は最終的に `success` で終了します。両方の事実が保存されます。
+
+## エラー、リトライ、制御フロー
+
+Pydantic AI は 3 種類の例外を発生させますが、アダプターはそれらを区別します：
+
+| 例外 | 扱い | 結果 |
+| --- | --- | --- |
+| `ModelRetry`、`ToolRetryError`、`ToolFailedError` | 実際のツール失敗 | エラーを持つ `tool_result`；実行は `success` で終了する場合あり |
+| `SkipToolExecution`、`SkipToolValidation`、`SkipModelRequest`、`CallDeferred`、`ApprovalRequired` | 制御フロー | エラーではない；実行が誘導されている状態 |
+| その他すべて | 失敗 | `error`、その後 `agent_end`（結果: `failed`） |
+
+`ModelRetry` を意図的に最初のグループに含めているのは、それが「試行が実際に失敗し、モデルに再試行が要求された」ことを意味するためです。これはまさにツールスパンのエラーフィールドが想定する内容です。制御フローとして分類してしまうと、実際のツール失敗が成功した実行の陰に隠れてしまいます。
+
+## スパンに名前を付ける
+
+Pydantic AI 独自の実行スパンは `agent` という名前です。任意のラベルを付けるには呼び出しをラップします：
+
+```python
+with failproofai_sdk.session():
+    with failproofai_sdk.agent("inventory", goal="stock report"):
+        agent.run_sync("...")
+```
+
+フレームワークのスパンは `inventory` の配下にネストされ、モデルとツールのイベントはそこに紐付けられます。
+
+`agent_id` は低カーディナリティに保ってください。すべてのダッシュボード画面での主要なファセットとして使用されるため、UUID や実行ごとの文字列ではなくロール名を使用してください。
+
+## セッションの制御
+
+以下の順序で解決され、最初に一致したものが使用されます：
+
+1. `instrument("pydantic_ai", session_id=...)`
+2. 囲む `failproofai_sdk.session()` スコープ
+3. 実行の `conversation_id`、次に `run_id`
+4. 生成された `uuid4().hex`
+
+```python
+with failproofai_sdk.session(f"chat-{user_id}"):
+    agent.run_sync("...")
+```
+
+## オプション
+
+```python
+failproofai_sdk.instrument(
+    "pydantic_ai",
+    session_id=None,          # pin every run to one session id
+    capture_content=True,     # False drops prompts and completions from payloads
+)
+```
+
+## よくある問題
+
+<AccordionGroup>
+  <Accordion title="実行は成功するがイベントが表示されない">
+    `instrument()` が実行される前に `Agent` が構築されています。上記の警告を確認し、`agent.root_capability.capabilities` をチェックしてください。
+  </Accordion>
+
+  <Accordion title="ツール内の単純な例外が実行を終了させる">
+    裸の `raise` はそのまま伝播します。これは Pydantic AI の設計によるものです。モデルに回避させるには、対処できるメッセージと共に `ModelRetry` を raise してください。失敗はどちらの場合でも記録されます。
+  </Accordion>
+
+  <Accordion title="自分で作成していないネストされたエージェントスパンが存在する">
+    その子スパンは Pydantic AI 独自の実行スパンであり、モデルとツールのイベントはそこに紐付けられます。カスタム名を犠牲にして単一スパンにしたい場合は、自分のスコープを省略してください。
+  </Accordion>
+
+  <Accordion title="トレースバックが省略マーカーで始まる">
+    Pydantic AI の非同期グラフスタックはペイロードフィールドの上限より長く、トレースバックの最後の行は例外そのものです。このフィールドは末尾ではなく先頭から切り詰められるため、必要な行は残ります。
+  </Accordion>
+</AccordionGroup>
+
+## 次のステップ
+
+<Columns cols={3}>
+  <Card title="仕組みを理解する" icon="workflow" href="/ja/start/integrations/custom-agents#going-deeper">
+    ペア、ID、セッションのライフサイクル、デリバリーについて。
+  </Card>
+  <Card title="トレースを読む" icon="route" href="/ja/sessions/read-a-trace">
+    取得したセッションを通じて因果関係を追跡します。
+  </Card>
+  <Card title="他のフレームワーク" icon="plug" href="/ja/start/integrations">
+    LangGraph、CrewAI、LlamaIndex、カスタムエージェント。
+  </Card>
+</Columns>

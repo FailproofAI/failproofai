@@ -1,0 +1,60 @@
+---
+title: "Tester une politique"
+description: "Rétrotestez un brouillon sur le trafic que vous possédez déjà, et prouvez qu'il bloque ce qu'il doit et autorise ce qu'il doit, avant qu'une machine ne l'applique."
+icon: "flask-conical"
+---
+
+Testez chaque politique de deux façons : contre le trafic que vos agents ont déjà produit, et contre une action légitime qu'elle doit laisser passer. Une politique qui n'a été confrontée qu'aux cas dangereux n'a pas été correctement testée.
+
+## Rétrotester le brouillon
+
+<Tabs>
+  <Tab title="Tableau de bord">
+    L'éditeur de politique rejoue un brouillon sur les appels déjà effectués par votre flotte, avant que vous ne le publiiez.
+
+    1. Ouvrez le brouillon dans **Admin → éditeur de politique**. L'éditeur confirme qu'il est analysé en tant que JavaScript.
+    2. Dans **backtest**, sélectionnez les agents et la fenêtre temporelle à rejouer — **tous les agents** et **30j** par défaut — et laissez le dernier filtre sur **tout** sauf si vous souhaitez affiner la sélection.
+    3. Cliquez sur **lancer le backtest**.
+
+    ![Le panneau de backtest sous un brouillon analysé en JavaScript, avec ses trois filtres et l'action de lancement du backtest, au-dessus de la publication de version.](/images/dashboard/policy-backtest.png)
+
+    Le résultat indique ce que le brouillon aurait fait à ces appels — y compris le nombre d'appels **opérationnels** qu'il aurait interrompus. Ce sont des faux positifs détectés avant qu'un agent ne les rencontre : affinez le brouillon et relancez-le jusqu'à ce que ce nombre soit acceptable.
+  </Tab>
+  <Tab title="CLI">
+    Le backtest est une fonctionnalité du tableau de bord. Depuis un terminal, exécutez plutôt la politique sur des événements que vous décrivez vous-même, comme indiqué ci-dessous.
+  </Tab>
+</Tabs>
+
+## L'exécuter sur un événement que vous décrivez
+
+`fp policies test` exécute un fichier de politique sur votre machine contre un événement synthétique et vérifie la décision. Rien n'est publié et rien n'atteint Cloud :
+
+```bash
+fp policies test ./checkout.policy.mjs --command "git push --force" --expect deny
+fp policies test ./checkout.policy.mjs --command "git push" --expect allow
+```
+
+Modelez l'événement avec `--event`, `--tool`, `--command` et `--file`. Le filtre `match` propre à la politique s'applique toujours ; ainsi, une politique qui ne couvre pas l'événement décrit rapporte `skipped` plutôt qu'une décision — ce qui indique généralement que son `match` est plus restrictif que prévu.
+
+## L'exécuter sur une seule machine
+
+Ensuite, appliquez-la réellement sur votre propre machine, contre votre propre agent :
+
+```bash
+failproofai policies --install --custom ./checkout.policy.mjs --scope project
+failproofai policies
+```
+
+La première commande valide et installe le fichier ; la seconde confirme qu'il est chargé, aux côtés de tout ce qui s'applique ici. Demandez à l'agent d'effectuer ce que la politique bloque et observez le refus, puis effectuez la version légitime et observez qu'elle passe. Personne d'autre n'est affecté.
+
+Sur une machine connectée à Cloud, vérifiez les deux décisions sous **Observer → politique** : filtrez par nom de politique, puis ouvrez chaque session liée pour confirmer l'entrée d'outil qu'elle a correspondée et la raison renvoyée.
+
+## Tester ce qui échoue
+
+L'installation refuse un fichier manquant, une erreur de syntaxe, une importation non résolue, une exception au niveau supérieur ou un module qui expire pendant le chargement — relancez-la donc après chaque modification du fichier ou de tout ce qu'il importe. Au moment de l'application, le même fichier défectueux est journalisé et **ignoré** afin que toutes les autres politiques continuent de s'exécuter : traitez un avertissement de chargement dans les journaux de production comme une application perdue. Les fichiers de convention se chargent sans la commande d'installation, c'est pourquoi il faut conserver une étape explicite `failproofai policies --install --custom <file>` en CI — c'est ce qui fait échouer le build en cas de politique défectueuse.
+
+Ensuite, alimentez-la avec ce que les agents envoient réellement, pas seulement l'entrée attendue : champs manquants, noms d'outils alternatifs tels que `Write` et `Edit`, chemins Windows, entrées malformées. Renvoyez un `allow`, `instruct` ou `deny` intentionnel sur chaque chemin d'exécution, gardez la fonction déterministe et limitez tout appel externe par un délai d'expiration court.
+
+## Ensuite, publiez-la et observez-la
+
+Un backtest montre ce que la politique aurait fait au trafic passé ; il ne peut pas montrer ce que le trafic futur encore inconnu produira. Sélectionnez **publier la version** dans l'éditeur (ou exécutez `fp policies publish`), puis [déployez-la](/fr/policies/deploy) d'abord en mode **observe** — ses verdicts sont enregistrés sans rien bloquer — et appliquez-la une fois que ses correspondances distinguent clairement les actions dangereuses des actions valides.

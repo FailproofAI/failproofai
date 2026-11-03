@@ -1,0 +1,25 @@
+---
+title: "Tools"
+description: "एजेंट सेशन में धीमे, विफल, या अत्यधिक उपयोग किए गए tools को खोजें।"
+icon: "wrench"
+---
+
+Tools सेशन के भीतर tool कॉल को समूहित करता है ताकि आप latency और कॉल वितरण की तुलना कर सकें।
+
+<Tabs>
+  <Tab title="Dashboard">
+    1. **Observe → Tools** पर जाएं।
+    2. Environment, tool name, agent, या session ID के आधार पर फ़िल्टर करें।
+    3. Latency और tool distribution की समीक्षा करें।
+    4. मेल खाने वाली events और sessions को खोलने के लिए एक चार्ट बिंदु या tool segment चुनें।
+
+    ![Tools पेज जो latency, success और failure breakdowns, और tool-call distribution दिखाता है।](/images/dashboard/tools.png)
+  </Tab>
+  <Tab title="CLI">
+    ```bash
+    fp list tools
+    fp events --event-type tool_use,tool_result --env production --since 24h
+    fp --json events --full --session-id <session-id> --all
+    ```
+  </Tab>
+</Tabs>

@@ -1,0 +1,60 @@
+---
+title: "Kiểm tra một chính sách"
+description: "Kiểm tra lại bản nháp dựa trên lưu lượng bạn đã có, và chứng minh rằng nó ngăn chặn những gì nó nên ngăn và cho phép những gì nó phải cho phép, trước khi bất kỳ máy nào thực thi nó."
+icon: "flask-conical"
+---
+
+Kiểm tra mọi chính sách theo hai cách: dựa trên lưu lượng mà các agent của bạn đã tạo ra, và dựa trên một hành động hợp pháp mà nó phải cho phép. Một chính sách chỉ đã kiểm tra trường hợp không an toàn là chưa được kiểm tra đầy đủ.
+
+## Kiểm tra lại bản nháp
+
+<Tabs>
+  <Tab title="Dashboard">
+    Trình chỉnh sửa chính sách sẽ phát lại bản nháp dựa trên các cuộc gọi mà đội của bạn đã thực hiện, trước khi bạn xuất bản nó.
+
+    1. Mở bản nháp trong **Admin → policy editor**. Trình chỉnh sửa sẽ xác nhận nó phân tích cú pháp đúng như JavaScript.
+    2. Trong **backtest**, chọn các agent và khoảng thời gian để phát lại — **tất cả agent** và **30d** theo mặc định — và để bộ lọc cuối cùng trên **everything** trừ khi bạn muốn thu hẹp nó.
+    3. Chọn **run backtest**.
+
+    ![Bảng backtest dưới bản nháp phân tích cú pháp đúng như JavaScript, với ba bộ lọc của nó và hành động run backtest, ở trên publish version.](/images/dashboard/policy-backtest.png)
+
+    Kết quả là những gì bản nháp sẽ làm với những cuộc gọi đó — bao gồm bao nhiêu cuộc gọi **working** mà nó sẽ đã làm gián đoạn. Đó là những dương tính giả được phát hiện trước khi bất kỳ agent nào gặp phải chúng: làm chặt chẽ bản nháp và chạy lại nó cho đến khi con số đó là một con số bạn có thể chấp nhận được.
+  </Tab>
+  <Tab title="CLI">
+    Kiểm tra lại là một tính năng của dashboard. Từ terminal, hãy chạy chính sách dựa trên các sự kiện bạn mô tả thay thế, như bên dưới.
+  </Tab>
+</Tabs>
+
+## Chạy nó dựa trên một sự kiện bạn mô tả
+
+`fp policies test` chạy tệp chính sách trên máy của bạn dựa trên một sự kiện tổng hợp và kiểm tra quyết định. Không có gì được xuất bản và không có gì đến Cloud:
+
+```bash
+fp policies test ./checkout.policy.mjs --command "git push --force" --expect deny
+fp policies test ./checkout.policy.mjs --command "git push" --expect allow
+```
+
+Định hình sự kiện với `--event`, `--tool`, `--command` và `--file`. Bộ lọc `match` của chính sách vẫn áp dụng, vì vậy một chính sách không bao gồm sự kiện bạn mô tả sẽ báo cáo `skipped` thay vì một quyết định — thường là dấu hiệu rằng `match` của nó hẹp hơn ý định của bạn.
+
+## Chạy nó trên một máy
+
+Tiếp theo, thực thi nó một cách thực sự trên máy của riêng bạn, dựa trên agent của riêng bạn:
+
+```bash
+failproofai policies --install --custom ./checkout.policy.mjs --scope project
+failproofai policies
+```
+
+Lệnh đầu tiên xác thực và cài đặt tệp; lệnh thứ hai xác nhận nó đã tải, cùng với mọi thứ khác thực thi tại đây. Yêu cầu agent thực hiện những gì chính sách ngăn chặn và xem nó bị từ chối, sau đó thực hiện phiên bản hợp pháp và xem nó đi qua. Không ai khác bị ảnh hưởng.
+
+Trên một máy được kết nối với Cloud, kiểm tra cả hai quyết định dưới **Observe → policy**: lọc theo tên chính sách, sau đó mở từng phiên được liên kết để xác nhận đầu vào công cụ mà nó khớp và lý do nó trả về.
+
+## Kiểm tra những gì bị hỏng
+
+Việc cài đặt sẽ từ chối một tệp bị thiếu, lỗi cú pháp, nhập không được giải quyết, một ngoại lệ ở cấp cao nhất, hoặc một mô-đun hết thời gian chờ trong khi tải — vì vậy hãy chạy lại nó sau mỗi thay đổi tệp hoặc bất cứ thứ gì nó nhập. Tại thời điểm thực thi, tệp bị hỏng tương tự được ghi lại và **skipped** để mọi chính sách khác tiếp tục chạy: coi một cảnh báo tải trong nhật ký sản xuất như một thực thi bị mất. Các tệp quy ước tải mà không cần lệnh cài đặt, vì vậy hãy giữ một bước `failproofai policies --install --custom <file>` rõ ràng trong CI — đó là những gì làm hỏng bản dựng trên một chính sách bị hỏng.
+
+Sau đó, cung cấp cho nó những gì các agent thực sự gửi, không chỉ đầu vào bạn mong đợi: các trường bị thiếu, tên công cụ thay thế như `Write` và `Edit`, đường dẫn Windows, đầu vào không đúng định dạng. Trả về một `allow`, `instruct` hoặc `deny` có chủ đích trên mọi đường dẫn, giữ hàm xác định, và ràng buộc bất kỳ cuộc gọi bên ngoài nào bằng một thời gian chờ ngắn.
+
+## Sau đó xuất bản nó và quan sát nó
+
+Một bài kiểm tra lại cho thấy những gì chính sách sẽ làm với lưu lượng bạn có; nó không thể cho thấy những gì lưu lượng bạn chưa thấy sẽ làm. Chọn **publish version** trong trình chỉnh sửa (hoặc chạy `fp policies publish`), sau đó [triển khai nó](/vi/policies/deploy) ở chế độ **observe** trước tiên — các phán quyết của nó được ghi lại và không có gì bị chặn — và thực thi khi các kết quả phù hợp của nó tách hành động không an toàn khỏi những hành động hợp lệ.

@@ -1,0 +1,54 @@
+---
+title: "Audit recipes"
+description: "Starting goals for common agent failure investigations."
+icon: "book-open-check"
+---
+
+Use these as starting goals, then add your agent, environment, and expected workflow.
+
+<Tabs>
+  <Tab title="Dashboard">
+    Go to **Analyze → Audits → New audit**, copy one recipe into the description or brief, then add the relevant environment, agent, lookback, and reference URLs. Create the audit and inspect the first run before scheduling it.
+
+    The new audit form turns a recipe into an executable failure check by adding scope, context, cadence, and notifications.
+
+    ![The new audit form configured with a focused goal, schedule, agent and environment scope, context, and notification channels.](/images/dashboard/audit-new.png)
+
+    After creation, confirm the audit appears in the list with the expected status and schedule before relying on recurring runs.
+
+    ![The Audits page where a workflow-specific audit recipe appears after creation.](/images/dashboard/audits.png)
+
+    Open the first run and refine the recipe if its findings are broader or narrower than the intended failure mode.
+  </Tab>
+  <Tab title="CLI">
+    Save a recipe as a text file and attach it during creation:
+
+    ```bash
+    fp audits create retry-loop-review \
+      --scope '{"environments":["production"]}' \
+      --text-file ./retry-loop-audit.txt \
+      --schedule-interval-secs 86400
+    ```
+  </Tab>
+</Tabs>
+
+<AccordionGroup>
+  <Accordion title="Repeated retry loops">
+    Find sessions where the agent repeats the same failing tool call without changing input, selecting an alternative tool, or escalating to a human.
+  </Accordion>
+  <Accordion title="Incorrect tool use">
+    Find sessions where the chosen tool does not match the stated task, or where tool input violates the workflow's required preconditions.
+  </Accordion>
+  <Accordion title="Unsafe data access">
+    Find sessions that read, write, or transmit sensitive data outside the approved paths and services for this agent.
+  </Accordion>
+  <Accordion title="Task abandonment">
+    Find sessions that end without the requested outcome, a clear error, or an explicit handoff to a human.
+  </Accordion>
+  <Accordion title="Cost or latency regression">
+    Find sessions whose model, tool, or total duration exceeds the expected budget, and identify the event pattern responsible.
+  </Accordion>
+  <Accordion title="Missed human escalation">
+    Find sessions where confidence, repeated failure, or policy guidance required a human decision but the agent continued autonomously.
+  </Accordion>
+</AccordionGroup>

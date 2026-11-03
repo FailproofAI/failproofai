@@ -1,0 +1,25 @@
+---
+title: "Hooks"
+description: "قياس نشاط Hook والمشغلات وزمن الاستجابة بشكل منفصل عن نتائج السياسة."
+icon: "webhook"
+---
+
+يعرض Hooks متى يتم تشغيل lifecycle hooks للوكيل ومدة استغراقها. قرارات السياسة لها عرض منفصل.
+
+<Tabs>
+  <Tab title="لوحة التحكم">
+    1. انتقل إلى **Observe → Hooks**.
+    2. قم بالتصفية حسب البيئة أو اسم Hook أو حدث المشغل أو الوكيل أو معرف الجلسة.
+    3. راجع زمن استجابة Hook والتوزيع.
+    4. حدد نقطة على المخطط البياني أو جزء Hook لفتح الأحداث الأساسية.
+
+    ![صفحة Hooks تعرض زمن الاستجابة مجمعًا حسب اسم Hook وحدث المشغل.](/images/dashboard/hooks.png)
+  </Tab>
+  <Tab title="واجهة سطر الأوامر">
+    ```bash
+    fp list hooks
+    fp events --event-type hook_triggered,hook_completed --env production --since 24h
+    fp events --search "PreToolUse" --since 24h
+    ```
+  </Tab>
+</Tabs>

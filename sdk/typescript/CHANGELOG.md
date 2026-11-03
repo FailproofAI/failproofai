@@ -1,0 +1,333 @@
+# Changelog — `@failproofai/sdk`
+
+The TypeScript telemetry SDK. Released independently of the `failproofai` npm
+package, of its Python sibling `failproofai-sdk`, and of `fp-cloud-cli`, so the
+versions here line up with none of them.
+
+Headings are `## <version> — <YYYY-MM-DD>`, and the section matching the version
+in `src/version.ts` becomes that release's GitHub Release body. A release whose
+section is missing or empty is refused before anything is built.
+
+## 0.0.1-beta.2 — 2026-10-16
+
+### Fixes
+
+- **`mastra-1` tests the current Mastra 1.x, on the fixed MCP packages.**
+  `@mastra/core` 1.68.0 → 1.81.0, `@mastra/mcp` 2.0.0 → 2.7.0 and `@mastra/memory`
+  1.31.0 → 1.40.0. That takes `@modelcontextprotocol/node` to 2.1.2
+  (GHSA-f897-62hf-6gxq) and `@hono/node-server` to 2.1.6 (GHSA-rmxm-3fg6-px4f, and
+  the fixes 2.1.6 itself ships: GHSA-jpvv-r467-5p4w, GHSA-7v5p-43qr-wch5,
+  GHSA-qv5m-9pm6-hqp3). Dependabot's #965 moved `@mastra/mcp` alone, which peers on
+  `@mastra/core >=1.79.0`, so `npm ci` failed `ERESOLVE` and every shard that
+  installs the fixture failed with it. The `@modelcontextprotocol/client` and
+  `@modelcontextprotocol/server` overrides from #934 retire, because `@mastra/mcp`
+  2.7.0 pins fixed releases of both. The `argparse` override from #904 retires too:
+  `@mastra/core` no longer reaches `gray-matter`, so neither this fixture nor
+  `nextjs` installs `argparse` 1 or `sprintf-js`. `nextjs` moves `@mastra/core` to
+  1.81.0 with it, because it compares each route's trace with this fixture's;
+  `__tests__/ci/ts-sdk-fixture-pins.test.ts` now fails when any `nextjs` framework
+  pin leaves its twin. (#966)
+
+- **`mastra-0` clears its transitive advisories and stays on Mastra 0.x.**
+  `@hono/node-server` 2.1.1 → 2.1.6 and `systeminformation` 5.33.13 → 5.33.19 are
+  in range (GHSA-rmxm-3fg6-px4f, GHSA-3f7j-7jwc-fxfj, GHSA-4vjg-vx72-qq4g). A
+  fixture-local override moves `gaxios` 7.1.3 → 7.3.1, which `gcp-metadata` pins
+  exactly and which no longer depends on `rimraf`, so `rimraf`, `glob`
+  (GHSA-3g3m-2fjr-6pw4), `minimatch` (GHSA-g3hv-75wg-m249) and 21 more packages leave
+  the tree. `@mastra/core`, `@mastra/mcp`, `@mastra/memory` and `ai` resolve exactly
+  as before. Dependabot's #955 reached the same alerts by moving `@mastra/core` to
+  1.80.0, off the floor this fixture holds, and `@mastra/mcp@0.14.5` cannot install
+  beside it. `.github/dependabot.yml` now gives `@ai-sdk/provider-utils`, the package
+  #955 was updating, its own range on `ai-4` and `mastra-0`: a range is read only for
+  the package being updated, so `@mastra/*` being ignored did not hold a parent moved
+  on its behalf. (#966)
+
+- **`deepmerge` leaves `llamaindex-0.11`, `llamaindex-0.12` and `nextjs`.**
+  GHSA-gcqx-w48m-w2h4 has no patched release, so the fix is to take it out of the
+  tree. Each fixture reached it only through `@llamaindex/node-parser` →
+  `html-to-text@9.0.5`, and a fixture-local override moves `html-to-text` to 10.0.1,
+  which replaced it with `deepmerge-ts`. `@llamaindex/node-parser` imports only
+  `htmlToText`, which 10.x still exports, from an HTML parser no fixture runs. (#966)
+
+- **`mastra-0` and `langchain-dup-core` drop their nested zod 3.** Both override zod
+  to their own zod 4 (GHSA-mrhx-c7xc-m3w5). `@mastra/mcp` and `@mastra/schema-compat`
+  call `zod-from-json-schema-v3` only when the root zod has no `toJSONSchema`, which
+  a zod 4 root does, and `@langchain/core@0.3.80` imports only `zod/v3` and
+  `zod/v4/core`, which zod 4 also ships. `langchain-dup-core` still nests its second
+  `@langchain/core`, which is what that fixture exists to test. `mastra-0` also moves
+  its own zod 4.6.6 → 4.6.7, the release every other fixture on zod 4 pins. (#966)
+
+- **`nextjs` and `mastra-1` drop `sprintf-js`.** Every release through `1.1.3`
+  carries GHSA-hp3w-g68c-fv3c and none fixes it, so the fix is to take it out of
+  the tree. Both fixtures reached it only through `@mastra/core@1.68.0` →
+  `gray-matter@4.0.3` → `js-yaml@3.15.2` → `argparse@1.0.10`, and js-yaml 3 loads
+  `argparse` from its `js-yaml` CLI alone, never from the library `gray-matter`
+  calls. A fixture-local `overrides` entry moves `argparse` to `2.0.1`, which has no
+  dependencies. Each lockfile changes by those two packages and nothing else, and
+  `npm audit` on both now reports no findings. (#904)
+
+- **`ai-4`, `langchain-0.3` and `llamaindex-0.11` test their own releases again.**
+  Dependabot's grouped security update (#931) reached the zod fix by moving all
+  three off the release they exist to hold: `ai@4.3.19` → `7.0.152`,
+  `@langchain/core@0.3.80` → `1.3.0` (with `@langchain/langgraph@0.4.10` →
+  `1.5.2`) and `llamaindex@0.11.4` → `0.12.1`, each with `zod@3.25.76` → `4.6.7`.
+  `ai-4` and `langchain-0.3` still installed and passed while testing a
+  different major, so the matrix silently lost two supported floors. `llamaindex-0.11`
+  did not install: `@llamaindex/workflow@1.1.5` peers on `zod@^3.23.8`, so
+  `npm ci` failed `ERESOLVE`, and because the global setup installs every fixture
+  before any test runs, the `frameworks` and `runtimes` shards failed on `main`.
+  All three are back on their pre-#931 manifests and lockfiles. #931 also moved
+  the `runtimes` fixture to `zod@4.6.7` while `deno-npm.ts` still imported
+  `npm:zod@4.6.5`, which Deno resolves against the fixture's `node_modules` and
+  could no longer find; it imports `4.6.7` now. A root CI test,
+  `__tests__/ci/ts-sdk-fixture-pins.test.ts`, fails on either move: a fixture named
+  for a release line pinning its framework off that line, or an `npm:` specifier
+  naming a version the fixture does not install. (#934)
+
+- **The four framework floors stay put.** Dependabot's grouped security update
+  #935, opened three minutes after #934 merged, moved `ai-4`, `langchain-0.3` and
+  `llamaindex-0.11` off their releases again (`ai@4.3.19` → `5.0.52`,
+  `@langchain/core@0.3.80` → `1.3.0` with `@langchain/langgraph@0.4.10` →
+  `1.5.2`, `llamaindex@0.11.4` → `0.12.1`, each with `zod@3.25.76` → `4.6.7`), and
+  `mastra-0` too (`@mastra/core@0.24.9` → `1.79.0`, `@mastra/memory@0.15.13` →
+  `1.39.0`). All four are back on their #934 manifests and lockfiles. So that the
+  move stops being proposed rather than being undone a fourth time,
+  `.github/dependabot.yml` gives each floor a security-updates-only entry
+  (`open-pull-requests-limit: 0`) whose `ignore` ranges hold its framework on its
+  line, and zod on 3 where that framework requires it; a fix that stays on the
+  line still arrives. `__tests__/ci/ts-sdk-fixture-pins.test.ts` now also fails
+  when a floor has no such entry, or one that would let the framework leave its
+  line. (#950)
+
+- **The remaining fixable fixture advisories clear, each with an override.** `ai-5`
+  moves `undici` 7.29.1 → 7.30.1 (GHSA-xjj6-f33q-929c, GHSA-4qv8-2p9j-2685,
+  GHSA-f72v-6w45-q472) and `llamaindex-0.11` moves `fast-uri` 3.1.8 → 3.1.9
+  (GHSA-w74x-v6f9-j3xg, GHSA-wjr9-j795-jxcr, GHSA-xhq7-xmqj-769h,
+  GHSA-333x-w4r6-6crp). In `mastra-1`, `@mastra/mcp@2.0.0` pins
+  `@modelcontextprotocol/server` and `@modelcontextprotocol/client` exactly, so the
+  fixture overrides both to `2.3.0` (GHSA-jm63-cq47-j5jp, GHSA-46jr-4wx8-v453,
+  GHSA-rvq5-wwqv-78pq, GHSA-6prh-2h8m-c8cw); each brings its own
+  `@modelcontextprotocol/core@2.3.0` nested under it, as the client's earlier
+  `2.2.0` override did. Each lockfile changes by those packages alone, and
+  `npm audit` reports no findings in `ai-5` or `mastra-1`. (#934)
+
+- **zod GHSA-mrhx-c7xc-m3w5 stays in the three fixtures held to zod 3.** It is fixed
+  only in `zod@4.6.6`, and no zod 3 release carries the fix. `ai-4`, `langchain-0.3`
+  and `llamaindex-0.11` pin `zod@3.25.76` beside frameworks that require `^3`.
+  `SECURITY.md` records it with the two `ai@4` advisories. (#934, #966)
+
+## 0.0.1-beta.1 — 2026-10-15
+
+### Features
+
+- **OpenTelemetry spans to FailproofAI Cloud, without a network call in your
+  process.** `OtelSpanExporter`, or `instrument("otel", { spanProcessors })` before
+  you construct your provider, writes each finished batch of spans as OTLP/JSON to
+  the local spool (`~/.failproofai/state/spool-otlp`); the failproofai daemon
+  delivers it to Cloud with the machine's key and retries if Cloud is unreachable.
+  `@opentelemetry/sdk-trace-base` is only loaded when you call it.
+
+### Fixes
+
+- **A blank `FAILPROOFAI_HOME` no longer means the current directory.** An empty or
+  whitespace-only value made the exporter and the custom-agents resolver write
+  under the working directory, where the daemon never reads. Blank now means unset.
+
+- **The integration fixtures stop carrying 32 open security advisories.** Nothing
+  the published package ships changed — every fixture under `integration/fixtures/`
+  is `"private": true` and exists only to run the adapters against real framework
+  releases — but their committed lockfiles are read by GitHub's dependency graph,
+  and the old majors those fixtures deliberately pin (`ai@4.3.19`,
+  `@langchain/core@0.3.80`, `@mastra/core@0.24.9`) pin *their* transitive deps
+  exactly, so nothing moved in range. Five fixtures now carry a minimal `overrides`
+  entry — `undici`, `langsmith`, `uuid`, `jsondiffpatch` and five OpenTelemetry
+  packages — clearing 32 of them with every framework pin, and
+  `langchain-dup-core`'s two-copies-of-`@langchain/core` shape, unchanged.
+  Four alerts remain, from two low-severity advisories: one against `ai@4.3.19`
+  (GHSA-rwvc-j5jr-mgvh) and one against the `@ai-sdk/provider-utils@2.2.8` that
+  ships inside it (GHSA-866g-f22w-33x8). Both are fixed only in the major these
+  fixtures exist to stay below, so `SECURITY.md` records them and the rule for
+  the next one. (`nextjs`'s `postcss` is handled in #838.) (#837)
+
+- **The last four fixture advisories clear, and no fixture leaves its pinned
+  major to do it.** `nextjs` carried `postcss@8.4.31` (GHSA-qx2v-qp2m-jg93,
+  GHSA-6g55-p6wh-862q, GHSA-r28c-9q8g-f849, GHSA-fxqj-rqcc-2cmp) under a *second*
+  `next@15.5.26` that npm installed only to satisfy `@llamaindex/workflow-core@1.3.3`'s
+  `next@^15.2.2` peer against the fixture's root `next@16.3.6`. Nothing imports it,
+  so regenerating the lockfile drops that peer tree and nothing else — 274 lines,
+  deletions only, `npm audit` 5 findings → 0. Dependabot had reached the same
+  advisories by moving the pins instead: `ai-4` to `ai@5.0.52` and `mastra-0` to
+  `@mastra/core@1.70.0`, the two releases those fixtures exist to hold, and the one
+  move `SECURITY.md` names as never the answer. `mastra-0` then stopped installing
+  altogether — `@mastra/mcp@0.14.5` peers on `@mastra/core@">=0.20.1-0 <0.25.0-0"`,
+  so `npm ci` failed `ERESOLVE` — and because the global setup installs every fixture
+  before any test runs, that one fixture took down all three non-`nextjs` shards,
+  `runtimes` included, which has no Mastra test in it. Both pins are restored, and
+  `ai` stays at `7.0.111` in `nextjs` so the fixture still matches the `ai-7` twin
+  whose trace `nextjs.test.ts` compares each route against. (#838)
+
+- **Two more fixture advisories clear, and again no fixture leaves its pinned
+  major.** Both were reachable the whole time; nothing had looked. `ai-5` pinned
+  `undici` at `7.29.0` through the override added in #837, and GHSA-3wwx-pv8p-q78v
+  (medium) is fixed in `7.29.1` — the root `package.json`'s own `undici` override
+  moved there, the fixture's did not. `mastra-0` carried **eleven** copies of
+  `@ai-sdk/provider-utils`, which split in two: nine parents on that fixture's 5.x
+  side (`ai-v5`, `@ai-sdk/gateway`, `@ai-sdk/openai-v5` and six siblings) pinned
+  exact `3.0.10`–`3.0.17`, every one below the `3.0.28` that fixes
+  GHSA-866g-f22w-33x8, while the other two are the `2.2.8` that ships *inside*
+  `ai@4.3.19` under `@mastra/core` and `@mastra/memory`. The accepted row above
+  describes only that second pair, so the 3.x half was never covered by it — a
+  plain `"@ai-sdk/provider-utils": "3.0.28"` would have forced both halves and
+  broken the pin. The entry is **spec-scoped** instead — `"@ai-sdk/provider-utils@3"`,
+  which npm applies only where the requested range already resolves inside 3.x —
+  so the 3.x copies collapse to one patched copy, the two `2.2.8` copies are
+  untouched, and `@mastra/core@0.24.9`, `@mastra/mcp@0.14.5`,
+  `@mastra/memory@0.15.13` and `ai@4.3.19` all resolve exactly as before. That
+  dedupe is most of the ~110 deleted lockfile lines.
+
+  **One of the nine hid behind an npm alias**, and that is the part worth
+  remembering. `@mastra/core@0.24.9` does not ask for `@ai-sdk/provider-utils`
+  by name — it asks for `"@ai-sdk/provider-utils-v5": "npm:@ai-sdk/provider-utils@3.0.12"`,
+  one of ten `-v5` aliases in that lockfile. npm keys `overrides` on the name the
+  **dependent requests**, not on the name that ends up installed, so
+  `"@ai-sdk/provider-utils@3"` never applied to it and an affected `3.0.12` stayed
+  in the tree looking, from every path-keyed check, exactly like a package that had
+  been patched. It needed its own alias-keyed entry,
+  `"@ai-sdk/provider-utils-v5": "npm:@ai-sdk/provider-utils@3.0.28"`. Verifying an
+  override by globbing lockfile paths for the real package name is what missed it;
+  `npm audit` names the alias directly. The other nine aliases are unaffected —
+  `ai-v5` resolves `5.0.60` and `5.0.97`, both above GHSA-rwvc-j5jr-mgvh's `5.0.52`
+  floor. Dependabot had reached the same two alerts by moving
+  `ai-4` to `ai@5.0.52`, `ai-5` to `ai@7.0.122` and `mastra-0` to
+  `@mastra/core@1.71.0` (#867) — the third time in as many days that its fix for a
+  fixture advisory was the one `SECURITY.md` forbids, and it failed the same
+  `ERESOLVE` on the same `@mastra/mcp` peer as #838. `ai-4` needed no change: both
+  advisories still open against it are the accepted kind, and the table above
+  already carries them. (#869)
+
+- **`mastra-1` clears its one fixture advisory without moving a pin.**
+  GHSA-6qxp-vccf-f47h (high) is against `@modelcontextprotocol/client@2.0.0`,
+  which `@mastra/mcp@2.0.0` pins exactly. The fixture now carries an `overrides`
+  entry for the patched `2.2.0`. That release brings its own
+  `@modelcontextprotocol/core@2.2.0`, nested under it, and every other package
+  resolves as before. Dependabot's fix (#884) moved `@mastra/mcp` to `2.3.0`
+  instead. That release peers on `@mastra/core >=1.75.0-0`, so it cannot install
+  beside the fixture's `1.68.0`. The `mcp` and `mcp-toolsets` scenarios pass
+  against the override. This package's own dev lockfile also moves
+  `source-map-js` to `1.2.2` (GHSA-68fv-2mgg-jv7q). (#901)
+
+- **`nextjs` and `mastra-0` clear their fixable advisories, again without moving
+  a pin.** `nextjs` moves `next` to `16.4.1` (six advisories, fixed in `16.3.8`),
+  `sharp` to `0.35.5` (GHSA-wq5f-xc86-pv6w) and `source-map-js` to `1.2.2`
+  (GHSA-68fv-2mgg-jv7q). `mastra-0` moves `@modelcontextprotocol/sdk` from
+  `1.30.1` to `1.32.1` (GHSA-6qxp-vccf-f47h), inside the `^1.17.5` range
+  `@mastra/mcp@0.14.5` declares, so only the lockfile changes. Dependabot's
+  version of this PR also moved `ai-4` to `ai@5.0.52` and `mastra-0` to
+  `@mastra/core@1.77.0`, which cannot install beside `@mastra/mcp@0.14.5` and
+  failed every integration shard, and `nextjs`'s `ai` to `7.0.141`, off the
+  `ai-7` twin its routes' traces are compared against. None of those are
+  applied. (#902)
+
+## 0.0.1-beta.0 — 2026-09-23
+
+### Added
+
+- **First release.** `@failproofai/sdk` is the TypeScript counterpart to the
+  Python `failproofai-sdk`: the same 15 events, the same wire format, the same
+  spool directory, the same evaluator protocol. A process running a Node agent
+  and a process running a Python one now write into one pipe, and the dashboard
+  cannot tell which wrote what.
+
+- **Scopes** — `session()`, `agent()`, `toolCall()`. Identity rides on
+  `AsyncLocalStorage`, so two concurrent runs in one process never mix. Each
+  takes a callback (`await agent("planner", fn)`) and also has a `.open()`
+  returning a `using`-compatible handle for the cases a callback cannot express.
+  A synchronous body stays synchronous — the scopes do not wrap every call in a
+  promise, because a constructor or an `EventEmitter` listener cannot await one.
+
+- **Adapters** — `instrument()` wires LangChain.js / LangGraph.js
+  (`@langchain/core` 0.3 – 1.x), the Vercel AI SDK (`ai` 4 – 7), Mastra
+  (`@mastra/core` 0.20 – 1.x) and LlamaIndex.TS (`llamaindex` 0.11.4 – 0.x),
+  and they draw the Python SDK's trees: a construct is an agent only if it owns
+  an LLM decision loop, a LangGraph node or workflow step is a hook, model and
+  tool calls are pairs carrying token counts and the model's own tool call id,
+  and a failure is recorded once, where it happened. LangChain traces match the
+  Python adapter's golden output event for event, including interrupt/resume.
+  The AI SDK is served by `telemetry()` — one object carrying an OpenTelemetry
+  tracer for `ai` 4–6 and a telemetry integration for `ai` 7 — plus
+  `wrapModel()` and, for `ai` 7, `instrument("ai")`; using them together records
+  each call once. On `ai` 4–6 `instrument("ai")` never takes the global
+  OpenTelemetry slot unless asked (`registerGlobalTracer: true`), because
+  taking it silently refuses the application's own tracing set up afterwards.
+  `langchainHandler()` works without `instrument()`.
+
+- **Safe in a long-running server.** Nothing a finished run leaves behind is
+  kept: tracker links go when their run closes (a FIFO cap full of finished
+  runs used to evict live ones and drop their events), LangGraph runs paused on
+  a human and resumed by another worker are forgotten after 15 minutes, and a
+  streamed model call that is cancelled or errors still closes. Concurrent
+  requests on one shared LlamaIndex query engine or agent are kept apart, and
+  `uninstrument()` stops Mastra recording through models and tools it had
+  already wrapped. Frameworks are found from the entry script as well as the
+  working directory, so a service started from `/` or a monorepo app with its
+  own nested copy of a framework is instrumented correctly.
+
+- **Tested against the real frameworks, not just in isolation.** `integration/`
+  installs real framework releases at both ends of every declared range from
+  per-fixture lockfiles, extracts the packed tarball into each, and runs one
+  agent as an ES module and as CommonJS — the dual-package case where an
+  adapter that patches the CommonJS copy of a framework records nothing at all
+  in an ES-module application. Adapters patch the copy the application loads,
+  and never load a second one. Runs in CI as `failproofai-ts-sdk-integrations`.
+
+- **Every commonly used surface, not just the headline API.** Beyond each
+  framework's main agent call the suite covers LangChain's v1 `createAgent`,
+  LCEL chains, retrievers, `.batch()` and nested `@langchain/core` copies; the
+  AI SDK's agent classes, embeddings, object generation, approval and
+  client-side tools and every stream-consumption style; Mastra instances,
+  networks, memory threads (the thread is the session), workflows with
+  suspend/resume, processors and MCP tools; LlamaIndex chat engines, query
+  engines, retrievers and `createWorkflow()` workflows — each under
+  concurrency as well.
+
+- **Next.js:** `withFailproofai(nextConfig)` from `@failproofai/sdk/next`
+  keeps the frameworks `instrument()` patches out of Next's server bundle, and
+  `instrument()` warns once per framework it cannot reach instead of recording
+  nothing silently. Importing the SDK in an Edge route is safe (a no-op build).
+
+- **Your own agent, no framework:** a guide to the three places every
+  hand-built agent already has (the run, the model call, the tool dispatcher)
+  and `examples/research-agent.ts`, a real OpenAI tool loop instrumented by hand
+  — the TypeScript twin of the Python SDK's `research_agent.py`. The integration
+  suite runs that exact file on every CI run, as ESM and CJS, against the real
+  `openai` client.
+
+- **Runtimes:** Node ≥ 20.9, Bun and Deno, every framework as ESM and CJS,
+  checked against Node's trace.
+
+- **Type declarations for every consumer setup** — ESM and CommonJS
+  `nodenext`, CommonJS `node16`, `moduleResolution: node` (every subpath, via
+  `typesVersions`) and `bundler` — on TypeScript ≥ 5.4. CommonJS consumers get
+  CommonJS declarations; `@arethetypeswrong/cli` reports no problems.
+
+- **Evaluator** — `@failproofai/sdk/evaluator` implements Evaluator v2: the wire
+  protocol, the worker state machine, the authoring API, and a
+  `failproofai-evaluator` command to run one.
+
+- **A sandbox that is a real one.** Server-authored evaluation source runs
+  through a restricted expression language that is **parsed and interpreted**
+  here — never `eval`'d, never handed to `node:vm`. That is not
+  belt-and-braces: JavaScript has a reachable path from any value to arbitrary
+  code (`x["constructor"]["constructor"]("…")()`), a static allowlist cannot
+  close it because the key is computed at runtime, and a `vm` context has its
+  own `Function` to reach. Every property read goes through one function that
+  checks the actual key at the moment of the read. A `worker_threads` sandbox
+  with V8 heap limits, a wall-clock `terminate()` and a bounded result sits
+  around that as the RESOURCE bound, and an evaluation that cannot be sandboxed
+  is refused rather than run.
+
+- **Zero runtime dependencies**, checked by the build and by a test. This
+  package installs into other people's agent processes; every dependency it
+  declared would be a version constraint they inherit.
+
+- Dual ESM + CommonJS build, Node ≥ 20.9.

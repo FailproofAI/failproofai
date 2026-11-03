@@ -1,0 +1,355 @@
+// @vitest-environment node
+/**
+ * When a pack that was supposed to be enforcing is not.
+ *
+ * Every carve-out below closes a way this deny would be WRONG, and a deny that
+ * is wrong is worse than the gap it was added to close: it is unattended, it
+ * persists until a human intervenes, and the agent cannot fix it because
+ * `block-failproofai-commands` denies every failproofai invocation from a tool
+ * call by design.
+ */
+import { describe, it, expect } from "vitest";
+import { missingGuards, packFailureReason, combinedGuardMatch, guardsCover, PERMANENT_LOAD_FAILURES } from "@/src/hooks/pack-failclosed";
+import type { PackError, ResolvedPack } from "@/src/hooks/pack-manifest";
+
+const policy = (name: string, match: object = { events: ["PreToolUse"], toolNames: ["Bash"] }) =>
+  ({ name, description: "d", category: "C", defaultEnabled: true, match }) as never;
+
+const pack = (over: Partial<ResolvedPack> = {}): ResolvedPack => ({
+  id: "acme/finance", version: "1.2.0", source: "github:acme/finance@v1.2.0",
+  path: "/x.mjs", sha256: "a".repeat(64), effect: "enforce",
+  policies: [policy("block-refunds"), policy("require-note")],
+  clis: null,
+  enabled: null,
+  ...over,
+});
+
+const call = (over: Partial<Parameters<typeof missingGuards>[0]> = {}) =>
+  missingGuards({ errors: [], packs: [], registered: new Map(), failed: new Map(), disabled: new Set(), ...over });
+
+describe("what counts as a failure", () => {
+  it("says nothing about a machine with no packs at all", () => {
+    // A fresh machine is not a broken one. The trigger is "declared and not
+    // running", never "nothing is running".
+    expect(call()).toEqual([]);
+  });
+
+  it("says nothing when a pack registered everything it declared", () => {
+    expect(call({
+      packs: [pack()],
+      registered: new Map([["acme/finance", new Set(["block-refunds", "require-note"])]]),
+    })).toEqual([]);
+  });
+
+  it("flags a pack declared in the manifest that never resolved", () => {
+    const errors: PackError[] = [{
+      id: "acme/finance", reason: "failed integrity verification",
+      effect: "enforce", declared: [policy("block-refunds")],
+    }];
+    const guards = call({ errors });
+    expect(guards).toHaveLength(1);
+    expect(guards[0].policies).toEqual(["block-refunds"]);
+    expect(guards[0].reason).toContain("integrity");
+  });
+
+  it("flags a pack that registered LESS than it declared", () => {
+    // Its own listing would still claim the machine is protected by the policy
+    // that never registered.
+    const guards = call({
+      packs: [pack()],
+      registered: new Map([["acme/finance", new Set(["block-refunds"])]]),
+    });
+    expect(guards).toHaveLength(1);
+    expect(guards[0].policies).toEqual(["require-note"]);
+  });
+
+  it("flags a pack whose artifact failed before registering any hooks", () => {
+    const guards = call({
+      packs: [pack()],
+      failed: new Map([["acme/finance", { type: "syntax_error", reason: "Unexpected token" }]]),
+    });
+    expect(guards).toHaveLength(1);
+    expect(guards[0].packVersion).toBe("1.2.0");
+    expect(guards[0].policies).toEqual(["block-refunds", "require-note"]);
+    expect(guards[0].reason).toContain("Unexpected token");
+  });
+});
+
+describe("the carve-outs", () => {
+  it("ignores an OBSERVE pack that failed", () => {
+    // An observe pack evaluates and discards by construction, so denying on its
+    // behalf denies for something that would have allowed.
+    expect(call({ errors: [{ id: "a/b", reason: "boom", effect: "observe" }] })).toEqual([]);
+    expect(call({
+      packs: [pack({ effect: "observe" })],
+      registered: new Map([["acme/finance", new Set()]]),
+    })).toEqual([]);
+  });
+
+  it("ignores policies the user never took", () => {
+    // Denying for a guard that was never going to run is denying on nobody's
+    // behalf.
+    expect(call({
+      packs: [pack({ clis: null,
+  enabled: ["block-refunds"] })],
+      registered: new Map([["acme/finance", new Set(["block-refunds"])]]),
+    })).toEqual([]);
+  });
+
+  it("ignores policies the user explicitly disabled", () => {
+    expect(call({
+      packs: [pack()],
+      registered: new Map([["acme/finance", new Set(["block-refunds"])]]),
+      disabled: new Set(["pack:acme/finance@1.2.0:require-note"]),
+    })).toEqual([]);
+  });
+
+  it("ignores a pack the loader was never given", () => {
+    // Absent from the map means it never reached the loader — inferring failure
+    // from "no registrations" cannot tell an import error apart from a pause
+    // skip or a pack that legitimately registers nothing, and a heuristic that
+    // DENIES is worse than one that allows.
+    expect(call({ packs: [pack()] })).toEqual([]);
+  });
+
+  it("treats a load timeout as transient, not permanent", () => {
+    // A machine-wide deny from one slow disk moment persists until a human
+    // intervenes — and in the warm worker the denials themselves add load.
+    expect(PERMANENT_LOAD_FAILURES.has("load_timeout")).toBe(false);
+    for (const c of ["module_not_found", "syntax_error", "runtime_error", "path_missing"]) {
+      expect(PERMANENT_LOAD_FAILURES.has(c), c).toBe(true);
+    }
+    expect(call({
+      packs: [pack()],
+      failed: new Map([["acme/finance", { type: "load_timeout", reason: "slow disk" }]]),
+    })).toEqual([]);
+  });
+});
+
+describe("how narrow the deny is", () => {
+  it("matches only the events and tools the missing guards declared", () => {
+    const guards = call({
+      packs: [pack({ policies: [policy("block-refunds"), policy("require-note")] })],
+      registered: new Map([["acme/finance", new Set(["block-refunds"])]]),
+    });
+    expect(guards[0].match).toEqual({ events: ["PreToolUse"], toolNames: ["Bash"] });
+  });
+
+  it("KEEPS UserPromptSubmit in the match so the caller can instruct there", () => {
+    // Stripping it here made the instruct branch unreachable and the user got no
+    // signal at all. The matcher says WHERE the guards applied; the caller
+    // decides how to answer — and there, the answer must never be a deny.
+    const guards = call({
+      packs: [pack({ policies: [policy("p", { events: ["PreToolUse", "UserPromptSubmit"] })] })],
+      registered: new Map([["acme/finance", new Set()]]),
+    });
+    expect(guards[0].match.events).toContain("UserPromptSubmit");
+  });
+
+  it("widens to everything when a policy declared no scope", () => {
+    const guards = call({
+      packs: [pack({ policies: [policy("p", {})] })],
+      registered: new Map([["acme/finance", new Set()]]),
+    });
+    expect(guards[0].match).toEqual({});
+  });
+});
+
+// `match` was validated as "is an object" and nothing more, so a manifest
+// could declare a shape nobody can read and the narrowing derived from it
+// pointed at events that do not exist. The deny survived, matched nothing, and
+// the machine ran unguarded — fail-closed in name only.
+describe("a match nobody can read", () => {
+  it.each([
+    ["a string where a list belongs", "PreToolUse"],
+    ["a bare number", 5],
+    ["a list with a hole in it", [null]],
+    ["a list of the wrong type", [1, 2]],
+    ["an object", { PreToolUse: true }],
+  ])("widens to everything on %s, instead of narrowing to nothing", (_label, events) => {
+    const guards = call({
+      packs: [pack({ policies: [policy("p", { events } as never)] })],
+      registered: new Map([["acme/finance", new Set()]]),
+    });
+    expect(guards).toHaveLength(1);
+    expect(guards[0].match.events).toBeUndefined();
+  });
+
+  it("widens on an unreadable toolNames without losing a readable events", () => {
+    const guards = call({
+      packs: [pack({ policies: [policy("p", { events: ["PreToolUse"], toolNames: "Bash" } as never)] })],
+      registered: new Map([["acme/finance", new Set()]]),
+    });
+    expect(guards[0].match.events).toEqual(["PreToolUse"]);
+    expect(guards[0].match.toolNames).toBeUndefined();
+  });
+
+  // `for (const e of 5)` throws, and this runs on the hook path — so the shape
+  // that fails open the hardest also took the process down with it.
+  it("does not throw on metadata that is not iterable", () => {
+    expect(() =>
+      call({
+        packs: [pack({ policies: [policy("p", { events: 5 } as never)] })],
+        registered: new Map([["acme/finance", new Set()]]),
+      }),
+    ).not.toThrow();
+  });
+});
+
+// The registration path skips a pack whose `clis` excludes this agent. The
+// fail-closed path did not, so a pack scoped to one agent that failed to load
+// denied on every other one — locking an agent out over enforcement it was
+// never configured to have, until a human repaired a pack it does not use.
+describe("a pack scoped away from the agent that is running", () => {
+  it("does not deny an agent the pack never covered", () => {
+    const guards = call({
+      packs: [pack({ clis: ["codex"], policies: [policy("p")] })],
+      registered: new Map([["acme/finance", new Set()]]),
+      cli: "claude",
+    });
+    expect(guards).toEqual([]);
+  });
+
+  it("still denies the agent it does cover", () => {
+    const guards = call({
+      packs: [pack({ clis: ["codex"], policies: [policy("p")] })],
+      registered: new Map([["acme/finance", new Set()]]),
+      cli: "codex",
+    });
+    expect(guards).toHaveLength(1);
+  });
+
+  it("denies every agent when the pack named none", () => {
+    for (const clis of [null, undefined, []]) {
+      const guards = call({
+        packs: [pack({ clis, policies: [policy("p")] })],
+        registered: new Map([["acme/finance", new Set()]]),
+        cli: "claude",
+      });
+      expect(guards, String(clis)).toHaveLength(1);
+    }
+  });
+
+  // Same reasoning as an unreadable `match`: a narrowing nobody can parse says
+  // nothing true, and here the narrowing is what would let an agent through.
+  it("denies every agent when the scope is unreadable", () => {
+    const guards = call({
+      errors: [{ id: "acme/x", reason: "artifact missing", effect: "enforce", clis: "codex" } as never],
+      cli: "claude",
+    });
+    expect(guards).toHaveLength(1);
+  });
+
+  it("scopes a pack that failed before it could be resolved", () => {
+    const scoped = { id: "acme/x", reason: "artifact missing", effect: "enforce", clis: ["codex"] };
+    expect(call({ errors: [scoped as never], cli: "claude" })).toEqual([]);
+    expect(call({ errors: [scoped as never], cli: "codex" })).toHaveLength(1);
+  });
+});
+
+// One policy stands in for every missing guard, so its matcher has to cover all
+// of them without covering more.
+describe("the matcher that covers several missing guards at once", () => {
+  const guard = (match: object) =>
+    ({ packId: "acme/x", packVersion: "1", policies: ["p"], match, reason: "r" }) as never;
+
+  it("unions both axes when every guard narrowed both", () => {
+    expect(
+      combinedGuardMatch([
+        guard({ events: ["PreToolUse"], toolNames: ["Bash"] }),
+        guard({ events: ["PostToolUse"], toolNames: ["Write"] }),
+      ]),
+    ).toEqual({ events: ["PreToolUse", "PostToolUse"], toolNames: ["Bash", "Write"] });
+  });
+
+  // THE BUG. `toolNames` was left out of the combined object entirely, which
+  // reads as "every tool" — so two failed packs each scoped to Bash denied
+  // Write and Read as well, while ONE failed pack scoped correctly. Combining
+  // two limited scopes cannot produce a larger one.
+  it("does not widen to every tool just because there are two guards", () => {
+    const combined = combinedGuardMatch([
+      guard({ events: ["PreToolUse"], toolNames: ["Bash"] }),
+      guard({ events: ["PreToolUse"], toolNames: ["Bash"] }),
+    ]);
+    expect(combined.toolNames).toEqual(["Bash"]);
+  });
+
+  it("widens an axis only when a guard left it open", () => {
+    const combined = combinedGuardMatch([
+      guard({ events: ["PreToolUse"], toolNames: ["Bash"] }),
+      guard({ events: ["PreToolUse"] }),
+    ]);
+    expect(combined.events).toEqual(["PreToolUse"]);
+    expect(combined.toolNames).toBeUndefined();
+  });
+
+  it("passes a lone guard through untouched", () => {
+    const only = { events: ["PreToolUse"], toolNames: ["Bash"] };
+    expect(combinedGuardMatch([guard(only)])).toEqual(only);
+  });
+});
+
+// The union of two axes is a CROSS PRODUCT, and the registry ANDs them — so the
+// matcher that gets the policy dispatched is wider than any guard asked for.
+// It has to be: a tighter matcher would never be called at all.
+describe("which event and tool a combined guard actually covers", () => {
+  const guard = (match: object) =>
+    ({ packId: "acme/x", packVersion: "1", policies: ["p"], match, reason: "r" }) as never;
+  const pair = [
+    guard({ events: ["PreToolUse"], toolNames: ["Bash"] }),
+    guard({ events: ["PostToolUse"], toolNames: ["Write"] }),
+  ];
+
+  it("covers the pairs the packs declared", () => {
+    expect(guardsCover(pair, "PreToolUse", "Bash")).toBe(true);
+    expect(guardsCover(pair, "PostToolUse", "Write")).toBe(true);
+  });
+
+  // THE BUG. Both of these are inside the unioned matcher and inside neither
+  // guard, so the combined policy denied calls no pack ever asked to guard.
+  it("does not cover the pairs the cross product invented", () => {
+    expect(guardsCover(pair, "PreToolUse", "Write")).toBe(false);
+    expect(guardsCover(pair, "PostToolUse", "Bash")).toBe(false);
+  });
+
+  it("covers every tool for a guard that named none", () => {
+    const open = [guard({ events: ["PreToolUse"] })];
+    expect(guardsCover(open, "PreToolUse", "Write")).toBe(true);
+    expect(guardsCover(open, "PreToolUse", undefined)).toBe(true);
+    expect(guardsCover(open, "PostToolUse", "Write")).toBe(false);
+  });
+
+  it("covers everything for a guard that named nothing", () => {
+    expect(guardsCover([guard({})], "Stop", undefined)).toBe(true);
+  });
+
+  // A tool-scoped guard on an event that carries no tool name.
+  it("does not cover a tool-scoped guard when there is no tool", () => {
+    expect(guardsCover([guard({ toolNames: ["Bash"] })], "Stop", undefined)).toBe(false);
+  });
+
+  // The matcher must stay a superset, or the policy is never dispatched and the
+  // pairing check never runs.
+  it("stays reachable through the matcher it is dispatched by", () => {
+    const match = combinedGuardMatch(pair);
+    for (const [event, tool] of [["PreToolUse", "Bash"], ["PostToolUse", "Write"]] as const) {
+      expect(match.events?.includes(event as never) ?? true).toBe(true);
+      expect(match.toolNames?.includes(tool) ?? true).toBe(true);
+    }
+  });
+});
+
+describe("the message", () => {
+  it("names the pack, the missing policies, and the human command", () => {
+    // Recovery is a human terminal action: the agent cannot run it, because
+    // block-failproofai-commands denies every failproofai invocation from a tool
+    // call, deliberately.
+    const reason = packFailureReason(call({
+      errors: [{ id: "acme/finance", reason: "bad digest", effect: "enforce", declared: [policy("block-refunds")] }],
+    }));
+    expect(reason).toContain("acme/finance");
+    expect(reason).toContain("block-refunds");
+    expect(reason).toContain("failproofai policies");
+    expect(reason).toContain("agent cannot run");
+  });
+});

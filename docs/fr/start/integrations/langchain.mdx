@@ -1,0 +1,244 @@
+---
+title: "LangChain and LangGraph"
+sidebarTitle: "LangChain and LangGraph"
+description: "Instrumentez graphes, nœuds, outils, retrievers et appels de modèles en un seul appel."
+icon: "/images/frameworks/langchain.svg"
+---
+
+Un seul adaptateur pour les deux. LangGraph s'appuie sur le gestionnaire de callbacks de `langchain-core`, donc instrumenter l'un instrumente automatiquement l'autre.
+
+## Installation
+
+```bash
+pip install 'failproofai-sdk[langgraph]'
+```
+
+Pour LangChain sans LangGraph, utilisez `failproofai-sdk[langchain]`.
+
+Versions supportées : `langchain-core` 1.4.7 à 2.0, `langgraph` 1.2 à 2.0. En dehors de cette plage, l'adaptateur s'installe quand même et émet un avertissement unique.
+
+## Instrumentation
+
+```python
+import failproofai_sdk
+
+failproofai_sdk.configure(environment="production")
+failproofai_sdk.instrument()
+
+with failproofai_sdk.session():
+    graph.invoke({"messages": [HumanMessage("...")]})
+```
+
+`instrument()` enregistre un tracer via `langchain_core.tracers.context.register_configure_hook`. LangChain l'injecte dans chaque gestionnaire de callbacks qu'il crée, ce qui permet de capturer graphes, outils et modèles sans modifier un seul point d'appel — y compris ceux au sein de bibliothèques tierces.
+
+## Ce qui est enregistré
+
+| LangChain ou LangGraph | Événement Failproof |
+| --- | --- |
+| Exécution racine | `agent_start`, `agent_end` |
+| Nœud LangGraph | `hook_triggered`, `hook_completed` |
+| Sous-graphe compilé | `agent_start`, `agent_end` imbriqués |
+| Exécution d'outil | `tool_use`, `tool_result` |
+| Exécution de retriever | `tool_use`, `tool_result`, sortie résumée |
+| Chat model ou LLM | `model_request`, `model_response`, avec comptage de tokens |
+| Tokens en streaming | Regroupés dans la réponse sous forme de nombre de chunks et de temps jusqu'au premier token. Le comptage de tokens nécessite `ChatOpenAI(stream_usage=True)` — voir ci-dessous |
+| `interrupt()` | `human_wait`, `agent_pause` |
+| `Command(resume=...)` | `agent_resume`, `human_input`, corrélés sur l'`Interrupt.id` — y compris lorsque la reprise s'effectue dans un processus différent sur le même checkpointer |
+| Exception non gérée | `error`, puis `agent_end` avec l'issue `failed` |
+
+**Un nœud devient un hook, pas un agent imbriqué.** `agent_id` est la facette principale sur toutes les vues du tableau de bord — promouvoir `retrieve`, `grade_documents` et `should_continue` en agents noierait cette facette et étiquerait la session d'après le nœud exécuté en premier.
+
+Les spans de hooks s'affichent de la même manière et offrent quand même une vue de latence par nœud.
+
+<Note>
+  **Nommez vos nœuds comme vous le souhaitez.** L'exécution d'un nœud est identifiée par sa *forme* — une exécution non-feuille portant le tag de step LangGraph — jamais par son nom.
+</Note>
+
+| Ce que vous écrivez | Ce qui est enregistré |
+| --- | --- |
+| `add_node("lookup_population", ToolNode([...]))` | L'outil |
+| `add_node("ChatOpenAI", ...)` | L'appel au modèle |
+
+Nommer un nœud d'après ce qu'il exécute faisait autrefois disparaître les événements de cet élément. Ce n'est plus le cas.
+
+### Streaming
+
+`.stream()` et `.astream()` n'émettent aucun événement par token. Ils sont regroupés dans le `model_response` final :
+
+| Champ | Contenu |
+| --- | --- |
+| `fw_chunks` | Nombre de chunks reçus |
+| `fw_ttft_ms` | Temps jusqu'au premier token |
+
+### Comptage de tokens sur une réponse streamée
+
+Point distinct, facile à manquer : OpenAI n'envoie l'usage sur une réponse streamée **que si on le lui demande explicitement**.
+
+```python
+ChatOpenAI(model="gpt-4o-mini", stream_usage=True)   # without this, no tokens
+```
+
+L'adaptateur enregistre ce que le framework lui transmet. Sans ce flag, il n'y a rien à enregistrer, et `model_response` arrive sans comptage de tokens.
+
+## Exemple
+
+```python
+import failproofai_sdk
+from langchain_core.messages import HumanMessage
+from langchain_core.tools import tool
+from langchain_openai import ChatOpenAI
+from langgraph.prebuilt import ToolNode, create_react_agent
+
+failproofai_sdk.configure(environment="production")
+failproofai_sdk.instrument()
+
+
+@tool
+def price_of(item: str) -> float:
+    """Return the unit price of an item in USD."""
+    return {"widget": 42.0, "gadget": 17.5}[item.lower().strip()]
+
+
+@tool
+def stock_of(item: str) -> int:
+    """Return the units of an item currently in stock."""
+    return {"widget": 120, "gadget": 0}[item.lower().strip()]
+
+
+tools = ToolNode([price_of, stock_of], handle_tool_errors=True)
+graph = create_react_agent(ChatOpenAI(model="gpt-4o-mini"), tools)
+
+with failproofai_sdk.session():
+    with failproofai_sdk.agent("analyst", goal="price and stock report"):
+        result = graph.invoke({
+            "messages": [HumanMessage("Price and stock for widget and gadget?")]
+        })
+```
+
+## Nommer vos spans
+
+Par défaut, le span racine prend le nom propre du graphe. Enveloppez-le pour lui attribuer le libellé de votre choix :
+
+```python
+with failproofai_sdk.session():
+    with failproofai_sdk.agent("analyst", goal="price and stock report"):
+        graph.invoke(...)
+```
+
+Pour les configurations multi-agents, imbriquez les scopes. Chaque worker devient un span enfant portant un `parent_id` :
+
+```python
+with failproofai_sdk.session():
+    with failproofai_sdk.agent("supervisor"):
+        with failproofai_sdk.agent("researcher"):
+            research_graph.invoke(...)
+        with failproofai_sdk.agent("writer"):
+            writer_graph.invoke(...)
+```
+
+Gardez `agent_id` à faible cardinalité. Utilisez un rôle ou un nom de nœud, jamais un UUID ou une chaîne générée à chaque exécution.
+
+## Contrôler la session
+
+L'identifiant de session est résolu dans cet ordre, la première correspondance l'emportant :
+
+1. `instrument("langchain", session_id=...)`
+2. `config={"metadata": {"failproofai_sdk_session_id": ...}}`
+3. Le scope englobant `failproofai_sdk.session()`
+4. `metadata["session_id"]`, `metadata["conversation_id"]`, ou `metadata["thread_id"]`
+5. L'identifiant de l'exécution racine
+
+Il n'est jamais généré de toutes pièces, car un identifiant synthétisé fragmenterait une exécution en plusieurs sessions.
+
+```python
+graph.invoke(
+    {"messages": [...]},
+    config={"metadata": {"failproofai_sdk_session_id": f"chat-{user_id}"}},
+)
+```
+
+## Options
+
+```python
+failproofai_sdk.instrument(
+    "langchain",
+    session_id=None,          # pin every run to one session id
+    include_chains=set(),     # allowlist intermediate chains as hook pairs
+    capture_content=True,     # False drops prompts and completions from payloads
+    graph_callbacks=True,     # first-class interrupt and resume, needs langgraph 1.2+
+)
+```
+
+Définissez `capture_content=False` pour les données réglementées. La structure, les timings, les comptages de tokens, les noms d'outils et les issues sont toujours enregistrés ; les corps de messages ne le sont pas.
+
+`include_chains` s'applique uniquement aux exécutions **imbriquées**. Un runnable invoqué au niveau supérieur est la racine de la session — il devient donc le span agent plutôt qu'une paire de hooks, et le nommer ici n'a aucun effet.
+
+## Human in the loop
+
+`interrupt()` produit quatre événements, et aucune paire n'est redondante :
+
+```python
+from langgraph.types import Command, interrupt
+
+def approve(state):
+    decision = interrupt({"prompt": "Ship it?", "options": ["yes", "no"]})
+    return {"approved": decision == "yes"}
+
+with failproofai_sdk.session():
+    graph.invoke(state, config)                    # human_wait, agent_pause
+    graph.invoke(Command(resume="yes"), config)    # agent_resume, human_input
+```
+
+De `human_wait` à `human_input`, la paire transporte la question et la réponse (toutes deux supprimées avec `capture_content=False`, ainsi que les sources des documents de retrieval — le nombre de documents est conservé). La paire `agent_pause` vers `agent_resume` est la seule qui alimente le temps en pause ; sans elle, une attente humaine de dix minutes est comptabilisée comme temps actif de l'agent. Le span racine reste ouvert entre les deux appels, les maintenant dans une même session.
+
+## Problèmes courants
+
+<AccordionGroup>
+  <Accordion title="Un outil qui lève une exception interrompt tout le graphe">
+    `create_react_agent` propage l'exception. Pour que le modèle voie l'échec et puisse continuer, construisez le nœud d'outil explicitement :
+
+    ```python
+    from langgraph.prebuilt import ToolNode, create_react_agent
+
+    tools = ToolNode([price_of, stock_of], handle_tool_errors=True)
+    graph = create_react_agent(model, tools)
+    ```
+
+    L'échec est enregistré comme un `tool_result` portant une erreur dans les deux cas. Ce paramètre décide uniquement si l'exécution survit à l'erreur.
+  </Accordion>
+
+  <Accordion title="Un agent portant le nom de la classe de modèle apparaît dans la trace">
+    Un appel direct `llm.invoke()` en dehors de tout graphe n'a pas d'exécution parente, il ouvre donc un span racine et émet sa paire de modèle à l'intérieur. Le tableau de bord rattache les feuilles à un agent ouvert, ce span est donc intentionnel. Nommez-le :
+
+    ```python
+    with failproofai_sdk.agent("summariser"):
+        summary = ChatOpenAI(model="gpt-4o-mini").invoke([HumanMessage(text)])
+    ```
+  </Accordion>
+
+  <Accordion title="Chaque événement apparaît deux fois">
+    Vous avez passé un handler Failproof dans `config={"callbacks": [...]}` tout en appelant `instrument()`. Supprimez-le. Le configure hook couvre déjà tous les gestionnaires de callbacks du processus.
+  </Accordion>
+
+  <Accordion title="Les approbations humaines apparaissent comme des erreurs">
+    Ce n'est pas le cas. LangGraph lève `GraphInterrupt` par le même chemin qu'une vraie exception, donc chaque pause atteint le tracer comme un callback d'erreur. Toute sous-classe de `GraphBubbleUp` est traitée comme un flux de contrôle, donc une approbation n'est pas marquée en rouge.
+  </Accordion>
+
+  <Accordion title="Rien n'est enregistré">
+    Vérifiez dans cet ordre : `instrument()` a été appelé avant l'exécution du graphe ; il y a un `with failproofai_sdk.session():` autour de l'appel ; `FAILPROOFAI_SDK_STRICT=1` est défini, ce qui fait qu'un hook dégradé lève une exception au lieu d'être ignoré silencieusement.
+  </Accordion>
+</AccordionGroup>
+
+## Étapes suivantes
+
+<Columns cols={3}>
+  <Card title="Fonctionnement interne" icon="workflow" href="/fr/start/integrations/custom-agents#going-deeper">
+    Paires, identifiants, cycle de vie de session et livraison.
+  </Card>
+  <Card title="Lire une trace" icon="route" href="/fr/sessions/read-a-trace">
+    Suivez la causalité à travers la session que vous venez de capturer.
+  </Card>
+  <Card title="Autres frameworks" icon="plug" href="/fr/start/integrations">
+    CrewAI, LlamaIndex, Pydantic AI et agents personnalisés.
+  </Card>
+</Columns>

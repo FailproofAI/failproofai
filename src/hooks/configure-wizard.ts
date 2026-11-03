@@ -1,18 +1,14 @@
 /**
  * `failproofai config` — the interactive setup launcher.
  *
- * A single guided flow that sets up the whole failproofai ecosystem:
+ * Four steps, in the order the machine needs them:
  *
- *   0. Daemon    — REQUIRED. Asks for sudo first, on a clean terminal.
- *   1. Where     — inferred from cwd, then confirmed (global / project / both)
- *   2. Policies  — multi-select of themed presets (combine any) or Everything
- *   3. Assistants— multi-select of agent CLIs (detected + install-ahead)
- *   4. Connect   — paste an API key, or stay fully local
- *   5. Review    — shows exactly which files change, then Apply.
- *
- * Selections REPLACE the enabled set at the chosen scope (the picker pre-checks
- * whatever is already enabled, so unticking removes). Reuses the tested
- * install/uninstall manager and the existing searchable policy picker.
+ *   1. Daemon  — REQUIRED. Asks for sudo first, on a clean terminal.
+ *   2. Connect — one masked API-key field; Tab for open source.
+ *   3. Agents  — which agents failproofai traces: hooks, collection and
+ *                backfill all follow this one saved list.
+ *   4. Done    — applied after the last answer; there is no separate review.
+ *                Esc at any step before that changes nothing.
  *
  * ## Two ordering rules that are not cosmetic
  *
@@ -21,41 +17,60 @@
  * fired from underneath a rendered screen the prompt is invisible and the typed
  * password lands in a redrawn frame.
  *
- * **The daemon is INSTALLED first, before any user config is written.** Setup
- * requires it, so a failure has to leave the machine exactly as it was found
- * rather than half-configured. Writing hooks first and discovering the service
- * will not start afterwards is the one ordering that cannot be undone cleanly.
+ * **Everything is written at apply, the daemon before anything else.** Setup
+ * requires the daemon, so a failure has to leave the machine exactly as it was
+ * found rather than half-configured. Writing hooks first and discovering the
+ * service will not start afterwards is the one ordering that cannot be undone
+ * cleanly.
  */
 import { existsSync, mkdirSync, writeFileSync, readFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { dirname, resolve, sep } from "node:path";
 
+import { CORE_SOURCE } from "./pack-store";
+
 import {
-  selectOne,
-  multiSelect,
   BACK,
-  promptText,
-  intro,
-  outro,
-  summarize,
+  collapseAfter,
+  colorsEnabled,
+  multiSelect,
+  OPEN_SOURCE,
+  optsFor,
+  paint,
+  promptBrowserLogin,
+  promptCloudKey,
+  screenKit,
+  selectOne,
+  type CloudKeyAnswer,
   type MultiChoice,
+  type OpenSource,
+  type SelectChoice,
   type TTYIn,
   type TTYOut,
 } from "./tui";
+import { claimLogin, machineOs, pollLogin, startLogin, type LoginOrg } from "./cloud-login";
+import { canOpenBrowser, openUrl } from "../audit/open-browser";
 import {
   DEFAULT_INGEST_URL,
+  readIngestCredential,
   validateIngestKey,
 } from "./collector-config";
 import {
   detectInstalledClis,
   getIntegration,
   settingsPathsFor,
-  unhookedHermesProfiles,
 } from "./integrations";
 import { INTEGRATION_TYPES, type IntegrationType, type HookScope } from "./types";
-import { installHooks } from "./manager";
-import { getConfigPathForScope, readHooksConfig, readScopedHooksConfig } from "./hooks-config";
-import { POLICY_PRESETS, resolvePreset, resolveEverything, RECOMMENDED_POLICIES } from "./policy-presets";
+import { enforcingPolicyCount, installHooks, notEnforcingReason } from "./manager";
+import { installAgentSkill } from "./agent-skill";
+import {
+  CODEX_UNTRUSTED_NOTICE,
+  codexHookTrust,
+  removeCodexSystemHooks,
+  type CodexHookTrust,
+} from "./codex-system-hooks";
+import { readInstalledPacks } from "./pack-manifest";
+import { getConfigPathForScope, readScopedHooksConfig } from "./hooks-config";
 import { discoverPolicyFiles, findSkippedPolicyFiles } from "./custom-hooks-loader";
 import { trackHookEvent } from "./hook-telemetry";
 import { getInstanceId } from "../../lib/telemetry-id";
@@ -63,7 +78,6 @@ import {
   canElevate,
   isDaemonSupportedPlatform,
   installDaemonService,
-  daemonServiceFilePath,
   daemonServiceStatus,
   daemonServiceNeedsUpgrade,
   daemonStatusCommand,
@@ -77,6 +91,7 @@ import {
 } from "./daemon-service";
 import { hookLogWarn } from "./hook-logger";
 import {
+  maskToken,
   readCloudCredentials,
   resolveMachineId,
   resolveMachineLabel,
@@ -86,13 +101,15 @@ import {
   cloudBaseFor,
   ingestUrlFor,
   connectToCloud,
-  describeOutcome,
+  jevLines,
 } from "./cloud-connection";
+import { hasPermission, introspectKey, PERMISSION_EVENTS, PERMISSION_POLICIES } from "./cloud-introspect";
+import { readConfig, readCredentials, updateConfig } from "./fp-config";
+import { requestFreshStart } from "./backfill-request";
+import { hookedAtUserScope } from "./agent-selection";
 import {
   detectSetupState,
   isConfigured,
-  buildTargetChoices,
-  scopesFor,
   type SetupTarget,
 } from "./setup-state";
 import { customPoliciesDir, launcherMarker } from "./fp-home";
@@ -114,6 +131,35 @@ export interface WizardIO {
 }
 
 /**
+ * Answers supplied up front, so the run needs nobody at the keyboard.
+ *
+ * This is the whole of headless setup, and it is small for a reason nobody
+ * planned: the wizard stopped DECIDING most of what it used to. Scope, agents,
+ * policies and the custom-policy toggle are all hardcoded now (see the
+ * constants further down), so there is no decision surface left to expose —
+ * only the three questions that remain, and each has one sensible unattended
+ * answer.
+ *
+ * None of this skips sudo. Installing a system service needs root and nothing
+ * here changes that: elevation goes through `sudo -n`, which never prompts, and
+ * a machine that cannot elevate is told exactly what to run as root.
+ */
+export interface WizardAnswers {
+  /** Cloud API key. Its presence IS the request to connect. */
+  token?: string;
+  /** Where to connect. Defaults to the same URL the wizard infers. */
+  url?: string;
+  machineId?: string;
+  machineLabel?: string;
+  /** Record decisions only, no session transcripts. */
+  noTranscripts?: boolean;
+  /** `--oss`: skip the connect step. A connection already here is left as it is. */
+  oss?: boolean;
+  /** `--agents`: the agents to trace, already validated. Skips the agents step. */
+  agents?: IntegrationType[];
+}
+
+/**
  * Why a wizard run ended without applying. Distinguished so the caller can
  * pick an exit code — a user who pressed Esc did nothing wrong (exit 0), a
  * machine that could not install the required daemon did not get set up
@@ -124,8 +170,11 @@ export type WizardAbort =
   | "needs_root"
   | "daemon_failed"
   | "unsupported_platform"
-  | "not_a_tty"
-  | "running_as_sudo";
+  | "running_as_sudo"
+  /** A cloud key was supplied and the server refused it. Unattended only. */
+  | "cloud_unverified"
+  /** A key was supplied on the command line, and --url or FAILPROOFAI_CLOUD_URL cannot be used. */
+  | "bad_cloud_url";
 
 export interface WizardResult {
   applied: boolean;
@@ -136,7 +185,11 @@ export interface WizardResult {
   clis?: IntegrationType[];
   policies?: string[];
   daemonInstalled?: boolean;
+  /** A connection was written by this run. */
   connected?: boolean;
+  /** Whether the machine is connected once the run ends. */
+  mode?: "cloud" | "oss";
+  agents?: { selected: IntegrationType[]; added: IntegrationType[]; removed: IntegrationType[] };
 }
 
 async function emit(event: string, props: Record<string, unknown>): Promise<void> {
@@ -165,238 +218,229 @@ export function clisSupportingScope(scope: HookScope): IntegrationType[] {
   return INTEGRATION_TYPES.filter((id) => getIntegration(id).scopes.includes(scope));
 }
 
-export function buildAgentChoices(scope: HookScope, cwd: string): MultiChoice<IntegrationType>[] {
-  const detected = new Set(detectInstalledClis());
-  // Detected first, then the rest as "install ahead of time".
-  const ordered = [
+/**
+ * Which agents a run starts with ticked, and what it compares the answer to.
+ *
+ * Three cases, told apart by what is on disk:
+ *  - **rerun**: a saved selection exists. It is restored exactly, plus any
+ *    agent detected now that no earlier setup saw — ticked, and tagged new.
+ *  - **upgrade**: no saved selection, but hooks are installed (a machine set
+ *    up before the selection existed). What is protected today is ticked, so
+ *    finishing setup neither widens nor narrows it.
+ *  - **first**: neither. The detected agents are ticked.
+ *
+ * Every agent is listed, detected or not (decision D1): an agent installed
+ * next week can be ticked today, and an empty machine is not stuck.
+ */
+export type AgentPlanMode = "first" | "rerun" | "upgrade";
+
+export interface AgentPlan {
+  mode: AgentPlanMode;
+  /** Every agent: the detected ones first, then the rest. */
+  order: IntegrationType[];
+  detected: Set<IntegrationType>;
+  /** What the answer is compared to: the saved selection, or what is hooked today. */
+  baseline: Set<IntegrationType>;
+  /** Detected now and seen at no earlier setup. Re-runs only. */
+  fresh: Set<IntegrationType>;
+  /** Ticked when the step opens. */
+  initial: IntegrationType[];
+  /** The `seen` list to save: every agent detected at any setup so far. */
+  seen: IntegrationType[];
+}
+
+export function planAgents(input: {
+  detected: IntegrationType[];
+  saved?: { selected: string[]; seen: string[] };
+  hooked: IntegrationType[];
+}): AgentPlan {
+  const known = (ids: string[]): IntegrationType[] =>
+    INTEGRATION_TYPES.filter((id) => ids.includes(id));
+  const detected = new Set(known(input.detected));
+  const order = [
     ...INTEGRATION_TYPES.filter((id) => detected.has(id)),
     ...INTEGRATION_TYPES.filter((id) => !detected.has(id)),
   ];
-  return ordered.map((id) => {
+  const ordered = (ids: Iterable<IntegrationType>): IntegrationType[] => {
+    const set = new Set(ids);
+    return order.filter((id) => set.has(id));
+  };
+  // Seen accumulates. Rebuilding it from this run's detection would let a PATH
+  // glitch forget an agent, and the next run would call it new — ticked — after
+  // somebody had deliberately unticked it.
+  const seen = ordered([...known(input.saved?.seen ?? []), ...detected]);
+
+  if (input.saved) {
+    const baseline = new Set(known(input.saved.selected));
+    const previouslySeen = new Set(known(input.saved.seen));
+    const fresh = new Set([...detected].filter((id) => !previouslySeen.has(id) && !baseline.has(id)));
+    return { mode: "rerun", order, detected, baseline, fresh, initial: ordered([...baseline, ...fresh]), seen };
+  }
+  const hooked = known(input.hooked);
+  if (hooked.length > 0) {
+    return { mode: "upgrade", order, detected, baseline: new Set(hooked), fresh: new Set(), initial: ordered(hooked), seen };
+  }
+  return { mode: "first", order, detected, baseline: new Set(), fresh: new Set(), initial: ordered(detected), seen };
+}
+
+/**
+ * The selection a run takes without asking: no terminal, or a `--token` run.
+ * The plan's starting ticks — and every agent when those are empty, which only
+ * happens on a machine where nothing is detected, hooked or saved. Hooking
+ * nothing there would leave setup finished and nothing guarded.
+ */
+export function defaultSelection(plan: AgentPlan): IntegrationType[] {
+  // A saved answer stands even when it is empty: removing every agent's hooks
+  // saves an empty selection, and an unattended re-run must not put them back.
+  if (plan.mode === "rerun") return plan.initial;
+  return plan.initial.length > 0 ? plan.initial : [...plan.order];
+}
+
+/** What a chosen selection changes, against the plan's baseline. */
+export function agentChanges(
+  plan: AgentPlan,
+  selected: IntegrationType[],
+): { added: IntegrationType[]; removed: IntegrationType[] } {
+  const chosen = new Set(selected);
+  return {
+    // On a first run nothing was traced before, so nothing is "added" back.
+    added: plan.mode === "first" ? [] : plan.order.filter((id) => chosen.has(id) && !plan.baseline.has(id)),
+    removed: plan.order.filter((id) => !chosen.has(id) && plan.baseline.has(id)),
+  };
+}
+
+/** The picker's rows: one per agent, in the plan's order. */
+export function agentChoices(plan: AgentPlan): MultiChoice<IntegrationType>[] {
+  return plan.order.map((id) => ({
+    label: getIntegration(id).displayName,
+    value: id,
+    checked: plan.initial.includes(id),
+  }));
+}
+
+/**
+ * The tag after a row, recomputed on every toggle: `new on this machine`,
+ * then what the toggle changes against the baseline, then `not installed`.
+ * No change tags on a first run — every tick would read "will be added".
+ */
+export function agentTag(
+  plan: AgentPlan,
+  c: ReturnType<typeof paint>,
+): (id: IntegrationType, checked: boolean) => string | undefined {
+  return (id, checked) => {
+    if (plan.fresh.has(id)) return c.guide("new on this machine");
+    if (plan.mode !== "first") {
+      const before = plan.baseline.has(id);
+      if (checked && !before) return c.guide("will be added");
+      if (!checked && before) return c.warn("will be removed");
+    }
+    if (!plan.detected.has(id)) return c.ink3("not installed");
+    return undefined;
+  };
+}
+
+/** "A", "A and B", "A, B and C". */
+function namesList(ids: IntegrationType[]): string {
+  const names = ids.map((id) => getIntegration(id).displayName);
+  return names.length <= 1 ? (names[0] ?? "") : `${names.slice(0, -1).join(", ")} and ${names[names.length - 1]}`;
+}
+
+/** Wrap `text` after a 2-column glyph, continuing under it, within `width`. */
+function wrapAfterGlyph(glyph: string, text: string, width: number): string[] {
+  const out: string[] = [];
+  let line = "";
+  for (const word of text.split(" ")) {
+    if (line && 2 + line.length + 1 + word.length > width) {
+      out.push(line);
+      line = word;
+    } else {
+      line = line ? `${line} ${word}` : word;
+    }
+  }
+  if (line) out.push(line);
+  return out.map((l, i) => (i === 0 ? `${glyph} ${l}` : `  ${l}`));
+}
+
+/**
+ * The AGENTS step, collapsed. Names are listed when nothing changed against
+ * the baseline; otherwise the count, then what will be added and removed. What a
+ * removal promises is only what the code does: no more hooks, and on a
+ * connected machine no more collection. Nothing already collected is deleted.
+ */
+export function agentsCollapsedLines(
+  kit: ReturnType<typeof screenKit>,
+  plan: AgentPlan,
+  selected: IntegrationType[],
+  collecting: boolean,
+  c: ReturnType<typeof paint>,
+): string[] {
+  const { added, removed } = agentChanges(plan, selected);
+  const n = selected.length;
+  const tracing = `Tracing ${n} ${n === 1 ? "agent" : "agents"}`;
+  const lines = [kit.head("Agents")];
+  if (n === 0) {
+    lines.push(kit.caution("Tracing no agents.", "failproofai config"));
+    return lines;
+  }
+  if (added.length === 0 && removed.length === 0) {
+    const list = selected.map((id) => getIntegration(id).displayName).join(", ");
+    lines.push(...wrapAfterGlyph(c.guide("✓"), `${tracing}: ${list}`, kit.cols));
+    return lines;
+  }
+  lines.push(kit.ok(tracing));
+  // The choice, not the result: this prints before apply, and an apply that
+  // stops at the daemon changes nothing (decision D3).
+  if (added.length > 0) lines.push(`  Adding ${namesList(added)}.`);
+  if (removed.length > 0) {
+    const they = removed.length === 1 ? "it" : "they";
+    lines.push(
+      collecting
+        ? `  Removing ${namesList(removed)}: ${they} will no longer be hooked or collected. Sessions already collected are kept.`
+        : `  Removing ${namesList(removed)}: ${they} will no longer be hooked.`,
+    );
+  }
+  return lines;
+}
+
+/** Lives with the selection it seeds; re-exported where setup always had it. */
+export { hookedAtUserScope };
+
+/**
+ * Take failproofai's hooks out of these agents' USER settings, and nothing
+ * else. Not `removeHooks`: that is the full uninstall, which also strips
+ * project and local hooks under the working directory and resets the policy
+ * configuration of every scope. Unticking an agent in setup must leave every
+ * `policies-config.json` exactly as it was.
+ */
+export function removeUserScopeHooks(clis: IntegrationType[], cwd: string): number {
+  let removed = 0;
+  for (const id of clis) {
     const integration = getIntegration(id);
-    const isDetected = detected.has(id);
-
-    // Not every CLI can be configured at every scope — Hermes and OpenClaw
-    // have no project config at all. Offering them anyway meant picking "Just
-    // this project" and applying died with `Scope "project" is not supported
-    // by Hermes`, after the user had answered every question. Show them as
-    // locked and unchecked with the reason, so the constraint is visible
-    // instead of being discovered as a crash.
-    const supported = integration.scopes.includes(scope);
-    if (!supported) {
-      return {
-        label: integration.displayName,
-        value: id,
-        checked: false,
-        locked: true,
-        section: "Global only · not configurable per-project",
-        hint: `supports ${integration.scopes.join(", ")} scope — rerun with "Everywhere I code"`,
-      };
-    }
-
-    let installedHere = false;
-    try {
-      installedHere = integration.hooksInstalledInSettings(scope, cwd);
-    } catch {
-      installedHere = false;
-    }
-    // Hermes reports installed only when EVERY profile is hooked, so a profile
-    // added after install flips it to false. Say which ones, otherwise a mostly
-    // configured gateway just reads as "not configured".
-    let partialHint: string | undefined;
-    if (id === "hermes" && !installedHere) {
-      try {
-        const unhooked = unhookedHermesProfiles();
-        if (unhooked.length > 0) {
-          partialHint = `${unhooked.length} unhooked profile(s): ${unhooked.join(", ")}`;
-        }
-      } catch {
-        // Profile discovery is best-effort — never block the wizard.
+    if (!integration.scopes.includes("user")) continue;
+    if (id === "codex") {
+      // Codex's user-scope hooks may live in its system config instead; setup
+      // primed sudo, so taking them out of there needs no prompt.
+      const system = removeCodexSystemHooks();
+      if (system.status === "removed") removed += system.hooks;
+      else if (system.status === "failed") {
+        hookLogWarn(`could not remove failproofai's Codex hooks from ${system.path}: ${system.reason}`);
       }
     }
-    return {
-      label: integration.displayName,
-      value: id,
-      checked: isDetected || installedHere,
-      section: isDetected ? "Detected" : "Not installed · set up ahead of time",
-      hint: installedHere
-        ? "already configured"
-        : (partialHint ?? (isDetected ? undefined : "not on PATH")),
-    };
-  });
-}
-
-const EVERYTHING = "__everything__";
-const ALL_CLIS = "__all_clis__";
-/** Sentinel for the locked "Custom" row — informational, never resolves to
- *  builtin policy names (custom policies load by convention, not by config). */
-const CUSTOM = "__custom__";
-/**
- * Sentinel for the locked "enabled individually" row.
- *
- * Policies enabled one at a time (`failproofai policies add <name>`) need not map
- * onto any preset, so seeding the preset boxes cannot represent them. The wizard
- * writes with `replace: true`, which makes the ticked set the WHOLE enabled set —
- * so anything this row stands for must be unioned back in, or confirming the
- * wizard would silently drop it. Locked and pre-checked, because it reports a
- * state rather than offering a choice.
- */
-const INDIVIDUAL = "__individual__";
-
-/**
- * Split what is enabled now into the bundles that cover it and the leftovers.
- *
- * A pure function, and the SINGLE definition of that split — `buildPresetChoices`
- * renders it and the wizard writes from it, so the row the user sees and the set
- * that gets written can never disagree. The first version of this derived the
- * leftovers by parsing them back out of the row's hint text, which coupled a
- * display string to enforcement behaviour and would have broken on any policy
- * name containing the separator.
- */
-export function splitEnabled(currentlyEnabled: readonly string[] = []): {
-  /** Preset ids (or `EVERYTHING`) whose policies are all already enabled. */
-  presets: string[];
-  /** Enabled policies no ticked bundle accounts for. */
-  individual: string[];
-} {
-  const current = new Set(currentlyEnabled);
-  // A bundle is ticked when everything it turns on is already on. Not "any", or
-  // one shared policy would tick every bundle containing it and confirming would
-  // enable all of them.
-  const isOn = (policies: string[]) =>
-    policies.length > 0 && policies.every((name) => current.has(name));
-
-  const everything = resolveEverything();
-  const presets = isOn(everything)
-    ? [EVERYTHING]
-    : POLICY_PRESETS.filter((p) => isOn(resolvePreset(p.id))).map((p) => p.id);
-
-  // Against the TICKED bundles, not all of them: a policy belonging only to a
-  // bundle the user has NOT enabled is still enabled, and that is the fact the
-  // locked row exists to make visible.
-  const accounted = new Set(
-    presets.flatMap((id) => (id === EVERYTHING ? everything : resolvePreset(id))),
-  );
-  const individual = [...current].filter((name) => !accounted.has(name)).sort();
-  return { presets, individual };
-}
-
-/** The themed preset bundles for the wizard's multi-select, plus an "Everything"
- *  option that enables the full builtin policy set. */
-export function buildPresetChoices(
-  cwd: string = process.cwd(),
-  enabled = true,
-  /**
-   * What is enabled at this scope RIGHT NOW, used to tick the boxes.
-   *
-   * Without it every row rendered unticked on every run while the wizard wrote
-   * with `replace: true` — so re-running setup showed a blank slate and then made
-   * that blank slate authoritative, discarding the user's selection with nothing
-   * on screen to say it had happened. The comment on the Custom row below has
-   * always described the intended behaviour ("shows the current state rather than
-   * resetting it every run"); it was implemented for that one row out of eight.
-   *
-   * Optional so the first-run call sites stay unchanged: an empty set ticks
-   * nothing, which is the correct rendering for a machine with no selection.
-   */
-  currentlyEnabled: readonly string[] = [],
-) {
-  const { presets: onPresets, individual } = splitEnabled(currentlyEnabled);
-  const on = new Set(onPresets);
-
-  const choices: MultiChoice<string>[] = POLICY_PRESETS.map((p) => ({
-    label: p.label,
-    value: p.id,
-    hint: p.description,
-    checked: on.has(p.id),
-  }));
-  choices.push({
-    label: "Everything",
-    value: EVERYTHING,
-    hint: `all ${resolveEverything().length} policies`,
-    checked: on.has(EVERYTHING),
-  });
-
-  // The Custom row is ALWAYS present, because it is the only place the feature
-  // is discoverable: a user who has never written a policy cannot learn the
-  // capability exists, and one who wrote a badly-named file cannot learn why
-  // nothing happened.
-  //
-  // When there are loadable files it is a REAL checkbox — unticking writes
-  // `customPoliciesEnabled: false`, which switches convention discovery off
-  // without renaming or deleting anything. With nothing to toggle (no files,
-  // or only skipped ones) it falls back to a locked status row.
-  const custom = describeCustomPolicies(cwd);
-  const skipped = custom.warnings.length;
-  const plural = (n: number) => `${n} file${n === 1 ? "" : "s"}`;
-  const skippedNote = skipped > 0 ? ` · ${skipped} skipped, see next screen` : "";
-
-  if (custom.fileCount > 0) {
-    choices.push({
-      label: "Custom",
-      value: CUSTOM,
-      checked: enabled,
-      // Deliberately NOT summaryExclude'd: this one is a real choice, and the
-      // step summary is the only place the user sees what they picked. Hiding
-      // it meant unticking Custom and every bundle showed "none", giving no
-      // way to tell the toggle had registered.
-      hint: `${plural(custom.fileCount)} in ${custom.scopes.join(" + ")}${skippedNote}`,
-    });
-  } else {
-    choices.push({
-      label: "Custom",
-      value: CUSTOM,
-      locked: true,
-      checked: false,
-      summaryExclude: true,
-      hint:
-        skipped > 0
-          ? `${plural(skipped)} found but NOT loaded — see next screen`
-          : "none yet · drop *-policies.mjs in .failproofai/policies/",
-    });
+    for (const settingsPath of settingsPathsFor(integration, "user", cwd)) {
+      // Hermes is asked even without a config file, so it can clear a plugin
+      // directory left behind by an interrupted install.
+      if (id !== "hermes" && !existsSync(settingsPath)) continue;
+      try {
+        removed += integration.removeHooksFromFile(settingsPath);
+      } catch (err) {
+        hookLogWarn(
+          `could not remove failproofai hooks from ${settingsPath}: ${err instanceof Error ? err.message : String(err)}`,
+        );
+      }
+    }
   }
-  if (individual.length > 0) {
-    choices.push({
-      label: `${individual.length} enabled individually`,
-      value: INDIVIDUAL,
-      locked: true,
-      hint: `kept as-is · ${individual.join(", ")}`,
-      // Not one of the bundles being counted, like the Everything and Custom rows.
-      summaryExclude: true,
-    });
-  }
-  return choices;
+  return removed;
 }
-
-
-/**
- * Resolve the ticked options to a concrete policy set. Presets are additive —
- * the deduped union of every selected preset's policies — while "Everything"
- * enables the full policy set and wins over any presets.
- */
-export function resolvePresetSelection(
-  values: string[],
-  /**
-   * What the locked "enabled individually" row stands for. Unioned in whenever
-   * that row is present, INCLUDING under "Everything": `resolveEverything()`
-   * covers the non-beta builtins only, so a beta policy someone enabled by hand
-   * would otherwise be dropped by the very branch meant to enable everything.
-   */
-  individual: readonly string[] = [],
-): string[] {
-  // The Custom row is informational — custom policies are discovered from disk
-  // by the loader, never named in the enabled-policies config — so it must not
-  // reach resolvePreset(), which only knows builtin bundle ids. Same for the
-  // locked individually-enabled row, which carries its policies in `individual`.
-  const selected = values.filter((v) => v !== CUSTOM && v !== INDIVIDUAL);
-  const carried = values.includes(INDIVIDUAL) ? individual : [];
-  if (selected.includes(EVERYTHING)) {
-    return [...new Set([...resolveEverything(), ...carried])];
-  }
-  return [...new Set([...selected.flatMap((id) => resolvePreset(id)), ...carried])];
-}
-
-const DIM_NOTE = "(auto-loaded)";
 
 /**
  * Persist the Custom checkbox into the scope's config, after installHooks has
@@ -506,237 +550,6 @@ export function describeCustomPolicies(cwd: string): {
     }
   }
   return { active, warnings, fileCount, scopes };
-}
-
-/**
- * The wizard's one-line completion summary. Pure and exported so the widest
- * real combination — every policy, every CLI, custom/daemon/reporting all
- * present — can be pinned by a test without having to drive the whole wizard
- * through a real chdir + on-disk custom-policy fixture.
- *
- * Kept inside a standard 80-column terminal: `writeLines` truncates with a
- * hard cut and no ellipsis, so an over-long line doesn't just lose its tail
- * — it reads as broken output. Naming all ten CLIs once took it to 182
- * characters; the count alone carries the same information, and the user
- * picked them two screens ago. A single grouped "· a, b, c" clause bounds the
- * optional notes to one separator and short tags, rather than three
- * independent " · " clauses stacking up.
- */
-export function buildCompletionSummary(
-  policiesCount: number,
-  harnessesCount: number,
-  customEnabled: boolean | undefined,
-  daemonInstalled: boolean,
-  connected: boolean,
-  /**
-   * What was ticked on the policy step, so the summary can NAME the bundles.
-   *
-   * "9 policies" is a number the user cannot check and did not choose — they
-   * picked two named bundles two screens earlier, and the line that confirms
-   * their setup should say which. Optional so the existing callers and tests
-   * that only have a count keep working and keep the old wording.
-   */
-  presetValues?: readonly string[],
-): string {
-  const extras: string[] = [];
-  if (customEnabled === true) extras.push("custom");
-  else if (customEnabled === false) extras.push("custom off");
-  if (daemonInstalled) extras.push("daemon");
-  if (connected) extras.push("reporting");
-  const extrasNote = extras.length > 0 ? ` · ${extras.join(", ")}` : "";
-  const harnesses = `${harnessesCount} harness${harnessesCount === 1 ? "" : "es"}`;
-  const line = (selection: string) =>
-    `Setup complete — ${selection} · ${harnesses}${extrasNote}`;
-
-  // Bound the WHOLE line, not just the names. `writeLines` truncates with a hard
-  // cut and no ellipsis, so 81 characters does not lose a tail — it reads as
-  // broken output. Naming is preferred and degrades to the count only when the
-  // full line will not fit, which is checked rather than guessed at: the extras
-  // clause grows too ("custom, daemon, reporting" is 25 characters), so a names
-  // budget alone was wrong for exactly the combinations that need it most.
-  const named = line(describeSelection(policiesCount, presetValues));
-  if (named.length <= MAX_SUMMARY_COLUMNS) return named;
-  return line(describeSelection(policiesCount, undefined));
-}
-
-/**
- * The budget this line has to fit in.
- *
- * 80 columns minus the 3-column gutter the existing summary tests already assert
- * (`message.length + GUTTER <= 80`) — matching that convention rather than
- * inventing a second one, because two different width rules for the same line is
- * how one of them ends up wrong.
- */
-const MAX_SUMMARY_COLUMNS = 77;
-
-/** The column this line aligns under, matching `  Policies   : `. */
-const POLICY_LIST_INDENT = " ".repeat(15);
-
-/**
- * A taste of the set, not the set: two names and a count of the rest.
- *
- * The same shape `describeSelection` uses for bundles, for the same reason —
- * naming everything turned a four-line review screen into a fifteen-line one,
- * and a screen nobody reads to the bottom is worse at conveying what is about
- * to happen than a short one. Two names say what KIND of thing these are;
- * `failproofai policies list` says the rest, for the person who wants it.
- *
- * The whole review body is rendered dim by the prompt (`tui.ts`), so this
- * reads as a subtitle to the count above it rather than competing with it.
- *
- * Degrades by dropping names rather than by overflowing: `writeLines`
- * truncates with a hard cut and no ellipsis, so a line that runs over ends
- * mid-slug and reads as a policy name that does not exist. Two long names
- * (`sanitize-private-key-content` is 28) plus the prefix is within budget, but
- * the guard is here rather than argued about, because a future rename is
- * exactly the kind of change nobody re-measures.
- */
-export function policyNamesLine(names: string[]): string[] {
-  if (names.length === 0) return [];
-  const budget = MAX_SUMMARY_COLUMNS - POLICY_LIST_INDENT.length;
-  for (const take of [2, 1]) {
-    const shown = names.slice(0, take);
-    const rest = names.length - shown.length;
-    const text = rest > 0 ? `${shown.join(", ")} +${rest}` : shown.join(", ");
-    if (text.length <= budget) return [`${POLICY_LIST_INDENT}${text}`];
-  }
-  return [];
-}
-
-/**
- * Name the bundles rather than counting the policies inside them.
- *
- * BOUNDED AT TWO NAMES ON PURPOSE. `writeLines` truncates with a hard cut and no
- * ellipsis, so an over-long line does not lose its tail, it reads as broken
- * output — the same constraint that stopped this summary naming all twelve CLIs.
- * All four bundle labels joined is 57 characters, which with the prefix, the
- * harness clause and the extras clause runs to about 106. Two names plus a count
- * of the rest stays inside 80 for every combination, and two is also the common
- * case, so most runs see every name.
- *
- * Falls back to the old "N policies" when nothing maps to a bundle — a machine
- * whose policies were all enabled one at a time with `policies add` has no bundle
- * to name, and inventing one would be worse than the count.
- */
-function describeSelection(policiesCount: number, presetValues?: readonly string[]): string {
-  const plural = `${policiesCount} polic${policiesCount === 1 ? "y" : "ies"}`;
-  if (!presetValues) return plural;
-
-  // "Everything" is one name for the whole set, and the count is the useful half
-  // of it — "Everything" alone does not say how much that is.
-  if (presetValues.includes(EVERYTHING)) return `Everything (${plural})`;
-
-  const named = POLICY_PRESETS.filter((p) => presetValues.includes(p.id)).map((p) => p.label);
-  // The locked "enabled individually" row stands for policies outside every
-  // bundle, so it is counted among the unnamed rest rather than named.
-  const individual = presetValues.includes(INDIVIDUAL) ? 1 : 0;
-  if (named.length === 0) return plural;
-
-  const shown = named.slice(0, 2);
-  const rest = named.length - shown.length + individual;
-  // `+N` rather than `+N more`: five characters, and they decide whether the
-  // mixed case (two bundles plus a policy added by hand) gets named at all — with
-  // "more" the line is 83 and falls back to a bare count.
-  return rest > 0 ? `${shown.join(", ")} +${rest}` : shown.join(", ");
-}
-
-export function reviewLines(state: {
-  /** What the scope step resolved to. Expands to one or two real scopes. */
-  target: SetupTarget;
-  clis: IntegrationType[];
-  policies: string[];
-  cwd: string;
-  /** The Custom checkbox. `undefined` = nothing to toggle, leave as-is. */
-  customEnabled?: boolean;
-  /**
-   * Whether a daemon will be installed by this run. False when one is already
-   * healthy (nothing to do) or the platform has no service manager — showing
-   * it any other way would promise work the apply will not perform.
-   */
-  installDaemon?: boolean;
-  /** Whether an API key will be written and reporting turned on. */
-  connect?: boolean;
-}): string[] {
-  const { target, clis, policies, cwd, customEnabled, installDaemon, connect } = state;
-  const scopes = scopesFor(target);
-  const where =
-    target === "both"
-      ? `Global, plus this project (${homeify(cwd)})`
-      : target === "project"
-        ? `This project (${homeify(cwd)})`
-        : "Everywhere (global)";
-  const lines: string[] = [];
-  const harnessNames = clis.map((c) => getIntegration(c).displayName);
-  lines.push(`  Where      : ${where}`);
-  lines.push(`  Harnesses  : ${harnessNames.length ? summarize(harnessNames, "harnesses") : "(none)"}`);
-  // Zero is a deliberate answer, not a failed step — say so, and say where to
-  // change it, so the review screen doesn't read like the wizard lost the
-  // selection. Hooks still install; only the builtin set is empty.
-  lines.push(
-    policies.length === 0
-      ? "  Policies   : none enabled (add later: failproofai policies --install)"
-      : `  Policies   : ${policies.length} enabled`,
-  );
-  // A taste of what they are, under the count. "15 enabled" alone is a number
-  // the user cannot check and, on the recommended path, did not choose; two
-  // names say what kind of thing it is without turning the review into a page.
-  if (policies.length > 0) {
-    lines.push(...policyNamesLine([...policies].sort()));
-  }
-  if (installDaemon && isDaemonSupportedPlatform()) {
-    lines.push(
-      `  Daemon     : failproofaid, installed as a system service running as you`,
-    );
-  }
-  lines.push(
-    connect
-      ? "  Reporting  : on — policy decisions and session transcripts"
-      : "  Reporting  : off — nothing leaves this machine",
-  );
-
-  // Reflect the Custom decision, not just what is on disk. Reporting
-  // "1 file (project) (auto-loaded)" after the user had just unticked the row
-  // stated the opposite of what was about to happen.
-  const custom = describeCustomPolicies(cwd);
-  if (custom.active.length > 0) {
-    lines.push(
-      `  Custom     : ${custom.active.join(" · ")} ${
-        customEnabled === false ? "— DISABLED, will not load" : DIM_NOTE
-      }`,
-    );
-  }
-  for (const warning of custom.warnings) lines.push(`  ${warning}`);
-
-  lines.push("");
-  lines.push("  This will update:");
-  // Deduplicated across scopes: a CLI that supports only user scope resolves to
-  // the same settings file under both halves of "Both", and listing it twice
-  // reads as two separate writes.
-  const seen = new Set<string>();
-  for (const scope of scopes) {
-    for (const cli of clis) {
-      const integration = getIntegration(cli);
-      if (!integration.scopes.includes(scope)) continue;
-      // Usually one path; Hermes lists one per profile so the operator sees
-      // every home dir that is about to be written.
-      for (const p of settingsPathsFor(integration, scope, cwd)) {
-        if (seen.has(p)) continue;
-        seen.add(p);
-        lines.push(`    ${homeify(p)}   ${integration.displayName} hooks`);
-      }
-    }
-  }
-  for (const scope of scopes) {
-    const configPath = getConfigPathForScope(scope, cwd);
-    if (seen.has(configPath)) continue;
-    seen.add(configPath);
-    lines.push(`    ${homeify(configPath)}   ${policies.length} policies`);
-  }
-  if (installDaemon && isDaemonSupportedPlatform()) {
-    const servicePath = daemonServiceFilePath();
-    if (servicePath) lines.push(`    ${homeify(servicePath)}   failproofaid service (needs root)`);
-  }
-  return lines;
 }
 
 // ── First-run redirect ───────────────────────────────────────────────────────
@@ -856,7 +669,7 @@ export async function maybeFirstRunConfigure(
     // and it must stay a hint rather than a failure: the command the user
     // actually typed still runs.
     stdout.write(
-      `\n[failproofai] Not set up yet — run \`failproofai config\` to get started.\n\n`,
+      `\n${screenKit(optsFor(stdout)).caution("failproofai is not set up yet.", "failproofai config")}\n\n`,
     );
     return false;
   }
@@ -867,7 +680,7 @@ export async function maybeFirstRunConfigure(
   const lock = acquireOnboardingLock();
   if (!lock) {
     stdout.write(
-      `\n[failproofai] Setup is already running in another terminal — leaving it to finish.\n\n`,
+      `\n${screenKit(optsFor(stdout)).caution("Setup is already running in another terminal, so this one leaves it to finish.")}\n\n`,
     );
     return false;
   }
@@ -909,19 +722,27 @@ export async function maybeFirstRunConfigure(
 
 // ── The wizard ───────────────────────────────────────────────────────────────
 
-export async function runConfigureWizard(io: WizardIO = {}): Promise<WizardResult> {
+export async function runConfigureWizard(
+  io: WizardIO = {},
+  answers: WizardAnswers = {},
+): Promise<WizardResult> {
   const stdin: TTYIn = io.stdin ?? process.stdin;
   const stdout: TTYOut = io.stdout ?? process.stdout;
   const cwd = process.cwd();
-
-  if (!stdin.isTTY || !stdout.isTTY) {
-    stdout.write(
-      "failproofai config needs an interactive terminal.\n" +
-        "Use the flag form instead, e.g.:\n" +
-        "  failproofai policies --install --scope user --cli claude\n",
-    );
-    return { applied: false };
-  }
+  const started = Date.now();
+  // No terminal means no questions — not a refusal.
+  //
+  // `failproofai config` IS the authorisation: somebody typed the command whose
+  // entire job is to configure this machine. Safe because the IMPLICIT path is
+  // guarded separately: `maybeFirstRunConfigure` has its own TTY check and
+  // returns before ever reaching this function, so setup never runs off the back
+  // of some other command on a headless box.
+  const unattended = !stdin.isTTY || !stdout.isTTY;
+  // A key on the command line settles the whole run, not just the question it
+  // literally answers: set this machine up, connect it, send its data. The only
+  // thing still worth stopping for is the sudo password, which is a CREDENTIAL
+  // rather than a question, and no flag can supply it.
+  const preAnswered = Boolean(answers.token);
 
   // Running the wizard itself under sudo configures the WRONG ACCOUNT, and
   // does it silently: homedir() becomes /root, so the hooks land in root's
@@ -938,17 +759,17 @@ export async function runConfigureWizard(io: WizardIO = {}): Promise<WizardResul
         "The one step that needs root (installing the service) asks for your password\n" +
         "on its own.\n",
     );
-    return { applied: false };
+    return { applied: false, abort: "running_as_sudo" };
   }
 
   // Fire-and-forget: never block the wizard's first paint on telemetry.
   void emit("configure_started", {});
 
   // failproofaid — the only evaluator on a configured machine — only runs on
-  // Linux and macOS. Checked before intro() draws anything and before a
-  // single prompt is asked: completing setup anyway used to leave e.g. a
-  // Windows machine reading as configured while enforcing in-process with no
-  // fail-closed guarantee, which is worse than not being set up at all.
+  // Linux and macOS. Checked before a single prompt is asked: completing setup
+  // anyway used to leave e.g. a Windows machine reading as configured while
+  // enforcing in-process with no fail-closed guarantee, which is worse than not
+  // being set up at all.
   if (!isDaemonSupportedPlatform()) {
     stdout.write(
       `failproofai requires failproofaid, its background policy daemon, which runs on\n` +
@@ -962,749 +783,633 @@ export async function runConfigureWizard(io: WizardIO = {}): Promise<WizardResul
     return { applied: false, abort: "unsupported_platform" };
   }
 
-  intro("let's set up failproofai", stdout);
+  const c = paint(colorsEnabled(stdout));
+  const kit = screenKit({ ...optsFor(stdout), fit: Boolean(stdout.isTTY), version: cliVersion });
+  const write = (lines: string[]): void => {
+    stdout.write(lines.map((line) => `${line}\n`).join(""));
+  };
+  // A grey line saying what apply is doing right now, removed once it is done.
+  // Without a terminal it stays, as a log line.
+  const transient = async <T,>(text: string, run: () => Promise<T>): Promise<T> => {
+    if (!stdout.isTTY) {
+      write([text]);
+      return run();
+    }
+    write([c.ink3(text)]);
+    try {
+      return await run();
+    } finally {
+      stdout.write("\x1b[1A\x1b[2K");
+    }
+  };
+
+  // The logomark opens a config run on a terminal — one of the two places it
+  // appears at all.
+  if (stdout.isTTY) write(["", ...kit.logo()]);
+  write(["", kit.header("Set up this machine"), ""]);
 
   const cancel = (): WizardResult => {
-    outro("Cancelled — nothing was changed.", { ok: false }, stdout);
+    write(["", c.ink3("Cancelled. Nothing was changed.")]);
     // Distinguished from the abort reasons: pressing Esc is not a failure, and
     // a caller picking an exit code must not treat it as one.
     return { applied: false, abort: "cancelled" };
   };
 
-  // 0 — The background daemon. REQUIRED, and before anything else.
+  // ── DAEMON ──────────────────────────────────────────────────────────────────
   //
   // First because it is the only step that needs a password: asking here means
-  // sudo prompts on a clean terminal, before any question has drawn a screen,
-  // instead of firing from underneath a rendered TUI where the prompt is
-  // invisible and the typed password lands in a redrawn frame. `sudo -v`
-  // caches the credential for the rest of the run, so the actual install at
-  // apply time stays non-interactive.
+  // sudo prompts on a clean terminal, before any question has drawn a screen.
+  // `sudo -v` caches the credential for the rest of the run, so the install at
+  // apply time stays non-interactive. Machine-level: one daemon serves every
+  // project on this machine.
   //
-  // Machine-level, so it is deliberately NOT gated on the scope chosen in the
-  // next step: one daemon serves every project on this machine.
-  //
-  // Always true here — the guard near the top of this function already
-  // refused setup on anything else. Kept as a real read (not a literal
-  // `true`) so this block still fails safe if that guard is ever moved.
-  const daemonSupported = isDaemonSupportedPlatform();
-  // An already-healthy daemon needs no install and no password. Re-running
-  // setup on a configured machine must not demand sudo for work that is
-  // already done.
-  // "running" only. A unit that exists but is stopped or crash-looping is
-  // exactly the machine that needs this run to reinstall it, and treating
-  // "installed" as good enough would skip the repair and then set
-  // `daemonConfigured` against a service that is not answering — which fails
-  // closed on every tool call.
-  // Running is not enough — it must also be the version this CLI ships.
-  //
-  // Skipping on "running" alone was right for the case it was written for
-  // (never demand a password for work already done), and exactly backwards
-  // during an upgrade: the OLD daemon is perfectly healthy, so setup skipped
-  // it and the stale version survived. That made "just re-run config" — the
-  // remedy every message points at — silently do nothing.
-  //
-  // And running the right VERSION is still not enough: it must be able to
-  // answer. `ExecStart` bakes in `process.execPath` and an absolute
-  // `dist/worker.mjs`, so an `nvm uninstall 20` after setup leaves a unit
-  // systemd calls active whose worker dies on every spawn. That machine reads
-  // as "already running", so this wizard — the documented remedy, and the only
-  // caller that can rebuild the unit — skipped it and left the box denying
-  // every tool call with no route back but hand-editing `config.json`. A real
-  // hook evaluation is the only check that distinguishes the two.
-  const daemonSkew = daemonSupported ? daemonVersionSkew() : null;
-  const daemonState = daemonSupported ? daemonServiceStatus() : "unsupported-platform";
-  // `unknown` is "the service state could not be READ", which only macOS
-  // produces: a LaunchDaemon's state lives in launchd's system domain and needs
-  // root to read, so a sudo cache older than five minutes says nothing about
-  // whether the daemon is up. Treating that as "stopped" made the wizard demand
-  // a password and unload/reload a perfectly healthy service — a real
-  // fail-closed window on a `daemonConfigured` machine, opened to fix nothing,
-  // and a direct breach of this file's own rule that setup must not demand sudo
-  // for work already done. So it is probed rather than assumed: the probe is a
-  // real hook evaluation over the socket, needs no privileges, and answers the
-  // question the status check was only standing in for.
-  const daemonMaybeUp =
-    daemonSupported && (daemonState === "running" || daemonState === "unknown") && daemonSkew === null;
+  // An already-healthy daemon needs no install and no password — but healthy
+  // means running, the version this CLI ships, AND able to answer. Running
+  // alone skipped the stale version during an upgrade; the right version alone
+  // waved through a unit whose worker dies on every spawn (`ExecStart` bakes in
+  // `process.execPath`, so an `nvm uninstall` breaks it). A real hook
+  // evaluation is the only check that tells those apart. `unknown` is macOS's
+  // "the state could not be READ" (launchd's system domain needs root), so it is
+  // probed rather than assumed down: reinstalling a healthy service opens a
+  // fail-closed window to fix nothing.
+  const daemonSkew = daemonVersionSkew();
+  const daemonState = daemonServiceStatus();
+  const daemonMaybeUp = (daemonState === "running" || daemonState === "unknown") && daemonSkew === null;
   const daemonAnswers = daemonMaybeUp ? await probeDaemonEndToEnd() : false;
   const daemonAlreadyRunning = daemonMaybeUp && daemonAnswers;
-  /**
-   * Installed and running, but its worker cannot evaluate anything.
-   *
-   * Keyed on a DEFINITE `running` reading, not on `daemonMaybeUp`: this is the
-   * branch that tears the service down before rebuilding, and the justification
-   * for that is knowing a live process is holding the singleton flock. An
-   * unreadable state is not that knowledge, and the plain install path already
-   * unloads before it writes.
-   */
+  // Installed and running, but its worker cannot evaluate anything. Keyed on a
+  // DEFINITE `running`: this is the branch that tears the service down before
+  // rebuilding, justified only by knowing a live process holds the flock.
   const daemonBroken = daemonState === "running" && daemonSkew === null && !daemonAnswers;
-  let daemonWanted = daemonSupported && !daemonAlreadyRunning;
-  // A healthy daemon can still be running a service definition written before
-  // FAILPROOFAI_CLI_CMD existed, and nothing else on the machine will ever
-  // rewrite it: upgrading the npm package does not touch /etc/systemd/system.
-  // Re-running setup is the one moment a user asks for their configuration to
-  // be brought up to date, so it is the moment to do it.
+  const daemonWanted = !daemonAlreadyRunning;
+  // A healthy daemon can still run a service definition written before
+  // FAILPROOFAI_CLI_CMD existed, and nothing else ever rewrites it: upgrading
+  // the npm package does not touch /etc/systemd/system.
   let daemonUnitStale = daemonAlreadyRunning && daemonServiceNeedsUpgrade();
 
+  // `primeElevation` runs `sudo -v`, which PROMPTS. An unattended run has
+  // nobody to type a password, so it goes straight to the `sudo -n` the install
+  // uses anyway, and a machine that cannot elevate gets the commands instead of
+  // a hung terminal.
+  const elevate = (ask: string | null): boolean => {
+    if (unattended) {
+      if (ask) write([ask]);
+      return canElevate();
+    }
+    // The prompt is erased afterwards, with the line asking for it, so the step
+    // collapses to the one line that says how it went.
+    const rooted = collapseAfter(stdout, 10, () => {
+      if (ask) stdout.write(`${ask}\n`);
+      return primeElevation();
+    });
+    // Erased on failure too, so it is said again where the failure is.
+    if (!rooted && ask) write([ask]);
+    return rooted;
+  };
+
+  write([kit.head("Daemon")]);
   if (daemonWanted) {
-    // Say what is about to happen. Nothing else.
-    //
-    // This block explained the warm-worker architecture to somebody who is
-    // about to type a password — three lines of mechanism answering a question
-    // nobody had. The install is happening either way; what they need is what
-    // it is and that it costs one sudo.
-    //
-    // The BROKEN case keeps its consequence, and only that: "every tool call is
+    // The broken case keeps its consequence on screen: "every tool call is
     // denied" is the difference between a thirty-second fix and a support
-    // thread, so it survives any further trim of this block.
-    stdout.write(
-      daemonBroken
-        ? "failproofaid can't evaluate — every tool call is denied. Rebuilding needs sudo.\n\n"
-        : "Installing failproofaid — needs sudo once.\n\n",
-    );
-    if (!primeElevation()) {
+    // thread, so it is printed outside the region the sudo prompt is erased
+    // from.
+    if (daemonBroken) write(["failproofaid can't evaluate — every tool call is denied. Rebuilding needs sudo."]);
+    const ask = daemonBroken
+      ? null
+      : daemonSkew
+        ? `Updating failproofaid from ${daemonSkew.installed} to ${daemonSkew.expected} needs root once.`
+        : "Installing failproofaid needs root once.";
+    if (!elevate(ask)) {
       // Required means required: write nothing at all, so a machine that could
-      // not be set up is left exactly as it was found rather than carrying
-      // half a configuration. The commands are printed so an admin can do the
-      // privileged half by hand.
-      stdout.write(
-        "\nCould not get root, so setup stopped before changing anything.\n\n" +
-          "  Re-run once you can use sudo:   failproofai config\n" +
-          `  Check what it needs:            ${daemonStatusCommand() ?? "n/a"}\n\n`,
-      );
+      // not be set up is left exactly as it was found.
+      write([
+        kit.fail("Couldn't get root, so setup stopped before changing anything."),
+        `  Re-run once you can use sudo:  ${kit.cmd("failproofai config")}`,
+        `  Check what it needs:           ${kit.cmd(daemonStatusCommand() ?? "n/a")}`,
+      ]);
       void emit("configure_aborted", { reason: "needs_root" });
-      outro("Nothing was changed.", { ok: false }, stdout);
       return { applied: false, abort: "needs_root" };
     }
-  } else if (daemonUnitStale) {
-    stdout.write(
-      "failproofaid is running, but from a service definition written by an older\n" +
-        "version — it cannot start a scheduled audit. Refreshing it needs root once.\n\n",
-    );
-    if (!primeElevation()) {
-      // NOT an abort, unlike the install branch above. There is a working
-      // daemon here and hooks are enforcing; only the scheduled audit is out
-      // of reach. Stopping setup over that would make an upgrade the thing
-      // that locked someone out of `failproofai config`.
-      stdout.write(
-        "\nCould not get root, so the service definition was left as it is.\n" +
-          "Everything else is set up as normal; scheduled audits stay off until it is\n" +
-          `refreshed. Re-run \`failproofai config\` once you can use sudo.\n\n`,
-      );
-      daemonUnitStale = false;
-    }
-  } else if (daemonAlreadyRunning) {
-    stdout.write("failproofaid is already installed and running — leaving it alone.\n\n");
-  }
-  if (daemonSkew) {
-    stdout.write(
-      `failproofaid is ${daemonSkew.installed} but this CLI ships ${daemonSkew.expected} — ` +
-        `reinstalling it.\n\n`,
-    );
-  }
-
-  // 0 — Recommended, or choose everything yourself?
-  //
-  // Setup used to open by asking four questions — scope, policy bundles,
-  // harnesses, cloud — of somebody who has just installed the tool and does not
-  // yet know what any of them mean. Every one of those answers has a defensible
-  // default, so asking for all four up front is making the person least able to
-  // answer do the most work.
-  //
-  // Recommended is not a shortcut past the decisions; it IS a decision, taken
-  // once, here, on their behalf: global scope, the CLIs actually on this
-  // machine, and `RECOMMENDED_POLICIES` — which is written out in
-  // policy-presets.ts with the reasoning for every inclusion and every
-  // omission, because "what does Recommended do" has to be answerable without
-  // reading code.
-  //
-  // Customize is the wizard exactly as it was. Nothing is removed and nothing
-  // is hidden; it stops being the only way through.
-  const detectedNow = detectInstalledClis();
-  const recommendedClis = detectedNow.filter((id) => clisSupportingScope("user").includes(id));
-  const mode = await selectOne<"recommended" | "customize">({
-    message: "Set up failproofai",
-    choices: [
-      {
-        label: "Recommended",
-        value: "recommended",
-        hint: recommendedClis.length
-          ? `${recommendedClis.length} detected ${recommendedClis.length === 1 ? "CLI" : "CLIs"} · ${RECOMMENDED_POLICIES.length} policies · global`
-          : `${RECOMMENDED_POLICIES.length} policies · global`,
-      },
-      {
-        label: "Customize",
-        value: "customize",
-        hint: "choose scope, policies and harnesses",
-      },
-    ],
-    stdin,
-    stdout,
-  });
-  if (mode === null) return cancel();
-
-  // 1 — Where? Inferred from cwd, then confirmed.
-  //
-  // Running from inside a project and running from a home directory are two
-  // different intents, and asking a context-free "global or project?" made the
-  // user restate something they had already expressed by choosing where to run
-  // the command. So the choices are built from what actually exists here — and
-  // labelled Update vs Set up accordingly — with the likelier target first.
-  const setupState = detectSetupState(cwd);
-  const targetChoices = buildTargetChoices(setupState);
-
-  let target: SetupTarget;
-  if (mode === "recommended") {
-    // Global, always. A project-scoped install guards the one directory the
-    // command happened to be run from and silently leaves every other repo on
-    // the machine unguarded — which is the opposite of what somebody choosing
-    // "Recommended" is asking for.
-    target = "user";
-  } else if (targetChoices.length === 1) {
-    // From a home directory there is no project to configure, so there is no
-    // question to ask. Say what is about to happen rather than silently
-    // deciding it.
-    target = targetChoices[0].value;
-    stdout.write(`Configuring ${targetChoices[0].label.toLowerCase()} — ${targetChoices[0].hint}.\n\n`);
+    write([
+      kit.ok(
+        daemonBroken
+          ? "Root granted to rebuild failproofaid"
+          : daemonSkew
+            ? `Root granted to update failproofaid to ${daemonSkew.expected}`
+            : "Root granted to install failproofaid",
+      ),
+    ]);
   } else {
-    const chosen = await selectOne<SetupTarget>({
-      message: "What are we configuring?",
-      choices: targetChoices.map((c) => ({
-        label: c.label,
-        value: c.value,
-        hint: c.hint,
-      })),
+    write([kit.ok(`failproofaid ${cliVersion} is already running`)]);
+    if (daemonUnitStale) {
+      if (elevate("Its service definition is from an older version. Refreshing it needs root once.")) {
+        write([kit.ok("Root granted to refresh its service definition")]);
+      } else {
+        // NOT an abort: hooks are enforcing through a working daemon; only the
+        // scheduled audit is out of reach. Stopping setup over that would make
+        // an upgrade the thing that locked someone out of `failproofai config`.
+        write([kit.caution("No root, so its service definition stays as it is. Scheduled audits stay off until it is refreshed.")]);
+        daemonUnitStale = false;
+      }
+    }
+  }
+  write([""]);
+
+  // ── CONNECT TO CLOUD ────────────────────────────────────────────────────────
+  //
+  // One masked field, with Tab as the way out. The key is checked here and
+  // written at apply, after the last question, so Esc anywhere before that
+  // still changes nothing (decision D3).
+  //
+  // Tab never disconnects (decision D4): on a connected machine it leaves the
+  // connection as it is, and `failproofai config --disconnect` is the one way to
+  // remove it. Enter on an empty field keeps the saved key exactly as it is too
+  // — no `connectToCloud`, which would reset collector settings — after
+  // checking that it still works.
+  const saved = savedConnection();
+  if (saved?.splitKeys) {
+    write([kit.caution("Saved policy and ingest keys differ. Paste one replacement key to reconcile them, or Tab to leave both unchanged.")]);
+  }
+  const urlChoice = resolveCloudUrl(answers.url, saved?.url);
+  // An unusable --url or FAILPROOFAI_CLOUD_URL is refused loudly, never a silent
+  // fall-back to the hosted service: whoever set it wants THAT endpoint, and
+  // reporting the machine elsewhere is what they did not ask. But only where a
+  // key would be checked or sent. `--oss`, a keyless unattended run and Tab send
+  // nothing, so stopping them over an endpoint they never use set up nothing.
+  const url = urlChoice.ok ? urlChoice.url : undefined;
+  const badUrl = urlChoice.ok ? undefined : urlChoice.message;
+  const host = url ? hostOf(url) : "no usable endpoint";
+  const source = urlChoice.ok ? urlChoice.source : undefined;
+  const refuseUrl = (message: string): WizardResult => {
+    write([kit.head("Connect to cloud"), kit.fail(message)]);
+    void emit("configure_aborted", { reason: "bad_cloud_url" });
+    // A failure, not a cancel: a run that asked to connect and set up nothing
+    // must not exit 0.
+    return { applied: false, abort: "bad_cloud_url" };
+  };
+  const machineId = resolveMachineId(answers.machineId);
+  const machineLabel = answers.machineLabel ?? saved?.machineLabel ?? resolveMachineLabel();
+
+  let typedOrg: string | undefined;
+  const planFor = (answer: CloudKeyAnswer | OpenSource): CloudPlan =>
+    answer === OPEN_SOURCE
+      ? saved
+        ? { kind: "kept", how: "skip", verified: false }
+        : { kind: "oss" }
+      : answer.kind === "saved"
+        ? { kind: "kept", how: "saved", verified: answer.verified }
+        : { kind: "connect", token: answer.key, org: typedOrg, note: answer.note };
+  const cloudLines = (plan: CloudPlan): string[] =>
+    cloudCollapsedLines(kit, plan, {
+      host,
+      savedHost: saved ? hostOf(saved.url) : host,
+      savedOrg: saved?.org,
+      source,
+    });
+
+  const askCloud = (): Promise<CloudKeyAnswer | OpenSource | null> =>
+    promptCloudKey({
+      message: "Connect to cloud",
+      // Where the key goes, in the heading: the one place somebody can notice
+      // they are about to send a key somewhere they did not mean to.
+      meta: source ? `${host}  ·  from ${source}` : host,
+      tabHint: saved ? "skip" : "use open source instead",
+      emptyError: saved ? "Paste a key, or press tab to skip." : "Paste a key, or press tab to use open source.",
+      saved: saved && !saved.splitKeys
+        ? {
+            masked: maskToken(saved.token),
+            check: async () => {
+              const r = await checkCloudKey(saved.url, saved.token);
+              if (r.ok) {
+                const org = r.org ?? saved.org;
+                return { ok: true, line: `Your saved key works: ${maskToken(saved.token)}${org ? `, ${org}` : ""}` };
+              }
+              return r.refused
+                ? { ok: false, line: `Your saved key no longer works: ${r.reason}` }
+                : { ok: false, usable: true, line: `Couldn't check your saved key: ${r.reason}` };
+            },
+          }
+        : undefined,
+      check: async (key) => {
+        // Kept open, so Tab (or the saved key) still finishes setup.
+        if (!url) return { ok: false, line: badUrl ?? "No usable endpoint." };
+        const r = await checkCloudKey(url, key);
+        if (r.ok) {
+          typedOrg = r.org;
+          return { ok: true, line: r.note };
+        }
+        return { ok: false, line: r.refused ? `That key was refused: ${r.reason}.` : `Couldn't check the key: ${r.reason}.` };
+      },
+      collapsed: (answer) => [...cloudLines(planFor(answer)), ""],
       stdin,
       stdout,
     });
+
+  // A key typed after picking "Paste an API key" from the menu. Same field as
+  // above minus the saved key, which the menu already offered as "keep"; Tab is
+  // the way back to the menu, so it never means open source here.
+  const askKey = (): Promise<CloudKeyAnswer | OpenSource | null> =>
+    promptCloudKey({
+      message: "Connect to cloud",
+      meta: source ? `${host}  ·  from ${source}` : host,
+      tabHint: "go back",
+      emptyError: "Paste a key, or press tab to go back.",
+      check: async (key) => {
+        if (!url) return { ok: false, line: badUrl ?? "No usable endpoint." };
+        const r = await checkCloudKey(url, key);
+        if (r.ok) {
+          typedOrg = r.org;
+          return { ok: true, line: r.note };
+        }
+        return { ok: false, line: r.refused ? `That key was refused: ${r.reason}.` : `Couldn't check the key: ${r.reason}.` };
+      },
+      collapsed: (answer) => (answer === OPEN_SOURCE ? [] : [...cloudLines(planFor(answer)), ""]),
+      stdin,
+      stdout,
+    });
+
+  // The browser login. Resolves the approval, BACK for the menu of other
+  // options (Tab / Esc, or a cloud that cannot do this), or null when the person
+  // cancelled the whole run.
+  type Approval = Extract<CloudPlan, { kind: "login" }>;
+  // Set once the cloud says it has no browser login; the menu then drops it.
+  let loginUnsupported = false;
+  const askLogin = (endpoint: string): Promise<{ value: Approval } | typeof BACK | null> => {
+    let pollSecret = "";
+    return promptBrowserLogin<Approval>({
+      message: "Connect to cloud",
+      meta: source ? `${host}  ·  from ${source}` : host,
+      machineLabel,
+      start: async () => {
+        const r = await startLogin(endpoint, { label: machineLabel, os: machineOs(), cliVersion });
+        if (r.kind === "ok") {
+          pollSecret = r.pollSecret;
+          void emit("configure_cloud_login", { step: "started" });
+          return { ok: true, url: r.verificationUrl, expiresIn: r.expiresIn, interval: r.interval };
+        }
+        if (r.kind === "unsupported") {
+          void emit("configure_cloud_login", { step: "unsupported" });
+          loginUnsupported = true;
+          return { ok: false, retryable: false, line: `${host} doesn't support logging in from here yet.` };
+        }
+        return {
+          ok: false,
+          retryable: true,
+          line: r.kind === "refused" ? `Couldn't start the login: ${r.reason}.` : `Couldn't reach ${host}: ${r.reason}.`,
+        };
+      },
+      poll: async () => {
+        const p = await pollLogin(endpoint, pollSecret);
+        switch (p.kind) {
+          case "approved":
+            void emit("configure_cloud_login", { step: "approved" });
+            return {
+              state: "approved",
+              value: {
+                kind: "login",
+                pollSecret,
+                org: p.org,
+                approvedBy: p.approvedBy,
+                keyName: p.keyName,
+                permissions: p.permissions,
+              },
+            };
+          case "pending":
+            return { state: "pending", interval: p.interval };
+          case "slow_down":
+            return { state: "slow_down" };
+          case "denied":
+            void emit("configure_cloud_login", { step: "denied" });
+            return { state: "denied" };
+          case "unreachable":
+            return { state: "unreachable", line: p.reason };
+          // Expired, already claimed, or swept: in every case this link is done.
+          default:
+            return { state: "expired" };
+        }
+      },
+      open: (link) => {
+        if (!canOpenBrowser()) return false;
+        openUrl(link);
+        return true;
+      },
+      collapsed: (plan) => [...cloudLines(plan), ""],
+      stdin,
+      stdout,
+    });
+  };
+
+  // Whether the saved key was refused when the CONNECT step checked it — still
+  // true at the end of the run if a login there created no key.
+  let savedRefused = false;
+
+  // The interactive CONNECT step. A machine with no connection, or whose saved
+  // key is refused, starts the browser login straight away — Tab or Esc there
+  // opens the other options. A machine that is connected with a working key gets
+  // the menu, "keep" first, so re-running config never opens a browser by itself.
+  const chooseConnection = async (): Promise<CloudPlan | null> => {
+    const verdict =
+      saved && !saved.splitKeys
+        ? await transient("Checking your saved key…", () => checkCloudKey(saved.url, saved.token))
+        : null;
+    const savedBroken = verdict !== null && !verdict.ok && verdict.refused;
+    savedRefused = savedBroken;
+    const keptPlan: CloudPlan =
+      verdict && verdict.ok
+        ? { kind: "kept", how: "saved", verified: true }
+        : verdict && !verdict.refused
+          ? { kind: "kept", how: "saved", verified: false }
+          : { kind: "kept", how: "skip", verified: false };
+    const keepHint = !saved
+      ? ""
+      : saved.splitKeys
+        ? "leave both keys as they are"
+        : verdict?.ok
+          ? `${verdict.org ?? saved.org ?? hostOf(saved.url)} · key ${maskToken(saved.token)}`
+          : savedBroken
+            ? "its key no longer works"
+            : "its key couldn't be checked just now";
+
+    type Pick = "login" | "key" | "oss" | "keep";
+    const login: SelectChoice<Pick> = {
+      label: saved ? "Log in again" : "Log in to FailproofAI Cloud",
+      value: "login",
+      hint: savedBroken
+        ? "recommended · your saved key no longer works"
+        : saved
+          ? "opens your browser and makes a new key"
+          : "recommended · opens your browser",
+    };
+    const key: SelectChoice<Pick> = { label: "Paste an API key", value: "key", hint: "one you already have" };
+    const oss: SelectChoice<Pick> = { label: "Use open source", value: "oss", hint: "skip the cloud" };
+    const keep: SelectChoice<Pick> = { label: "Keep current connection", value: "keep", hint: keepHint };
+    // No initial-cursor option on selectOne: the default is whatever is first.
+    const choices = !saved ? [login, key, oss] : savedBroken ? [login, key, keep] : [keep, login, key];
+    const leftLogin = (result: Awaited<ReturnType<typeof askLogin>>): CloudPlan | null | typeof BACK => {
+      if (result === null || result === BACK) {
+        if (result === BACK && loginUnsupported) {
+          write([kit.caution(`${host} doesn't support logging in from here yet. Paste an API key instead.`), ""]);
+        }
+        return result;
+      }
+      return result.value;
+    };
+
+    if (url && (!saved || savedBroken)) {
+      if (savedBroken && verdict && !verdict.ok) {
+        write([kit.caution(`Your saved key no longer works: ${verdict.reason}. Logging in again.`)]);
+      }
+      void emit("configure_cloud_choice", { choice: "login", connected: Boolean(saved), auto: true });
+      const first = leftLogin(await askLogin(url));
+      if (first !== BACK) return first;
+    }
+
+    for (;;) {
+      const pick = await selectOne<Pick>({
+        message: "Connect to cloud",
+        meta: source ? `${host}  ·  from ${source}` : host,
+        choices: loginUnsupported ? choices.filter((c) => c.value !== "login") : choices,
+        collapsed: (p) =>
+          p === "keep" ? [...cloudLines(keptPlan), ""] : p === "oss" ? [...cloudLines({ kind: "oss" }), ""] : [],
+        stdin,
+        stdout,
+      });
+      if (pick === null) return null;
+      void emit("configure_cloud_choice", { choice: pick, connected: Boolean(saved) });
+      if (pick === "keep") return keptPlan;
+      if (pick === "oss") return { kind: "oss" };
+      if (pick === "key") {
+        const answer = await askKey();
+        if (answer === null) return null;
+        if (answer === OPEN_SOURCE) continue;
+        return planFor(answer);
+      }
+      if (!url) {
+        write([kit.fail(badUrl ?? "No usable endpoint."), ""]);
+        continue;
+      }
+      const result = leftLogin(await askLogin(url));
+      if (result === BACK) continue;
+      return result;
+    }
+  };
+
+  let cloud: CloudPlan;
+  if (answers.oss) {
+    cloud = saved ? { kind: "kept", how: "skip", verified: false } : { kind: "oss" };
+    write([...cloudLines(cloud), ""]);
+  } else if (answers.token) {
+    // A key on the command line is a request to connect, and there is nowhere
+    // usable to send it.
+    if (!url) return refuseUrl(badUrl ?? "No usable endpoint.");
+    const r = await checkCloudKey(url, answers.token);
+    if (r.ok) {
+      cloud = { kind: "connect", token: answers.token, org: r.org, note: r.note };
+      write([...cloudLines(cloud), ""]);
+    } else if (unattended) {
+      // A key that does not work is a FAILED setup, not a prompt: a script that
+      // exited 0 here would leave a fleet believing it was reporting.
+      write([
+        kit.head("Connect to cloud", host),
+        kit.fail(r.refused ? `That key was refused: ${r.reason}.` : `Couldn't check the key: ${r.reason}.`),
+      ]);
+      void emit("configure_aborted", { reason: "cloud_unverified" });
+      return { applied: false, abort: "cloud_unverified" };
+    } else {
+      // Somebody is at the keyboard, so a refused --token is a question again
+      // rather than the end of setup.
+      write([kit.fail(r.refused ? `The --token key was refused: ${r.reason}.` : `Couldn't check the --token key: ${r.reason}.`)]);
+      const answer = await askCloud();
+      if (answer === null) return cancel();
+      cloud = planFor(answer);
+    }
+  } else if (unattended) {
+    // No key and nobody to ask: nothing about the connection changes.
+    cloud = saved ? { kind: "kept", how: "skip", verified: false } : { kind: "oss" };
+    write([...cloudLines(cloud), ""]);
+  } else {
+    // Said above the menu, which stays usable for keeping a saved key and for
+    // open source, neither of which sends anything anywhere.
+    if (badUrl) write([kit.fail(badUrl)]);
+    const chosen = await chooseConnection();
     if (chosen === null) return cancel();
-    target = chosen;
+    cloud = chosen;
   }
-  const scopes = scopesFor(target);
-  // The scope whose CURRENT state seeds the pickers below. With "Both" the
-  // project is the more specific of the two and the one the user is standing
-  // in, so it wins; anything it does not define still falls back to global at
-  // merge time, which is exactly the layering the policy loader already does.
-  const primaryScope: HookScope = scopes.includes("project") ? "project" : "user";
 
-  // 2 — Which policies? Multi-select of themed presets — additive, so the
-  // enabled set is the union of every ticked bundle.
+  // ── AGENTS ──────────────────────────────────────────────────────────────────
   //
-  // Before the assistants step, because "what do you want guarded" is the
-  // question the user came here to answer; which CLIs to wire it into is
-  // plumbing that follows from it.
-  //
-  // Seed the Custom checkbox AND the bundle boxes from whatever the config already
-  // says, so the wizard shows the current state rather than resetting it every run.
-  //
-  // Read at the scope this run will WRITE to, not the merged view. `installHooks`
-  // is called with `replace: true` per scope, so seeding from the merge would tick
-  // a bundle because it is enabled at PROJECT scope and then write it into USER
-  // scope — copying a selection between scopes as a side effect of opening the
-  // wizard. `readHooksConfig()` stays for the custom flag, which is read the same
-  // merged way everywhere else.
-  const customEnabledBefore = readHooksConfig().customPoliciesEnabled !== false;
-  const enabledHere = readScopedHooksConfig(primaryScope, cwd).enabledPolicies ?? [];
-  const presetChoices = buildPresetChoices(cwd, customEnabledBefore, enabledHere);
-  // The policies no ticked bundle accounts for. Derived from the SAME pure split
-  // the rows are built from, so the locked row and the written set agree.
-  const carriedIndividual = splitEnabled(enabledHere).individual;
-  const hasCustomFiles = describeCustomPolicies(cwd).fileCount > 0;
+  // One saved list drives hooks, collection and backfill. See `planAgents` for
+  // which ticks a run starts with.
+  const fp = readConfig();
+  const hookedNow = INTEGRATION_TYPES.filter((id) => hookedAtUserScope(id, cwd));
+  const plan = planAgents({ detected: detectInstalledClis(), saved: fp.agents, hooked: hookedNow });
+  // Whether the daemon will be collecting once this run ends: a key is already
+  // on disk, or this run writes one. Removal copy and the backfill request both
+  // depend on it.
+  // A browser login connects exactly like a pasted key, one step later.
+  const connecting = cloud.kind === "connect" || cloud.kind === "login";
+  const collectingAfter = connecting || readIngestCredential() !== null;
+  const sessionsOn = connecting ? answers.noTranscripts !== true : fp.collector.sessions === true;
 
-  // No minimum. Ticking nothing is a real answer — someone who only wants their
-  // own custom policies, or who intends to pick bundles later from the
-  // dashboard, was previously stuck on this step with no way forward and no
-  // explanation beyond "Select at least 1". An empty set is already supported
-  // end to end: `installHooksImpl` documents its explicit-array path as "may be
-  // empty", `replace: true` makes it the full enabled set, and `summarize([])`
-  // renders "none". Hooks still install, so enforcement can be switched on
-  // later without re-running setup.
-  //
-  // The assistants step below keeps its minimum deliberately: an empty CLI list
-  // does NOT mean "no assistants" there — `installHooksImpl` falls back to
-  // ["claude"], so letting it through would silently install for Claude.
-  // Steps 2 and 3 are navigable: ← on the harness step returns to the policy
-  // step with the previous answer still selected. Before this, changing an
-  // earlier answer meant abandoning setup and starting over, because a prompt
-  // had exactly one way out and it was `null`.
-  //
-  // The policy step itself takes no `allowBack`: the only thing before it is
-  // the scope question, which is frequently not asked at all (a single choice
-  // is stated, not prompted), so ← there would sometimes go nowhere.
-  let presets: string[] | null = null;
-  let clisSel: string[] | null = null;
-  /**
-   * What the harness step had ticked when ← was last pressed.
-   *
-   * A SEPARATE variable, because `clisSel` cannot do this job: it is the loop's
-   * own condition (`while (clisSel === null)`), so it is null on every entry into
-   * the body by definition, and it is assigned only on the line that ends the
-   * loop. The restore that read `clisSel` was therefore unreachable — provably
-   * dead, with a comment stating the opposite intent.
-   *
-   * The cost was not cosmetic: deselect a CLI, press ← to fix an earlier answer,
-   * come back, and the step showed the detected defaults again. Pressing ↵ then —
-   * reasonably, having been told the selection was carried back — re-enabled hook
-   * installation for a CLI the user had explicitly turned off.
-   *
-   * `presets` just above works because it is assigned MID-loop and survives to the
-   * next iteration; this mirrors that, filled from the prompt's `onBack`.
-   */
-  const carried: { clis: string[] | null } = { clis: null };
-  // The recommended path answers both questions here, which is what SKIPS the
-  // loop below — its condition is `clisSel === null` and this fills it in.
-  // Written as a pre-fill rather than as an extra clause on the loop condition
-  // so the invariant the rest of the function depends on ("past this loop, both
-  // are assigned") stays provable by the compiler rather than by argument.
-  if (mode === "recommended") {
-    presets = [];
-    clisSel = recommendedClis;
-  }
-  while (clisSel === null) {
-    // Re-entering after a ← must show what was picked, not a blank slate.
-    // Selection state lives on each choice, so carry it back in.
-    // Loop-carried: narrowed to `null` on the first pass, repopulated on a ←.
-    const priorPresets = presets as string[] | null;
-    presets = await multiSelect<string>({
-      message: "What should we guard against?",
-      choices: priorPresets
-        ? presetChoices.map((c) => ({ ...c, checked: priorPresets.includes(c.value) }))
-        : presetChoices,
-      summaryNoun: "bundles",
-      hint: "space toggles · combine presets · ↵ confirm · none is fine",
-      stdin,
-      stdout,
-    });
-    if (presets === null) return cancel();
-
-    // 3 — Which harnesses? An "Everything available" row protects every supported
-    // CLI (detected + set-up-ahead); when ticked it wins over the individual boxes.
-    // Read off a HOLDER OBJECT, not a bare `let`, and not through a cast.
-    //
-    // A `let` assigned only inside a callback is narrowed by control-flow analysis
-    // to its initializer, so `priorClis.includes` will not compile — and the
-    // original defeated that with `clisSel as string[] | null`. That cast is
-    // precisely why the dead code type-checked and nobody noticed: it silenced the
-    // compiler making exactly the point the reviewer later made by hand, that the
-    // value could only ever be null. A property read carries the declared type
-    // without suppressing anything.
-    const priorClis = carried.clis;
-    const picked: string[] | typeof BACK | null = await multiSelect<string>({
-    message: "Which harnesses should it protect?",
-    choices: [
-      {
-        label: "Everything available",
-        value: ALL_CLIS,
-        // Counts only what this scope can actually take — expanding to all 12
-        // under project scope is what crashed the apply on Hermes.
-        hint: `protect all ${clisSupportingScope(primaryScope).length} CLIs configurable here`,
-        // A selector, not a harness. Counting it gave "13 harnesses" for
-        // the 12 supported CLIs, and listed "Everything available" among them.
-        summaryExclude: true,
-      },
-      ...buildAgentChoices(primaryScope, cwd),
-    ].map((c) => (priorClis ? { ...c, checked: priorClis.includes(c.value) } : c)),
+  let selected: IntegrationType[];
+  if (answers.agents && answers.agents.length > 0) {
+    const named = new Set(answers.agents);
+    selected = plan.order.filter((id) => named.has(id));
+    write([...agentsCollapsedLines(kit, plan, selected, collectingAfter, c), ""]);
+  } else if (unattended || preAnswered) {
+    selected = defaultSelection(plan);
+    write([...agentsCollapsedLines(kit, plan, selected, collectingAfter, c), ""]);
+  } else {
+    // "from last setup", not the reference's "from your last setup": with all
+    // twelve agents listed, the longer meta runs the heading to 81 columns and
+    // the end of it is cut off.
+    const suffix =
+      plan.mode === "rerun" ? "  ·  from last setup" : plan.mode === "upgrade" ? "  ·  as protected today" : "";
+    const picked = await multiSelect<IntegrationType>({
+      message: "Which agents should failproofai trace?",
+      choices: agentChoices(plan),
       minSelected: 1,
-      summaryNoun: "harnesses",
-      hint: "detected CLIs are pre-selected · space toggles · ctrl+a all · ← back · ↵ confirm",
-      allowBack: true as const,
-      // `BACK` is a symbol and cannot carry the selection, so the prompt reports
-      // it here instead — otherwise a ← discards what the user had ticked and the
-      // next pass redraws the detected defaults.
-      onBack: (checkedNow) => {
-        carried.clis = checkedNow;
-      },
+      minMessage: "Pick at least one agent.",
+      meta: (checked) => `${checked.length} of ${plan.order.length} selected${suffix}`,
+      tag: agentTag(plan, c),
+      collapsed: (values) => [
+        ...agentsCollapsedLines(kit, plan, plan.order.filter((id) => values.includes(id)), collectingAfter, c),
+        "",
+      ],
       stdin,
       stdout,
     });
     if (picked === null) return cancel();
-    // ← re-runs the loop, which re-asks the policy step with its answer intact.
-    if (picked === BACK) continue;
-    clisSel = picked;
+    selected = plan.order.filter((id) => picked.includes(id));
   }
-  // Non-null by construction: the loop only exits once both are assigned, and
-  // the recommended path assigned both before it, which is why it never ran.
-  const chosenPresets: string[] = presets ?? [];
-  const policies =
-    mode === "recommended"
-      ? // UNION with what is already enabled here, never a replacement for it.
-        // `installHooks` is called with `replace: true`, so writing the bare
-        // recommended list would silently switch OFF anything the user had
-        // added themselves — turning "give me the sensible defaults" into a
-        // reduction in protection, which is the one direction this must never
-        // move. On a fresh machine `enabledHere` is empty and this is exactly
-        // the 15.
-        [...new Set([...RECOMMENDED_POLICIES, ...enabledHere])]
-      : resolvePresetSelection(chosenPresets, carriedIndividual);
-  // Only meaningful when there are files to switch off; with none, the row is
-  // locked-unchecked and must not write a disabling flag.
-  //
-  // `undefined` on the recommended path, which means "leave the flag alone".
-  // The customize expression would read as `false` here — no bundle was ticked,
-  // so `chosenPresets.includes(CUSTOM)` is false — and would write
-  // `customPoliciesEnabled: false`, disabling every convention policy the user
-  // has on disk as a side effect of choosing the default setup.
-  const customEnabled =
-    mode === "recommended" ? undefined : hasCustomFiles ? chosenPresets.includes(CUSTOM) : undefined;
-  // Filter to what the chosen scopes support in BOTH branches: "Everything
-  // available" must not expand to CLIs that cannot take any selected scope,
-  // and a locked row can't be ticked but belt-and-braces keeps the invariant
-  // local to the one place `clis` is built.
-  //
-  // The union across scopes, not the intersection: under "Both", a user-scope-
-  // only gateway like Hermes is still installable via the user half, and
-  // dropping it because project scope cannot take it would silently protect
-  // less than the user asked for. `installHooks` is called per scope below and
-  // skips what a given scope cannot take.
-  const supported = new Set(scopes.flatMap((s) => clisSupportingScope(s)));
-  const clis: IntegrationType[] = (
-    clisSel.includes(ALL_CLIS)
-      ? [...INTEGRATION_TYPES]
-      : (clisSel.filter((v) => v !== ALL_CLIS) as IntegrationType[])
-  ).filter((id) => supported.has(id));
-
-  // 4 — Connect this machine? Last, because by this point the user has decided
-  // what to protect, so "would you like to see it in a dashboard?" follows
-  // naturally — asking up front interrupts setup with a question about a
-  // product they may not have.
-  //
-  // A pasted API key rather than an interactive sign-in: it is the only form
-  // that works on a headless box, in a container or over SSH, and it is the
-  // same credential `failproofai config --connect` takes, so a machine set up
-  // by the wizard and one set up by hand end up byte-identical on disk.
-  //
-  // Connecting turns on BOTH streams — policy decisions and session
-  // transcripts. That is a real disclosure, not a footnote, so it is stated in
-  // the body of the question itself rather than buried in an option hint.
-  let connect: { url: string; token: string; machineId: string; machineLabel: string } | null = null;
-
-  {
-    const choice = await selectOne<"key" | "local">({
-      message: "Connect this machine to FailproofAI Cloud?",
-      // The hint says what you GET; the body says what LEAVES.
-      //
-      // Both have to be here and they are different jobs. "sends decisions +
-      // transcripts" described the plumbing, which reads like a data-collection
-      // notice rather than a feature — the reason anyone connects is to see
-      // what their agents did, so the option says that.
-      //
-      // The disclosure stays in the BODY rather than moving into the hint,
-      // which was the original design and is right: this screen is the only
-      // place it is ever made. `describeOutcome` prints "hook activity" after
-      // connecting and never mentions transcripts, so a person who does not
-      // read it here does not read it at all. One line, not three, and the
-      // specific nouns survive — "sessions" alone would not tell anyone their
-      // file contents leave the machine.
-      //
-      // The get-started page, not the dashboard host.
-      //
-      // `app.befailproof.ai` is only useful to somebody who already has an
-      // account, and this line addresses the person who has none — new to the
-      // product, so no org either, not merely missing a key. The get-started
-      // route walks them through creating both, so it answers the question
-      // actually being asked. Naming the product rather than the artefact is
-      // what makes it self-selecting: "No key?" reads as an error state to
-      // someone who simply has not signed up yet.
-      //
-      // A marketing route rather than a dashboard one is also the safer thing
-      // to hard-code here — it is the URL the site is expected to keep stable,
-      // where an in-app path can be reorganised without anyone thinking to
-      // update a string compiled into a CLI.
-      //
-      // The scope is gone from this screen: it is enforced at paste time, where
-      // a wrong key is actually caught.
-      body: [
-        "  Sessions include prompts, file contents and command output.",
-        "  New to FailproofAI? Create a key at https://befailproof.ai/get-started/",
-      ],
-      // Cloud first, and therefore preselected: connecting is what most people
-      // running this wizard came to do, and the local path stays one keystroke
-      // away. Reversing these two is the whole change — neither option's copy
-      // moved, so "stay local" is still stated as plainly as it was.
-      choices: [
-        {
-          // What the cloud gives that this machine does not ALREADY have.
-          //
-          // "see what your agents did" was wrong: the local dashboard already
-          // shows that, so it described something the user gets either way and
-          // made connecting look redundant. The cloud's two jobs are a fleet
-          // seen in one place and policies deployed to it from there — which is
-          // also exactly what the key's two scopes buy (`events:add`,
-          // `policies:pull`).
-          label: "Paste an API key",
-          value: "key",
-          hint: "central monitoring · deploy policies from the dashboard",
-        },
-        {
-          // "re-run config", NOT "--connect". That flag exists for scripted,
-          // non-interactive setup; pointing a person who just declined at a
-          // flag they would have to look up is worse than naming the command
-          // they already ran.
-          label: "Not now — stay local",
-          value: "local",
-          hint: "nothing leaves this machine · re-run config to add",
-        },
-      ],
-      stdin,
-      stdout,
-    });
-    if (choice === null) return cancel();
-
-    if (choice === "key") {
-      // An already-enrolled machine has a URL and token that usually work.
-      // Asking again is the seam that made connecting feel like two products.
-      const existing = readCloudCredentials();
-      let url: string | null = null;
-      let token: string | null = null;
-      // Reuse the enrolled id if there is one, else mint a stable key — never
-      // the hostname, so two hosts with the same name do not merge. The hostname
-      // becomes the human label instead.
-      let machineId = resolveMachineId();
-      let machineLabel = existing?.machineLabel ?? resolveMachineLabel();
-
-      if (existing) {
-        const reuse = await selectOne<"reuse" | "other">({
-          message: `Use this machine's existing connection to ${existing.url}?`,
-          choices: [
-            {
-              label: "Yes — reuse it",
-              value: "reuse",
-              hint: `as ${existing.machineLabel ?? existing.machineId}, same token`,
-            },
-            { label: "No — different endpoint or key", value: "other", hint: "" },
-          ],
-          stdin,
-          stdout,
-        });
-        if (reuse === null) return cancel();
-        if (reuse === "reuse") {
-          url = existing.url;
-          token = existing.token;
-          machineId = existing.machineId;
-          machineLabel = existing.machineLabel ?? machineLabel;
-        }
-      }
-
-      if (url === null) {
-        // NOT asked for. There is exactly one right answer for everybody using
-        // the hosted product, and asking made it look like a decision — which
-        // is how a key ends up pasted into the URL field, and how someone
-        // reasonably types the dashboard's own address and gets a 404 from a
-        // web app that is not the ingest endpoint. Both are real, both happened
-        // within ten minutes of each other, and neither is a mistake the person
-        // making it can be expected to avoid: "FailproofAI Cloud URL" has no
-        // knowable answer other than the default it was already showing.
-        //
-        // The two audiences that genuinely need a different endpoint keep an
-        // explicit way to say so, and neither is an interactive prompt:
-        //
-        //   • local development / self-hosting → FAILPROOFAI_CLOUD_URL, the
-        //     same variable the DAEMON already reads for cloud-managed policy
-        //     (crates/failproofaid/src/cloud_client.rs), so one export points
-        //     the whole machine at one place instead of the wizard and the
-        //     daemon disagreeing.
-        //   • scripted installs → `failproofai config --connect <url> --token`,
-        //     unchanged.
-        //
-        // The env value goes through the SAME `validateCloudUrl` a typed one
-        // did — it is not a trusted back door. http stays loopback-only, so a
-        // bearer token still cannot be exported onto the wire in clear by
-        // setting a variable.
-        const override = process.env.FAILPROOFAI_CLOUD_URL?.trim();
-        if (override) {
-          const validated = validateCloudUrl(cloudBaseFor(override));
-          if (!validated.ok) {
-            // Loud, not silent-fallback-to-hosted: someone who exported this
-            // wants THAT endpoint, and quietly reporting a machine to the
-            // hosted service instead is the one outcome they did not ask for.
-            stdout.write(
-              `\nFAILPROOFAI_CLOUD_URL is set to "${override}", which cannot be used: ` +
-                `${validated.reason}\n`,
-            );
-            return cancel();
-          }
-          url = validated.url;
-          // Named on screen, because an env var is invisible at the moment it
-          // matters and a machine reporting somewhere unexpected is exactly the
-          // thing nobody notices until they go looking for data that is not
-          // there.
-          stdout.write(`\nUsing ${url} (from FAILPROOFAI_CLOUD_URL).\n`);
-        } else {
-          url = cloudBaseFor(DEFAULT_INGEST_URL);
-        }
-      }
-
-      if (token === null) {
-        token = await promptText({
-          // The destination is in the question now that it is no longer a
-          // question of its own. It is the only remaining place a person can
-          // notice they are about to send a key somewhere they did not mean.
-          message: `API key for ${new URL(url).host}`,
-          hint: "needs events:add · policies:pull enables managed policy too",
-          // Masked: setup is routinely run while screen-sharing, and a pasted
-          // key would otherwise sit in the scrollback of every recording.
-          mask: true,
-          validate: (v) => (v.length >= 8 ? null : "that looks too short to be a key"),
-          stdin,
-          stdout,
-        });
-        if (token === null) return cancel();
-      }
-
-      // Check BEFORE the review screen, so a typo is caught while the user is
-      // still thinking about credentials rather than three screens later. The
-      // apply step re-verifies and is what actually writes — nothing is
-      // persisted here.
-      stdout.write("\nChecking the key… ");
-      const probe = await validateIngestKey({ url: ingestUrlFor(url), key: token });
-      if (!probe.ok) {
-        stdout.write(`\nThat did not work: ${probe.reason}\n`);
-        const retry = await selectOne<"skip" | "anyway">({
-          message: "Carry on without connecting?",
-          choices: [
-            { label: "Yes, skip it", value: "skip", hint: "everything else still applies" },
-            { label: "Save it anyway", value: "anyway", hint: "if you know the server is just down" },
-          ],
-          stdin,
-          stdout,
-        });
-        if (retry === null) return cancel();
-        if (retry === "skip") {
-          stdout.write("Staying local. Connect later with `failproofai config --connect`.\n\n");
-        } else {
-          connect = { url, token, machineId, machineLabel };
-        }
-      } else {
-        stdout.write("looks good.\n\n");
-        connect = { url, token, machineId, machineLabel };
-      }
-    }
-  }
-  // 5 — Review & apply
-  const decision = await selectOne<"apply" | "cancel">({
-    message: "Ready to apply?",
-    body: reviewLines({
-      target,
-      clis,
-      policies,
-      cwd,
-      customEnabled,
-      // A stale-unit refresh rewrites the service file and restarts the
-      // daemon, so it belongs on the list of things this run is about to
-      // change. Leaving it off would make the confirmation screen of a
-      // security tool quietly incomplete about a root-owned file.
-      installDaemon: daemonWanted || daemonUnitStale,
-      connect: connect !== null,
-    }),
-    choices: [
-      { label: "Yes, apply now", value: "apply", hint: "write the config" },
-      { label: "Cancel", value: "cancel", hint: "quit, no changes" },
-    ],
-    stdin,
-    stdout,
-  });
-  if (decision !== "apply") return cancel();
+  const { added, removed } = agentChanges(plan, selected);
 
   // ── Apply ─────────────────────────────────────────────────────────────────
   //
-  // ORDER MATTERS. The daemon goes first, because setup requires it: if it
-  // cannot be installed, this run must leave the machine exactly as it found
-  // it rather than half-configured. Writing hooks first and discovering the
-  // service will not start afterwards is the one ordering whose failure cannot
-  // be undone cleanly — hooks would already be live, pointing at a machine
-  // whose `daemonConfigured` flag we then could not honestly set.
+  // The agents step was the last decision. OpenTelemetry is not part of setup:
+  // it is opt-in, per agent, through `failproofai otel enable <agent>`.
+  // ORDER MATTERS here:
+  //
+  //  1. The daemon first, because setup requires it: if it cannot be installed
+  //     this run must leave the machine exactly as it found it. Writing hooks
+  //     first and discovering the service will not start is the one ordering
+  //     whose failure cannot be undone cleanly.
+  //  2. Hooks for the chosen agents, and off for the rest.
+  //  3. The backfill request for agents added back, BEFORE the selection that
+  //     ticks them: the daemon handles a pending request ahead of its config
+  //     compare, so one landing a tick later would let an added agent resume
+  //     stale cursors first.
+  //  4. The selection, BEFORE any new ingest key, or the first collection runs
+  //     every agent.
+  //  5. The connection last.
+  const done: string[] = [];
   let daemonInstalled = daemonAlreadyRunning;
+  // The `sudo -v` at the top cached root for sudo's timeout — five minutes by
+  // default on macOS, fifteen on most Linux. A browser login, or simply a slow
+  // agents screen, can outlast it, and the install below runs `sudo -n`, which
+  // would then fail AFTER the person did everything else. Ask once more instead.
+  // The stale-unit refresh runs `sudo -n` too, so it is asked for the same way —
+  // but, as at the top, losing root there costs the scheduled audit, not setup.
+  // Unattended runs never primed anything, so there is nothing to have expired.
+  if ((daemonWanted || daemonUnitStale) && !unattended) {
+    let stillRoot = false;
+    try {
+      stillRoot = canElevate();
+    } catch {
+      stillRoot = false;
+    }
+    if (!stillRoot && daemonWanted) {
+      if (!elevate("Your sudo session expired while you were away. Installing failproofaid needs root again.")) {
+        write([
+          kit.fail("Couldn't get root, so setup stopped before changing anything."),
+          `  Re-run once you can use sudo:  ${kit.cmd("failproofai config")}`,
+        ]);
+        void emit("configure_aborted", { reason: "needs_root" });
+        return { applied: false, abort: "needs_root" };
+      }
+    } else if (
+      !stillRoot &&
+      !elevate("Your sudo session expired while you were away. Refreshing failproofaid's service definition needs root again.")
+    ) {
+      done.push(kit.caution("No root, so its service definition stays as it is. Scheduled audits stay off until it is refreshed."));
+      daemonUnitStale = false;
+    }
+  }
   if (daemonWanted) {
     // A unit that is running but cannot answer is torn down before it is
-    // rebuilt, rather than installed over. Its `ExecStart` points at a binary
-    // or interpreter that no longer works, and it holds the singleton flock
-    // the replacement needs — install over the top and the new unit starts,
-    // loses the lock race, and the machine stays exactly as broken. This is
-    // the production path for `uninstallDaemonService`, which until now had
-    // none: it was defined, tested, documented in CLAUDE.md as called from
-    // here, and referenced by nothing.
+    // rebuilt: it holds the singleton flock the replacement needs, so
+    // installing over it starts a unit that loses the lock race.
     if (daemonBroken) {
-      stdout.write("Removing the failproofaid service that cannot start…\n");
-      try {
-        await uninstallDaemonService();
-      } catch (err) {
-        // Non-fatal: the install below reports its own outcome, and it is that
-        // outcome — not this one — that decides whether setup continues.
-        hookLogWarn(
-          `could not remove the broken failproofaid service: ${err instanceof Error ? err.message : String(err)}`,
-        );
-      }
+      await transient("Removing the failproofaid service that can't start…", async () => {
+        try {
+          await uninstallDaemonService();
+        } catch (err) {
+          // Non-fatal: the install below reports the outcome that decides.
+          hookLogWarn(
+            `could not remove the broken failproofaid service: ${err instanceof Error ? err.message : String(err)}`,
+          );
+        }
+      });
     }
-    stdout.write(daemonBroken ? "Reinstalling the failproofaid service…\n" : "Installing the failproofaid service…\n");
-    const daemonResult = await installDaemonService();
+    const daemonResult = await transient(daemonBroken ? "Reinstalling failproofaid…" : "Installing failproofaid…", () =>
+      installDaemonService(),
+    );
     void emit("configure_daemon_install", {
       installed: daemonResult.installed,
-      // A bounded classification, never the raw reason: on the failure path
-      // that string is an errno message from writeFileSync/execFileSync
-      // against a homedir()-derived path, so it routinely carries the OS
-      // username and the local filesystem layout. The full text stays local
-      // via the hookLogWarn below.
+      // A bounded classification, never the raw reason: that string routinely
+      // carries the OS username. The full text stays local via hookLogWarn.
       reason: daemonResult.installed ? null : classifyDaemonInstallFailure(daemonResult.reason),
       platform: process.platform,
     });
-
     if (!daemonResult.installed) {
       hookLogWarn(`failproofaid was not installed as a service: ${daemonResult.reason}`);
       // Nothing user-facing has been written yet, so there is nothing to roll
       // back — which is the entire reason this runs first.
-      stdout.write(
-        `\nThe failproofaid service could not be installed:\n  ${daemonResult.reason ?? "unknown error"}\n\n` +
-          "Setup stopped before changing anything. Once that is fixed, re-run:\n" +
-          "  failproofai config\n\n",
-      );
+      write([
+        kit.fail("failproofaid could not be installed, so setup stopped before changing anything."),
+        `  ${daemonResult.reason ?? "unknown error"}`,
+        `  Once that is fixed, re-run:  ${kit.cmd("failproofai config")}`,
+      ]);
       void emit("configure_aborted", { reason: "daemon_failed" });
-      outro("Nothing was changed.", { ok: false }, stdout);
       return { applied: false, abort: "daemon_failed" };
     }
-
-    // Installed and running is the service manager's opinion, and it is not
-    // what setup needs to know. `ExecStart` bakes in `process.execPath` and an
-    // absolute `dist/worker.mjs`, so a unit can be perfectly active while the
-    // worker behind it dies on every spawn — and every other check waves that
-    // machine through: `waitForDaemonRunning()` asks systemd, `Ping` is
-    // answered in `server.rs` without touching the worker, a null
-    // `resolveWorkerCommand()` is best-effort, and `Worker::warm()` swallows
-    // its own failure. Setting `daemonConfigured` against it denies every tool
-    // call across all twelve CLIs, `UserPromptSubmit` included, so the user
-    // cannot even ask their agent why.
-    //
-    // Checked HERE rather than inside `installDaemonService`, which can only
-    // honestly report on the service: keeping them apart is also what lets the
-    // install mechanics be tested against a stub binary.
-    const probe = await probeDaemon();
+    // Installed and running is the service manager's opinion. Setting
+    // `daemonConfigured` against a daemon whose worker cannot run denies every
+    // tool call across all twelve CLIs, `UserPromptSubmit` included, so a real
+    // evaluation is asked for before anything else is written.
+    const probe = await transient("Checking that failproofai answers…", () => probeDaemon());
     if (!probe.ok) {
       hookLogWarn(
         `failproofaid was installed and running but did not answer a policy evaluation (${probe.reason})`,
       );
-      // Two different faults, two different things to go and look at. Saying
-      // "your worker will not start" at a machine whose socket simply never
-      // came up sends someone to inspect a process that is fine.
-      stdout.write(
-        (probe.reason === "worker"
-          ? "\nfailproofaid started but cannot evaluate policies — it is listening, and\n" +
-            "its worker process could not be run.\n"
-          : "\nfailproofaid started but could not be reached on its socket.\n") +
-          "Setup stopped before changing anything, because a machine configured to\n" +
-          "require a daemon that cannot answer denies every tool call.\n\n" +
-          `  Check it with:  ${daemonStatusCommand() ?? "systemctl status failproofaid"}\n` +
-          "  Then re-run:    failproofai config\n\n",
-      );
+      write([
+        kit.fail(
+          probe.reason === "worker"
+            ? "failproofaid started but can't evaluate policies: its worker process could not be run."
+            : "failproofaid started but could not be reached on its socket.",
+        ),
+        "  Setup stopped before changing anything: a machine that requires a daemon",
+        "  that cannot answer denies every tool call.",
+        `  Check it with:  ${kit.cmd(daemonStatusCommand() ?? "systemctl status failproofaid")}`,
+        `  Then re-run:    ${kit.cmd("failproofai config")}`,
+      ]);
       void emit("configure_aborted", { reason: `daemon_not_answering_${probe.reason}` });
-      outro("Nothing was changed.", { ok: false }, stdout);
       return { applied: false, abort: "daemon_failed" };
     }
     daemonInstalled = true;
+    done.push(
+      kit.ok(
+        daemonBroken
+          ? "failproofaid rebuilt and running"
+          : daemonSkew
+            ? `failproofaid updated to ${cliVersion} and running`
+            : "failproofaid installed and running",
+      ),
+    );
   } else if (daemonUnitStale) {
-    // Deliberately after the install branch and never instead of it: this only
-    // ever runs on a machine whose daemon is already up, and it must not be
-    // able to abort a setup that is otherwise fine. A failure here costs the
-    // scheduled audit, nothing else.
-    stdout.write("Refreshing the failproofaid service definition…\n");
-    const upgrade = await ensureDaemonServiceCurrent();
+    // Never instead of the install, and never able to abort a setup that is
+    // otherwise fine: a failure here costs the scheduled audit, nothing else.
+    const upgrade = await transient("Refreshing failproofaid's service definition…", () => ensureDaemonServiceCurrent());
     void emit("configure_daemon_unit_refresh", {
       outcome: upgrade.outcome,
       daemon_running: upgrade.daemonRunning ?? true,
@@ -1712,173 +1417,479 @@ export async function runConfigureWizard(io: WizardIO = {}): Promise<WizardResul
     });
     if (upgrade.outcome === "failed") {
       hookLogWarn(`failproofaid service definition could not be refreshed: ${upgrade.reason}`);
+      done.push(kit.caution(`failproofaid's service definition could not be refreshed: ${upgrade.reason ?? "unknown error"}`));
       if (upgrade.daemonRunning === false) {
-        // The refresh stopped a daemon it could not start again, and its own
-        // rollback could not either. Explicitly `=== false`: every failure
-        // that never touched the service leaves this undefined, and those must
-        // not drag a healthy machine down this branch.
-        //
-        // Leaving `daemonConfigured` set here is not "the audit stays off", it
-        // is every tool call across all 12 CLIs denied against a socket
-        // nothing is listening on, recoverable only by hand-editing
-        // policies-config.json. So the machine goes back to in-process
-        // evaluation — the same trade uninstallDaemonService makes, and for
-        // the same reason.
+        // The refresh stopped a daemon it could not start again. Leaving
+        // `daemonConfigured` set would deny every tool call against a socket
+        // nothing listens on, so the machine goes back to in-process evaluation.
         daemonInstalled = false;
         setDaemonConfigured(false);
-        stdout.write(
-          `\nThe service definition could not be refreshed:\n  ${upgrade.reason ?? "unknown error"}\n` +
-            "failproofaid is no longer running, so this machine was switched back to\n" +
-            "in-process evaluation rather than left denying every tool call. Hooks keep\n" +
-            "enforcing. Re-run `failproofai config` to reinstall the service.\n\n",
+        done.push(
+          "  It is no longer running, so this machine is back on in-process evaluation, and",
+          `  hooks keep enforcing. Reinstall it with  ${kit.cmd("failproofai config")}`,
         );
       } else {
-        stdout.write(
-          `\nThe service definition could not be refreshed:\n  ${upgrade.reason ?? "unknown error"}\n` +
-            "Hooks keep enforcing; scheduled audits stay off until it is.\n\n",
-        );
+        done.push("  Hooks keep enforcing; scheduled audits stay off until it is refreshed.");
       }
+    } else {
+      done.push(kit.ok("failproofaid's service definition is up to date"));
     }
   }
 
-  // The flag that makes hooks route through the daemon — and, on a machine
-  // where the daemon is unreachable, fail closed. Only ever set after a
-  // verified-running service, never on intent.
-  // The version is recorded HERE, from the CLI that installed it — which is by
-  // construction the version that was installed, since the download URL and the
-  // binary filename are both derived from it.
+  // The flag that makes hooks route through the daemon — and fail closed when
+  // it is unreachable. Only ever set after a verified-running service.
   if (daemonInstalled) {
     setDaemonConfigured(true, cliVersion);
-    // Only now — the unit points at the new binary, so older ones are no
-    // longer referenced by anything. Keeps the previous version for an
-    // offline rollback.
+    // The unit points at the new binary now, so older ones are unreferenced.
     pruneOldDaemonBinaries();
   }
 
-  // Telemetry runs concurrently with the install (never rejects, 5s-bounded) so
-  // it doesn't add dead time between "apply" and the config actually writing,
-  // while still being awaited before the process can exit.
-  const applied = emit("configure_applied", {
-    target,
-    scopes,
-    cli: clis,
-    cli_count: clis.length,
-    policy_count: policies.length,
-    source: chosenPresets.join("+"),
-    connected: connect !== null,
-  });
+  // Hooks, at user scope, for the chosen agents. Whatever policies are enabled
+  // there are carried through untouched: `replace: true` would otherwise switch
+  // off policies the user had turned on, and setup must never reduce
+  // protection. Setup chooses no policies of its own any more.
+  const policies = readScopedHooksConfig("user", cwd).enabledPolicies ?? [];
+  // Nothing to hook is a real answer (a saved empty selection), and handing
+  // installHooks an empty list is not a way to say it.
+  if (selected.length > 0) await transient("Installing hooks…", () =>
+    installHooks(
+      policies,
+      "user",
+      cwd,
+      /* includeBeta */ false,
+      "configure-wizard",
+      /* customPoliciesPath */ undefined,
+      /* removeCustomHooks */ false,
+      selected,
+      { replace: true, quiet: true },
+    ),
+  );
+  // And off for every agent not chosen that has them: the ones unticked now,
+  // and any hooked since the last setup without being part of it.
+  removeUserScopeHooks(
+    INTEGRATION_TYPES.filter((id) => !selected.includes(id) && (plan.baseline.has(id) || hookedNow.includes(id))),
+    cwd,
+  );
 
-  // One install per chosen scope, with the CLI list narrowed to what THAT
-  // scope can take.
-  //
-  // The comment here used to claim `installHooks` "already skips CLIs a given
-  // scope cannot take". It does not — `installHooksImpl` validates every CLI
-  // against the scope up front and THROWS `Scope "project" is not supported by
-  // Hermes`. `clis` is the union across scopes (deliberately, so a user-scope-
-  // only gateway is still installed via the user half), so under "Both" +
-  // "Everything available" the project pass got handed hermes/openclaw and
-  // died. Nothing catches it, and by then the daemon is installed,
-  // `daemonConfigured` is set and user-scope hooks are written — so the run
-  // aborted mid-apply, before any project config or the pasted cloud key.
-  // `configure-wizard.test.ts` mocks `installHooks` wholesale, which is why the
-  // real validation path was never exercised.
-  //
-  // quiet: the wizard renders its own outro; replace: the chosen set becomes
-  // the full enabled set at that scope (unticking removes).
-  for (const scope of scopes) {
-    const supportedHere = new Set(clisSupportingScope(scope));
-    const clisForScope = clis.filter((id) => supportedHere.has(id));
-    if (clisForScope.length > 0) {
-      await installHooks(
-        policies,
-        scope,
-        cwd,
-        /* includeBeta */ false,
-        "configure-wizard",
-        /* customPoliciesPath */ undefined,
-        /* removeCustomHooks */ false,
-        clisForScope,
-        { replace: true, quiet: true },
-      );
-    }
-    setCustomPoliciesEnabled(scope, cwd, customEnabled);
-  }
+  // The failproofai skill, in every agent this machine has and any ticked
+  // without being detected — traced or not, an agent asked about FailproofAI
+  // should know it. A pointer to the skill online (see agent-skill.ts).
+  installAgentSkill(INTEGRATION_TYPES.filter((id) => plan.detected.has(id) || selected.includes(id)));
 
-  // Cloud connection, written after the daemon exists — the daemon is what
-  // runs the collector, so a credential written for a service that is not
-  // there would be a key on disk doing nothing.
-  //
-  // `connectToCloud` re-verifies each capability and writes only what actually
-  // works, so a key revoked between the earlier probe and here degrades to a
-  // reported partial rather than a connection this machine does not have.
+  // Agents traced again start fresh (see `requestFreshStart`). Only on a
+  // rerun: its baseline is the selection the daemon actually filtered on. With
+  // no saved list (upgrade, first) the daemon was collecting every agent, so an
+  // agent "added" here was never untraced, has no stale cursors, and a request
+  // would only make the daemon re-read everything it already sent.
+  requestFreshStart(plan.mode === "rerun" ? added : [], collectingAfter && sessionsOn);
+
+  updateConfig({ agents: { selected, seen: plan.seen } });
+
+  // The connection, written after the daemon exists — the daemon runs the
+  // collector, so a credential written for a service that is not there would be
+  // a key on disk doing nothing. `connectToCloud` re-verifies each capability
+  // and writes only what works.
   let connected = false;
-  if (connect) {
-    try {
-      const outcome = await connectToCloud({
-        url: connect.url,
-        token: connect.token,
-        machineId: connect.machineId,
-        machineLabel: connect.machineLabel,
-        // Both streams, as disclosed at the connect question. This is the one
-        // place that decision becomes a written setting.
-        sessions: true,
-      });
-      connected = outcome.anyConfigured;
-      // Show the human label with the id in parentheses when they differ.
-      const shownAs =
-        connect.machineLabel === connect.machineId
-          ? connect.machineId
-          : `${connect.machineLabel} (${connect.machineId})`;
-      for (const line of describeOutcome(outcome, shownAs, connect.url)) {
-        stdout.write(`${line}\n`);
-      }
-      // Never the key, the URL, or the count — only that it happened and which
-      // capabilities the server actually granted.
-      void emit("configure_connect", {
-        policy_ok: outcome.policy.ok,
-        ingest_ok: outcome.ingest.ok,
-      });
-    } catch (err) {
-      // Non-fatal, unlike the daemon: enforcement does not depend on the
-      // dashboard, and a machine with no connection behaves exactly as every
-      // release before this one did.
-      hookLogWarn(
-        `cloud connection was not written: ${err instanceof Error ? err.message : String(err)}`,
+  // A browser login has an approval, not a key: claim it NOW, with the daemon
+  // in, so a run that stopped earlier left nothing minted anywhere. The claim
+  // is single-use — the server mints the key and hands it over exactly once.
+  let token: string | null = cloud.kind === "connect" ? cloud.token : null;
+  let orgLabel: string | undefined = cloud.kind === "connect" ? cloud.org : undefined;
+  let mintedName: string | undefined;
+  let claimedOrg: LoginOrg | undefined;
+  if (cloud.kind === "login" && url) {
+    const claimed = await transient("Creating this machine's key…", () => claimLogin(url, cloud.pollSecret));
+    void emit("configure_cloud_login", { step: "claimed", ok: claimed.kind === "ok", reason: claimed.kind });
+    if (claimed.kind === "ok") {
+      token = claimed.key;
+      orgLabel = loginOrgLabel(claimed.org);
+      mintedName = claimed.keyName;
+      claimedOrg = claimed.org;
+    } else {
+      hookLogWarn(`cloud login could not be completed: ${claimed.kind}`);
+      done.push(
+        kit.caution(
+          claimed.kind === "expired"
+            ? "The login took too long to finish, so no key was created. Everything else was applied."
+            : claimed.kind === "revoked"
+              ? "Whoever approved the login can no longer create keys in that org, so no key was created."
+              : claimed.kind === "unreachable"
+                ? `Couldn't reach ${host} to create the key (${claimed.reason}); everything else was applied.`
+                : `The key couldn't be created: ${claimed.reason}. Everything else was applied.`,
+          "failproofai config",
+        ),
       );
-      stdout.write("\nCould not connect — everything else applied. Retry with `failproofai config --connect`.\n");
     }
   }
+  if (token && url) {
+    try {
+      const outcome = await transient("Connecting…", () =>
+        connectToCloud({
+          url,
+          token,
+          machineId,
+          machineLabel,
+          // Both streams unless the run said `--no-transcripts`.
+          sessions: answers.noTranscripts !== true,
+          // The org the login was approved into, for when introspect can't say.
+          org: claimedOrg,
+        }),
+      );
+      connected = outcome.anyConfigured;
+      done.push(...(outcome.changes ?? []));
+      done.push(...connectDoneLines(kit, outcome, host, orgLabel));
+      // Logging in again makes a NEW key; the one this machine held keeps
+      // working until someone revokes it. Said here, where it is still useful.
+      if (cloud.kind === "login" && saved && connected) {
+        done.push(`  Your previous key for this machine still works until you revoke it on ${host}'s keys page.`);
+      }
+      if (outcome.ingest.ok && answers.noTranscripts === true) {
+        done.push("  Decisions only: session transcripts are not sent (--no-transcripts).");
+      }
+      void emit("configure_connect", { policy_ok: outcome.policy.ok, ingest_ok: outcome.ingest.ok });
+    } catch (err) {
+      // Non-fatal, unlike the daemon: enforcement does not depend on the cloud.
+      hookLogWarn(`cloud connection was not written: ${err instanceof Error ? err.message : String(err)}`);
+      done.push(kit.caution("Couldn't connect; everything else was applied.", "failproofai config"));
+    }
+    // The claim spent the approval and the key exists, but nothing here uses
+    // it: say which one, so it can be revoked rather than left live.
+    if (cloud.kind === "login" && !connected) {
+      done.push(`  The key ${mintedName ? `"${mintedName}" ` : ""}was created but isn't in use here; revoke it on ${host}'s keys page.`);
+    }
+  } else if (cloud.kind === "kept" && cloud.how === "saved" && fp.mode !== "cloud") {
+    // A home migrated from layout 1 carries keys but no mode, and would read
+    // as open source everywhere that asks.
+    updateConfig({ mode: "cloud" });
+  }
 
-  await applied;
+  // Logging in again on a connected machine, with nothing connected at the end
+  // of it — no key, or a key `connectToCloud` could not use, which writes
+  // nothing — changed nothing about the connection: the previous one is still
+  // there (never removed from this step, decision D4) — but not as if it worked
+  // when its key was refused.
+  const keptOld = cloud.kind === "login" && !connected && Boolean(saved);
+  if (keptOld) {
+    done.push(
+      savedRefused
+        ? "  This machine keeps its previous connection, but its key no longer works. Run failproofai config again to log in."
+        : "  This machine keeps its previous connection.",
+    );
+  }
+  const cloudAfter = connected || cloud.kind === "kept" || keptOld;
+
+  // Sent once the connection's outcome is known — a login whose claim then
+  // failed must not count as connected. Never rejects, 5s-bounded. `cli`
+  // carries the selected agent ids, as it always has (and as hooks_installed
+  // does): a fixed list of product ids, never user content. The agents_*
+  // fields add counts only.
+  await emit("configure_applied", {
+    target: "user",
+    scopes: ["user"],
+    cli: selected,
+    cli_count: selected.length,
+    policy_count: policies.length,
+    connected,
+    mode: cloudAfter ? "cloud" : "oss",
+    agents_selected: selected.length,
+    agents_detected: plan.detected.size,
+    agents_changed: added.length + removed.length > 0,
+  });
   // Only now — a completed apply — is the launcher considered "seen", so
   // first-run onboarding stops offering itself on every command.
   markLauncherSeen();
   // And any record of an earlier failure is now false: this machine got set up.
   clearOnboardingAttempt();
 
-  // Every real completed setup is on a supported platform now (an unsupported
-  // one aborts before this point), so the optional notes in the summary below
-  // are no longer occasional additions — see buildCompletionSummary's own doc
-  // comment for why the widest combination still fits in 80 columns.
-  outro(
-    buildCompletionSummary(
-      policies.length,
-      clis.length,
-      customEnabled,
-      daemonInstalled,
-      connected,
-      chosenPresets,
-    ),
-    { ok: true },
-    stdout,
+  // Codex runs hooks from hooks.json only once they are trusted; from its
+  // system config always. Untrusted hooks are warned about below and not
+  // counted as enforcing; hooks in the system config need no line of their own.
+  const codexTrust = selected.includes("codex") ? codexHookTrust() : undefined;
+  write(
+    doneLines(kit, {
+      elapsedMs: Date.now() - started,
+      done,
+      cwd,
+      agents: selected.length,
+      connected: cloudAfter,
+      codexTrust,
+    }),
   );
+
   return {
     applied: true,
-    target,
-    scopes,
-    clis,
+    target: "user",
+    scopes: ["user"],
+    clis: selected,
     policies,
     daemonInstalled,
     connected,
+    mode: cloudAfter ? "cloud" : "oss",
+    agents: { selected, added, removed },
   };
+}
+
+// ── Cloud helpers ────────────────────────────────────────────────────────────
+
+/** What the CONNECT step decided. Nothing is written until apply. */
+type CloudPlan =
+  | { kind: "oss" }
+  | { kind: "kept"; how: "skip" | "saved"; verified: boolean }
+  | { kind: "connect"; token: string; org?: string; note?: string }
+  /**
+   * Approved in the browser, not yet claimed. The key does not exist until
+   * apply claims it — after the daemon is in — so a run that stops before then
+   * leaves no key behind anywhere.
+   */
+  | { kind: "login"; pollSecret: string; org: LoginOrg; approvedBy?: string; keyName?: string; permissions: string[] };
+
+/** "Acme (acme)", or whichever half the server sent. */
+function loginOrgLabel(org: LoginOrg): string {
+  if (org.name && org.slug) return `${org.name} (${org.slug})`;
+  return org.name ?? org.slug ?? "your org";
+}
+
+/**
+ * The connection already on this machine, from either credential: the policy
+ * one and the collector's ingest key. Reading only the first, as setup used to,
+ * showed a collector-only machine as unconnected.
+ */
+export function savedConnection(): {
+  url: string;
+  token: string;
+  org?: string;
+  machineLabel?: string;
+  splitKeys?: boolean;
+} | null {
+  const cloud = readCloudCredentials();
+  const ingest = readIngestCredential();
+  const token = cloud?.token ?? ingest?.key;
+  if (!token) return null;
+  const url = cloud?.url ?? cloudBaseFor(ingest?.url ?? DEFAULT_INGEST_URL);
+  let org: string | undefined;
+  try {
+    const stored = readCredentials().org;
+    org = stored?.name ?? stored?.slug;
+  } catch {
+    org = undefined;
+  }
+  return {
+    url, token, org, machineLabel: cloud?.machineLabel,
+    ...(cloud && ingest && cloud.token !== ingest.key ? { splitKeys: true } : {}),
+  };
+}
+
+/**
+ * Where a key is sent: `--url`, else FAILPROOFAI_CLOUD_URL, else this machine's
+ * existing connection, else the hosted service.
+ *
+ * Never asked for interactively: everybody on the hosted product has one right
+ * answer, and asking made it look like a decision — which is how keys ended up
+ * pasted into the URL field. The env value goes through the SAME validation a
+ * typed one did, so http stays loopback-only. The source is named on screen,
+ * because an env var is invisible at exactly the moment it matters.
+ */
+export function resolveCloudUrl(
+  flag: string | undefined,
+  existing: string | undefined,
+): { ok: true; url: string; source?: string } | { ok: false; message: string } {
+  const env = process.env.FAILPROOFAI_CLOUD_URL?.trim();
+  const fromFlag = flag?.trim();
+  const override = fromFlag || env;
+  if (!override) {
+    if (!existing) return { ok: true, url: cloudBaseFor(DEFAULT_INGEST_URL) };
+    // Checked like a typed one: login sends its secret and receives a key here
+    // before anything else would, and the file it came from can be edited.
+    const saved = validateCloudUrl(existing);
+    return saved.ok
+      ? { ok: true, url: existing }
+      : { ok: false, message: `the saved cloud address "${existing}" cannot be used: ${saved.reason}` };
+  }
+  const source = fromFlag && fromFlag !== env ? "--url" : "FAILPROOFAI_CLOUD_URL";
+  const validated = validateCloudUrl(cloudBaseFor(override));
+  if (!validated.ok) {
+    return {
+      ok: false,
+      message: `${source === "--url" ? "--url is" : "FAILPROOFAI_CLOUD_URL is set to"} "${override}", which cannot be used: ${validated.reason}`,
+    };
+  }
+  return { ok: true, url: validated.url, source };
+}
+
+function hostOf(url: string): string {
+  try {
+    return new URL(url).host;
+  } catch {
+    return url;
+  }
+}
+
+/**
+ * Check a key without writing anything or registering anything server-side.
+ *
+ * Introspect first: it says which organisation the key belongs to and what it
+ * may do, with no side effect. A key that can neither send events nor pull
+ * policies is refused; one that can do one of them is accepted with a note
+ * saying which half is missing. A server too old for introspect is probed the
+ * way setup always did, with an empty batch to the ingest endpoint.
+ *
+ * `refused: false` is "could not ask" (offline, a timeout, a 5xx) — a saved key
+ * that fails that way may still be fine, so it is not treated as broken.
+ */
+export async function checkCloudKey(
+  url: string,
+  key: string,
+): Promise<{ ok: true; org?: string; note?: string } | { ok: false; refused: boolean; reason: string }> {
+  // Checked here rather than trusted: a saved address comes from a file that
+  // can be edited, and an http one to another host would carry the key in
+  // the clear. Not a verdict on the key, so not `refused`.
+  const target = validateCloudUrl(url);
+  if (!target.ok) return { ok: false, refused: false, reason: `the address ${url} can't be used: ${target.reason}` };
+  const identity = await introspectKey(url, key);
+  if (identity.kind === "rejected") return { ok: false, refused: true, reason: "the server did not accept it" };
+  if (identity.kind === "unreachable") return { ok: false, refused: false, reason: identity.reason };
+  if (identity.kind === "ok") {
+    const events = hasPermission(identity.identity, PERMISSION_EVENTS);
+    const policies = hasPermission(identity.identity, PERMISSION_POLICIES);
+    const org = identity.identity.orgName ?? identity.identity.orgSlug;
+    if (!events && !policies) {
+      return { ok: false, refused: true, reason: `it is missing the ${PERMISSION_EVENTS} permission` };
+    }
+    const note = !events
+      ? `This key can't send events (${PERMISSION_EVENTS}), so nothing will be collected.`
+      : !policies
+        ? `This key can't pull policies (${PERMISSION_POLICIES}), so cloud-managed policies won't arrive.`
+        : undefined;
+    return { ok: true, org, note };
+  }
+  const probe = await validateIngestKey({ url: ingestUrlFor(url), key });
+  if (probe.ok) return { ok: true };
+  const offline = /^could not reach|answered 5\d\d/.test(probe.reason);
+  return { ok: false, refused: !offline, reason: probe.reason };
+}
+
+/** The CONNECT step, collapsed: what was checked, never yet what was written. */
+export function cloudCollapsedLines(
+  kit: ReturnType<typeof screenKit>,
+  plan: CloudPlan,
+  at: { host: string; savedHost: string; savedOrg?: string; source?: string },
+): string[] {
+  // An override is named where the key went: an env var is invisible at the
+  // moment it matters, and a machine reporting somewhere unexpected is exactly
+  // what nobody notices until they look for data that is not there.
+  const head = kit.head("Connect to cloud", at.source ? `${at.host}  ·  from ${at.source}` : undefined);
+  switch (plan.kind) {
+    case "oss":
+      return [head, kit.ok("Using open source.")];
+    case "kept":
+      if (plan.how === "skip") return [head, kit.ok(`Not connecting. The connection to ${at.savedHost} is unchanged.`)];
+      return plan.verified
+        ? [head, kit.ok(at.savedOrg ? `Connected as ${at.savedOrg} to ${at.savedHost}` : `Connected to ${at.savedHost}`)]
+        : [head, kit.caution(`Keeping the connection to ${at.savedHost}. Its key couldn't be checked just now.`)];
+    case "connect":
+      return [
+        head,
+        kit.ok(plan.org ? `Key accepted for ${plan.org} on ${at.host}` : `Key accepted by ${at.host}`),
+        ...(plan.note ? [kit.caution(plan.note)] : []),
+      ];
+    case "login":
+      // Who approved it is said out loud: a link someone else approved into
+      // THEIR org would otherwise connect this machine there unnoticed.
+      return [
+        head,
+        kit.ok(
+          `Logged in${plan.approvedBy ? ` as ${plan.approvedBy}` : ""} · ${loginOrgLabel(plan.org)} on ${at.host}`,
+        ),
+      ];
+  }
+}
+
+/** What connecting wrote, for the DONE section. */
+function connectDoneLines(
+  kit: ReturnType<typeof screenKit>,
+  outcome: Awaited<ReturnType<typeof connectToCloud>>,
+  host: string,
+  org: string | undefined,
+): string[] {
+  const name = outcome.org?.name ?? outcome.org?.slug ?? org;
+  const as = name ? `Connected as ${name} to ${host}` : `Connected to ${host}`;
+  // Jev's state rides along on every branch that connected: whether it is on,
+  // available but off, or was cleared is decided by this connect and said
+  // nowhere else.
+  if (outcome.policy.ok && outcome.ingest.ok) return [kit.ok(as), ...jevLines(outcome)];
+  if (outcome.ingest.ok) {
+    return [kit.ok(as), kit.caution(`Cloud-managed policies won't arrive: ${outcome.policy.reason}`), ...jevLines(outcome)];
+  }
+  if (outcome.policy.ok) return [kit.ok(as), kit.caution(`Nothing is collected: ${outcome.ingest.reason}`), ...jevLines(outcome)];
+  return [kit.caution(`Not connected: ${outcome.ingest.reason ?? outcome.policy.reason ?? "unknown error"}`, "failproofai config")];
+}
+
+/** Packs that were declared and refused, and deny for it — as the policies listing counts them. */
+function failClosedPacks(): Array<{ id: string | null }> {
+  try {
+    return readInstalledPacks().errors.filter((err) => err.effect !== "observe" && !err.semanticOnly);
+  } catch {
+    return [];
+  }
+}
+
+/**
+ * The DONE section: what apply wrote, then whether anything is enforcing — the
+ * one generic warning when it is not (decision D18) — and the custom-policy
+ * files that will not load, which the removed review step used to show.
+ */
+export function doneLines(
+  kit: ReturnType<typeof screenKit>,
+  state: { elapsedMs: number; done: string[]; cwd: string; agents: number; connected: boolean; codexTrust?: CodexHookTrust },
+): string[] {
+  const lines = [kit.head("Done", `in ${(state.elapsedMs / 1000).toFixed(1)}s`), ...state.done];
+  // Codex with untrusted hooks runs none of them: it is not an agent anything
+  // enforces on, whatever was written.
+  const codexSkips = state.codexTrust?.kind === "untrusted";
+  const agents = codexSkips ? Math.max(0, state.agents - 1) : state.agents;
+  const on = `${agents} ${agents === 1 ? "agent" : "agents"}`;
+  if (notEnforcingReason(state.cwd)) {
+    lines.push(
+      kit.caution("Policies are not enforcing yet."),
+      `  Turn on ours:  ${kit.cmd(`failproofai policies add ${CORE_SOURCE}`)}`,
+    );
+  } else {
+    const { count, custom } = enforcingPolicyCount(state.cwd);
+    // Codex was the only agent, and it runs none of the hooks: nothing enforces anywhere.
+    const nowhere = codexSkips && agents === 0;
+    // Only custom policies: nothing to count, and no line for it.
+    if (count > 0 && !nowhere) {
+      lines.push(
+        kit.ok(
+          custom
+            ? `${count} ${count === 1 ? "policy" : "policies"} and your custom policies are enforcing on ${on}.`
+            : `${count} ${count === 1 ? "policy is" : "policies are"} enforcing on ${on}.`,
+        ),
+      );
+    }
+    // A pack that failed to load fails closed, which is why the machine reads
+    // as enforcing at all when nothing above counted. Said in the words the
+    // policies listing uses, never as custom policies that may not exist.
+    const failed = failClosedPacks();
+    if (failed.length > 0) {
+      const [first] = failed;
+      const many = failed.length > 1;
+      lines.push(
+        kit.fail(
+          `${first.id ?? "A pack"}${many ? ` and ${failed.length - 1} more` : ""} failed to load, ` +
+            `so the calls ${many ? "they cover" : "it covers"} are denied.`,
+          first.id ? `failproofai policies remove ${first.id}` : "failproofai policies",
+        ),
+      );
+    } else if (count === 0 && !custom && !nowhere) {
+      lines.push(kit.ok(`Policies are enforcing on ${on}.`));
+    }
+  }
+  if (codexSkips) lines.push(...kit.notice("caution", CODEX_UNTRUSTED_NOTICE));
+  if (!state.connected) lines.push(`  Connect to cloud any time:  ${kit.cmd("failproofai config")}`);
+  for (const warning of describeCustomPolicies(state.cwd).warnings) {
+    lines.push(kit.caution(warning.replace(/^! /, "")));
+  }
+  lines.push("");
+  return lines;
 }

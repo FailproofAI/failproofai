@@ -1,0 +1,42 @@
+---
+title: "Pydantic AI"
+description: "安装、插桩并查看你的第一条追踪记录。"
+icon: "/images/frameworks/pydantic-ai.svg"
+---
+
+三步完成你的第一条 Pydantic AI 追踪。关于工具、重试、流式传输和配置选项，请参阅[完整指南](/zh/start/integrations/pydantic-ai)。
+
+## 安装
+
+```bash
+pip install 'failproofai-sdk[pydantic-ai]'
+```
+
+## 插桩
+
+```python
+import failproofai_sdk
+from pydantic_ai import Agent
+
+failproofai_sdk.configure(environment="production")
+failproofai_sdk.instrument()          # before constructing any Agent
+
+agent = Agent("openai:gpt-4o-mini", system_prompt="Be terse.")
+
+with failproofai_sdk.session():
+    result = agent.run_sync("...")
+```
+
+<Warning>
+  `instrument()` 必须在构造任何 `Agent` **之前**运行。该能力是在构造时附加的，因此提前创建的 Agent 不会记录任何内容——且不会报错，因为实际上没有出错。这是使用此适配器时出现空追踪的最常见原因，模块级别的 Agent 尤其容易中招：请在导入构建 Agent 的模块之前，先导入 `failproofai_sdk` 并调用 `instrument()`。
+</Warning>
+
+## 确认数据已到达
+
+运行一次后，打开 **Observe → Sessions** 并选择你的环境，你的运行记录将以重建的追踪形式呈现。
+
+如果没有数据到达，请使用 `failproofai config --status` 确认机器已连接。
+
+<Card title="完整 Pydantic AI 指南" icon="arrow-right" href="/zh/start/integrations/pydantic-ai">
+  记录的内容、工具与重试、流式传输、span 命名、配置选项以及常见问题。
+</Card>

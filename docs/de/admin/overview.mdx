@@ -1,0 +1,40 @@
+---
+title: "Administration"
+description: "Zugriff, Nutzung, Organisationen und Sicherheit verwalten, ohne sie in den Zuverlässigkeits-Workflow einzumischen."
+icon: "settings-2"
+---
+
+Die Administration enthält alle Steuerungsmöglichkeiten, um Failproof AI teamweit zu betreiben. Die meisten Nutzer bleiben in Sessions, Audits und Policies; Administratoren verwenden diesen Bereich, um Zugriffsrechte und Betriebsgrenzen zu verwalten.
+
+<Tabs>
+  <Tab title="Dashboard">
+    Nutzen Sie den Bereich **Admin** in der Cloud-Seitenleiste für den **Richtlinieneditor**, die **Durchsetzung**, **Nutzung**, **Schlüssel**, **Benutzer** und **Einstellungen**. Ein gesperrtes Element zeigt an, dass Ihrem Konto die entsprechende Leseberechtigung fehlt.
+
+    ![Der Admin-Bereich der Cloud-Seitenleiste mit Richtlinieneditor, Durchsetzung, Nutzung, Schlüsseln, Benutzern und Einstellungen.](/images/dashboard/admin-navigation.png)
+  </Tab>
+  <Tab title="CLI">
+    ```bash
+    fp whoami
+    fp orgs current
+    fp orgs perms
+    fp usage
+    ```
+
+    Globale Optionen vor dem Befehl angeben, zum Beispiel `fp --org reliability-team --json usage`.
+  </Tab>
+</Tabs>
+
+<Columns cols={2}>
+  <Card title="Nutzung" icon="chart-no-axes-combined" href="/de/admin/usage">
+    Abrechnungszeiträume und den Verbrauch der Organisation einsehen.
+  </Card>
+  <Card title="Schlüssel und Berechtigungen" icon="key-round" href="/de/admin/keys-and-permissions">
+    Maschinen und Automatisierungen nur die notwendigen Berechtigungen erteilen.
+  </Card>
+  <Card title="Benutzer und Organisationen" icon="users" href="/de/admin/users-and-organizations">
+    Mitgliedschaften, Standardwerte und Organisationsgrenzen verwalten.
+  </Card>
+  <Card title="Einstellungen und Sicherheit" icon="lock-keyhole" href="/de/admin/settings-and-security">
+    Betriebseinstellungen, Datenverarbeitung und Deployment-Sicherheit konfigurieren.
+  </Card>
+</Columns>

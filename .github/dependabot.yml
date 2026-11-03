@@ -39,3 +39,119 @@ updates:
       rust-dependencies:
         patterns:
           - "*"
+
+  # The `fp` CLI (PyPI: fp-cloud-cli) — the only Python in the repo. Its lockfile is
+  # `fp-cloud-cli/uv.lock`, so the ecosystem is `uv`, and the directory is the package
+  # root rather than `/`. Grouped for the same reason as the Rust tree: the whole
+  # dependency set is verified together by one pytest run, and separate PRs each
+  # rebuild the lockfile the others just changed.
+  - package-ecosystem: uv
+    directory: /fp-cloud-cli
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 5
+    groups:
+      python-dependencies:
+        patterns:
+          - "*"
+
+  # The telemetry SDK (PyPI: failproofai-sdk). Its own lockfile and its own uv
+  # ecosystem entry — dependabot resolves per directory, so fp-cloud-cli's entry above
+  # does not see this tree at all. The only things in the lockfile are the test
+  # runner and its transitive deps: the package itself declares NO runtime
+  # dependencies, and `tests/test_zero_dependencies.py` fails if that changes.
+  - package-ecosystem: uv
+    directory: /sdk/python
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 5
+    groups:
+      python-dependencies:
+        patterns:
+          - "*"
+
+  # The TypeScript SDK's integration fixtures that hold each framework's supported
+  # FLOOR. These four entries are for security updates alone —
+  # `open-pull-requests-limit: 0` turns version updates off — and exist to stop one
+  # move. Each floor carries an advisory whose only fix is a major its framework
+  # release cannot take (SECURITY.md, "Accepted, with no fix available"), and
+  # Dependabot's grouped security updates reach that fix by moving the framework off
+  # the line the fixture exists to test: #838, #931, and #935, which opened three
+  # minutes after #934 put the pins back. `ignore` applies to security updates too,
+  # so each range below keeps the framework on its line, and zod on 3 where the
+  # framework requires it; every fix that stays on the line still arrives. Ranges
+  # are `versions`, never `update-types`, which security updates do not read. A new
+  # floor fixture needs an entry here: __tests__/ci/ts-sdk-fixture-pins.test.ts
+  # fails without one.
+  #
+  # A range is only read for the package being updated, not for a parent moved on
+  # its behalf. #955 removed @ai-sdk/provider-utils 2.x from mastra-0 by running
+  # `npm install @mastra/core@1.80.0` with `@mastra/*` ignored below; the ignore only
+  # took those names out of the PR's description. So a transitive package with an
+  # accepted advisory needs a range of its own, which ends the update before it
+  # reaches the parent.
+  - package-ecosystem: npm
+    directory: /sdk/typescript/integration/fixtures/ai-4
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 0
+    ignore:
+      - dependency-name: ai
+        versions: [">=5.0.0"]
+      # ai@4.3.19 peers on zod ^3.23.8.
+      - dependency-name: zod
+        versions: [">=4.0.0"]
+      # ai@4.3.19 uses the 2.x API; the fix is in 3.x.
+      - dependency-name: "@ai-sdk/provider-utils"
+        versions: [">=3.0.0"]
+
+  - package-ecosystem: npm
+    directory: /sdk/typescript/integration/fixtures/langchain-0.3
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 0
+    ignore:
+      - dependency-name: "@langchain/core"
+        versions: [">=0.4.0"]
+      # @langchain/langgraph@0.4.10 peers on @langchain/core <0.4.0.
+      - dependency-name: "@langchain/langgraph"
+        versions: [">=0.5.0"]
+      # Both depend on zod ^3.25.32. A zod 4 here would still install, nested
+      # under them, so nothing but this range keeps the fixture's own zod on 3.
+      - dependency-name: zod
+        versions: [">=4.0.0"]
+
+  - package-ecosystem: npm
+    directory: /sdk/typescript/integration/fixtures/llamaindex-0.11
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 0
+    ignore:
+      - dependency-name: llamaindex
+        versions: [">=0.12.0"]
+      # @llamaindex/core@0.6.8 and @llamaindex/workflow@1.1.5 need zod ^3.23.8.
+      - dependency-name: zod
+        versions: [">=4.0.0"]
+
+  - package-ecosystem: npm
+    directory: /sdk/typescript/integration/fixtures/mastra-0
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 0
+    ignore:
+      # @mastra/core, and the @mastra/memory and @mastra/mcp releases paired with it.
+      - dependency-name: "@mastra/*"
+        versions: [">=1.0.0"]
+      # @mastra/core@0.24.9 requires ai@^4. This fixture's zod is already 4.
+      - dependency-name: ai
+        versions: [">=5.0.0"]
+      # The copies under ai@4.3.19 use the 2.x API; the fix is in 3.x. This is the
+      # package #955 moved @mastra/core to get rid of.
+      - dependency-name: "@ai-sdk/provider-utils"
+        versions: [">=3.0.0"]

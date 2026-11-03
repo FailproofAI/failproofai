@@ -1,0 +1,52 @@
+---
+title: "Запустите вашу первую проверку сбоев"
+description: "Создайте аудит из облачной панели управления или через CLI fp и проверьте его первые результаты."
+icon: "scan-search"
+---
+
+Аудит преобразует набор сессий в ранжированные результаты сбоев с доказательствами. Начните с одного узкого вопроса о сбое.
+
+<Tabs>
+  <Tab title="Dashboard">
+    <Steps>
+      <Step title="Откройте Audits">
+        В боковой панели Cloud перейдите в **Analyze → Audits**. Выберите **new audit**.
+      </Step>
+      <Step title="Настройте аудит">
+        Введите название и прямую цель проверки сбоя, например «найти production сессии, которые повторяют один и тот же неудачный платёж без изменения данных или эскалации». Выберите агента, окружение, временной диапазон и расписание. Добавьте краткое описание и ссылки на источники, когда аудитору нужны ваши правила рабочего процесса.
+      </Step>
+      <Step title="Создайте и ожидайте запуска">
+        Выберите **create audit**. Первый запуск будет поставлен в очередь немедленно. Откройте карточку аудита, чтобы следить за его переходом из queued в running и затем в complete.
+      </Step>
+    </Steps>
+
+    После завершения запуска откройте результат и проверьте его доказательства из сессии. Затем вы можете подтвердить, назначить, отклонить, скрыть или разрешить результат.
+
+    ![Завершённый результат аудита, показывающий описание сбоя, рекомендуемое действие, поддерживающие доказательства и затронутые сессии.](/images/dashboard/audit-finding.png)
+  </Tab>
+  <Tab title="CLI">
+    ```bash
+    fp audits create payment-retry-failures \
+      --description "Find production sessions that retry a failed payment call without changing input or escalating" \
+      --scope '{"environments":["production"]}' \
+      --text "Escalate after two unchanged payment failures"
+
+    fp audits list
+    fp audits runs payment-retry-failures
+    fp audits findings --audit payment-retry-failures
+    fp audits finding <finding-id>
+    ```
+
+    Добавьте справочный контекст, а затем обновите его при изменении источника:
+
+    ```bash
+    fp audits context-set payment-retry-failures --url https://example.com/payment-runbook
+    fp audits context-refresh payment-retry-failures
+    fp audits run payment-retry-failures
+    ```
+
+    Используйте `fp audits ack <finding-id>`, `fp audits assign <finding-id> --to <email>`, `fp audits dismiss <finding-id>`, `fp audits mute <finding-id>`, `fp audits resolve <finding-id>` или `fp audits reopen <finding-id>` для продвижения результата через triage.
+  </Tab>
+</Tabs>
+
+Далее [предотвратите ваш первый сбой с помощью политики](/ru/start/first-policy) для подтверждённого повторяемого действия.

@@ -246,4 +246,27 @@ describe("hooks/hook-activity-store", () => {
       rmSync(newDir, { recursive: true, force: true });
     });
   });
+
+  describe("pack attribution", () => {
+    it("filters a pack row by source, and does not surface it as custom", () => {
+      // The filter is exact equality, and before packs were attributed a pack
+      // decision was written as "custom" — indistinguishable from a user's own
+      // local .mjs, so neither could be counted separately.
+      persistHookActivity(makeEntry({
+        policyName: "pack/acme/finance@1.2.0/block-refunds",
+        policySource: "pack",
+        packId: "acme/finance",
+        packVersion: "1.2.0",
+      }));
+      persistHookActivity(makeEntry({ policyName: "custom/mine", policySource: "custom", timestamp: Date.now() + 1 }));
+
+      const packRows = searchHookActivity({ source: "pack" }, 1).entries;
+      expect(packRows).toHaveLength(1);
+      expect(packRows[0].packId).toBe("acme/finance");
+      expect(packRows[0].packVersion).toBe("1.2.0");
+
+      expect(searchHookActivity({ source: "custom" }, 1).entries).toHaveLength(1);
+      expect(searchHookActivity({ source: "custom" }, 1).entries[0].policyName).toBe("custom/mine");
+    });
+  });
 });

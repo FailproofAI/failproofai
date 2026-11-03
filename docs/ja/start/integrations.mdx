@@ -1,0 +1,120 @@
+---
+title: "エージェントをインストゥルメントする"
+sidebarTitle: "フレームワーク"
+description: "サポートされているエージェントフレームワークをワンコールで Failproof AI に接続します。"
+icon: "plug"
+---
+
+エージェントはすでに記録する価値のあるすべてのデータを生成しています — モデル呼び出し、ツール呼び出し、ノード境界、人間の待機、失敗。フレームワークはそれを捨てますが、SDKが保持します。
+
+<Columns cols={3}>
+  <Card title="カスタムエージェント" icon="wrench" href="/ja/start/quickstarts/custom-agents">
+    自分で書いたエージェント、またはここに記載されていないもの。
+  </Card>
+  <Card title="LangChain と LangGraph" icon="share-2" href="/ja/start/quickstarts/langchain">
+    グラフ、ノード、ツール、リトリーバー、モデル。
+  </Card>
+  <Card title="CrewAI" icon="users" href="/ja/start/quickstarts/crewai">
+    クルー、フロー、役割別エージェント、ツール。
+  </Card>
+  <Card title="LlamaIndex" icon="database" href="/ja/start/quickstarts/llamaindex">
+    ワークフロー、ステップ、ファンクションエージェント、リトリーバー。
+  </Card>
+  <Card title="Pydantic AI" icon="badge-check" href="/ja/start/quickstarts/pydantic-ai">
+    型付きエージェント、ケイパビリティ、ツール、リトライ。
+  </Card>
+</Columns>
+
+## 3行で完了 — どのフレームワークでも
+
+<CodeGroup>
+```bash LangGraph
+pip install 'failproofai-sdk[langgraph]'
+```
+
+```bash CrewAI
+pip install 'failproofai-sdk[crewai]'
+```
+
+```bash LlamaIndex
+pip install 'failproofai-sdk[llamaindex]'
+```
+
+```bash Pydantic AI
+pip install 'failproofai-sdk[pydantic-ai]'
+```
+
+```bash Custom agents
+pip install failproofai-sdk
+```
+</CodeGroup>
+
+```python
+import failproofai_sdk
+
+failproofai_sdk.configure(environment="production")
+failproofai_sdk.instrument()          # インポートされたフレームワークを自動検出
+
+with failproofai_sdk.session():
+    ...                               # 既存のエージェント呼び出し、変更なし
+```
+
+関数へのデコレーター不要、呼び出しへのコールバック渡し不要、コード全体へのID埋め込み不要。変わるのはセッション内の呼び出しだけです：
+
+<Tabs>
+  <Tab title="LangGraph">
+    ```python
+    graph.invoke({"messages": [HumanMessage("...")]})
+    ```
+  </Tab>
+  <Tab title="CrewAI">
+    ```python
+    Crew(agents=[analyst, writer], tasks=[gather, summarise]).kickoff()
+    ```
+  </Tab>
+  <Tab title="LlamaIndex">
+    ```python
+    await agent.run("...")        # `async with failproofai_sdk.session():` 内で
+    ```
+  </Tab>
+  <Tab title="Pydantic AI">
+    ```python
+    agent.run_sync("...")
+    ```
+  </Tab>
+  <Tab title="Custom agents">
+    ```python
+    with failproofai_sdk.agent("planner"):
+        with failproofai_sdk.tool_call("search", input={"q": q}) as t:
+            t.output = search(q)
+    ```
+  </Tab>
+</Tabs>
+
+追加インストールは**フレームワーク**そのものに向けられています。すべてのアダプターはベースホイールに含まれているため、すでにフレームワークを持つプロジェクトでは追加インストールは不要です。
+
+## 到達確認
+
+インストゥルメントされたセッションを1回実行し、**Observe → Sessions** を開いてお使いの環境を選択します。実行が再構築されたトレースとして表示されます。
+
+何も届かない場合は、`failproofai config --status` でマシンが接続されていることを確認してください。[キャプチャのセットアップ](/ja/start/setup) を参照。
+
+<Warning>
+  スプールディレクトリを確認して配信を確かめようとしないでください。Failproof デーモンは各バッチをミリ秒以内に収集・削除するため、読み取りはコレクターと競合し、実際に送出されたイベントよりもはるかに少ない数しか表示されません。
+</Warning>
+
+## 次のステップ
+
+上記の各クイックスタートはフルガイドへのリンクです — 記録される内容、オプション、ストリーミング、スパンの命名、実際によく起きる問題などを扱っています。**Trace Agents → エージェントの接続** 以下にあります。
+
+<Columns cols={3}>
+  <Card title="仕組みを理解する" icon="workflow" href="/ja/start/integrations/custom-agents#going-deeper">
+    データモデル、ID、イベントタイプ、そしてイベントがクラウドに届くまでの流れ。
+  </Card>
+  <Card title="トレースを読む" icon="route" href="/ja/sessions/read-a-trace">
+    バラバラなログではなく、セッションを通じて因果関係を追う。
+  </Card>
+  <Card title="最初の障害を見つける" icon="scan-search" href="/ja/start/first-audit">
+    キャプチャしたセッションを監査する。
+  </Card>
+</Columns>

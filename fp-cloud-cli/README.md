@@ -1,0 +1,418 @@
+# FailproofAI Cloud CLI (`fp`)
+
+A command-line client for the **FailproofAI Cloud** API. It lets a developer —
+or the coding agent working alongside them — authenticate and query agent
+sessions, event logs, and evaluations from the terminal, with a `--json` flag on
+every command for scripting.
+
+> **The package is `fp-cloud-cli`; the command is `fp`.** They differ because `fp` was
+> already taken on PyPI. This is also distinct from `failproofai` on npm, which is
+> the Enforcement CLI — that one runs inside the agent loop and decides what an
+> agent may do; this one reads back what it did.
+
+## Install
+
+```bash
+pipx install fp-cloud-cli      # recommended (isolated)
+# or: uv tool install fp-cloud-cli  /  pip install fp-cloud-cli
+```
+
+Then the command is `fp`:
+
+```bash
+fp --version
+fp help
+```
+
+For development in this repo:
+
+```bash
+cd fp-cloud-cli
+uv sync --extra dev
+uv run fp --help
+```
+
+## Authentication
+
+The CLI talks to your dashboard (set `--base-url` or `FP_DASHBOARD_URL`) and logs in with
+an emailed one-time code:
+
+```bash
+fp login --email you@example.com
+# enter the 6-digit code; the session is stored in
+# ~/.failproofai/fpcli/cli-auth.json (mode 0600)
+fp whoami
+fp logout
+```
+
+Sessions expire (24h by default); re-run `fp login` when prompted.
+
+## Working across orgs (multi-tenant)
+
+Your account can belong to more than one org. The active org is chosen **at login** and saved:
+
+```bash
+fp login --org acme              # pick the tenant at login (saved for later commands)
+fp orgs list                     # your orgs + your role in each (active one marked)
+fp orgs switch globex            # switch the active org (pass a slug…)
+fp orgs switch                   # …or omit it to pick from a list (in a terminal)
+fp orgs current                  # which org you're acting as right now (identity card)
+fp orgs perms                    # your permissions in the active org (grouped by resource)
+fp --org globex sessions         # override for a single command
+```
+
+If you belong to exactly one org it's selected automatically. If you belong to several, you
+pick at login (or with `orgs switch`); pass `--org` to choose non-interactively. A slug you
+can't access (non-existent, or not yours) is rejected rather than saved. The active org is
+sent as the `X-AgentEye-Org` header on every request, and your permissions are resolved per
+org. (All tenant commands live under one group: `orgs list` / `orgs switch` / `orgs current` /
+`orgs perms`.)
+
+## Commands
+
+**Query & observability**
+
+```text
+fp sessions [--since 24h] [--status error] [--agent-id <id>] [--all]   # runs: time/env/agent/session/status
+fp evals [--score helpfulness:..0.5] [--all]   # eval results + scores
+fp evals --aggregate [--since 7d]              # rolled-up eval health (status mix + per-metric score stats)
+fp events --session-id <id> [--event-type tool_use,tool_result] [--env prod] [--all]
+fp errors [--since 24h] [--error-type TimeoutError] [--all]   # list errored events
+fp errors --aggregate [--since 7d]            # error summary (count + sessions/agents/last seen)
+fp list <thing>                   # discover dropdown values to filter on:
+#   envs · agents · event_types · score_filters · models · hooks · tools · error_types
+```
+
+**Manage your org** (each gated by the matching permission)
+
+```text
+fp keys list|show|create|update|disable|regenerate     # API keys (secret shown once)
+fp users list|show|create|update|disable|enable
+fp settings list|schema|set
+fp alerts list|show|create|update|delete|test
+fp issues list|count|show|ack|assign|resolve|close|archive|unarchive|clear|comment-add|comment-list|comment-delete|subscribe|subscribers|unsubscribe|open
+fp audits list|show|create|edit|delete|run|runs|findings|finding    # scheduled audits
+fp audits ack|assign|resolve|dismiss|mute|reopen                    # triage a finding
+fp audits context-show|context-set|context-refresh                  # reference context
+fp usage                                         # org usage for the metering window
+```
+
+**Analytics & assistant**
+
+```text
+fp query list|show|create|update|delete|run|schema   # saved SQL + ad-hoc runner
+fp agent health|models|chats|show|rename|delete|ask
+#   agent models                 → models available for --model (with the default marked)
+#   agent ask "…"                → starts a NEW chat, answers + persists, prints the chat id
+#   agent ask --chat <id> "…"    → continue that chat (shows in the dashboard; 1st Q auto-titles)
+#   agent chats|show <id>|rename <id> --title …|delete <id>   → manage saved chats
+fp version | help
+```
+
+**Mutations are non-interactive-safe.** Create/update/delete prompt for confirmation in a
+terminal, but auto-skip the prompt under `--json` or when stdin isn't a TTY (so scripts/agents
+never hang). Pass `--yes`/`-y` to skip it explicitly. Request bodies can be supplied with
+`--file payload.json` (or `--file -` for stdin) on `alerts` and `settings` — mutually
+exclusive with the discrete flags. `users create`/`update` take only the discrete
+flags (`--permission-set`, `--add`, `--remove`). (Saved-query SQL uses `--sql @file.sql`.)
+
+Every command and subcommand has `--help` / `-h`; `fp -h` documents auth, exit codes, and
+the global options. **Global options go before the command** (`fp --json events`, not
+`fp events --json`).
+
+Add `--json` for machine-readable output, and `--fields` to project just the keys you need:
+
+```bash
+fp --json events --session-id run-001 --all | jq '.events[].payload'
+fp --json sessions --since 7d --fields session_id,status,scores
+```
+
+### Cloud-managed policies
+
+Three commands for the three jobs the dashboard splits across three pages —
+`fp policies` writes a policy version, `fp fleet` decides which machines run it,
+`fp guardrails summary` reports what it actually blocked.
+
+```bash
+fp policies publish no-force-push ./rule.mjs   # path, @path, a pipe, - or a paste
+fp fleet deploy ci-runner-01 --add no-force-push
+fp guardrails summary --since 24h
+```
+
+A policy has a **kind**: `regex` (JavaScript — the default, and what every
+earlier version is), `jev` (Jev checks only, from a JSON file of declarations —
+each exactly a failproofai pack manifest's semantic entry), or `both`
+(JavaScript whose verdict its own Jev checks may clear, deployed as one).
+Jev checks run on FailproofAI Cloud; nothing is installed on the machine.
+While a `jev` or `both` policy is deployed to a machine, FailproofAI Cloud
+turns Jev on there and the machine sends each checked tool call to it; with
+none, Jev is off. There is no Jev mode to set: trial a policy with `:observe`
+(its checks are recorded, never applied), then deploy it as `enforce`, where
+Jev's checks **block** calls as well as clearing the regex verdicts they
+review.
+
+```bash
+fp policies publish prod-db-intent --kind jev --semantic ./checks.json
+fp policies publish no-prod-db --kind both --source ./rule.mjs --semantic ./checks.json
+fp fleet deploy ci-runner-01 --add prod-db-intent:observe
+fp fleet show ci-runner-01    # its Jev mode, and any policy errors it reported
+```
+
+Published policy versions do not contain agent-routing code. Each assignment
+can instead target every agent (the default), an integration including future
+profiles, or a particular profile reported by that machine. The same target
+applies to the regex and Jev parts of a `both` policy:
+
+```bash
+fp fleet deploy ci-runner-01 --add no-prod-db --target no-prod-db=hermes
+fp fleet deploy ci-runner-01 --target no-prod-db=hermes/agt_1234567890abcdef
+fp fleet deploy ci-runner-01 --all-agents no-prod-db  # explicitly remove targeting
+```
+
+Repeat `--target` for multiple alternatives on one assignment. `fp fleet
+show` and `fp fleet history` display the assigned scope; `--json` includes
+`agentTargets` on each targeted policy. A machine must report agent-scoping
+support before accepting a new target. When its identity cannot be resolved,
+a targeted policy does not match; unscoped policy remains in force.
+Newly installed shell hooks carry their settings scope. Reinstall older hooks
+to add the hint; without it, or for an integration that cannot report the
+source of multiple installed scopes, the machine reports
+`agent_scope_unresolved` rather than guessing which profile ran the call.
+
+**A deploy REPLACES a machine's whole policy set.** The server takes the full
+list and does not merge, so `fleet deploy` reads what the machine currently runs,
+applies your `--add`/`--remove`, prints the complete resulting set, and writes
+that. Use `--set` only when you mean "exactly these, drop the rest".
+
+```bash
+fp fleet deploy ci-runner-01 \
+    --add no-force-push \            # keeps its pinned version if already deployed
+    --add prod-guard@1:observe \     # id@version:effect
+    --remove old-rule
+```
+
+Three things worth knowing before you script it:
+
+* A bare `--add` of a policy the machine already runs keeps its **pinned
+  version**. Pass `id@version` to move it — a pin is usually deliberate.
+* The endpoint has no lock. The CLI records the deployment generation it read and
+  **refuses** if the write does not land at exactly one higher, because that means
+  somebody deployed in between and a replace does not merge.
+* The exit code separates your mistake from the server's answer. A malformed ref,
+  `--set` alongside `--add`/`--remove`, or no flags at all is **2**; a ref that
+  parses but names a policy that does not exist is **1**; an unknown machine is
+  **6**. Branch on those rather than on the message.
+
+`fp fleet diff` shows intent versus delivery: a machine can be deployed-to and
+still enforcing an older set until it next polls. It refuses a machine id nobody
+has reported under rather than rendering it as an empty fleet.
+
+These commands are **session-only** (`fp login`). They are absent from the
+versioned API an API key authenticates against, so `--api-key` exits 2 with the
+reason rather than failing at the request.
+
+## Author an evaluator
+
+`fp evaluators` authors hosted definitions; `fp evals` continues to read results.
+Creation enables a definition by default. Check `fp evaluators instances` first:
+Cloud needs an enabled managed instance. Writes need `evaluations:trigger`;
+session dry-runs and `evaluators schema` also need `events:read`.
+
+Write `error_free.py` as a restricted Python expression (no imports or functions):
+
+```python
+EvalResult(score=Score(1.0 if session.count("error") == 0 else 0.0), reasoning="Error-free session")
+```
+
+```bash
+fp --json evaluators create --key error_free --name "Error free" --code error_free.py \
+  --result-kind score --dry-run-on run-001
+fp --json evaluators dry-run --code error_free.py --session run-001
+fp --json evaluators deploy error_free --code error_free.py --version 2 --dry-run-on run-001
+fp --json evaluators list --key error_free --all
+```
+
+LLM judge (Cloud selects the model; judge dry-runs are refused):
+
+```bash
+fp --json evaluators create --key relevance --name Relevance --judge \
+  --criteria "Grade how directly the answer addresses the request" --threshold 0.7
+fp --json evaluators deploy relevance --version 2 --judge \
+  --criteria "Grade relevance and completeness" --threshold 0.8
+fp --json sessions re-evaluate run-001
+fp --json sessions history run-001
+```
+
+Jev binary or graded rubric:
+
+```bash
+fp --json evaluators create --key resolved --name Resolved --jev noul \
+  --instructions "Was the request resolved?" --true "Resolved" --false "Unresolved"
+fp --json evaluators dry-run --jev noul --instructions "Was the request resolved?" \
+  --true "Resolved" --false "Unresolved" --session run-001
+fp --json evaluators deploy resolved --version 2 --jev score \
+  --instructions "Grade resolution quality" \
+  --level "Unresolved" --level "Partly resolved" --level "Fully resolved"
+```
+
+Jev dry-runs spend model budget. Rubrics need 3–5 distinct levels, worst first.
+Thresholds are 0–1; judge/Jev always return a score. `deploy` creates the new
+immutable version before disabling older enabled versions. If disabling fails,
+the CLI names the published id; inspect `list --all` and recover explicitly.
+`--backfill 7d` works for every kind (judge/Jev spend model budget); `evaluators backfill --from T --to T` accepts ≤90 days and `--dry-run` counts the work first.
+
+Human output shows each `--dry-run-on` session's outcome before creation or
+deployment. Any failed run stops the write; after reviewing the failure, an
+explicit `--force` overrides this guard. Existing `--json` response shapes stay
+unchanged.
+
+AI drafting is session-only and writes an API spec that create/deploy accept:
+
+```bash
+fp login
+fp --json evaluators draft "Measure error-free sessions with code" --kind code --out evaluator.json
+# Review the spec, especially eval_key and evaluator_source, before enabling it.
+fp --json evaluators create --file evaluator.json --dry-run-on run-001
+fp --json evaluators dry-run --file evaluator.json
+```
+
+Spec fields: `eval_key`, `display_name`, `eval_version`, `result_kind`, `labels`,
+`condition_source`, `evaluator_source`, `timeout_seconds`. Judge/Jev sources are
+JSON envelope **strings**, not nested objects. `--file` is exclusive with discrete
+spec flags; deploy may override a file's version. Files written by the CLI are
+created exclusively, so existing files are never silently replaced.
+See [the command reference](skill/references/commands.md#author-an-evaluator).
+
+## Dashboard parity
+
+```text
+fp dashboards list|show|create|update|delete
+fp dashboards tiles <id> list|add|update|remove|layout
+fp sessions show|export|history|re-evaluate <id>
+fp events latency
+fp sentiment summary|messages|sessions|session <id>
+fp query compose "question" [--run]                  # session
+fp query export [<id>] [--sql SQL] --format csv|json [--out FILE]
+fp alerts recipients
+fp alerts issues <id> [--create --title ... --summary ...]
+fp audits contracts list|show|create|update
+fp policies author "intent"|backtest <file-or-id>|candidacy --issue <id>  # session
+fp agent brief [--range 24h|7d]                      # session
+fp orgs create --name N [--slug S]                   # session
+fp roles list|show|create|update|delete
+fp users delete <id>
+fp users defaults
+fp usage windows
+fp plan                                           # session
+fp plan claim <offer>                             # session
+fp settings context-windows list|set <model> <tokens>|delete <model>
+fp otel status|enable|disable
+fp slack status|disconnect                          # session
+```
+
+`fp agent ask` runs artifact SQL through the permission-gated query runner and
+renders tables/stats. It prompts before approving a write on a terminal.
+Scripts and `--json` **decline** unless you explicitly pass `--approve`.
+Normal create/update commands keep their existing non-interactive confirmation
+behavior; assistant approvals are a separate safety boundary.
+
+All new commands accept the global `--json` before the command. Session-only
+commands fail before HTTP in API-key mode, with exit 2 and a `fp login` hint.
+Unknown-route 404s exit 6 with “not available on this FailproofAI Cloud yet”.
+Missing-record 404s also exit 6 but report that the record was not found.
+`plan` and `plan claim` require a signed-in person and deny API-key mode before
+HTTP with the standard `fp login` message.
+Human screens use the mint/pink wordmark, grey labels, open tables and full ids;
+existing JSON shapes are unchanged.
+
+Human commands show summaries, tables and wrapped text rather than response
+objects. Use global `--json` for raw API results. For `sessions export` or
+`query export --format json`, use `--out FILE` to save the JSON; without either
+option, the terminal shows a readable session or query view. CSV exports remain
+plain CSV for piping.
+
+## Configuration
+
+| Setting | Flag | Env var | Default |
+|---|---|---|---|
+| Dashboard URL | `--base-url` | `FP_DASHBOARD_URL` | `https://app.befailproof.ai` |
+| Active org/tenant | `--org` | `FP_ORG` | chosen at login; saved in `~/.failproofai/fpcli/cli-auth.json` |
+| Session token | `--token` | `FP_TOKEN` | from `~/.failproofai/fpcli/cli-auth.json` |
+| API key (CI) | `--api-key` | `FP_API_KEY` | none; never written to disk |
+| JSON output | `--json` | `FP_JSON` | off |
+| Skip TLS verification | `--insecure` / `--secure` | `FP_INSECURE` | off (saved at login) |
+| Disable usage telemetry | _(none)_ | `FP_ANALYTICS_DISABLED` (or `DO_NOT_TRACK`) | off — [this build sends nothing](#telemetry) |
+
+Precedence is **flag > environment variable > config file > built-in default**. A fresh
+install points at the hosted product with no configuration; set `--base-url` or
+`FP_DASHBOARD_URL` for a self-hosted or dev instance and it is saved after `login`.
+
+The session lives at `~/.failproofai/fpcli/cli-auth.json` (mode `0600`). The directory
+is resolved as `FP_HOME` > `$FAILPROOFAI_HOME/fpcli` > `~/.failproofai/fpcli` — `FP_HOME`
+names the CLI's own directory and is used as-is, so an existing export keeps addressing
+the same place; `FAILPROOFAI_HOME` names the shared home root, so `fpcli/` is appended.
+
+The CLI only ever creates. It will bring `~/.failproofai` into existence on a machine
+that has never run the Enforcement CLI, and leaves a populated one exactly as it found
+it — nothing here removes or rewrites a path it does not own. The file is registered in
+that home's layout (`src/hooks/fp-home.ts`) and classified `user-typed`, which is what
+keeps a layout migration from dropping it.
+
+The Python SDK writes its spool under `$FAILPROOFAI_HOME/custom-agents/events`,
+otherwise `~/.failproofai/custom-agents/events` — it moved onto the shared umbrella in
+the same release that renamed this CLI. `FAILPROOFAI_HOME` relocates it the same way it
+relocates this CLI's own directory; what no longer works is `AGENTEYE_HOME`, and nothing
+moves the spool *off* the umbrella except `configure(base_dir=...)` in the application.
+`failproofaid` still drains `~/.agenteye/events` as well, for SDKs old enough to write
+there.
+
+> **Upgrading from a version that used `~/.fp/cli.json`?** Nothing to do — the old
+> session is adopted on your next command, so you are not signed out. It is copied, not
+> moved, so rolling back to an older `fp` still works; remove `~/.fp/` yourself once you
+> are happy.
+
+For a dashboard with a self-signed or internal TLS certificate, add `--insecure` to skip
+certificate verification (saved at login, so you set it once). This disables protection
+against man-in-the-middle attacks — prefer a valid certificate outside internal/testing use.
+
+## Telemetry
+
+**Telemetry is currently disabled and this build sends nothing.**
+`TELEMETRY_DISABLED` is `True` in `fp_cli/analytics_config.py`: when the analytics
+host is unreachable the send path stalls every command for ~5s — the shutdown flush
+is bounded, but the client build and first connect attempt are not — so it stays off
+until that path is fully non-blocking. Nothing was removed; re-enabling is one
+constant.
+
+The rest of this section describes what it collects **if** it is re-enabled, so you
+can review it in advance rather than discover it in a release note:
+
+- which command ran (including its subcommand, e.g. `keys create`), success/exit
+  status and duration, the **names** of flags used, and a per-action event for
+  mutations (e.g. `api_key_created`, `query_run`) carrying only static names/enums
+  and coarse counts;
+- **no data, URLs, tokens, emails, ids, SQL, key secrets, or query values are ever
+  sent**, and operators are identified only by an opaque id.
+
+`FP_ANALYTICS_DISABLED=1` (or the cross-tool `DO_NOT_TRACK=1`) opts out, and keeps
+working as an opt-out if it is ever switched back on. See
+<https://docs.befailproof.ai/reference/cloud-cli> for the full privacy details.
+
+## Exit codes
+
+| Code | Meaning |
+|---|---|
+| 0 | Success |
+| 1 | Unexpected error (e.g. an unhandled server status) |
+| 2 | Usage error (bad arguments) |
+| 3 | Cannot reach the dashboard |
+| 4 | Not logged in / session expired |
+| 5 | Authenticated but missing permission |
+| 6 | Resource not found |
+
+## Tests
+
+```bash
+cd fp-cloud-cli
+uv run --extra dev pytest
+```

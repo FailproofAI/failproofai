@@ -1,0 +1,244 @@
+---
+title: "LangChain и LangGraph"
+sidebarTitle: "LangChain и LangGraph"
+description: "Инструментируйте графы, узлы, инструменты, ретриверы и вызовы моделей одним вызовом."
+icon: "/images/frameworks/langchain.svg"
+---
+
+Один адаптер подходит для обоих. LangGraph работает на менеджере обратных вызовов `langchain-core`, поэтому инструментирование одного инструментирует другое.
+
+## Установка
+
+```bash
+pip install 'failproofai-sdk[langgraph]'
+```
+
+Для LangChain без LangGraph используйте `failproofai-sdk[langchain]`.
+
+Поддерживается: `langchain-core` 1.4.7 до 2.0, `langgraph` 1.2 до 2.0. За пределами этого диапазона адаптер всё ещё устанавливается и выдаёт предупреждение один раз.
+
+## Инструментирование
+
+```python
+import failproofai_sdk
+
+failproofai_sdk.configure(environment="production")
+failproofai_sdk.instrument()
+
+with failproofai_sdk.session():
+    graph.invoke({"messages": [HumanMessage("...")]})
+```
+
+`instrument()` регистрирует трассировщик через `langchain_core.tracers.context.register_configure_hook`. LangChain внедряет его в каждый менеджер обратных вызовов, который он создаёт, поэтому графы, инструменты и модели захватываются без изменения точки вызова — включая те, которые находятся внутри библиотек, которые вы не писали.
+
+## Что записывается
+
+| LangChain или LangGraph | Событие Failproof |
+| --- | --- |
+| Корневой запуск | `agent_start`, `agent_end` |
+| Узел LangGraph | `hook_triggered`, `hook_completed` |
+| Скомпилированный подграф | Вложенные `agent_start`, `agent_end` |
+| Запуск инструмента | `tool_use`, `tool_result` |
+| Запуск ретривера | `tool_use`, `tool_result`, вывод суммирован |
+| Запуск модели чата или LLM | `model_request`, `model_response`, с использованием токенов |
+| Потоковые токены | Встроены в ответ как количество фрагментов и время до первого токена. Подсчёт токенов требует `ChatOpenAI(stream_usage=True)` — см. ниже |
+| `interrupt()` | `human_wait`, `agent_pause` |
+| `Command(resume=...)` | `agent_resume`, `human_input`, коррелирует по `Interrupt.id` — включая случаи, когда возобновление происходит в другом процессе против того же контрольного фреймворка |
+| Необработанное исключение | `error`, затем `agent_end` с результатом `failed` |
+
+**Узел становится хуком, а не вложенным агентом.** `agent_id` является основным аспектом на каждой поверхности панели инструментов — повышение `retrieve`, `grade_documents` и `should_continue` до агентов было бы перегруженным и помечало бы сеанс по тому узлу, который произошёл первым.
+
+Диапазоны хуков отображаются так же и по-прежнему дают вам вид задержки для каждого узла.
+
+<Note>
+  **Называйте ваши узлы как угодно.** Запуск узла идентифицируется по его *форме* — нелистовой запуск, несущий собственный шаг LangGraph — никогда по его имени.
+</Note>
+
+| Вы пишете | Что записывается |
+| --- | --- |
+| `add_node("lookup_population", ToolNode([...]))` | Инструмент |
+| `add_node("ChatOpenAI", ...)` | Вызов модели |
+
+Назвать узел в честь того, что он запускает, раньше заставляло события этого объекта исчезнуть. Теперь это больше не происходит.
+
+### Потоковая передача
+
+`.stream()` и `.astream()` не генерируют события для каждого токена. Они встроены в завершающий `model_response`:
+
+| Поле | Содержит |
+| --- | --- |
+| `fw_chunks` | Сколько фрагментов пришло |
+| `fw_ttft_ms` | Время до первого токена |
+
+### Подсчёт токенов на потоковом ответе
+
+Отдельный вопрос и легко упустить: OpenAI отправляет использование на потоковом ответе **только при запросе**.
+
+```python
+ChatOpenAI(model="gpt-4o-mini", stream_usage=True)   # без этого нет токенов
+```
+
+Адаптер записывает то, что фреймворк ему передал. Без этого флага нечего записывать, и `model_response` приходит без подсчёта токенов.
+
+## Пример
+
+```python
+import failproofai_sdk
+from langchain_core.messages import HumanMessage
+from langchain_core.tools import tool
+from langchain_openai import ChatOpenAI
+from langgraph.prebuilt import ToolNode, create_react_agent
+
+failproofai_sdk.configure(environment="production")
+failproofai_sdk.instrument()
+
+
+@tool
+def price_of(item: str) -> float:
+    """Возвращает цену единицы товара в USD."""
+    return {"widget": 42.0, "gadget": 17.5}[item.lower().strip()]
+
+
+@tool
+def stock_of(item: str) -> int:
+    """Возвращает количество единиц товара в наличии."""
+    return {"widget": 120, "gadget": 0}[item.lower().strip()]
+
+
+tools = ToolNode([price_of, stock_of], handle_tool_errors=True)
+graph = create_react_agent(ChatOpenAI(model="gpt-4o-mini"), tools)
+
+with failproofai_sdk.session():
+    with failproofai_sdk.agent("analyst", goal="price and stock report"):
+        result = graph.invoke({
+            "messages": [HumanMessage("Price and stock for widget and gadget?")]
+        })
+```
+
+## Назовите ваши диапазоны
+
+По умолчанию корневой диапазон принимает имя самого графа. Оберните его, чтобы получить выбранную вами метку:
+
+```python
+with failproofai_sdk.session():
+    with failproofai_sdk.agent("analyst", goal="price and stock report"):
+        graph.invoke(...)
+```
+
+Для многоагентных настроек вложите области. Каждый рабочий становится дочерним диапазоном с `parent_id`:
+
+```python
+with failproofai_sdk.session():
+    with failproofai_sdk.agent("supervisor"):
+        with failproofai_sdk.agent("researcher"):
+            research_graph.invoke(...)
+        with failproofai_sdk.agent("writer"):
+            writer_graph.invoke(...)
+```
+
+Держите `agent_id` низкой мощности. Используйте роль или имя узла, никогда UUID или строку для каждого запуска.
+
+## Контролируйте сеанс
+
+ID сеанса разрешается в этом порядке, первое совпадение побеждает:
+
+1. `instrument("langchain", session_id=...)`
+2. `config={"metadata": {"failproofai_sdk_session_id": ...}}`
+3. Охватывающая область `failproofai_sdk.session()`
+4. `metadata["session_id"]`, `metadata["conversation_id"]` или `metadata["thread_id"]`
+5. ID корневого запуска
+
+Он никогда не генерируется с нуля, потому что синтезированный ID разбивает один запуск на несколько сеансов.
+
+```python
+graph.invoke(
+    {"messages": [...]},
+    config={"metadata": {"failproofai_sdk_session_id": f"chat-{user_id}"}},
+)
+```
+
+## Опции
+
+```python
+failproofai_sdk.instrument(
+    "langchain",
+    session_id=None,          # привязать каждый запуск к одному ID сеанса
+    include_chains=set(),     # список разрешённых промежуточных цепочек как пары хуков
+    capture_content=True,     # False исключает подсказки и дополнения из полезных нагрузок
+    graph_callbacks=True,     # первоклассный interrupt и resume, требует langgraph 1.2+
+)
+```
+
+Установите `capture_content=False` для регулируемых данных. Структура, синхронизация, подсчёт токенов, имена инструментов и результаты по-прежнему записываются; тела сообщений нет.
+
+`include_chains` применяется только к **вложенным** запускам. Запускаемый, который вы вызываете на верхнем уровне, является корнем сеанса, поэтому он становится диапазоном агента, а не парой хуков, и название его здесь не имеет эффекта.
+
+## Человек в цикле
+
+`interrupt()` производит четыре события, и ни одна пара не является избыточной:
+
+```python
+from langgraph.types import Command, interrupt
+
+def approve(state):
+    decision = interrupt({"prompt": "Ship it?", "options": ["yes", "no"]})
+    return {"approved": decision == "yes"}
+
+with failproofai_sdk.session():
+    graph.invoke(state, config)                    # human_wait, agent_pause
+    graph.invoke(Command(resume="yes"), config)    # agent_resume, human_input
+```
+
+`human_wait` в `human_input` содержит подсказку и ответ (оба исключены под `capture_content=False`, наряду с источниками документов ретривера — количество документов сохраняется). `agent_pause` в `agent_resume` — единственная пара, которая подаёт время паузы, поэтому без неё десятиминутное ожидание человека будет учтено как активное время агента. Корневой диапазон остаётся открытым на протяжении разрыва, удерживая оба вызова в одном сеансе.
+
+## Частые проблемы
+
+<AccordionGroup>
+  <Accordion title="Возбуждающий инструмент прерывает весь граф">
+    `create_react_agent` распространяет исключение. Чтобы позволить модели увидеть отказ и продолжить, постройте узел инструмента явно:
+
+    ```python
+    from langgraph.prebuilt import ToolNode, create_react_agent
+
+    tools = ToolNode([price_of, stock_of], handle_tool_errors=True)
+    graph = create_react_agent(model, tools)
+    ```
+
+    Отказ записывается как `tool_result` с ошибкой в любом случае. Это только решает, выживает ли запуск после этого.
+  </Accordion>
+
+  <Accordion title="Агент с именем класса модели появляется в трассировке">
+    Прямой `llm.invoke()` вне любого графа не имеет родительского запуска, поэтому он открывает корневой диапазон и генерирует внутри него пару моделей. Панель инструментов размещает листья открытому агенту, поэтому диапазон намеренный. Назовите его:
+
+    ```python
+    with failproofai_sdk.agent("summariser"):
+        summary = ChatOpenAI(model="gpt-4o-mini").invoke([HumanMessage(text)])
+    ```
+  </Accordion>
+
+  <Accordion title="Каждое событие появляется дважды">
+    Вы передали обработчик Failproof в `config={"callbacks": [...]}`, а также вызвали `instrument()`. Удалите его. Хук конфигурации уже охватывает каждый менеджер обратных вызовов в процессе.
+  </Accordion>
+
+  <Accordion title="Человеческие одобрения показывают как ошибки">
+    Это неправда. LangGraph вызывает `GraphInterrupt` по тому же пути, что и реальное исключение, поэтому каждая пауза достигает трассировщика как обратный вызов ошибки. Любой подкласс `GraphBubbleUp` вместо этого рассматривается как поток управления, поэтому одобрение не окрашивает красную ошибку.
+  </Accordion>
+
+  <Accordion title="Ничего не записывается">
+    Проверьте в этом порядке: `instrument()` запустился перед выполнением графа; вокруг вызова стоит `with failproofai_sdk.session():`; `FAILPROOFAI_SDK_STRICT=1` установлен, поэтому деградированный хук вызывает исключение вместо поглощения.
+  </Accordion>
+</AccordionGroup>
+
+## Далее
+
+<Columns cols={3}>
+  <Card title="Как это работает" icon="workflow" href="/ru/start/integrations/custom-agents#going-deeper">
+    Пары, ID, жизненный цикл сеанса и доставка.
+  </Card>
+  <Card title="Прочитайте трассировку" icon="route" href="/ru/sessions/read-a-trace">
+    Проследите причинность через захваченный сеанс.
+  </Card>
+  <Card title="Другие фреймворки" icon="plug" href="/ru/start/integrations">
+    CrewAI, LlamaIndex, Pydantic AI и пользовательские агенты.
+  </Card>
+</Columns>

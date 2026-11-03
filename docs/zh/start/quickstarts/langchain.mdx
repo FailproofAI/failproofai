@@ -1,0 +1,39 @@
+---
+title: "LangChain 和 LangGraph"
+description: "安装、插桩并查看您的第一条追踪记录。"
+icon: "/images/frameworks/langchain.svg"
+---
+
+三步完成您的第一条 LangChain 或 LangGraph 追踪。关于流式传输、human-in-the-loop、span 命名及配置选项，请参阅[完整指南](/zh/start/integrations/langchain)。
+
+## 安装
+
+```bash
+pip install 'failproofai-sdk[langgraph]'
+```
+
+如果只使用 LangChain 而不使用 LangGraph，请改用 `failproofai-sdk[langchain]`。
+
+## 插桩
+
+```python
+import failproofai_sdk
+
+failproofai_sdk.configure(environment="production")
+failproofai_sdk.instrument()
+
+with failproofai_sdk.session():
+    graph.invoke({"messages": [HumanMessage("...")]})
+```
+
+无需修改调用点。`instrument()` 会注册一个追踪器，LangChain 会将其注入到所创建的每个回调管理器中，因此图、工具和模型都会被捕获——包括您未编写的库中的那些。
+
+## 确认数据已到达
+
+运行一次后，打开 **Observe → Sessions** 并选择您的环境。您的运行将以重建的追踪形式呈现。
+
+如果没有数据到达，请通过 `failproofai config --status` 确认机器已连接。
+
+<Card title="完整 LangChain 指南" icon="arrow-right" href="/zh/start/integrations/langchain">
+  记录内容、流式传输、token 计数、span 命名、会话控制、配置选项以及 human in the loop。
+</Card>

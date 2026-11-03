@@ -1,0 +1,133 @@
+---
+title: "Agent-Harnesses"
+description: "Sessions aufzeichnen und Richtlinien für alle 12 unterstützten Agent-Harnesses durchsetzen."
+icon: "plug-zap"
+---
+
+Ein Harness ist die Umgebung, in der Ihr Agent tatsächlich ausgeführt wird. Failproof AI unterstützt zwölf davon, in zwei Kategorien:
+
+- **Coding-CLIs** (10) — Claude Code, Codex, GitHub Copilot CLI, Cursor, OpenCode, Pi, Factory Droid, Devin CLI, Antigravity CLI, Goose
+- **Chat- und Assistent-Gateways** (2) — Hermes (Slack, Telegram, Cron), OpenClaw (selbst gehosteter Assistent)
+
+Dieselben Richtlinien und dieselbe Session-Historie gelten unabhängig davon, in welchem Harness ein Agent ausgeführt wird. Eine Adapter-Schicht übersetzt die nativen Ereignisnamen, Tool-Namen und Tool-Eingabefelder jedes Harness auf 29 kanonische Ereignisse, bevor eine Richtlinie ausgeführt wird.
+
+Ein Agent, der in **keinem** der zwölf Harnesses läuft, wird direkt mit dem [Python SDK](/de/reference/custom-agents) instrumentiert. Das ist ein anderer Vertrag, und das sollte klar benannt werden: Das SDK liefert Tracing, Sessions, Evaluierungen und Audits — **es setzt Richtlinien nicht selbst durch.** Um eine unsichere Aktion vor ihrer Ausführung zu blockieren, ist ein Enforcement-Hook an der Tool-Grenze Ihrer Laufzeitumgebung erforderlich. [Kontaktieren Sie uns](mailto:support@befailproof.ai) und wir kümmern uns um die Zuordnung.
+
+| Harness | Unterstützte Hook-Scopes |
+| --- | --- |
+| Claude Code | User, project, local |
+| Codex, GitHub Copilot CLI, Cursor, OpenCode, Pi | User, project |
+| Factory Droid, Devin CLI, Antigravity CLI, Goose | User, project |
+| Hermes, OpenClaw | User |
+
+Jede Integration normalisiert ihre nativen Hook-Ereignisnamen, Tool-Namen und Tool-Eingabefelder, bevor Richtlinien ausgeführt werden. Eine Richtlinie kann nur auf Ereignisse reagieren, die der Harness bereitstellt. Testen Sie das Verhalten am Ende eines Turns sowie das Instruktionsverhalten auf dem genauen Harness und der Version, die Sie einsetzen.
+
+## Durchsetzungsfähigkeit
+
+„Blockieren" bedeutet, dass der zurückgegebene Bescheid des aktuellen Adapters vom genannten Harness verarbeitet wird. Ein Post-Tool-Block kann das dem Modell angezeigte Ergebnis ersetzen, aber einen bereits eingetretenen Tool-Seiteneffekt nicht rückgängig machen.
+
+| Harness | Verifizierte blockierende Ereignisse | Nur-Beobachtungs- oder nicht-blockierende Hinweise |
+| --- | --- | --- |
+| Claude Code | `PreToolUse`, `UserPromptSubmit`, `PermissionRequest`, `Stop`, `SubagentStop`, `PreCompact` und mehrere Task-/Konfigurations-Ereignisse | `PostToolUse`, Session-Lifecycle, Benachrichtigungen und Post-Failure-Ereignisse sind beobachtend. |
+| Codex | `PreToolUse`, `PermissionRequest`, `UserPromptSubmit`, `Stop`, `SubagentStop`, `PostToolUse` | Post-Tool-Blockierung ersetzt das Ergebnis nach der Ausführung; Session-Start- und Compact-Ereignisse sind im aktuellen Adapter beobachtend. |
+| GitHub Copilot CLI | `PreToolUse`, `UserPromptSubmit`, `PermissionRequest`, `Stop`, `SubagentStop`, `PostToolUse` | Post-Tool-Blockierung ersetzt das Ergebnis nach der Ausführung; Session- und Benachrichtigungs-Ereignisse sind beobachtend. |
+| Cursor | `PreToolUse`, `UserPromptSubmit`, `Stop` | `PostToolUse` und Session-Ereignisse sind beobachtend. |
+| OpenCode | `PreToolUse` | Post-Tool- und Lifecycle-Ereignisse sind beobachtend; die aktuelle Stop-Behandlung ist eine Empfehlung für einen späteren Turn, kein verifizierter Kontrollpunkt. |
+| Pi | `PreToolUse`, `UserPromptSubmit` | Post-Tool- und Lifecycle-Ereignisse sind beobachtend; Stop-Empfehlungen gelten für einen späteren Turn. |
+| Hermes | `PreToolUse` | Ein natives Plugin liefert `instruct()` als einmalige, für das Modell sichtbare Unterbrechung, bevor eine spätere API-Iteration zugelassen wird. Post-Tool-, Session- und Subagent-Stop-Bescheide sind keine Kontrollpunkte. |
+| OpenClaw | `PreToolUse`, `UserPromptSubmit`, `Stop` | Post-Tool-, Session-, Subagent-Stop- und Komprimierungs-Ereignisse sind beobachtend. |
+| Factory Droid | `PreToolUse`, `UserPromptSubmit`, `Stop`, `PreCompact` | Post-Tool- und Subagent-Stop-Bescheide sind beobachtend. |
+| Devin CLI | `PreToolUse`, `UserPromptSubmit`, `Stop`, bedingtes `PermissionRequest` | Permission-Hooks werden nicht in jedem Permission-Modus ausgeführt; Post-Tool- und Session-Ereignisse sind beobachtend. |
+| Antigravity CLI | `PreToolUse`, `Stop` | User-Prompt- und Post-Tool-Bescheide sind beobachtend; Prompt-Instruktionen können weiterhin injiziert werden. |
+| Goose | `PreToolUse` | User-Prompt-, Post-Tool- und Session-Ereignisse sind beobachtend. Ein nativer blockierender Stop-Hook ist vorgelagert vorhanden, wird aber vom aktuellen Adapter nicht installiert. |
+
+Die Fähigkeiten sind versionsabhängig. Führen Sie nach dem Upgrade einer Agent-CLI erneut Tests durch, insbesondere wenn eine Richtlinie auf Prompt-, Stop-, Permission- oder Post-Tool-Verhalten anstatt auf den üblichen Pre-Tool-Kontrollpunkt angewiesen ist.
+
+### Natives Hermes-Plugin
+
+Hermes wird über ein profillokal installiertes natives Plugin integriert, nicht über einen Shell-Befehl. Die Installation kopiert das Plugin in jedes Standard- und benannte Hermes-Profil, aktiviert es in der `config.yaml` dieses Profils und migriert nur veraltete FailproofAI Shell-Hook-Einträge. Dadurch wird beim jedem Hook auf einen Prozess-Spawn verzichtet, und `instruct()` erreicht das Modell über Hermes' nativen Blocked-Tool-Result.
+
+Die erste passende Instruktion blockiert den ausstehenden Aufruf. Dieselbe API-Anfrage bleibt blockiert; eine spätere Modell-Iteration kann es erneut versuchen. Ein persistentes, profilweites Ledger und ein Turn-Cap verhindern, dass eine Empfehlungs-Instruktion zu einer unbegrenzten Schleife wird. `deny()` bleibt ein harter Block. Führen Sie `failproofai config --status` aus, um ein deaktiviertes, unvollständiges, dupliziertes oder neu unkonfiguriertes Profil zu erkennen.
+
+## Capture- und Policy-Hooks installieren
+
+<Tabs>
+  <Tab title="Dashboard">
+    1. Öffnen Sie **Administration → Keys** und erstellen Sie einen Schlüssel mit `events:add` und `policies:pull`, benannt nach der Maschine oder Umgebung.
+    2. Verbinden Sie auf der Zielmaschine die lokale CLI mit dem angezeigten Schlüssel und installieren Sie die Harness-Hooks.
+    3. Starten Sie eine neue Agent-Session und bestätigen Sie deren Hook- und Session-Ereignisse unter **Observe → Events**.
+    4. Öffnen Sie **Observe → policy** für dasselbe Zeitfenster und bestätigen Sie, dass eine Richtlinienentscheidung der Maschine zugeordnet wird.
+
+    Die Verbindung beginnt mit einem Machine-Key. Stellen Sie sicher, dass er sowohl Ingestion- als auch Policy-Delivery-Berechtigungen enthält, bevor Sie das Secret kopieren.
+
+    ![Die Drawer-Ansicht für neue API-Schlüssel zur Vergabe von Ereignis-Ingestion- und Policy-Delivery-Berechtigungen.](/images/dashboard/key-create.png)
+
+    Nach der Installation der Hooks sollte der Events-Stream neue Ereignisse von der verbundenen Maschine und Umgebung anzeigen.
+
+    ![Der Live-Events-Stream zur Bestätigung, dass ein neu installierter Harness Daten meldet.](/images/dashboard/events-stream.png)
+
+    Überprüfen Sie abschließend, ob Richtlinienentscheidungen derselben Maschine zugeordnet werden. Dies bestätigt, dass der Harness sowohl Richtlinienaktivitäten als auch Trace-Ereignisse meldet.
+
+    ![Die Policy-Seite zur Überprüfung von Richtlinienentscheidungen eines neu verbundenen Harness.](/images/dashboard/policy-observe.png)
+  </Tab>
+  <Tab title="CLI">
+    Lesen Sie den Machine-Key in die Shell ein. `read -s` nimmt ihn über eine Eingabeaufforderung entgegen, die keine Ausgabe erzeugt, sodass er weder im Befehl noch im Shell-Verlauf erscheint:
+
+    ```bash
+    read -rs FAILPROOFAI_CLOUD_TOKEN && export FAILPROOFAI_CLOUD_TOKEN
+    ```
+
+    Richten Sie dann die Maschine ein — dieser Befehl verdrahtet Hooks für jeden erkannten Harness, installiert den Daemon und stellt eine Verbindung zur Cloud her:
+
+    ```bash
+    failproofai config
+    failproofai policies add FailproofAI/policies
+    ```
+
+    Das Setup aktiviert selbst keine Richtlinie — dafür ist der zweite Befehl gedacht.
+
+    Alternativ können Sie bestimmte Harnesses und einen Konfigurationsscope angeben:
+
+    ```bash
+    failproofai policies --install \
+      --cli claude codex cursor \
+      --scope user
+    ```
+
+    Der Project-Scope hält die Hook-Konfiguration beim Repository. Der User-Scope gilt für die Arbeit über Repositories hinweg. Claude Code unterstützt zusätzlich den Local-Scope; die Unterstützung variiert je nach Harness, und die CLI lehnt nicht unterstützte Kombinationen ab.
+
+    Überprüfen Sie die Maschine und ihre Ereignisse:
+
+    ```bash
+    failproofai config --status
+    failproofai flush --wait
+    fp events --since 1h --event-type hook_triggered,hook_completed
+    ```
+  </Tab>
+</Tabs>
+
+## Einen nicht standardmäßigen Session-Pfad hinzufügen
+
+<Tabs>
+  <Tab title="Dashboard">
+    Zusätzliche Pfade werden auf der Maschine registriert, nicht in der Cloud. Öffnen Sie nach dem Hinzufügen eines Pfades **Observe → Sessions**, filtern Sie nach der Umgebung der Maschine und bestätigen Sie, dass Sessions aus dem neuen Pfad erscheinen. Öffnen Sie eine Session und prüfen Sie Agent, Harness und Ereignis-Zeitstempel, bevor Sie sie in einem Audit verwenden.
+
+    ![Die Sessions-Liste, gefiltert nach der Umgebung, die Daten aus dem zusätzlichen Capture-Pfad empfängt.](/images/dashboard/sessions-list.png)
+  </Tab>
+  <Tab title="CLI">
+    Fügen Sie einen Pfad mit einem optionalen Label hinzu und überprüfen Sie dann die konfigurierten Pfade:
+
+    ```bash
+    failproofai harness add-path claude checkout=/srv/checkout/.claude
+    failproofai harness list claude
+    failproofai backfill --since 7d --dry-run
+    failproofai backfill --since 7d
+    ```
+
+    Entfernen Sie einen Pfad mit `failproofai harness remove-path claude checkout`.
+  </Tab>
+</Tabs>
+
+<Tip>
+  Führen Sie nach der Installation eine neue Session aus. Überprüfen Sie sowohl den Live-Event-Stream als auch eine tatsächliche Richtlinienentscheidung, bevor Sie den Rollout ausweiten.
+</Tip>

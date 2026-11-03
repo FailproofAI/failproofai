@@ -1,0 +1,50 @@
+---
+title: "Agents personnalisés"
+description: "Enveloppez votre agent dans trois blocs `with` et il commence à enregistrer."
+icon: "code"
+---
+
+Pour un agent que vous avez écrit vous-même, ou un framework pour lequel Failproof AI ne dispose pas d'adaptateur.
+
+Vous enveloppez le travail que vous effectuez déjà dans des blocs `with`. Chacun enregistre quand il a démarré, quand il s'est terminé, et combien de temps il a duré — vous n'avez rien d'autre à appeler.
+
+## Installation
+
+```bash
+pip install failproofai-sdk
+```
+
+Aucun supplément, ni aucune dépendance.
+
+## Instrumentation
+
+```python
+import failproofai_sdk
+
+failproofai_sdk.configure(environment="production")
+
+with failproofai_sdk.session():                 # une exécution
+    with failproofai_sdk.agent("planner"):      # une unité de travail
+        with failproofai_sdk.tool_call("search", input={"q": q}) as t:
+            t.output = search(q)                # un appel d'outil
+```
+
+Lisez-le de haut en bas et il dit ce qu'il signifie :
+
+| Enveloppez dans | Pour indiquer |
+| --- | --- |
+| `session()` | Ces événements appartiennent à la même exécution |
+| `agent()` | Quelque chose effectue un travail — donnez-lui un nom que vous reconnaîtriez dans une liste |
+| `tool_call()` | Ceci est un outil, et voici ce qu'il a retourné |
+
+Imbriquez-les selon la façon dont votre code s'imbrique. Vous n'avez jamais à transmettre des identifiants : chaque bloc se souvient dans quel contexte il se trouve, donc tout ce que vous enregistrez récupère automatiquement la bonne exécution et le bon agent. `async with` fonctionne exactement de la même façon.
+
+## Vérifier que les données sont arrivées
+
+Exécutez-le une fois, puis ouvrez **Observe → Sessions** et sélectionnez votre environnement. Votre exécution apparaît sous forme de trace reconstituée.
+
+Si rien n'arrive, vérifiez que la machine est connectée avec `failproofai config --status`.
+
+<Card title="Guide complet pour les agents personnalisés" icon="arrow-right" href="/fr/start/integrations/custom-agents">
+  Chaque méthode d'événement, ce qui se passe lorsque votre code lève une exception, un exemple concret, les threads et l'async, ainsi que l'instrumentation d'un framework sans adaptateur.
+</Card>

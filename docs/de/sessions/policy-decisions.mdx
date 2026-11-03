@@ -1,0 +1,27 @@
+---
+title: "Richtlinienentscheidungen"
+description: "Zeigt, welche Richtlinien ausgewertet, blockiert, angewiesen oder zugelassen wurden."
+icon: "shield-check"
+---
+
+Richtlinienentscheidungen erklärt, was die Durchsetzung bewirkt hat. Verwende diese Ansicht, um einen Rollout zu überprüfen, die Blockierungsrate zu messen und ungeschützte Aktivitäten zu finden.
+
+<Tabs>
+  <Tab title="Dashboard">
+    1. Gehe zu **Observe → policy** und wähle den Zeitraum sowie optional eine Maschine aus.
+    2. Überprüfe ausgewertete Aktionen, Blockierungen, Blockierungsrate, Cloud-Entscheidungen, ungeschützte Aktionen und Aktivitäten während einer Pause.
+    3. Filtere die Richtlinien-Zuordnungstabelle und prüfe bereitgestellte Zuweisungen.
+    4. Wähle einen Diagrammpunkt aus, um die Entscheidungen und ihre Sitzungen zu öffnen.
+
+    ![Die Richtlinienseite zeigt Entscheidungsgesamtwerte, einen Maschinenfilter, Durchsetzungsaktivitäten über die Zeit und die Richtlinien-Zuordnungstabelle.](/images/dashboard/policy-observe.png)
+  </Tab>
+  <Tab title="CLI">
+    ```bash
+    fp events --event-type hook_completed --env production --since 24h
+    fp events --search "deny" --since 24h
+    failproofai config --status
+    ```
+
+    Verwende `failproofai` für den lokalen Durchsetzungsstatus der Maschine und `fp` für die Cloud-Ereignisuntersuchung.
+  </Tab>
+</Tabs>

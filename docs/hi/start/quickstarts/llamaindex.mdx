@@ -1,0 +1,48 @@
+---
+title: "LlamaIndex"
+description: "इंस्टॉल करें, इंस्ट्रूमेंट करें, और अपना पहला ट्रेस देखें।"
+icon: "/images/frameworks/llamaindex.svg"
+---
+
+आपके पहले LlamaIndex ट्रेस के लिए तीन स्टेप्स। वर्कफ़्लो स्टेप्स, रिट्रीवल, रीपर, और विकल्पों के लिए, [पूर्ण गाइड](/hi/start/integrations/llamaindex) देखें।
+
+## इंस्टॉल करें
+
+```bash
+pip install 'failproofai-sdk[llamaindex]'
+```
+
+## इंस्ट्रूमेंट करें
+
+LlamaIndex का एजेंट API एसिंक है। हर स्कोप `async with` के साथ-साथ `with` के अंतर्गत भी काम करता है।
+
+```python
+import asyncio
+
+import failproofai_sdk
+
+failproofai_sdk.configure(environment="production")
+failproofai_sdk.instrument()
+
+
+async def main():
+    async with failproofai_sdk.session():
+        await agent.run("...")
+
+
+asyncio.run(main())
+```
+
+<Warning>
+  आपके LLM पर एक अतिरिक्त आर्गुमेंट के बिना, आपके ट्रेस में हर टोकन काउंट null है — `llama-index-llms-openai` स्ट्रीमिंग करते समय उपयोग की मांग नहीं करता। [टोकन काउंट्स](/hi/start/integrations/llamaindex#token-counts) देखें।
+</Warning>
+
+## जांचें कि यह पहुंचा
+
+इसे एक बार चलाएं, फिर **Observe → Sessions** खोलें और अपना एनवायरनमेंट चुनें। आपका रन एक पुनर्निर्मित ट्रेस के रूप में दिखाई देता है।
+
+अगर कुछ नहीं आता है, तो `failproofai config --status` के साथ पुष्टि करें कि मशीन कनेक्टेड है।
+
+<Card title="पूर्ण LlamaIndex गाइड" icon="arrow-right" href="/hi/start/integrations/llamaindex">
+  टोकन काउंट्स, क्या रिकॉर्ड होता है, वर्कफ़्लो स्टेप्स, रिट्रीवल, विकल्प, और सामान्य समस्याएं।
+</Card>

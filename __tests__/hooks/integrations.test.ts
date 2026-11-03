@@ -10,7 +10,18 @@
  *   • registry (getIntegration / listIntegrations)
  */
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
-import { mkdtempSync, rmSync, existsSync, readFileSync, writeFileSync, mkdirSync } from "node:fs";
+import {
+  mkdtempSync,
+  rmSync,
+  existsSync,
+  readFileSync,
+  writeFileSync,
+  mkdirSync,
+  readdirSync,
+  cpSync,
+  lstatSync,
+  readlinkSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { resolve, join } from "node:path";
 import {
@@ -29,6 +40,8 @@ import {
   getIntegration,
   listIntegrations,
   settingsPathsFor,
+  hermesProfileHealth,
+  hermesProfileStatusRows,
   unhookedHermesProfiles,
 } from "../../src/hooks/integrations";
 import {
@@ -113,6 +126,13 @@ describe("integrations registry", () => {
     expect(getIntegration("hermes")).toBe(hermes);
   });
 
+  it("declares daemon-only installation requirements in registry metadata", () => {
+    expect(listIntegrations().filter((integration) => integration.requiresHealthyDaemon)).toEqual([
+      hermes,
+      openclaw,
+    ]);
+  });
+
   it("getIntegration('openclaw') returns openclaw", () => {
     expect(getIntegration("openclaw")).toBe(openclaw);
   });
@@ -156,7 +176,7 @@ describe("Claude Code integration", () => {
 
   it("buildHookEntry omits --cli for back-compat", () => {
     const entry = claudeCode.buildHookEntry("/usr/bin/failproofai", "PreToolUse", "user");
-    expect(entry.command).toBe('"/usr/bin/failproofai" --hook PreToolUse');
+    expect(entry.command).toBe('"/usr/bin/failproofai" --hook PreToolUse --agent-scope user');
     expect(entry.command).not.toContain("--cli");
     expect(entry.timeout).toBe(60);
     expect(entry[FAILPROOFAI_HOOK_MARKER]).toBe(true);
@@ -164,7 +184,7 @@ describe("Claude Code integration", () => {
 
   it("project scope uses npx -y failproofai (portable)", () => {
     const entry = claudeCode.buildHookEntry("/usr/bin/failproofai", "PreToolUse", "project");
-    expect(entry.command).toBe("npx -y failproofai --hook PreToolUse");
+    expect(entry.command).toBe("npx -y failproofai --hook PreToolUse --agent-scope project");
   });
 
   // Installed events are HOOK_EVENT_TYPES minus WorktreeCreate, which is a
@@ -248,7 +268,7 @@ describe("OpenAI Codex integration", () => {
 
   it("project scope uses npx -y failproofai", () => {
     const entry = codex.buildHookEntry("/usr/bin/failproofai", "pre_tool_use", "project");
-    expect(entry.command).toBe("npx -y failproofai --hook pre_tool_use --cli codex");
+    expect(entry.command).toBe("npx -y failproofai --hook pre_tool_use --cli codex --agent-scope project");
   });
 
   it("writeHookEntries stores keys in PascalCase via CODEX_EVENT_MAP", () => {
@@ -351,8 +371,8 @@ describe("GitHub Copilot integration", () => {
   it("buildHookEntry uses bash + powershell keys with --cli copilot", () => {
     const entry = copilot.buildHookEntry("/usr/bin/failproofai", "PreToolUse", "user") as Record<string, unknown>;
     expect(entry.type).toBe("command");
-    expect(entry.bash).toBe('"/usr/bin/failproofai" --hook PreToolUse --cli copilot');
-    expect(entry.powershell).toBe('"/usr/bin/failproofai" --hook PreToolUse --cli copilot');
+    expect(entry.bash).toBe('"/usr/bin/failproofai" --hook PreToolUse --cli copilot --agent-scope user');
+    expect(entry.powershell).toBe('"/usr/bin/failproofai" --hook PreToolUse --cli copilot --agent-scope user');
     expect(entry.timeoutSec).toBe(60);
     expect(entry[FAILPROOFAI_HOOK_MARKER]).toBe(true);
     // Copilot entries do NOT use the Claude-style `command` field
@@ -362,8 +382,8 @@ describe("GitHub Copilot integration", () => {
 
   it("project scope uses npx -y failproofai (portable)", () => {
     const entry = copilot.buildHookEntry("/usr/bin/failproofai", "PreToolUse", "project") as Record<string, unknown>;
-    expect(entry.bash).toBe("npx -y failproofai --hook PreToolUse --cli copilot");
-    expect(entry.powershell).toBe("npx -y failproofai --hook PreToolUse --cli copilot");
+    expect(entry.bash).toBe("npx -y failproofai --hook PreToolUse --cli copilot --agent-scope project");
+    expect(entry.powershell).toBe("npx -y failproofai --hook PreToolUse --cli copilot --agent-scope project");
   });
 
   it("writeHookEntries stores PascalCase event keys and version: 1", () => {
@@ -449,7 +469,7 @@ describe("Cursor Agent integration", () => {
   it("buildHookEntry uses Claude-shaped {command,timeout} with --cli cursor", () => {
     const entry = cursor.buildHookEntry("/usr/bin/failproofai", "preToolUse", "user") as Record<string, unknown>;
     expect(entry.type).toBe("command");
-    expect(entry.command).toBe('"/usr/bin/failproofai" --hook preToolUse --cli cursor');
+    expect(entry.command).toBe('"/usr/bin/failproofai" --hook preToolUse --cli cursor --agent-scope user');
     expect(entry.timeout).toBe(60);
     expect(entry[FAILPROOFAI_HOOK_MARKER]).toBe(true);
     // Cursor entries use the Claude-style `command` field, not Copilot's bash/powershell split.
@@ -459,7 +479,7 @@ describe("Cursor Agent integration", () => {
 
   it("project scope uses npx -y failproofai (portable)", () => {
     const entry = cursor.buildHookEntry("/usr/bin/failproofai", "preToolUse", "project") as Record<string, unknown>;
-    expect(entry.command).toBe("npx -y failproofai --hook preToolUse --cli cursor");
+    expect(entry.command).toBe("npx -y failproofai --hook preToolUse --cli cursor --agent-scope project");
   });
 
   it("writeHookEntries stores camelCase event keys with version: 1 in a FLAT array (no matcher wrapper)", () => {
@@ -493,7 +513,7 @@ describe("Cursor Agent integration", () => {
     const hooks = settings.hooks as Record<string, Array<Record<string, unknown>>>;
     expect(hooks.preToolUse).toHaveLength(1);
     // Second call's binary path should win.
-    expect(hooks.preToolUse[0].command).toBe('"/different/path/failproofai" --hook preToolUse --cli cursor');
+    expect(hooks.preToolUse[0].command).toBe('"/different/path/failproofai" --hook preToolUse --cli cursor --agent-scope user');
   });
 
   it("removeHooksFromFile clears all failproofai entries (returns count)", () => {
@@ -554,6 +574,8 @@ describe("Hermes integration", () => {
   // on a throwaway file instead of the developer's real home.
   let origHome: string | undefined;
   let origHermesHome: string | undefined;
+  let origPackageRoot: string | undefined;
+  let packageRoot: string;
   beforeEach(() => {
     origHome = process.env.HOME;
     process.env.HOME = tempDir;
@@ -561,12 +583,29 @@ describe("Hermes integration", () => {
     // with a profile-scoped shell doesn't get their real config.yaml touched.
     origHermesHome = process.env.HERMES_HOME;
     delete process.env.HERMES_HOME;
+    // Every test below writes under `homedir()`. A runtime that caches the home
+    // directory at startup (Bun does) would ignore the HOME override and point
+    // them at the developer's REAL ~/.hermes — refuse rather than touch it.
+    if (homedir() !== tempDir) {
+      throw new Error(
+        `HOME override not honoured (homedir() is ${homedir()}); refusing to run Hermes tests against a real home`,
+      );
+    }
+    // Install now LINKS profiles to the package's hermes-plugin/, so a test
+    // that edits files through the installed plugin would edit the package.
+    // Give every test its own throwaway package copy.
+    origPackageRoot = process.env.FAILPROOFAI_PACKAGE_ROOT;
+    packageRoot = resolve(tempDir, "failproofai-package");
+    cpSync(resolve(ORIG_CWD, "hermes-plugin"), resolve(packageRoot, "hermes-plugin"), { recursive: true });
+    process.env.FAILPROOFAI_PACKAGE_ROOT = packageRoot;
   });
   afterEach(() => {
     if (origHome === undefined) delete process.env.HOME;
     else process.env.HOME = origHome;
     if (origHermesHome === undefined) delete process.env.HERMES_HOME;
     else process.env.HERMES_HOME = origHermesHome;
+    if (origPackageRoot === undefined) delete process.env.FAILPROOFAI_PACKAGE_ROOT;
+    else process.env.FAILPROOFAI_PACKAGE_ROOT = origPackageRoot;
   });
 
   /** Create `~/.hermes/profiles/<name>/` for each name. */
@@ -574,6 +613,35 @@ describe("Hermes integration", () => {
     for (const name of names) {
       mkdirSync(resolve(tempDir, ".hermes", "profiles", name), { recursive: true });
     }
+  }
+
+  /** Create legacy/custom `~/.hermes-<name>` homes that Hermes can run independently. */
+  function makeSiblingHomes(...names: string[]): void {
+    for (const name of names) {
+      const home = resolve(tempDir, `.hermes-${name}`);
+      mkdirSync(home, { recursive: true });
+      writeFileSync(resolve(home, "config.yaml"), `model: ${name}\n`);
+    }
+  }
+
+  function pluginPath(settingsPath: string): string {
+    return resolve(dirname(settingsPath), "plugins", "failproofai");
+  }
+
+  /** What a 1.0.6–1.0.8 install left behind: a marked COPY of the plugin. */
+  function makeManagedCopy(destination: string): void {
+    mkdirSync(destination, { recursive: true });
+    for (const file of ["plugin.yaml", "__init__.py", "client.py", "ledger.py"]) {
+      cpSync(resolve(ORIG_CWD, "hermes-plugin", file), resolve(destination, file));
+    }
+    writeFileSync(resolve(destination, ".failproofai-managed"), "Managed by failproofai.\n");
+  }
+
+  function installAt(settingsPath: string): void {
+    hermes.prepareInstall!(settingsPath);
+    const settings = hermes.readSettings(settingsPath);
+    hermes.writeHookEntries(settings, "/usr/bin/failproofai", "user");
+    hermes.writeSettings(settingsPath, settings);
   }
 
   it("getSettingsPath is user-scope ~/.hermes/config.yaml regardless of scope/cwd", () => {
@@ -597,36 +665,33 @@ describe("Hermes integration", () => {
     expect(hermes.eventTypes).toContain("subagent_stop");
   });
 
-  it("buildHookEntry uses {command,timeout} with --cli hermes, timeout in SECONDS (30)", () => {
+  it("buildHookEntry identifies the shipped native plugin", () => {
     const entry = hermes.buildHookEntry("/usr/bin/failproofai", "pre_tool_call", "user") as Record<string, unknown>;
-    expect(entry.command).toBe('"/usr/bin/failproofai" --hook pre_tool_call --cli hermes');
-    expect(entry.timeout).toBe(30);
     expect(entry[FAILPROOFAI_HOOK_MARKER]).toBe(true);
+    expect(entry._hermesPluginPath).toBe(resolve(packageRoot, "hermes-plugin"));
   });
 
-  it("project scope uses npx -y failproofai (portable)", () => {
-    const entry = hermes.buildHookEntry("/usr/bin/failproofai", "pre_tool_call", "project") as Record<string, unknown>;
-    expect(entry.command).toBe("npx -y failproofai --hook pre_tool_call --cli hermes");
-  });
-
-  it("writeHookEntries builds a flat hooks: map keyed by snake_case events + hooks_auto_accept", () => {
+  it("installs the native plugin and enables it in config", () => {
     const path = hermes.getSettingsPath("user");
-    const settings = hermes.readSettings(path); // empty Document (file absent)
-    hermes.writeHookEntries(settings, "/usr/bin/failproofai", "user");
-    hermes.writeSettings(path, settings);
+    installAt(path);
     const parsed = parse(readFileSync(path, "utf-8")) as {
-      hooks?: Record<string, Array<Record<string, unknown>>>;
-      hooks_auto_accept?: boolean;
+      plugins?: { enabled?: string[] };
+      hooks?: unknown;
     };
-    for (const eventType of HERMES_HOOK_EVENT_TYPES) {
-      expect(Array.isArray(parsed.hooks?.[eventType])).toBe(true);
-      const first = parsed.hooks![eventType][0];
-      expect(first.command).toContain("--cli hermes");
-      expect(first.timeout).toBe(30);
-      expect(first[FAILPROOFAI_HOOK_MARKER]).toBe(true);
+    expect(parsed.plugins?.enabled).toEqual(["failproofai"]);
+    expect(parsed.hooks).toBeUndefined();
+
+    // A symlink into the package, so npm upgrades apply with no reinstall.
+    const installedPlugin = pluginPath(path);
+    expect(lstatSync(installedPlugin).isSymbolicLink()).toBe(true);
+    expect(readlinkSync(installedPlugin)).toBe(resolve(packageRoot, "hermes-plugin"));
+    for (const file of ["plugin.yaml", "__init__.py", "client.py", "ledger.py"]) {
+      expect(existsSync(resolve(installedPlugin, file))).toBe(true);
     }
-    // Headless-gateway consent: declared hooks auto-accepted.
-    expect(parsed.hooks_auto_accept).toBe(true);
+    expect(hermesProfileHealth()[0]).toMatchObject({ pluginMode: "link", healthy: true, cronUnchecked: false });
+    expect(hermesProfileStatusRows()).toEqual([
+      ["hermes/default", "native plugin enabled"],
+    ]);
   });
 
   it("readSettings/writeSettings preserve the user's other keys AND comments", () => {
@@ -641,61 +706,188 @@ describe("Hermes integration", () => {
     // Unrelated keys survive...
     expect(parsed.model).toBe("gpt-5");
     expect(parsed.provider).toBe("openai");
-    expect((parsed.hooks as Record<string, unknown>).pre_tool_call).toBeDefined();
+    expect((parsed.plugins as { enabled: string[] }).enabled).toEqual(["failproofai"]);
     // ...and so do the user's comments (this is why we use the Document API).
     expect(raw).toContain("# my hermes config");
     expect(raw).toContain("# the good one");
   });
 
-  it("re-running writeHookEntries is idempotent (replaces, doesn't duplicate)", () => {
+  it("re-running writeHookEntries is idempotent", () => {
     const path = hermes.getSettingsPath("user");
     const settings = hermes.readSettings(path);
     hermes.writeHookEntries(settings, "/usr/bin/failproofai", "user");
     hermes.writeHookEntries(settings, "/different/failproofai", "user");
     hermes.writeSettings(path, settings);
-    const parsed = parse(readFileSync(path, "utf-8")) as { hooks: Record<string, unknown[]> };
-    expect(parsed.hooks.pre_tool_call).toHaveLength(1);
-    expect((parsed.hooks.pre_tool_call[0] as Record<string, unknown>).command).toBe(
-      '"/different/failproofai" --hook pre_tool_call --cli hermes',
-    );
+    const parsed = parse(readFileSync(path, "utf-8")) as { plugins: { enabled: string[] } };
+    expect(parsed.plugins.enabled.filter((name) => name === "failproofai")).toHaveLength(1);
   });
 
-  it("removeHooksFromFile strips only our entries + auto-accept, preserving user keys", () => {
+  it("migrates only FailproofAI legacy shell hooks and preserves operator hooks", () => {
     const path = hermes.getSettingsPath("user");
     mkdirSync(dirname(path), { recursive: true });
-    writeFileSync(path, "model: gpt-5\n");
+    writeFileSync(
+      path,
+      [
+        "model: gpt-5",
+        "hooks_auto_accept: true",
+        "hooks:",
+        "  pre_tool_call:",
+        "    - command: operator-check --tool",
+        "      timeout: 5",
+        "    - command: failproofai --hook pre_tool_call --cli hermes",
+        "      " + FAILPROOFAI_HOOK_MARKER + ": true",
+        "  post_tool_call:",
+        "    - command: failproofai --hook post_tool_call --cli hermes",
+        "      " + FAILPROOFAI_HOOK_MARKER + ": true",
+        "plugins:",
+        "  enabled: [operator-plugin]",
+        "  disabled: [failproofai, paused-plugin]",
+        "",
+      ].join("\n"),
+    );
     const settings = hermes.readSettings(path);
     hermes.writeHookEntries(settings, "/usr/bin/failproofai", "user");
     hermes.writeSettings(path, settings);
 
-    const removed = hermes.removeHooksFromFile(path);
-    expect(removed).toBe(HERMES_HOOK_EVENT_TYPES.length);
-    const parsed = parse(readFileSync(path, "utf-8")) as Record<string, unknown>;
-    expect(parsed.hooks).toBeUndefined();
-    expect(parsed.hooks_auto_accept).toBeUndefined();
-    expect(parsed.model).toBe("gpt-5"); // user key survives
+    const parsed = parse(readFileSync(path, "utf-8")) as {
+      hooks: Record<string, Array<{ command: string; timeout?: number }>>;
+      hooks_auto_accept: boolean;
+      plugins: { enabled: string[]; disabled: string[] };
+    };
+    expect(parsed.hooks.pre_tool_call).toEqual([{ command: "operator-check --tool", timeout: 5 }]);
+    expect(parsed.hooks.post_tool_call).toBeUndefined();
+    expect(parsed.hooks_auto_accept).toBe(true);
+    expect(parsed.plugins.enabled).toEqual(["operator-plugin", "failproofai"]);
+    expect(parsed.plugins.disabled).toEqual(["paused-plugin"]);
   });
 
-  it("removeHooksFromFile drops hooks_auto_accept even when the hooks were already removed manually", () => {
-    // Regression (CodeRabbit): the auto-accept flag must not linger and silently
-    // auto-accept future operator hooks after our hooks are gone.
+  it("removeHooksFromFile removes plugin registration and managed files, preserving user keys", () => {
+    const path = hermes.getSettingsPath("user");
+    mkdirSync(dirname(path), { recursive: true });
+    writeFileSync(path, "model: gpt-5\n");
+    installAt(path);
+
+    const removed = hermes.removeHooksFromFile(path);
+    expect(removed).toBe(2);
+    const parsed = parse(readFileSync(path, "utf-8")) as Record<string, unknown>;
+    expect(parsed.plugins).toBeUndefined();
+    expect(parsed.model).toBe("gpt-5"); // user key survives
+    expect(existsSync(pluginPath(path))).toBe(false);
+  });
+
+  it("removeHooksFromFile cleans up a managed plugin even when config is missing", () => {
+    const path = hermes.getSettingsPath("user");
+    hermes.prepareInstall!(path);
+
+    expect(existsSync(path)).toBe(false);
+    expect(existsSync(pluginPath(path))).toBe(true);
+    expect(hermes.removeHooksFromFile(path)).toBe(1);
+    expect(existsSync(pluginPath(path))).toBe(false);
+    expect(existsSync(path)).toBe(false);
+  });
+
+  it("removeHooksFromFile does not delete an unowned hooks_auto_accept setting", () => {
     const path = hermes.getSettingsPath("user");
     mkdirSync(dirname(path), { recursive: true });
     writeFileSync(path, "model: gpt-5\nhooks_auto_accept: true\n"); // no `hooks:` block
     const removed = hermes.removeHooksFromFile(path);
     expect(removed).toBe(0);
     const parsed = parse(readFileSync(path, "utf-8")) as Record<string, unknown>;
-    expect(parsed.hooks_auto_accept).toBeUndefined(); // dropped despite 0 hooks removed
+    expect(parsed.hooks_auto_accept).toBe(true);
     expect(parsed.model).toBe("gpt-5");
   });
 
-  it("hooksInstalledInSettings detects installed hooks / false when missing", () => {
+  it("hooksInstalledInSettings requires config enablement and complete managed files", () => {
     expect(hermes.hooksInstalledInSettings("user")).toBe(false);
     const path = hermes.getSettingsPath("user");
     const settings = hermes.readSettings(path);
     hermes.writeHookEntries(settings, "/usr/bin/failproofai", "user");
     hermes.writeSettings(path, settings);
+    expect(hermes.hooksInstalledInSettings("user")).toBe(false);
+
+    hermes.prepareInstall!(path);
     expect(hermes.hooksInstalledInSettings("user")).toBe(true);
+
+    rmSync(resolve(pluginPath(path), "client.py"));
+    expect(hermes.hooksInstalledInSettings("user")).toBe(false);
+    expect(hermesProfileHealth()[0]).toMatchObject({
+      name: "default",
+      pluginEnabled: true,
+      pluginInstalled: false,
+      legacyShellHookPresent: false,
+      healthy: false,
+    });
+  });
+
+  it("reports a duplicate legacy adapter as unhealthy", () => {
+    const path = hermes.getSettingsPath("user");
+    installAt(path);
+    const settings = hermes.readSettings(path) as unknown as {
+      set(key: string, value: unknown): void;
+    };
+    settings.set("hooks", {
+      pre_tool_call: [
+        {
+          command: "failproofai --hook pre_tool_call --cli hermes",
+          [FAILPROOFAI_HOOK_MARKER]: true,
+        },
+      ],
+    });
+    hermes.writeSettings(path, settings as unknown as Record<string, unknown>);
+
+    expect(hermes.hooksInstalledInSettings("user")).toBe(false);
+    expect(hermesProfileHealth()[0]).toMatchObject({
+      pluginEnabled: true,
+      pluginInstalled: true,
+      legacyShellHookPresent: true,
+      healthy: false,
+    });
+    expect(hermesProfileStatusRows()).toEqual([
+      ["hermes/default", "UNHEALTHY — legacy shell hook also present"],
+    ]);
+  });
+
+  it("replaces a managed plugin copy (1.0.6–1.0.8 install) with a link, leaving no temp entries", () => {
+    const path = hermes.getSettingsPath("user");
+    const destination = pluginPath(path);
+    makeManagedCopy(destination);
+    writeFileSync(resolve(destination, "client.py"), "stale\n");
+    writeFileSync(resolve(destination, "obsolete.py"), "remove me\n");
+
+    hermes.prepareInstall!(path);
+
+    expect(lstatSync(destination).isSymbolicLink()).toBe(true);
+    expect(readFileSync(resolve(destination, "client.py"), "utf8")).not.toBe("stale\n");
+    expect(existsSync(resolve(destination, "obsolete.py"))).toBe(false);
+    expect(
+      readdirSync(dirname(destination)).filter(
+        (name) => name.includes(".install-") || name.includes(".backup-"),
+      ),
+    ).toEqual([]);
+  });
+
+  it("refuses to overwrite an unmanaged plugin directory", () => {
+    const path = hermes.getSettingsPath("user");
+    const destination = pluginPath(path);
+    mkdirSync(destination, { recursive: true });
+    writeFileSync(resolve(destination, "plugin.yaml"), "name: operator-owned\n");
+
+    expect(() => hermes.prepareInstall!(path)).toThrow(/Refusing to overwrite an unmanaged Hermes plugin/);
+    expect(readFileSync(resolve(destination, "plugin.yaml"), "utf8")).toBe("name: operator-owned\n");
+  });
+
+  it("leaves an existing managed plugin untouched when source validation fails", () => {
+    const path = hermes.getSettingsPath("user");
+    hermes.prepareInstall!(path);
+    const destination = pluginPath(path);
+    const before = readFileSync(resolve(destination, "client.py"), "utf8");
+    const brokenPackage = resolve(tempDir, "broken-package", "hermes-plugin");
+    mkdirSync(brokenPackage, { recursive: true });
+    writeFileSync(resolve(brokenPackage, "plugin.yaml"), "name: failproofai\n");
+    process.env.FAILPROOFAI_PACKAGE_ROOT = resolve(tempDir, "broken-package");
+
+    expect(() => hermes.prepareInstall!(path)).toThrow(/asset is missing/);
+    expect(readFileSync(resolve(destination, "client.py"), "utf8")).toBe(before);
   });
 
   // ── Profiles ──
@@ -713,6 +905,19 @@ describe("Hermes integration", () => {
     ]);
   });
 
+  it("getSettingsPaths covers valid sibling Hermes installations", () => {
+    makeProfiles("nested");
+    makeSiblingHomes("work", "personal");
+    mkdirSync(resolve(tempDir, ".hermes-backup"), { recursive: true });
+
+    expect(hermes.getSettingsPaths!("user")).toEqual([
+      resolve(tempDir, ".hermes", "config.yaml"),
+      resolve(tempDir, ".hermes", "profiles", "nested", "config.yaml"),
+      resolve(tempDir, ".hermes-personal", "config.yaml"),
+      resolve(tempDir, ".hermes-work", "config.yaml"),
+    ]);
+  });
+
   it("settingsPathsFor falls back to the single path for non-profile integrations", () => {
     expect(settingsPathsFor(claudeCode, "user")).toEqual([claudeCode.getSettingsPath("user")]);
     expect(settingsPathsFor(hermes, "user")).toEqual(hermes.getSettingsPaths!("user"));
@@ -722,33 +927,39 @@ describe("Hermes integration", () => {
     makeProfiles("work");
     const [rootPath, workPath] = settingsPathsFor(hermes, "user");
 
-    const rootSettings = hermes.readSettings(rootPath);
-    hermes.writeHookEntries(rootSettings, "/usr/bin/failproofai", "user");
-    hermes.writeSettings(rootPath, rootSettings);
+    installAt(rootPath);
     // Root hooked, `work` still bare → the gateway is only partly enforced.
     expect(hermes.hooksInstalledInSettings("user")).toBe(false);
     expect(unhookedHermesProfiles()).toEqual(["work"]);
 
-    const workSettings = hermes.readSettings(workPath);
-    hermes.writeHookEntries(workSettings, "/usr/bin/failproofai", "user");
-    hermes.writeSettings(workPath, workSettings);
+    installAt(workPath);
     expect(hermes.hooksInstalledInSettings("user")).toBe(true);
     expect(unhookedHermesProfiles()).toEqual([]);
   });
 
-  it("writes a real hooks block into a non-default profile's config.yaml", () => {
+  it("health remains false until every sibling installation is hooked", () => {
+    makeSiblingHomes("work");
+    const [rootPath, workPath] = settingsPathsFor(hermes, "user");
+
+    installAt(rootPath);
+    expect(hermes.hooksInstalledInSettings("user")).toBe(false);
+    expect(unhookedHermesProfiles()).toEqual(["work"]);
+
+    installAt(workPath);
+    expect(hermes.hooksInstalledInSettings("user")).toBe(true);
+    expect(unhookedHermesProfiles()).toEqual([]);
+  });
+
+  it("installs and enables the native plugin in a non-default profile", () => {
     makeProfiles("work");
     const workPath = resolve(tempDir, ".hermes", "profiles", "work", "config.yaml");
     writeFileSync(workPath, "model: gpt-5\n");
-    const settings = hermes.readSettings(workPath);
-    hermes.writeHookEntries(settings, "/usr/bin/failproofai", "user");
-    hermes.writeSettings(workPath, settings);
+    installAt(workPath);
 
     const parsed = parse(readFileSync(workPath, "utf-8")) as Record<string, unknown>;
-    const hooks = parsed.hooks as Record<string, { command: string }[]>;
-    expect(Object.keys(hooks).sort()).toEqual([...HERMES_HOOK_EVENT_TYPES].sort());
-    expect(hooks.pre_tool_call[0].command).toContain("--cli hermes");
-    expect(parsed.hooks_auto_accept).toBe(true);
+    expect((parsed.plugins as { enabled: string[] }).enabled).toEqual(["failproofai"]);
+    expect(parsed.hooks).toBeUndefined();
+    expect(existsSync(resolve(pluginPath(workPath), "plugin.yaml"))).toBe(true);
     expect(parsed.model).toBe("gpt-5"); // operator key preserved
   });
 
@@ -1222,6 +1433,90 @@ describe("OpenClaw integration", () => {
     expect(openclaw.getSettingsPath("project", "/some/where")).toBe(p);
   });
 
+  it("returns every valid named profile settings file", () => {
+    const previousStateDir = process.env.OPENCLAW_STATE_DIR;
+    const previousHome = process.env.OPENCLAW_HOME;
+    const previousConfigPath = process.env.OPENCLAW_CONFIG_PATH;
+    const root = join(tempDir, ".openclaw");
+    try {
+      process.env.OPENCLAW_STATE_DIR = root;
+      delete process.env.OPENCLAW_HOME;
+      delete process.env.OPENCLAW_CONFIG_PATH;
+      for (const name of ["research", "operations"]) {
+        const profile = join(tempDir, `.openclaw-${name}`);
+        mkdirSync(profile);
+        writeFileSync(join(profile, "openclaw.json"), "{}\n");
+      }
+
+      expect(settingsPathsFor(openclaw, "user")).toEqual([
+        join(root, "openclaw.json"),
+        join(tempDir, ".openclaw-operations", "openclaw.json"),
+        join(tempDir, ".openclaw-research", "openclaw.json"),
+      ]);
+    } finally {
+      if (previousStateDir === undefined) delete process.env.OPENCLAW_STATE_DIR;
+      else process.env.OPENCLAW_STATE_DIR = previousStateDir;
+      if (previousHome === undefined) delete process.env.OPENCLAW_HOME;
+      else process.env.OPENCLAW_HOME = previousHome;
+      if (previousConfigPath === undefined) delete process.env.OPENCLAW_CONFIG_PATH;
+      else process.env.OPENCLAW_CONFIG_PATH = previousConfigPath;
+    }
+  });
+
+  it("reports hooks installed only when every discovered profile is enabled", () => {
+    const previousStateDir = process.env.OPENCLAW_STATE_DIR;
+    const previousHome = process.env.OPENCLAW_HOME;
+    const previousConfigPath = process.env.OPENCLAW_CONFIG_PATH;
+    const root = join(tempDir, ".openclaw");
+    const named = join(tempDir, ".openclaw-operations");
+    const configured = (enabled: boolean) => JSON.stringify({
+      plugins: {
+        load: { paths: ["/opt/failproofai/openclaw-plugin"] },
+        entries: { failproofai: { enabled } },
+      },
+    });
+    try {
+      process.env.OPENCLAW_STATE_DIR = root;
+      delete process.env.OPENCLAW_HOME;
+      delete process.env.OPENCLAW_CONFIG_PATH;
+      mkdirSync(root);
+      mkdirSync(named);
+      writeFileSync(join(root, "openclaw.json"), configured(true));
+      writeFileSync(join(named, "openclaw.json"), configured(true));
+
+      expect(openclaw.hooksInstalledInSettings("user")).toBe(true);
+
+      writeFileSync(join(named, "openclaw.json"), configured(false));
+      expect(openclaw.hooksInstalledInSettings("user")).toBe(false);
+    } finally {
+      if (previousStateDir === undefined) delete process.env.OPENCLAW_STATE_DIR;
+      else process.env.OPENCLAW_STATE_DIR = previousStateDir;
+      if (previousHome === undefined) delete process.env.OPENCLAW_HOME;
+      else process.env.OPENCLAW_HOME = previousHome;
+      if (previousConfigPath === undefined) delete process.env.OPENCLAW_CONFIG_PATH;
+      else process.env.OPENCLAW_CONFIG_PATH = previousConfigPath;
+    }
+  });
+
+  it("reports hooks missing when a returned settings file does not exist", () => {
+    const previousStateDir = process.env.OPENCLAW_STATE_DIR;
+    const previousHome = process.env.OPENCLAW_HOME;
+    const previousConfigPath = process.env.OPENCLAW_CONFIG_PATH;
+    try {
+      process.env.OPENCLAW_STATE_DIR = join(tempDir, ".openclaw");
+      delete process.env.OPENCLAW_HOME;
+      delete process.env.OPENCLAW_CONFIG_PATH;
+      expect(openclaw.hooksInstalledInSettings("user")).toBe(false);
+    } finally {
+      if (previousStateDir === undefined) delete process.env.OPENCLAW_STATE_DIR;
+      else process.env.OPENCLAW_STATE_DIR = previousStateDir;
+      if (previousHome === undefined) delete process.env.OPENCLAW_HOME;
+      else process.env.OPENCLAW_HOME = previousHome;
+      if (previousConfigPath === undefined) delete process.env.OPENCLAW_CONFIG_PATH;
+      else process.env.OPENCLAW_CONFIG_PATH = previousConfigPath;
+    }
+  });
+
   it("writeHookEntries registers the plugin path + enables the entry with allowConversationAccess", () => {
     const settings: Record<string, unknown> = {};
     openclaw.writeHookEntries(settings, "");
@@ -1317,7 +1612,7 @@ describe("Factory Droid integration", () => {
 
   it("project scope uses npx -y failproofai", () => {
     const entry = factory.buildHookEntry("/usr/bin/failproofai", "PreToolUse", "project");
-    expect(entry.command).toBe("npx -y failproofai --hook PreToolUse --cli factory");
+    expect(entry.command).toBe("npx -y failproofai --hook PreToolUse --cli factory --agent-scope project");
   });
 
   it("writeHookEntries stores event names at the TOP LEVEL (no `hooks` wrapper)", () => {
@@ -1427,14 +1722,14 @@ describe("Devin CLI integration", () => {
     const entry = devin.buildHookEntry("/usr/bin/failproofai", "PreToolUse", "user");
     expect(entry.command).toContain("--cli devin");
     expect(entry.command).toContain("--hook PreToolUse");
-    expect(entry.command).toBe(`"/usr/bin/failproofai" --hook PreToolUse --cli devin`);
+    expect(entry.command).toBe(`"/usr/bin/failproofai" --hook PreToolUse --cli devin --agent-scope user`);
     expect(entry.timeout).toBe(60);
     expect(entry[FAILPROOFAI_HOOK_MARKER]).toBe(true);
   });
 
   it("project scope uses npx -y failproofai", () => {
     const entry = devin.buildHookEntry("/usr/bin/failproofai", "PreToolUse", "project");
-    expect(entry.command).toBe("npx -y failproofai --hook PreToolUse --cli devin");
+    expect(entry.command).toBe("npx -y failproofai --hook PreToolUse --cli devin --agent-scope project");
   });
 
   it("writeHookEntries stores events under a Claude-style `hooks` wrapper", () => {
@@ -1537,7 +1832,7 @@ describe("Antigravity CLI integration", () => {
 
   it("project scope uses npx -y failproofai", () => {
     const entry = antigravity.buildHookEntry("/usr/bin/failproofai", "PreToolUse", "project");
-    expect(entry.command).toBe("npx -y failproofai --hook PreToolUse --cli antigravity");
+    expect(entry.command).toBe("npx -y failproofai --hook PreToolUse --cli antigravity --agent-scope project");
   });
 
   it("writeHookEntries nests events under a named 'failproofai' hook key", () => {
@@ -1665,7 +1960,7 @@ describe("Goose integration", () => {
 
   it("project scope uses npx -y failproofai", () => {
     const entry = goose.buildHookEntry("/usr/bin/failproofai", "PreToolUse", "project");
-    expect(entry.command).toBe("npx -y failproofai --hook PreToolUse --cli goose");
+    expect(entry.command).toBe("npx -y failproofai --hook PreToolUse --cli goose --agent-scope project");
   });
 
   it("writeHookEntries writes the Open Plugins schema (top-level 'hooks' wrapper, matcher OMITTED)", () => {
@@ -1798,4 +2093,3 @@ describe("claudeCode — WorktreeCreate is never registered", () => {
     expect(hooks.WorktreeCreate[0].hooks[0].command).toBe("echo /tmp/wt");
   });
 });
-

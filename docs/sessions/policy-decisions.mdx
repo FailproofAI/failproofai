@@ -1,0 +1,27 @@
+---
+title: "Policy decisions"
+description: "See what policies evaluated, blocked, instructed, or allowed."
+icon: "shield-check"
+---
+
+Policy decisions explains what enforcement did. Use it to verify a rollout, measure block rate, and find unguarded activity.
+
+<Tabs>
+  <Tab title="Dashboard">
+    1. Go to **Observe → policy** and choose the time range and optionally one machine.
+    2. Review evaluated actions, blocks, block rate, Cloud decisions, unguarded actions, and activity while paused.
+    3. Filter the policy mapping table and inspect deployed assignments.
+    4. Select a chart point to open the decisions and their sessions.
+
+    ![The Policy page showing decision totals, a machine filter, enforcement activity over time, and the policy mapping table.](/images/dashboard/policy-observe.png)
+  </Tab>
+  <Tab title="CLI">
+    ```bash
+    fp events --event-type hook_completed --env production --since 24h
+    fp events --search "deny" --since 24h
+    failproofai config --status
+    ```
+
+    Use `failproofai` for the machine's local enforcement state and `fp` for Cloud event investigation.
+  </Tab>
+</Tabs>

@@ -1,0 +1,76 @@
+---
+title: "Escribir una evaluación"
+description: "Describe qué medir y deja que el asistente genere una evaluación Python alojada, o escribe el código tú mismo. Los jueces LLM se ejecutan en tu propio worker."
+icon: "file-pen-line"
+---
+
+Las evaluaciones alojadas son pequeñas piezas de Python deterministas, escritas en el dashboard y ejecutadas en la flota de evaluadores de Failproof AI. La lógica más pesada — un juez LLM, un paquete, un secreto, una llamada de red — se ejecuta en [tu propio worker](#escribirlo-en-tu-propio-worker).
+
+## Generar a partir de una descripción
+
+1. Ve a **Analyze → eval authoring** y selecciona **new eval**.
+2. Describe qué medir en lenguaje natural, o elige entre **start from an example…**, y selecciona **draft**.
+3. Revisa los campos y el código que se rellena automáticamente, luego [pruébalo](/es/evaluations/test) y [despliégalo](/es/evaluations/deploy).
+
+![La página de creación de evaluaciones con una evaluación generada: la descripción, las notas del asistente sobre el borrador y los campos de nombre, clave, versión, resultado, timeout, etiquetas y condición.](/images/dashboard/eval-authoring-draft.png)
+
+El borrador se basa en los eventos propios de tu organización: la página lee qué claves de payload llevaban tus sesiones durante los últimos siete días, de modo que el código usa claves que existen en lugar de suposiciones. Antes de entregar el borrador, el asistente lo prueba contra hasta cinco de tus sesiones recientes, corrige todo lo que pueda demostrar que está roto — hasta tres rondas — y verifica una vez que el código mide lo que pediste. Mantén la descripción específica: los prompts amplios son más lentos y pueden agotar el tiempo de espera. Revisa el código de todas formas; el despliegue nunca está bloqueado.
+
+## Configurar los campos
+
+| Campo | Descripción |
+| --- | --- |
+| name | Lo que ven las personas. Editable más adelante |
+| key | El identificador estable bajo el que se agrupan sus resultados, como `code_assistant_quality_gate` |
+| version | Cualquier cadena de versión sin espacios, como `1.0.0` |
+| result | **score** (de 0 a 1), **metric** (un número con unidad) o **assertion** (aprobado o no) |
+| timeout seconds | Por defecto 30. El sandbox detiene cualquier ejecución individual a los 60 |
+| labels | Hasta 20, separadas por comas. Editable más adelante |
+| condition | Opcional. Una expresión Python; la evaluación solo se ejecuta en sesiones donde sea `True` |
+
+Usa la condición para limitar el alcance de una evaluación a los agentes y entornos para los que está pensada:
+
+```python
+session.agent_id == "code-assistant" and session.environment == "production"
+```
+
+La clave, la versión, el tipo de resultado, la condición y el código son inmutables una vez desplegados: para cambiar cualquiera de ellos, publica una nueva versión. El nombre, las etiquetas y si está habilitada siguen siendo editables.
+
+## Escribir el código tú mismo
+
+El **evaluator code** es una expresión Python que devuelve `EvalResult(...)`, con `session` en el ámbito. Esta expresión calcula la proporción de resultados de herramientas que volvieron correctamente:
+
+```python
+EvalResult(
+    score=Score(
+        len([e for e in session.events_of_type("tool_result") if e.payload.get("status") == "ok"])
+        / max(1, session.count("tool_result"))
+    ),
+    metrics={"tool_calls": Metric(session.count("tool_use"), unit="calls")},
+    reasoning="Share of tool results that came back ok.",
+)
+```
+
+Un resultado encabeza con la propia clave de la evaluación, en su tipo declarado: `score=` para una evaluación de puntuación, o una entrada `metrics` o `assertions` con el nombre de la clave para una métrica o una aserción. Otras métricas y aserciones se incluyen junto a ella, con hasta 25 resultados por ejecución.
+
+| En el ámbito | Te proporciona |
+| --- | --- |
+| `session` | `session_id`, `agent_id`, `environment`, `started_at`, `ended_at`, `event_count` y `events`, más `count(event_type)` y `events_of_type(event_type)` |
+| Cada evento | `id`, `ts`, `event_type` y `payload` |
+| Tipos de resultado | `EvalResult`, `Score`, `Metric`, `Assertion` y `ConditionResult` para una condición |
+| Builtins | `abs`, `all`, `any`, `bool`, `dict`, `float`, `int`, `len`, `list`, `max`, `min`, `range`, `round`, `set`, `sorted`, `str`, `sum`, `tuple` |
+
+No hay nada más accesible: sin imports y sin atributos más allá de los datos de sesión y los métodos simples de cadenas y diccionarios como `get`, `lower` y `split`, que deben invocarse en lugar de referenciarse. Las claves de payload son las que envíen tus agentes — `status` más arriba es solo un ejemplo — así que léelas desde una sesión real. **format** ordena el código y **fix** le pide al asistente que lo repare. El código puede tener hasta 128 KiB, y la condición hasta 16 KiB.
+
+![El editor de código del evaluador, con format y fix, mostrando las aserciones de una evaluación generada.](/images/dashboard/eval-authoring-code.png)
+
+## Escribirlo en tu propio worker
+
+Cuando una evaluación necesita un modelo, un paquete, un secreto o la red, escríbela con el [Evaluator SDK](/es/reference/evaluator-sdk) y ejecútala en tu propia infraestructura. Usa los mismos tipos de resultado, y sus resultados aparecen junto a los alojados, etiquetados como **customer**:
+
+```python
+@app.eval("answer_relevance", version="judge-v1", labels=["llm_judge"], timeout_seconds=30)
+async def answer_relevance(session):
+    value, reasoning = await ask_judge(session)  # your LLM call: a 0-1 score and why
+    return EvalResult(score=Score(value, passed=value >= 0.7), reasoning=reasoning)
+```

@@ -11,6 +11,7 @@
 //! `failproofai` CLI version happens to be installed).
 
 use fpai_ipc::framing::{read_message, write_message};
+use serde::Deserialize;
 use serde_json::json;
 use std::io;
 use std::os::unix::net::UnixStream;
@@ -47,6 +48,21 @@ pub struct HookOutcome {
     pub exit_code: i32,
     pub stdout: String,
     pub stderr: String,
+    pub evaluation: Option<PolicyEvaluation>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PolicyEvaluation {
+    pub decision: String,
+    pub policy_name: Option<String>,
+    #[serde(default)]
+    pub policy_names: Vec<String>,
+    pub reason: Option<String>,
+    #[serde(default)]
+    pub matched_policies: Vec<String>,
+    pub duration_ms: u64,
+    pub tool_name: Option<String>,
 }
 
 /// How to launch the worker process. `FAILPROOFAI_WORKER_CMD` (dev/test
@@ -365,6 +381,7 @@ impl Worker {
         cli: &str,
         stdin: &str,
         cwd: Option<&str>,
+        agent_settings_path: Option<&str>,
     ) -> Result<HookOutcome, WorkerError> {
         self.ensure_started()?;
 
@@ -391,6 +408,7 @@ impl Worker {
             "cli": cli,
             "stdin": stdin,
             "cwd": cwd,
+            "agentSettingsPath": agent_settings_path,
         });
         write_message(&mut stream, &request).map_err(|e| WorkerError::Io(io::Error::other(e)))?;
 
@@ -414,10 +432,19 @@ impl Worker {
                     .and_then(|v| v.as_str())
                     .unwrap_or("")
                     .to_string();
+                let evaluation = response
+                    .get("evaluation")
+                    .cloned()
+                    .map(serde_json::from_value::<PolicyEvaluation>)
+                    .transpose()
+                    .map_err(|err| {
+                        WorkerError::BadResponse(format!("invalid evaluation metadata: {err}"))
+                    })?;
                 Ok(HookOutcome {
                     exit_code,
                     stdout,
                     stderr,
+                    evaluation,
                 })
             }
             Some("error") => {
@@ -493,7 +520,7 @@ mod tests {
         // only thing on disk that could be mistaken for readiness.
         let worker = Worker::new(socket_path.clone(), WorkerCommand::shell("exit 0"));
         let err = worker
-            .call("PreToolUse", "claude", "{}", None)
+            .call("PreToolUse", "claude", "{}", None, None)
             .expect_err("a worker that never bound must not report ready");
         assert!(
             err.to_string()

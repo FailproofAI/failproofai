@@ -1,0 +1,128 @@
+---
+title: "自托管 Failproof AI Cloud"
+description: "在客户自管的 Kubernetes 集群上部署 Failproof AI 控制平面。"
+icon: "cloud-cog"
+---
+
+<Note>
+  自托管属于企业级部署方式。请[联系 Failproof AI](mailto:support@befailproof.ai) 获取企业许可证。
+</Note>
+
+## 前提条件
+
+- Kubernetes 1.27 或更高版本，并具备集群管理员权限
+- 支持 Kustomize 的 `kubectl`
+- Helm 3
+- 私有镜像 `ghcr.io/agenteye-enterprise` 的访问权限
+- 两个 DNS 名称：分别用于控制台和数据摄入
+- PostgreSQL 和 ClickHouse 的持久化存储
+- cert-manager 和 Traefik，或适配到您的 overlay 中的等效 Ingress 及证书基础设施
+- 用于生产环境 OTP 登录和通知的 SMTP 服务
+
+源码目录提供了面向 AWS/EKS 的 overlay 和独立的 GCP/GKE overlay。请勿混用两者的证书、负载均衡器或备份说明：GKE 使用其专属的 DNS-01、GCS 和自动伸缩配置。
+
+## 部署流程
+
+<Steps>
+  <Step title="准备集群">
+    安装 cert-manager 及公共/控制台 Ingress 控制器，验证其负载均衡器，然后创建命名空间、镜像拉取凭证、数据库凭证、引导管理员密钥以及认证/SMTP 密钥。
+  </Step>
+  <Step title="配置公共域名">
+    在 overlay 生成的域名环境文件中设置 `INGEST_DOMAIN` 和 `DASHBOARD_DOMAIN`，并创建指向对应负载均衡器的 DNS 记录。
+  </Step>
+  <Step title="应用并验证单个平台 overlay">
+    使用 customer/EKS 或 GCP overlay。检查渲染后的 Kustomize 输出，应用它，并在纳管机器之前确认所有工作负载和证书均已达到预期状态。
+  </Step>
+  <Step title="引导访问与数据摄入">
+    以受保护的管理员身份登录，创建组织范围的机器密钥，并通过公共摄入端点发送一个小型测试会话。
+  </Step>
+</Steps>
+
+## 必需与可选服务
+
+| 组件 | 要求 |
+| --- | --- |
+| ClickHouse | 必需。缺少其标准事件存储时服务器将拒绝启动。 |
+| PostgreSQL | 必需，用于用户、组织、已保存对象及控制平面状态。 |
+| Redis | 可选。不可用时，服务器和控制台将降级为基于数据库的行为。 |
+| SMTP | 开发环境可选，生产环境的邮件 OTP 和通知投递必需。 |
+| Evaluator | 可选。未配置 `EVALUATOR_ENDPOINT` 时，自动评估功能保持禁用。 |
+| 助手/审计 LLM | 可选。在配置 LLM 连接之前，助手和 LLM 支持的审计功能保持不活跃状态。 |
+| 对象存储备份 | 强烈建议用于 PostgreSQL 和 ClickHouse 的备份归档。 |
+
+### 审计容量与失败投递
+
+在可用时，请在专用的 audit-agent 部署上运行审计。每个 audit-agent Pod 默认接受一项调查；请通过增加副本数来扩展吞吐量，而不要在未同步增加内存的情况下提高单 Pod 并发数。服务器最多可并发分发 `server 副本数 × AUDIT_WORKERS` 个审计任务，因此调度器容量应足够大，以充分填满 audit-agent 集群。
+
+当所有 audit-agent 槽位均繁忙时，审计任务将等待并重试，最长等待时间为其执行周期的四分之一，上限为六小时。若始终没有可用槽位，本次运行将在无结果的情况下完成，并发送一封失败通知邮件。频繁出现"繁忙"失败表明需要增加 audit-agent 副本数或拉开调度锚点的间隔。频繁出现"正在关闭"失败则表明是 Pod 不稳定或发生了滚动更新循环，而非容量不足。
+
+失败通知需要启用邮件渠道和 SMTP。通知会优先使用审计任务的收件人，若审计任务未配置邮件渠道，则回退到 `alerts.email_default_recipients`。
+
+## 验证部署
+
+<Tabs>
+  <Tab title="控制台">
+    1. 打开已配置的控制台域名，完成管理员 OTP 流程，并确认组织名称和 slug。
+    2. 进入 **Administration → Keys**，创建一个权限范围受限的机器密钥。
+    3. 发送测试会话，然后在 **Observe → Events** 和 **Observe → Sessions** 中确认。
+    4. 测试告警渠道，以及在已配置的情况下进行手动评估和审计。
+  </Tab>
+  <Tab title="CLI">
+    ```bash
+    kubectl get pods -n agenteye
+    kubectl get certificates -n agenteye
+    kubectl logs -n agenteye deploy/server --tail=100
+
+    fp --base-url https://failproof.example.com login
+    fp --base-url https://failproof.example.com whoami
+    fp --base-url https://failproof.example.com usage
+    ```
+
+    在纳管生产机器之前，请先验证公共健康检查端点以及一个经过认证的 `/v1` 请求。
+  </Tab>
+</Tabs>
+
+## 认证与邮件
+
+控制台使用邮件和一次性验证码。在未配置 SMTP 的情况下，开发部署会将 OTP 代码记录到服务器输出中。当设置了 `SMTP_HOST` 时，用户名、密码和发件人必须作为一组同时配置，否则服务器将拒绝启动。
+
+`SMTP_TLS` 是一个布尔值。支持的加密传输方式为 STARTTLS，通常使用 587 端口；当前服务器传输层不支持 465 端口的隐式 SMTPS。
+
+请正确设置公共控制台 URL，因为 OTP、告警、事件和审计邮件均通过它生成深链接。组织成员身份决定谁可以申请验证码；每个组织还可在 **Administration → Settings** 中进一步限制其成员的登录方式。
+
+## 多租户要求
+
+在创建第二个组织之前，请配置一个强且稳定的组织 ClickHouse 派生密钥，并确保其在所有服务器副本中保持一致。在未进行协调迁移的情况下轮换该密钥，可能导致组织专属的 ClickHouse 用户成为孤立状态。
+
+请将实例管理员监听器保持在内部网络。所提供的运维控制台为可选功能，设计用于 `kubectl port-forward`，而非公共 Ingress。启用它需要独立的强 API 密钥、超级管理员邮箱以及可正常工作的 SMTP 二次验证投递。
+
+### 紧急组织管理 CLI
+
+`agenteye-orgctl` 内置于服务器镜像中，可直接与 PostgreSQL 和 ClickHouse 通信。当公共服务器或运维控制台不可用时，它仍可正常使用。
+
+```bash
+kubectl -n agenteye exec deploy/server -- \
+  agenteye-orgctl org create --slug acme --name "Acme Corp"
+kubectl -n agenteye exec deploy/server -- agenteye-orgctl org list
+kubectl -n agenteye exec deploy/server -- \
+  agenteye-orgctl member add --org acme --email ops@acme.com --set admin --protected
+```
+
+支持的组织操作包括：创建、列出、重命名、软删除、恢复、ClickHouse 用户重新配置、计费日期管理、功能标志以及不可逆的彻底清除。成员操作包括：添加、列出、更新、移除、权限覆盖和受保护管理员状态管理。
+
+请在清除之前先执行软删除。`org purge` 不可逆，且要求组织必须先处于已删除状态。受保护成员在运维人员明确取消其保护状态之前，无法通过组织普通的用户页面被移除或降级。
+
+## 生产就绪检查清单
+
+- 摄入与控制台 DNS 分别解析到各自预期的 Ingress 路径。
+- TLS 证书有效；在部署要求的场景下，对摄入端点启用双向 TLS。
+- PostgreSQL 和 ClickHouse 卷已配置容量告警。
+- 备份涵盖两个数据存储，并已测试恢复流程。
+- 健康检查针对摄入静默、工作负载失败、证书过期、存储压力和备份过期配置了告警。
+- 结构化日志已收集，且未与现有集群日志管道产生重复。
+- 在未经实测队列数据支撑的情况下，未更改 Evaluator、审计和告警 Worker 的并发数。
+- 在升级之前，已记录固定的应用版本发布和回滚流程。
+
+<Warning>
+  部署清单中包含特定平台的安全性和可用性假设。在应用之前，请与您的平台团队共同审查渲染后的资源、网络策略、Ingress 暴露范围、密钥引用、存储类、中断预算以及备份目标。
+</Warning>

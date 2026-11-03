@@ -1,0 +1,54 @@
+---
+title: "Políticas"
+description: "Observa, guía o bloquea acciones del agente antes de que un fallo conocido vuelva a repetirse."
+icon: "shield-check"
+---
+
+Una política evalúa un evento de hook del agente y devuelve una de tres decisiones:
+
+- `allow` permite que la acción continúe.
+- `instruct` proporciona orientación correctiva al agente.
+- `deny` bloquea la acción con una razón.
+
+## Dónde viven las políticas
+
+| En el dashboard | Qué haces allí |
+| --- | --- |
+| **Observe → policy** | Revisa las decisiones de sesiones reales: qué política coincidió, en qué máquina y por qué |
+| **Admin → policy editor** | Escribe una política, pruébala contra tráfico pasado, publica una versión inmutable y compara versiones en **library** |
+| **Admin → enforcement** | Asigna versiones a máquinas, en modo observe o enforce |
+
+El editor de políticas es donde un fallo se convierte en una regla. Describe el modo de fallo o pega el código fuente de la política en **compose**, prueba el borrador contra el tráfico que ya tienes y publica una versión:
+
+![La vista de composición del editor de políticas con identidad de política, redacción asistida por IA, validación del código fuente y controles de publicación.](/images/dashboard/policy-editor.png)
+
+En una máquina, `failproofai policies` lista todo lo que se está aplicando. `fp policies` y `fp fleet` cubren el editor y la aplicación desde un terminal — consulta la [referencia de Cloud CLI](/es/reference/cloud-cli).
+
+## Obtener una política
+
+Hay dos formas de conseguir una.
+
+<Columns cols={2}>
+  <Card title="Escribe una política" icon="file-pen-line" href="/es/policies/editor">
+    Deja que Failproof AI redacte una a partir de un hallazgo de auditoría, o escribe el código fuente tú mismo, luego revísala y publícala en el editor.
+  </Card>
+  <Card title="Usa un pack de políticas" icon="package" href="/es/policies/packs">
+    Conecta un pack de políticas de Failproof AI para tu caso de uso, o un pack de la comunidad desde el hub de políticas, con un solo comando.
+  </Card>
+</Columns>
+
+## Luego despliégala
+
+<Steps>
+  <Step title="Pruébala">
+    Prueba el borrador contra el tráfico que ya tienes, y ejecútala contra una acción que debe detener y otra que debe permitir — todo antes de publicar. Consulta [Probar una política](/es/policies/test).
+  </Step>
+  <Step title="Despliégala">
+    Asigna la versión a las máquinas en modo **observe**, lee sus decisiones y luego aplícala. Consulta [Desplegar una política](/es/policies/deploy).
+  </Step>
+  <Step title="Versiona y revierte">
+    Cada publicación crea una versión nueva e inmutable, por lo que un despliegue que bloquea trabajo válido se deshace volviendo a desplegar la última versión correcta. Consulta [Versiones y rollback](/es/policies/rollback).
+  </Step>
+</Steps>
+
+Para compartir tus políticas con otros equipos, [publícalas como un pack](/es/policies/publish-a-pack). Para saber qué ocurre cuando una política no puede evaluarse en absoluto, consulta [Comportamiento ante fallos](/es/policies/failure-behavior).

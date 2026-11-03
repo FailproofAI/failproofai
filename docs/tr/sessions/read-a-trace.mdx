@@ -1,0 +1,48 @@
+---
+title: "Bir izi okumak"
+description: "Bir aracı oturumunun seyrini değiştiren olayı bulun."
+icon: "route"
+---
+
+Bir iz, düz bir olay akışını çalışmanın nedensel hikayesine dönüştürür. Bunu son hatadan geriye doğru değil, ilk ayrışmadan itibaren okuyun.
+
+## İzi açın
+
+<Tabs>
+  <Tab title="Dashboard">
+    1. **Observe → Sessions** bölümüne gidin ve bir oturumu açın.
+    2. Sonuç, zaman, hatalar ve değerlendirme puanlarını kontrol etmek için profil özetini kullanın.
+    3. Zaman çizelgesini ve minimapı tarayın. Oturum büyük olduğunda olay türlerini veya zamanı filtreleyin.
+    4. İncelemek için bir olay seçin. Değerlendirici JSON'ı **dışa aktarmak** için kullanın veya seçilen kanıta derin bağlantı paylaşmak için sayfanın URL'sini kopyalayın.
+
+    ![Yürütme grafiği, olay zaman çizelgesi, değerlendirme paneli ve araç, model ve kancalandırma dökümü ile bir oturum detay görünümü.](/images/dashboard/session-detail.png)
+  </Tab>
+  <Tab title="CLI">
+    ```bash
+    fp --json sessions --session-id <session-id>
+    fp events --session-id <session-id> --order asc --all
+    fp --json events --full --session-id <session-id> --all
+    ```
+
+    Önce hafif olay akışını kullanın. Olay özetleri yeterli kanıt içermediğinde tam yükleri talep edin.
+  </Tab>
+</Tabs>
+
+<Steps>
+  <Step title="Kendinizi yönlendir">
+    Aracı, ortamı, zamanı, sonucu ve süreyi onaylayın, ardından hataları, uzun aralıkları, tekrarlanan araçları, insan beklentilerini ve reddedilen politika kararlarını tarayın.
+  </Step>
+  <Step title="İlk şüpheli olayı genişlet">
+    İsteğini, yanıtını, araç girişini, çıkışını ve korelasyon kimliğini inceleyin. Hassas içerik yalnızca transkript yakalama etkinleştirildiğinde ve izinleriniz buna izin verdiğinde görülür.
+  </Step>
+  <Step title="Önceki bağlamı inceleyin">
+    Neden genellikle bir olay öncesinde bulunur: yanlış bir model yanıtı, eksik araç sonucu veya eski bir varsayım.
+  </Step>
+  <Step title="Kanıtı harekete dönüştürün">
+    Oturumu bir denetim kapsamına ekleyin, bir soruna bağlayın veya hata modunu kullanarak bir politika yazın.
+  </Step>
+</Steps>
+
+<Warning>
+  Uzun süre her zaman model gecikmesi anlamına gelmez. Neyin düzeltileceğine karar vermeden önce model, araç, kanca ve insan bekleme süresini ayırın.
+</Warning>

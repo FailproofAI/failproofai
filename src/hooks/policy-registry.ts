@@ -6,7 +6,10 @@
  * chunk splitting and remains a true singleton across dynamic imports.
  */
 import type { HookEventType } from "./types";
-import type { PolicyFunction, PolicyMatcher, RegisteredPolicy } from "./policy-types";
+import type { PolicyFunction, PolicyMatcher, PolicyParamsSchema, RegisteredPolicy } from "./policy-types";
+import { effectiveReviewerNames, forgetEffectiveReviewerNames } from "./effective-reviewers";
+import type { AgentIdentity } from "./agent-targets";
+import { resolvePolicyAuthority, type AuthorityDeclaration } from "./policy-authority";
 
 const REGISTRY_KEY = "__FAILPROOFAI_POLICY_REGISTRY__";
 const INDEX_CACHE_KEY = "__FAILPROOFAI_POLICY_INDEX_CACHE__";
@@ -57,11 +60,34 @@ export function registerPolicy(
   fn: PolicyFunction,
   match: PolicyMatcher,
   priority: number = 0,
+  params?: PolicyParamsSchema,
+  /**
+   * The policy's authority declaration, as its source wrote it. Judged HERE,
+   * so the registry only ever holds an effective value: `reviewable` with a
+   * clean `reviewedBy`, or `hard`. See `resolvePolicyAuthority`.
+   *
+   * Absent means the caller declared nothing, and the entry then carries no
+   * authority field at all — which `effectiveAuthority` reads as hard.
+   */
+  meta?: AuthorityDeclaration,
 ): void {
   const canonical = normalizePolicyName(name);
   const registry = getRegistry();
   const idx = registry.findIndex((p) => p.name === canonical);
-  const entry: RegisteredPolicy = { name: canonical, description, fn, match, priority };
+  // Judged against the reviewers this MACHINE can ask: the checks its installed
+  // packs declare, and none when no pack declares any (the package ships no
+  // Jev checks), in which case every policy registers `hard`.
+  // `effectiveReviewerNames` reads the manifest — already where a pack's
+  // `reviewedBy` itself comes from — once per registration pass.
+  const authority = meta ? resolvePolicyAuthority(meta, effectiveReviewerNames()) : undefined;
+  const entry: RegisteredPolicy = {
+    name: canonical, description, fn, match, priority,
+    // Absent stays absent: `evaluatePolicies` distinguishes "declares a schema"
+    // from "declares none", and a spread `params: undefined` is neither.
+    ...(params ? { params } : {}),
+    ...(authority ? { authority: authority.authority } : {}),
+    ...(authority?.reviewedBy ? { reviewedBy: authority.reviewedBy } : {}),
+  };
   if (idx >= 0) {
     registry[idx] = entry;
   } else {
@@ -100,10 +126,15 @@ export function getPoliciesForEvent(
   return result;
 }
 
-export function clearPolicies(): void {
+/** `cli`: the agent this pass registers for, which scopes the Jev reviewer set. */
+export function clearPolicies(cli?: string, agent: AgentIdentity | null = null): void {
   const g = globalThis as GlobalWithRegistry;
   g[REGISTRY_KEY] = [];
   setIndexCache(null);
+  // The reviewer set describes the policies that are about to be registered, so
+  // it is rebuilt with them. Dropping it here is also what keeps one read per
+  // evaluation instead of one per policy.
+  forgetEffectiveReviewerNames(cli, agent);
 }
 
 /**

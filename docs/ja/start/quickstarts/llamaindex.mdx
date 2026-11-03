@@ -1,0 +1,48 @@
+---
+title: "LlamaIndex"
+description: "インストール、計装、最初のトレースを確認する。"
+icon: "/images/frameworks/llamaindex.svg"
+---
+
+最初の LlamaIndex トレースまで3ステップ。ワークフローのステップ、検索、リーパー、オプションについては[完全なガイド](/ja/start/integrations/llamaindex)をご覧ください。
+
+## インストール
+
+```bash
+pip install 'failproofai-sdk[llamaindex]'
+```
+
+## 計装
+
+LlamaIndex のエージェント API は非同期です。すべてのスコープは `async with` と `with` の両方で動作します。
+
+```python
+import asyncio
+
+import failproofai_sdk
+
+failproofai_sdk.configure(environment="production")
+failproofai_sdk.instrument()
+
+
+async def main():
+    async with failproofai_sdk.session():
+        await agent.run("...")
+
+
+asyncio.run(main())
+```
+
+<Warning>
+  LLM に追加の引数を一つ指定しないと、トレース内のすべてのトークン数が null になります — `llama-index-llms-openai` はストリーミング時に使用量を要求しません。詳しくは[トークン数](/ja/start/integrations/llamaindex#token-counts)をご覧ください。
+</Warning>
+
+## 到着を確認する
+
+一度実行したら、**Observe → Sessions** を開いて環境を選択してください。実行結果が再構築されたトレースとして表示されます。
+
+何も届かない場合は、`failproofai config --status` でマシンが接続されているか確認してください。
+
+<Card title="LlamaIndex 完全ガイド" icon="arrow-right" href="/ja/start/integrations/llamaindex">
+  トークン数、記録される内容、ワークフローのステップ、検索、オプション、よくある問題。
+</Card>

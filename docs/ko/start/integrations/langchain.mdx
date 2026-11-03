@@ -1,0 +1,244 @@
+---
+title: "LangChain and LangGraph"
+sidebarTitle: "LangChain and LangGraph"
+description: "한 번의 호출로 그래프, 노드, 도구, 리트리버, 모델 호출을 계측합니다."
+icon: "/images/frameworks/langchain.svg"
+---
+
+하나의 어댑터로 둘 다 지원합니다. LangGraph는 `langchain-core`의 콜백 매니저 위에서 동작하므로, 하나를 계측하면 나머지도 함께 계측됩니다.
+
+## 설치
+
+```bash
+pip install 'failproofai-sdk[langgraph]'
+```
+
+LangGraph 없이 LangChain만 사용하는 경우에는 `failproofai-sdk[langchain]`을 사용하세요.
+
+지원 범위: `langchain-core` 1.4.7 ~ 2.0, `langgraph` 1.2 ~ 2.0. 이 범위를 벗어나도 어댑터는 설치되며 경고를 한 번 출력합니다.
+
+## 계측
+
+```python
+import failproofai_sdk
+
+failproofai_sdk.configure(environment="production")
+failproofai_sdk.instrument()
+
+with failproofai_sdk.session():
+    graph.invoke({"messages": [HumanMessage("...")]})
+```
+
+`instrument()`는 `langchain_core.tracers.context.register_configure_hook`를 통해 트레이서를 등록합니다. LangChain은 이를 생성하는 모든 콜백 매니저에 자동으로 주입하므로, 직접 작성하지 않은 라이브러리 내부의 그래프, 도구, 모델까지 호출 지점을 수정하지 않고도 캡처됩니다.
+
+## 기록되는 항목
+
+| LangChain 또는 LangGraph | Failproof 이벤트 |
+| --- | --- |
+| 루트 실행 | `agent_start`, `agent_end` |
+| LangGraph 노드 | `hook_triggered`, `hook_completed` |
+| 컴파일된 서브그래프 | 중첩된 `agent_start`, `agent_end` |
+| 도구 실행 | `tool_use`, `tool_result` |
+| 리트리버 실행 | `tool_use`, `tool_result`, 출력 요약 포함 |
+| 채팅 모델 또는 LLM 실행 | `model_request`, `model_response`, 토큰 사용량 포함 |
+| 스트리밍 토큰 | 응답에 청크 수와 첫 토큰까지의 시간으로 합산됨. 토큰 수는 `ChatOpenAI(stream_usage=True)` 필요 — 아래 참조 |
+| `interrupt()` | `human_wait`, `agent_pause` |
+| `Command(resume=...)` | `agent_resume`, `human_input`, `Interrupt.id` 기준으로 연결 — 동일한 체크포인터를 대상으로 다른 프로세스에서 재개하는 경우 포함 |
+| 처리되지 않은 예외 | `error`, 이후 outcome이 `failed`인 `agent_end` |
+
+**노드는 중첩 에이전트가 아닌 훅으로 처리됩니다.** `agent_id`는 모든 대시보드 화면에서 주요 구분자입니다. `retrieve`, `grade_documents`, `should_continue`를 에이전트로 승격하면 이 값이 범람하고, 가장 먼저 실행된 노드 이름이 세션 레이블이 되어버립니다.
+
+훅 스팬도 동일하게 렌더링되며, 노드별 지연 시간 뷰를 그대로 제공합니다.
+
+<Note>
+  **노드 이름은 자유롭게 지정하세요.** 노드 실행은 이름이 아닌 *형태* — LangGraph 자체 스텝 태그를 포함하는 리프가 아닌 실행 — 로 식별됩니다.
+</Note>
+
+| 작성 코드 | 기록되는 항목 |
+| --- | --- |
+| `add_node("lookup_population", ToolNode([...]))` | 도구 |
+| `add_node("ChatOpenAI", ...)` | 모델 호출 |
+
+노드를 실행하는 대상과 같은 이름으로 지정하면 해당 이벤트가 사라지던 문제는 더 이상 발생하지 않습니다.
+
+### 스트리밍
+
+`.stream()`과 `.astream()`은 토큰별 이벤트를 발생시키지 않습니다. 최종 `model_response`에 다음과 같이 합산됩니다:
+
+| 필드 | 내용 |
+| --- | --- |
+| `fw_chunks` | 수신된 청크 수 |
+| `fw_ttft_ms` | 첫 토큰까지의 시간 |
+
+### 스트리밍 응답의 토큰 수
+
+별도로 처리해야 하는 사항으로, 놓치기 쉽습니다. OpenAI는 스트리밍 응답에서 **명시적으로 요청할 때만** 사용량을 전송합니다.
+
+```python
+ChatOpenAI(model="gpt-4o-mini", stream_usage=True)   # 이 옵션 없이는 토큰 정보 없음
+```
+
+어댑터는 프레임워크가 전달하는 값만 기록합니다. 해당 플래그 없이는 기록할 정보가 없으므로 `model_response`에 토큰 수가 포함되지 않습니다.
+
+## 예시
+
+```python
+import failproofai_sdk
+from langchain_core.messages import HumanMessage
+from langchain_core.tools import tool
+from langchain_openai import ChatOpenAI
+from langgraph.prebuilt import ToolNode, create_react_agent
+
+failproofai_sdk.configure(environment="production")
+failproofai_sdk.instrument()
+
+
+@tool
+def price_of(item: str) -> float:
+    """Return the unit price of an item in USD."""
+    return {"widget": 42.0, "gadget": 17.5}[item.lower().strip()]
+
+
+@tool
+def stock_of(item: str) -> int:
+    """Return the units of an item currently in stock."""
+    return {"widget": 120, "gadget": 0}[item.lower().strip()]
+
+
+tools = ToolNode([price_of, stock_of], handle_tool_errors=True)
+graph = create_react_agent(ChatOpenAI(model="gpt-4o-mini"), tools)
+
+with failproofai_sdk.session():
+    with failproofai_sdk.agent("analyst", goal="price and stock report"):
+        result = graph.invoke({
+            "messages": [HumanMessage("Price and stock for widget and gadget?")]
+        })
+```
+
+## 스팬 이름 지정
+
+기본적으로 루트 스팬은 그래프 자체의 이름을 사용합니다. 원하는 레이블을 지정하려면 다음과 같이 래핑하세요:
+
+```python
+with failproofai_sdk.session():
+    with failproofai_sdk.agent("analyst", goal="price and stock report"):
+        graph.invoke(...)
+```
+
+멀티 에이전트 구성의 경우 스코프를 중첩하세요. 각 워커는 `parent_id`를 가진 자식 스팬이 됩니다:
+
+```python
+with failproofai_sdk.session():
+    with failproofai_sdk.agent("supervisor"):
+        with failproofai_sdk.agent("researcher"):
+            research_graph.invoke(...)
+        with failproofai_sdk.agent("writer"):
+            writer_graph.invoke(...)
+```
+
+`agent_id`는 낮은 카디널리티를 유지하세요. 역할이나 노드 이름을 사용하고, UUID나 실행별 문자열은 사용하지 마세요.
+
+## 세션 제어
+
+세션 id는 다음 순서로 결정되며, 첫 번째로 매칭되는 항목이 사용됩니다:
+
+1. `instrument("langchain", session_id=...)`
+2. `config={"metadata": {"failproofai_sdk_session_id": ...}}`
+3. 감싸는 `failproofai_sdk.session()` 스코프
+4. `metadata["session_id"]`, `metadata["conversation_id"]`, 또는 `metadata["thread_id"]`
+5. 루트 실행 id
+
+합성된 id는 하나의 실행을 여러 세션으로 분리하므로, id를 새로 생성하는 방식은 사용하지 않습니다.
+
+```python
+graph.invoke(
+    {"messages": [...]},
+    config={"metadata": {"failproofai_sdk_session_id": f"chat-{user_id}"}},
+)
+```
+
+## 옵션
+
+```python
+failproofai_sdk.instrument(
+    "langchain",
+    session_id=None,          # 모든 실행을 하나의 세션 id에 고정
+    include_chains=set(),     # 중간 체인을 훅 쌍으로 허용 목록에 추가
+    capture_content=True,     # False로 설정하면 페이로드에서 프롬프트와 완성 내용 제외
+    graph_callbacks=True,     # interrupt 및 resume 일급 처리, langgraph 1.2+ 필요
+)
+```
+
+규제 대상 데이터의 경우 `capture_content=False`로 설정하세요. 구조, 타이밍, 토큰 수, 도구 이름, 결과는 계속 기록되며 메시지 본문만 제외됩니다.
+
+`include_chains`는 **중첩된** 실행에만 적용됩니다. 최상위에서 직접 호출하는 runnable은 세션의 루트이므로 훅 쌍이 아닌 에이전트 스팬이 되며, 여기서 이름을 지정해도 효과가 없습니다.
+
+## 휴먼 인 더 루프
+
+`interrupt()`는 네 가지 이벤트를 생성하며, 두 쌍 모두 중복이 아닙니다:
+
+```python
+from langgraph.types import Command, interrupt
+
+def approve(state):
+    decision = interrupt({"prompt": "Ship it?", "options": ["yes", "no"]})
+    return {"approved": decision == "yes"}
+
+with failproofai_sdk.session():
+    graph.invoke(state, config)                    # human_wait, agent_pause
+    graph.invoke(Command(resume="yes"), config)    # agent_resume, human_input
+```
+
+`human_wait`에서 `human_input`까지는 프롬프트와 답변을 포함합니다(`capture_content=False` 시 리트리버 문서 출처와 함께 제외되지만 문서 수는 유지됨). `agent_pause`에서 `agent_resume`까지는 일시 정지 시간을 기록하는 유일한 쌍으로, 이 쌍이 없으면 10분간의 대기 시간이 활성 에이전트 시간으로 청구됩니다. 루트 스팬은 간격을 가로질러 열린 상태를 유지하며, 두 호출을 동일한 세션으로 묶습니다.
+
+## 자주 발생하는 문제
+
+<AccordionGroup>
+  <Accordion title="예외를 발생시키는 도구가 전체 그래프를 중단시킴">
+    `create_react_agent`는 예외를 전파합니다. 모델이 실패를 인식하고 계속 진행하도록 하려면 도구 노드를 명시적으로 구성하세요:
+
+    ```python
+    from langgraph.prebuilt import ToolNode, create_react_agent
+
+    tools = ToolNode([price_of, stock_of], handle_tool_errors=True)
+    graph = create_react_agent(model, tools)
+    ```
+
+    어느 쪽이든 실패는 오류를 포함한 `tool_result`로 기록됩니다. 이 설정은 실행이 실패를 극복할 수 있는지만 결정합니다.
+  </Accordion>
+
+  <Accordion title="트레이스에 모델 클래스 이름을 가진 에이전트가 나타남">
+    그래프 외부에서 직접 호출한 `llm.invoke()`는 부모 실행이 없으므로 루트 스팬을 열고 그 안에 모델 쌍을 기록합니다. 대시보드는 리프를 열린 에이전트의 자식으로 배치하므로 이 스팬은 의도된 동작입니다. 이름을 지정하려면:
+
+    ```python
+    with failproofai_sdk.agent("summariser"):
+        summary = ChatOpenAI(model="gpt-4o-mini").invoke([HumanMessage(text)])
+    ```
+  </Accordion>
+
+  <Accordion title="모든 이벤트가 두 번씩 나타남">
+    `instrument()`를 호출하면서 동시에 `config={"callbacks": [...]}`에 Failproof 핸들러를 전달했습니다. 핸들러를 제거하세요. configure 훅은 이미 프로세스 내 모든 콜백 매니저를 커버합니다.
+  </Accordion>
+
+  <Accordion title="휴먼 승인이 오류로 표시됨">
+    그렇지 않습니다. LangGraph는 실제 예외와 동일한 경로로 `GraphInterrupt`를 발생시키므로, 모든 일시 정지는 트레이서에 오류 콜백으로 전달됩니다. 하지만 `GraphBubbleUp`의 모든 서브클래스는 제어 흐름으로 처리되므로, 승인은 빨간색 오류로 표시되지 않습니다.
+  </Accordion>
+
+  <Accordion title="아무것도 기록되지 않음">
+    다음 순서로 확인하세요: 그래프 실행 전에 `instrument()`가 호출되었는지; 호출을 감싸는 `with failproofai_sdk.session():`이 있는지; `FAILPROOFAI_SDK_STRICT=1`이 설정되어 있어 오류가 무시되지 않고 발생하는지.
+  </Accordion>
+</AccordionGroup>
+
+## 다음 단계
+
+<Columns cols={3}>
+  <Card title="작동 원리" icon="workflow" href="/ko/start/integrations/custom-agents#going-deeper">
+    쌍, id, 세션 라이프사이클, 전달 방식.
+  </Card>
+  <Card title="트레이스 읽기" icon="route" href="/ko/sessions/read-a-trace">
+    방금 캡처한 세션에서 인과관계를 따라가 보세요.
+  </Card>
+  <Card title="다른 프레임워크" icon="plug" href="/ko/start/integrations">
+    CrewAI, LlamaIndex, Pydantic AI, 커스텀 에이전트.
+  </Card>
+</Columns>

@@ -1,0 +1,27 @@
+---
+title: "Modeller"
+description: "Model gecikmesini, token'ları, bağlam kullanımını ve trafik dağılımını karşılaştırın."
+icon: "cpu"
+---
+
+Modeller kullanarak bir model, agent, ortam veya zaman aralığı ile güvenilirliğin veya maliyetin değişip değişmediğini görebilirsiniz.
+
+<Tabs>
+  <Tab title="Gösterge Paneli">
+    1. **Observe → Models** sayfasına gidin.
+    2. Zaman aralığını ayarlayın, ardından ortam, model, agent veya oturum kimliğine göre filtreleyin.
+    3. Gecikme süresi, token tüketimi, bağlam penceresi kullanımı ve model dağılımını inceleyin.
+    4. Eşleşen olayları açmak için bir grafik noktası veya dağılım segmentini seçin.
+
+    ![Modeller sayfası, gecikme süresi, yüzdelik, token, maliyet, bağlam penceresi ve model dağılımı görünümlerini göstermektedir.](/images/dashboard/models.png)
+  </Tab>
+  <Tab title="CLI">
+    ```bash
+    fp list models
+    fp events --event-type model_request,model_response --env production --since 24h
+    fp --json events --fields ts,agent_id,session_id,event_type,output_tokens,context_fill
+    ```
+
+    Özel bir CLI komutu olarak sunulmayan model düzeyindeki toplamaları için kaydedilmiş bir sorgu kullanın.
+  </Tab>
+</Tabs>

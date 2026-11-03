@@ -1,0 +1,37 @@
+---
+title: "CrewAI"
+description: "Instale, instrumente e veja seu primeiro trace."
+icon: "/images/frameworks/crewai.svg"
+---
+
+Três passos para o seu primeiro trace com CrewAI. Para detalhes sobre o que cada evento carrega, fluxos e solução de problemas, consulte [o guia completo](/pt-br/start/integrations/crewai).
+
+## Instalar
+
+```bash
+pip install 'failproofai-sdk[crewai]'
+```
+
+## Instrumentar
+
+```python
+import failproofai_sdk
+
+failproofai_sdk.configure(environment="production")
+failproofai_sdk.instrument()
+
+with failproofai_sdk.session():
+    Crew(agents=[analyst, writer], tasks=[gather, summarise]).kickoff()
+```
+
+Nada na sua crew, agentes, tarefas ou ferramentas muda. `instrument()` se inscreve no barramento de eventos em nível de módulo do CrewAI.
+
+## Verificar se chegou
+
+Execute uma vez, depois abra **Observe → Sessions** e selecione seu ambiente. Sua execução aparece como um trace reconstruído.
+
+Se nada aparecer, confirme que a máquina está conectada com `failproofai config --status`.
+
+<Card title="Guia completo do CrewAI" icon="arrow-right" href="/pt-br/start/integrations/crewai">
+  O que é registrado, fluxos, uso de tokens, nomenclatura de spans, opções e problemas comuns.
+</Card>

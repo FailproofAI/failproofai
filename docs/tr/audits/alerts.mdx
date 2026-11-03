@@ -1,0 +1,62 @@
+---
+title: "Uyarılar"
+description: "Tekrarlayan sorunları algılayın ve olayı uygun müdahalelere yönlendirin."
+icon: "bell-ring"
+---
+
+Uyarılar ölçülebilir bir koşulu izler ve tetiklendiğinde bir olay oluşturur. Bir hata zamanında bir yanıt gerektirdiğinde bunları kullanın; politika bunu engelleyebilse de engelleyemese de.
+
+## Uyarı oluşturun ve test edin
+
+<Tabs>
+  <Tab title="Dashboard">
+    1. **Analyze → Alerts** bölümüne gidin ve **new alert** seçeneğini tıklayın. Temsili bir hatadaki zil simgesinden de başlayabilirsiniz.
+    2. Adı, önem derecesini, tetikleyici türünü, koşulu, değerlendirme aralığını, ihlal sayısını, pencereyi ve kanalları girin.
+    3. Uyarıyı kaydedin, detay sayfasını açın ve **test** komutunu çalıştırın.
+    4. **Analyze → Issues** bölümüne giderek uyarı tarafından oluşturulan olayları onaylayın, atayın, tartışın, abone olun ve çözün.
+
+    Formun ilk bölümü uyarıyı ve onu tetiklemesi gereken sinyali tanımlar.
+
+    ![Adı, açıklaması, etkin durumu ve tetikleyici türü ile yeni uyarı formunun ilk bölümü.](/images/dashboard/alert-new-trigger.png)
+
+    İkinci bölüm koşulun ne kadar süre devam etmesi gerektiğini, ne sıklıkla değerlendirildiğini ve bildirimlerin nereye gönderileceğini kontrol eder.
+
+    ![İhlal mantığı, zamanlama, önem derecesi, iletim kanalları ve oluşturma eylemi ile yeni uyarı formunun ikinci bölümü.](/images/dashboard/alert-new-routing.png)
+
+    Kaydettikten sonra, kuralın etkin olduğunu ve tetikleyici, pencere, önem derecesi ve kanallarının niyetinizle eşleştiğini doğrulamak için Uyarılar listesini kullanın.
+
+    ![Tetikleyicileri, değerlendirme pencerelerini, kanallarını ve önem derecesini gösteren Uyarılar sayfası.](/images/dashboard/alerts.png)
+
+    Üretim ortamında yanıt verme amacıyla buna bağlı olmadan önce uyarıyı test edin.
+  </Tab>
+  <Tab title="CLI">
+    ```bash
+    fp alerts create high-errors \
+      --trigger-kind metric_threshold \
+      --severity warning \
+      --trigger-spec '{"metric":"error_count","op":">","value":50,"window_secs":900}'
+
+    fp alerts show high-errors
+    fp alerts test high-errors
+    fp alerts update high-errors --severity critical --yes
+    ```
+
+    Kuralları gözden geçirmek için `fp alerts list` komutunu ve bir kuralı kaldırmak için `fp alerts delete <name>` komutunu kullanın.
+
+    Tam uyarı komut seti için [`fp alerts` referansına](/tr/reference/cloud-cli#alerts) bakın.
+  </Tab>
+</Tabs>
+
+Uyarı koşulları hatalara, değerlendirme puanlarına, değerlendirme kombinasyonlarına veya özel SQL'e dayalı olabilir. Alıcıları ekleyin, kuralı test edin ve sonuçta ortaya çıkan olayı açarak onaylayın, atayın, yorum yapın, abone olun ve çözün.
+
+## İyi uyarı tasarımı
+
+- Koşul ve etkilenen iş akışını adlandırın.
+- Ortamı açıkça kapsamlandırın.
+- Zararsız bir olaya tepki vermekten kaçınacak bir pencere ve eşik ayarlayın.
+- Müdahale görevlileri oturumlar için bir bağlantıya veya sorguya yönlendiren bir öğe ekleyin.
+- Kuralı etkinleştirmeden önce bir sahip atayın.
+
+<Tip>
+  Denetim bulgusunu çözdükten sonra, aynı hata politikanın kapsamı dışında tekrarlanabilirse bir uyarı ekleyin.
+</Tip>

@@ -1,0 +1,44 @@
+---
+title: "Utenti e organizzazioni"
+description: "Controlla l'appartenenza e mantieni i dati e le azioni di ogni organizzazione isolati."
+icon: "users"
+---
+
+Le organizzazioni isolano sessioni, valutazioni, audit, problemi, avvisi, query, dashboard, utenti e chiavi. Conferma l'organizzazione attiva prima di modificare le risorse amministrative.
+
+## Gestisci membri e organizzazioni
+
+<Tabs>
+  <Tab title="Dashboard">
+    1. Usa il selettore di organizzazione nella parte superiore della barra laterale Cloud per passare da un'organizzazione all'altra.
+    2. Vai a **Amministrazione → Utenti** per cercare membri o filtrare per stato attivo e ruolo.
+    3. Seleziona **nuovo utente**, inserisci l'email, scegli un set di autorizzazioni e regola gli override se necessario.
+    4. Apri un utente in seguito per aggiornare le autorizzazioni, disabilitare l'accesso o riabilitare l'account.
+
+    ![La pagina Utenti che mostra gli indirizzi email dei membri, i set di autorizzazioni e i controlli di modifica e disabilitazione.](/images/dashboard/users.png)
+  </Tab>
+  <Tab title="CLI">
+    ```bash
+    fp orgs list
+    fp orgs switch reliability-team
+    fp orgs current
+    fp orgs perms
+
+    fp users create engineer@example.com --permission-set standard
+    fp users show engineer@example.com
+    fp users update engineer@example.com --add audits:write
+    fp users disable engineer@example.com
+    fp users enable engineer@example.com
+    ```
+  </Tab>
+</Tabs>
+
+Gli amministratori possono creare, aggiornare, disabilitare e riabilitare gli utenti, quindi assegnare il set di autorizzazioni appropriato al loro ruolo. L'API utilizza un'operazione di eliminazione per la disabilitazione, ma non rimuove l'account o il suo record di appartenenza.
+
+<Warning>
+  La disabilitazione di un utente blocca l'identità dall'accesso a tutte le organizzazioni, non solo all'organizzazione attualmente selezionata. La riabilitazione ripristina l'accesso globale e le autorizzazioni del membro in questa organizzazione.
+</Warning>
+
+<Tip>
+  Assegna ai service account nomi descrittivi legati a un carico di lavoro e a un proprietario. Evita di condividere chiavi tra organizzazioni o tra persone e macchine.
+</Tip>

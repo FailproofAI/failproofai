@@ -1,0 +1,74 @@
+---
+title: "审核本地代理历史记录"
+description: "离线扫描受支持的代理 CLI 历史记录，并在本地审查风险或浪费的行为。"
+icon: "laptop-minimal-check"
+---
+
+在将机器连接到 Failproof AI Cloud 之前，使用本地审核进行即时的私密审查。它扫描已存储在您机器上的代理历史记录，通过内置策略重放工具活动，并打开本地结果仪表板。
+
+## 运行交互式审核
+
+<Tabs>
+  <Tab title="Dashboard">
+    本地审核从 CLI 开始，因为它必须发现当前机器上的历史记录。运行 `failproofai audit`；扫描后，Failproof AI 启动捆绑的仪表板并打开 **http://localhost:8020/audit**。
+
+    在审核视图中，查看会话数、工具调用数、项目数和策略命中数。从频繁发现开始，然后在启用强制实施前检查受影响的项目和代理历史记录。
+
+    <Info>本地审核仪表板独立于 Failproof AI Cloud 中的 **Analyze → Audits**。本地审核保留在机器上，不需要账户或网络连接。</Info>
+  </Tab>
+  <Tab title="CLI">
+    ```bash
+    npm install -g failproofai
+    failproofai audit
+    ```
+
+    该命令对找到的所有受支持的历史记录执行完整扫描。当前命令不接受 `--since`、`--cli`、`--project`、`--port` 或 `--no-open` 等过滤器。
+
+    使用本地仪表板时保持进程运行。完成后按 <kbd>Ctrl</kbd>+<kbd>C</kbd>。
+  </Tab>
+</Tabs>
+
+当前审核适配器可以读取来自 Claude Code、Codex、GitHub Copilot CLI、Cursor、OpenCode、Pi、Hermes、OpenClaw、Factory、Devin、Antigravity 和 Goose 的历史记录。仅扫描本地可用的历史记录。
+
+## 安排循环本地审核
+
+<Tabs>
+  <Tab title="Dashboard">
+    在本地仪表板中打开 **Settings**，启用定时审核，选择间隔，并设置应接收发现的电子邮件地址。仪表板和 CLI 更新同一台机器的配置。
+  </Tab>
+  <Tab title="CLI">
+    启用每周审核并将发现发送到指定地址：
+
+    ```bash
+    failproofai audit --schedule 7 --email reliability@example.com
+    failproofai audit --status
+    ```
+
+    间隔接受 1-90 天，省略时默认为 7。首次设置会在需要时要求您登录；`--email` 提供报告地址而无需提示。
+
+    停止计划而不删除本地审核历史记录：
+
+    ```bash
+    failproofai audit --no-schedule
+    ```
+  </Tab>
+</Tabs>
+
+守护程序在后台运行定时扫描，刷新本地仪表板使用的缓存结果，并通过电子邮件发送配置的报告。当您想立即运行交互式扫描时，请使用 `failproofai audit`。
+
+## 从本地证据转移到云操作
+
+本地审核是一个快速基线。当您需要共享跟踪、循环总体审核、发现和问题、警报、组织范围的策略部署或舰队健康时，将机器连接到 Failproof AI Cloud。
+
+<CardGroup cols={2}>
+  <Card title="创建云审核" icon="scan-search" href="/he/audits/setup">
+    定义循环目标、总体、证据窗口和响应渠道。
+  </Card>
+  <Card title="启用策略" icon="shield-check" href="/he/start/first-policy">
+    在本地验证，有意发布，并首先部署到较小的机器组。
+  </Card>
+</CardGroup>
+
+<Warning>
+  审核输出是供审查的证据，不是每个标记操作都不安全的证明。在将发现转变为阻止强制实施之前，请确认上下文。
+</Warning>

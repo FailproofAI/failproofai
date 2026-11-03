@@ -1,0 +1,25 @@
+---
+title: "Tools"
+description: "חפש כלים איטיים, כושלים או בשימוש יתר בהפעלות סוכן."
+icon: "wrench"
+---
+
+Tools מקבצת קריאות כלים בהפעלות כך שתוכל להשוות בין עיכוב וחלוקת קריאות.
+
+<Tabs>
+  <Tab title="Dashboard">
+    1. עבור אל **Observe → Tools**.
+    2. סנן לפי סביבה, שם כלי, סוכן או מזהה הפעלה.
+    3. בדוק עיכוב וחלוקת כלים.
+    4. בחר נקודה בתרשים או קטע כלי כדי לפתוח אירועים והפעלות תואמות.
+
+    ![עמוד Tools המציג עיכוד, התמוטטויות הצלחה וכישלון, וחלוקת קריאות כלים.](/images/dashboard/tools.png)
+  </Tab>
+  <Tab title="CLI">
+    ```bash
+    fp list tools
+    fp events --event-type tool_use,tool_result --env production --since 24h
+    fp --json events --full --session-id <session-id> --all
+    ```
+  </Tab>
+</Tabs>

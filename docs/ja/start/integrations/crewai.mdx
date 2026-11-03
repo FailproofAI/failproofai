@@ -1,0 +1,224 @@
+---
+title: "CrewAI"
+sidebarTitle: "CrewAI"
+description: "クルー、フロー、エージェントをロール、ツール、メモリ、人間フィードバックで計装します。"
+icon: "/images/frameworks/crewai.svg"
+---
+
+## インストール
+
+```bash
+pip install 'failproofai-sdk[crewai]'
+```
+
+対応バージョン: `crewai` 1.13 〜 2.0。1.13 は `started_event_id` の追加とトークン使用量の正規化が行われたリリースであり、アダプターはイベントの対応付けとトークンレポートにこれらを利用しています。
+
+## 計装
+
+```python
+import failproofai_sdk
+
+failproofai_sdk.configure(environment="production")
+failproofai_sdk.instrument()
+
+with failproofai_sdk.session():
+    Crew(agents=[analyst, writer], tasks=[gather, summarise]).kickoff()
+```
+
+`instrument()` は CrewAI のモジュールレベルのイベントバスにリスナーを登録し、イベントクラスごとに 1 つのハンドラーを購読します。クルー、エージェント、タスク、ツールには一切変更が加わりません。
+
+## 記録される内容
+
+| CrewAI | Failproof イベント |
+| --- | --- |
+| クルーのキックオフ | `agent_start`、`agent_end` |
+| `Agent.kickoff()`（ライトエージェント、クルーなし） | `agent_start`、`agent_end`（`agent_id` はロールから取得） |
+| フローの開始と終了 | `agent_start`、`agent_end`；フローメソッド内でキックオフされたクルーはその配下にネストされる |
+| エージェントの実行 | ネストされた `agent_start`、`agent_end`（`agent_id` はロールから取得）。階層型プロセスでは委任されたコワーカーはマネージャーの配下にネストされ、並列にはならない |
+| タスク | なし；リンクとして記録され、子要素がクルーに解決される |
+| フローメソッド、ガードレール | `hook_triggered`、`hook_completed` |
+| ツールの使用 | `tool_use`、`tool_result` |
+| メモリおよびナレッジ操作 | `tool_use`、`tool_result`（アクセスしたサーフェスの名前が付く） |
+| LLM 呼び出し | `model_request`、`model_response`（トークン使用量付き） |
+| ストリームチャンク | レスポンスにチャンク数と最初のトークンまでの時間として折り込まれる |
+| 人間フィードバックのリクエスト | `human_wait`、`agent_pause` |
+| 人間フィードバックの受信 | `agent_resume`、`human_input` |
+| エージェント実行エラー | `error`、続いて結果 `failed` の `agent_end` |
+
+タスクが意図的に何も発行しないのには理由があります。CrewAI のタスクはそれを実行するエージェント実行のサブセットであるため、両方を発行すると全行が二重になり、兄弟として表示されてしまいます。タスクの id と名前は、エージェント自身のイベントに付随します。
+
+メモリおよびナレッジ操作はツールとして記録され、アクセスしたサーフェスの名前が付くため、実際のツールの隣に並んでレイテンシを比較できます。
+
+階層型クルーでは、ネスト構造によってトレースが読みやすくなります:
+
+```text
+crew
+└─ manager
+   ├─ researcher      委任
+   └─ writer          委任
+```
+
+CrewAI は委任された実行を、マネージャー直下ではなく `delegate_work_to_coworker` **ツールイベント** の配下に親付けするため、アダプターもそのリンクに従います。これがないと、すべてのエージェントが並列になり委任の構造が失われます。
+
+## 使用例
+
+```python
+import failproofai_sdk
+from crewai import Agent, Crew, Process, Task
+from crewai.tools import tool
+
+failproofai_sdk.configure(environment="production")
+failproofai_sdk.instrument()
+
+MODEL = "openai/gpt-4o-mini"
+METRICS = {"revenue": "$4.2M ARR, up 12% QoQ", "churn": "3.1% monthly, up from 2.4%"}
+
+
+@tool("lookup_metric")
+def lookup_metric(name: str) -> str:
+    """Look up a business metric by name. Valid: revenue, churn."""
+    return METRICS.get(name.lower().strip(), "unknown metric")
+
+
+analyst = Agent(
+    role="analyst",                     # becomes agent_id
+    goal="pull the numbers that matter and state them plainly",
+    backstory="You read dashboards for a living.",
+    tools=[lookup_metric],
+    llm=MODEL,
+)
+writer = Agent(
+    role="writer",
+    goal="turn numbers into three lines an exec will read",
+    backstory="You write board updates. You never pad.",
+    llm=MODEL,
+)
+
+gather = Task(
+    description="Look up 'revenue' and 'churn' with the tool.",
+    expected_output="Two lines, one metric each.",
+    agent=analyst,
+)
+summarise = Task(
+    description="Using the metrics above, write a three-line exec summary.",
+    expected_output="Exactly three lines.",
+    agent=writer,
+    context=[gather],
+)
+
+with failproofai_sdk.session():
+    result = Crew(
+        agents=[analyst, writer],
+        tasks=[gather, summarise],
+        process=Process.sequential,
+    ).kickoff()
+```
+
+引き継ぎはトレースで確認できます: `analyst` スパンが閉じ、`writer` スパンが開き、両方が 1 つの `crew` スパンの内側に収まります。
+
+## スパンに名前を付ける
+
+`agent_id` は `Agent(role=...)` から取得されるため、ダッシュボードのファセットとして読みやすくなります。
+
+```python
+Agent(role="analyst", ...)          # agent_id = "analyst"
+Agent(role="analyst-7f3a2b", ...)   # 実行ごとに別ファセットエントリが作成される
+```
+
+`agent_id` は低カーディナリティのカラムです。実行 id やタイムスタンプを含むロールは、あらゆるクエリのパフォーマンスを低下させます。ロールが id のように見える場合、アダプターはそれを拒否し、実際の値をペイロードフィールドに格納します。
+
+## セッションを制御する
+
+以下の順序で解決され、最初に一致したものが使用されます:
+
+1. `instrument("crewai", session_id=...)`
+2. 囲んでいる `failproofai_sdk.session()` スコープ
+3. クルーまたはフローごとに 1 回生成される `uuid4().hex`
+
+実行ごとに制御するには、キックオフをラップします:
+
+```python
+with failproofai_sdk.session(f"support-{ticket_id}"):
+    Crew(agents=[...], tasks=[...]).kickoff()
+```
+
+## オプション
+
+```python
+failproofai_sdk.instrument(
+    "crewai",
+    session_id=None,          # すべての実行を 1 つのセッション id に固定する
+)
+```
+
+`session_id` はこのアダプターが読み取る唯一のオプションです。プロンプトとコンプリーションは常に記録され、ペイロード予算内でトランケートされます。
+
+## ヒューマン・イン・ザ・ループ
+
+CrewAI には **2 つ** のヒューマン・イン・ザ・ループのサーフェスがあり、どちらも同じ 4 つのイベントとして記録されます。
+
+フローメソッド上の `@human_feedback` は CrewAI のイベントバスを経由します: ランタイムは人間の応答待ちに入る前にイベントを発行し、回答後にもう 1 つのイベントを発行します。
+
+`Task(human_input=True)` はそうではありません。CrewAI 自身の入力プロバイダー内で `input()` を呼び出し、いかなるイベントも発行しないため、アダプターはそのプロバイダーを直接ラップします。これがないと、人間の待機時間が完全に不可視となり、アクティブなエージェント時間として計上されます。
+
+どちらの場合も次のイベントが記録されます:
+
+```text
+human_wait      プロンプトとその選択肢
+agent_pause     一時停止時間のクロックを開始
+agent_resume    一時停止時間のクロックを停止
+human_input     回答（待機時間の計測付き）
+```
+
+`agent_pause` から `agent_resume` の間だけが一時停止時間としてカウントされます。これがないと、10 分間の人間待機が 10 分間のアクティブなエージェント時間として計上されます。
+
+<Note>
+  CrewAI はどちらの人間フィードバックイベントにも相関 id を設定しないため、アダプターはフローとメソッド名を基にペアリングし、直近に開かれた一時停止にフォールバックします。コンソールプロンプトはブロッキングであるため、この方法は健全です。並行フィードバックプロバイダーを構築する場合は、両方のイベントに `request_id` を設定してください。
+</Note>
+
+<Note>
+  `Task(human_input=True)` のパスはイベント購読ではなく CrewAI の入力プロバイダーへのラッパーであるため、`uninstrument()` 時に元に戻され、`input()` が送出した例外（`KeyboardInterrupt` を含む）はそのまま再送出されます。
+</Note>
+
+## よくある問題
+
+<AccordionGroup>
+  <Accordion title="エージェントフィルターに数千件のエントリがある">
+    `role` に UUID、タイムスタンプ、または実行ごとのサフィックスが含まれています。安定した人間可読のロールを使用し、実行固有の id はタスクの説明に入れるようにしてください。
+  </Accordion>
+
+  <Accordion title="テストでイベントがゼロと表示されるが、ダッシュボードには表示される">
+    イベントバスは非同期であり、`kickoff()` は最後のハンドラーが実行される前に返ります。先にドレインしてください:
+
+    ```python
+    from crewai.events.event_bus import crewai_event_bus
+
+    crew.kickoff()
+    crewai_event_bus.flush(timeout=30)
+    ```
+
+    これは CrewAI の特性であり、SDK の問題ではありません。
+  </Accordion>
+
+  <Accordion title="セッションが永遠に進行中として表示される">
+    `agent_end` は開いている一時停止を強制終了しますが、ツールやモデルは終了しません。そのため、ツール呼び出しの途中で実行が終了すると、そのスパンが開いたままになります。通常のティアダウンでは、まだ開いているものをすべて閉じて未完了としてマークします。`SIGKILL` の場合のみ、何も実行できないため開いたままになります。
+  </Accordion>
+
+  <Accordion title="何も記録されない">
+    以下の順で確認してください: `instrument()` が `kickoff()` の前に実行されているか；`with failproofai_sdk.session():` で囲まれているか；`crewai` が 1.13 以降か；`FAILPROOFAI_SDK_STRICT=1` が設定されている場合、劣化したフックは握りつぶされずに例外を送出します。
+  </Accordion>
+</AccordionGroup>
+
+## 次のステップ
+
+<Columns cols={3}>
+  <Card title="仕組み" icon="workflow" href="/ja/start/integrations/custom-agents#going-deeper">
+    ペア、id、セッションライフサイクル、デリバリーについて。
+  </Card>
+  <Card title="トレースを読む" icon="route" href="/ja/sessions/read-a-trace">
+    キャプチャしたセッションの因果関係を追う。
+  </Card>
+  <Card title="他のフレームワーク" icon="plug" href="/ja/start/integrations">
+    LangGraph、LlamaIndex、Pydantic AI、カスタムエージェント。
+  </Card>
+</Columns>

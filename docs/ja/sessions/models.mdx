@@ -1,0 +1,27 @@
+---
+title: "モデル"
+description: "モデルのレイテンシ、トークン数、コンテキスト使用量、トラフィック分布を比較します。"
+icon: "cpu"
+---
+
+モデルを使用することで、モデル・エージェント・環境・時間範囲の変化による信頼性やコストへの影響を確認できます。
+
+<Tabs>
+  <Tab title="ダッシュボード">
+    1. **Observe → Models** に移動します。
+    2. 時間範囲を設定し、環境・モデル・エージェント・セッション ID でフィルタリングします。
+    3. レイテンシ、トークン消費量、コンテキストウィンドウの使用量、モデル分布を確認します。
+    4. チャートのポイントや分布セグメントを選択すると、対応するイベントが表示されます。
+
+    ![レイテンシ、パーセンタイル、トークン、コスト、コンテキストウィンドウ、モデル分布のビューを表示するモデルページ。](/images/dashboard/models.png)
+  </Tab>
+  <Tab title="CLI">
+    ```bash
+    fp list models
+    fp events --event-type model_request,model_response --env production --since 24h
+    fp --json events --fields ts,agent_id,session_id,event_type,output_tokens,context_fill
+    ```
+
+    専用の CLI コマンドとして公開されていないモデルレベルの集計には、保存済みクエリを使用してください。
+  </Tab>
+</Tabs>

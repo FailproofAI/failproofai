@@ -85,13 +85,15 @@ describe("hooks/daemon-client", () => {
     await startServer(async (socket) => {
       const req = await readFrame(socket);
       expect(req.type).toBe("hook");
-      expect(req.protocolVersion).toBe(1);
+      expect(req.protocolVersion).toBe(2);
       expect(req.hookEvent).toBe("PreToolUse");
       expect(req.cli).toBe("claude");
+      // An unresolved source is sent explicitly, never re-inferred by the daemon.
+      expect(req.agentSettingsPath).toBe("");
       socket.end(
         encodeFrame({
           type: "hookResult",
-          protocolVersion: 1,
+          protocolVersion: 2,
           exitCode: 0,
           stdout: "",
           stderr: "",
@@ -104,8 +106,67 @@ describe("hooks/daemon-client", () => {
       cli: "claude",
       stdin: "{}",
       cwd: "/repo",
+      agentSettingsPath: "",
     });
     expect(result).toEqual({ exitCode: 0, stdout: "", stderr: "" });
+  });
+
+  it("proves native policy evaluation only from a complete policyResult", async () => {
+    await startServer(async (socket) => {
+      const req = await readFrame(socket);
+      expect(req).toMatchObject({
+        type: "policyEvaluation",
+        protocolVersion: 2,
+        integration: "hermes",
+        event: "on_session_start",
+        payload: { hook_event_name: "on_session_start" },
+      });
+      socket.end(
+        encodeFrame({
+          type: "policyResult",
+          protocolVersion: 2,
+          decision: "allow",
+          policyNames: [],
+          reason: null,
+          matchedPolicies: [],
+          durationMs: 1,
+          toolName: null,
+        }),
+      );
+    });
+
+    const { attemptDaemonPolicyEvaluation } = await import("../../src/hooks/daemon-client");
+    await expect(
+      attemptDaemonPolicyEvaluation({
+        integration: "hermes",
+        event: "on_session_start",
+        payload: { hook_event_name: "on_session_start" },
+      }),
+    ).resolves.toEqual({ ok: true });
+  });
+
+  it("does not mistake a matching-version hook response for native policy support", async () => {
+    await startServer(async (socket) => {
+      await readFrame(socket);
+      socket.end(
+        encodeFrame({
+          type: "hookResult",
+          protocolVersion: 2,
+          exitCode: 0,
+          stdout: "",
+          stderr: "",
+        }),
+      );
+    });
+
+    const { attemptDaemonPolicyEvaluation } = await import("../../src/hooks/daemon-client");
+    await expect(
+      attemptDaemonPolicyEvaluation({
+        integration: "hermes",
+        event: "on_session_start",
+        payload: {},
+      }),
+    ).resolves.toEqual({ ok: false, failure: "unreachable" });
   });
 
   it("round-trips a deny response with real stdout/stderr content", async () => {
@@ -114,7 +175,7 @@ describe("hooks/daemon-client", () => {
       socket.end(
         encodeFrame({
           type: "hookResult",
-          protocolVersion: 1,
+          protocolVersion: 2,
           exitCode: 2,
           stdout: "",
           stderr: "blocked: sudo is not allowed",
@@ -129,7 +190,7 @@ describe("hooks/daemon-client", () => {
   it("returns null when the daemon sends an error-type message", async () => {
     await startServer(async (socket) => {
       await readFrame(socket);
-      socket.end(encodeFrame({ type: "error", protocolVersion: 1, message: "daemon unreachable" }));
+      socket.end(encodeFrame({ type: "error", protocolVersion: 2, message: "daemon unreachable" }));
     });
 
     const result = await daemonResult({ hookEvent: "Stop", cli: "codex", stdin: "{}" });
@@ -166,13 +227,13 @@ describe("hooks/daemon-client", () => {
     expect(attempt).toEqual({ ok: false, failure: "protocol-mismatch" });
   });
 
-  it("catches a mismatch in BOTH directions", async () => {
+  it("catches a mismatch when an old daemon responds to a new client", async () => {
     // Newer CLI against older daemon, and older CLI against newer daemon, both
     // land here: the daemon stamps its own version on the error it sends back,
     // so the versions disagree either way.
     await startServer(async (socket) => {
       await readFrame(socket);
-      socket.end(encodeFrame({ type: "error", protocolVersion: 2, message: "protocol version mismatch" }));
+      socket.end(encodeFrame({ type: "error", protocolVersion: 1, message: "protocol version mismatch" }));
     });
 
     const { attemptDaemonHook } = await import("../../src/hooks/daemon-client");
@@ -180,12 +241,35 @@ describe("hooks/daemon-client", () => {
     expect(attempt).toEqual({ ok: false, failure: "protocol-mismatch" });
   });
 
+  it("rejects an allow from a v1 daemon that ignored the profile-scoping field", async () => {
+    await startServer(async (socket) => {
+      const request = await readFrame(socket);
+      expect(request).toMatchObject({
+        type: "hook",
+        protocolVersion: 2,
+        agentSettingsPath: "/home/agent/claude/settings.json",
+      });
+      // A v1 daemon ignores unknown JSON fields. Its allow is not proof that
+      // it identified this profile or applied schema-3 targets.
+      socket.end(encodeFrame({
+        type: "hookResult", protocolVersion: 1, exitCode: 0, stdout: "", stderr: "",
+      }));
+    });
+    const { attemptDaemonHook } = await import("../../src/hooks/daemon-client");
+    await expect(attemptDaemonHook({
+      hookEvent: "PreToolUse",
+      cli: "claude",
+      stdin: "{}",
+      agentSettingsPath: "/home/agent/claude/settings.json",
+    })).resolves.toEqual({ ok: false, failure: "protocol-mismatch" });
+  });
+
   it("an error at a MATCHING protocol version is unreachable, not skew", async () => {
     // A daemon that answers "worker call failed" at the right version is not a
     // version problem — it is a broken daemon, and must keep failing closed.
     await startServer(async (socket) => {
       await readFrame(socket);
-      socket.end(encodeFrame({ type: "error", protocolVersion: 1, message: "worker call failed" }));
+      socket.end(encodeFrame({ type: "error", protocolVersion: 2, message: "worker call failed" }));
     });
 
     const { attemptDaemonHook } = await import("../../src/hooks/daemon-client");
@@ -204,7 +288,7 @@ describe("hooks/daemon-client", () => {
     await startServer(async (socket) => {
       await readFrame(socket);
       // Right protocol version, right general shape, but missing exitCode.
-      socket.end(encodeFrame({ type: "hookResult", protocolVersion: 1, stdout: "", stderr: "" }));
+      socket.end(encodeFrame({ type: "hookResult", protocolVersion: 2, stdout: "", stderr: "" }));
     });
 
     const result = await daemonResult({ hookEvent: "PreToolUse", cli: "claude", stdin: "{}" });
@@ -233,7 +317,7 @@ describe("hooks/daemon-client", () => {
       await readFrame(socket);
       setTimeout(() => {
         socket.end(
-          encodeFrame({ type: "hookResult", protocolVersion: 1, exitCode: 0, stdout: "ok", stderr: "" }),
+          encodeFrame({ type: "hookResult", protocolVersion: 2, exitCode: 0, stdout: "ok", stderr: "" }),
         );
       }, 600);
     });

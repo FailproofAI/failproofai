@@ -1,0 +1,25 @@
+---
+title: "Hooks"
+description: "Measure hook activity, triggers, and latency separately from policy outcomes."
+icon: "webhook"
+---
+
+Hooks shows when agent lifecycle hooks run and how long they take. Policy decisions are a separate view.
+
+<Tabs>
+  <Tab title="Dashboard">
+    1. Go to **Observe → Hooks**.
+    2. Filter by environment, hook name, trigger event, agent, or session ID.
+    3. Review hook latency and distribution.
+    4. Select a chart point or hook segment to open the underlying events.
+
+    ![The Hooks page showing latency grouped by hook name and trigger event.](/images/dashboard/hooks.png)
+  </Tab>
+  <Tab title="CLI">
+    ```bash
+    fp list hooks
+    fp events --event-type hook_triggered,hook_completed --env production --since 24h
+    fp events --search "PreToolUse" --since 24h
+    ```
+  </Tab>
+</Tabs>

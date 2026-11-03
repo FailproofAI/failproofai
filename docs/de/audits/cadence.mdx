@@ -1,0 +1,49 @@
+---
+title: "Audit-Kadenz"
+description: "Legen Sie fest, wann wiederkehrende Audits ausgeführt werden und wie viele Daten sie überprüfen."
+icon: "calendar-clock"
+---
+
+Nutzen Sie wiederkehrende Audits für Fehlermuster, die mit der Weiterentwicklung von Agenten, Prompts, Tools und Modellen erneut auftreten können.
+
+## Zeitplan ändern
+
+<Tabs>
+  <Tab title="Dashboard">
+    1. Gehen Sie zu **Analyse → Audits** und öffnen Sie das Audit.
+    2. Öffnen Sie die Einstellungen und ändern Sie den Aktivierungsstatus, das Intervall, den UTC-Anker, den Fenstermodus oder den Rückblickzeitraum.
+    3. Speichern Sie das Audit und überprüfen Sie den nächsten Ausführungszeitpunkt auf der Audit-Karte.
+    4. Verwenden Sie **Jetzt ausführen** einmalig nach einer wesentlichen Änderung des Umfangs oder Kontexts.
+
+    ![Der Audit-Editor zeigt Kadenz, Sweep-Fenster, Umfang, Analyseeinstellungen, Kontext und Benachrichtigungskanäle.](/images/dashboard/audit-edit.png)
+  </Tab>
+  <Tab title="CLI">
+    ```bash
+    fp audits edit checkout-reliability \
+      --schedule-interval-secs 86400 \
+      --schedule-anchor 2026-08-15T09:00:00Z \
+      --lookback-window-secs 86400 \
+      --yes
+
+    fp audits edit checkout-reliability --disabled --yes
+    fp audits edit checkout-reliability --enabled --yes
+    ```
+
+    Weitere Informationen zu Zeitplangrenzen, Fensterverhalten und allen Audit-Befehlen finden Sie in der [`fp audits`-Referenz](/de/reference/cloud-cli#audits).
+  </Tab>
+</Tabs>
+
+Wählen Sie die Kadenz anhand der Geschwindigkeit und der Kosten des Risikos:
+
+| Risikomuster | Empfohlene Kadenz |
+| --- | --- |
+| Produktionsaktion mit hohem Einfluss | Täglich |
+| Workflow- oder Modellregression | Wöchentlich |
+| Governance- oder Zugriffsüberprüfung | Monatlich |
+| Einmalige Release-Untersuchung | Einmalig ausführen |
+
+Stimmen Sie das Rückblickfenster auf die Kadenz ab, damit Ausführungen weder Lücken lassen noch unnötig große Datemengen wiederholt untersuchen. Nach einer Änderung des Ziels oder Kontexts eines Audits sollten Sie es einmalig manuell ausführen, bevor Sie sich auf das nächste geplante Ergebnis verlassen.
+
+<Note>
+  Lokal geplante Audits werden auf dem Rechner konfiguriert und scannen den lokalen Agentenverlauf. Cloud-Audit-Zeitpläne arbeiten auf Cloud-Sitzungen. Behandeln Sie deren Ergebnisse und Zuständigkeiten getrennt voneinander.
+</Note>

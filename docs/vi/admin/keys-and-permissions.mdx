@@ -1,0 +1,74 @@
+---
+title: "Khóa và quyền hạn"
+description: "Tạo các khóa API có phạm vi cho máy, tự động hóa và nhà điều hành."
+icon: "key-round"
+---
+
+Các khóa API thuộc về một tổ chức và mang theo các quyền hạn rõ ràng. Sử dụng các khóa riêng biệt cho nhập liệu tác nhân, phân phối chính sách, đánh giá, tự động hóa CI và tập lệnh quản trị.
+
+## Tạo và xoay khóa
+
+<Tabs>
+  <Tab title="Dashboard">
+    1. Đi đến **Administration → Keys**, chọn **new key** và nhập tên khối lượng công việc.
+    2. Chọn một tập hợp quyền hạn và chỉ điều chỉnh các quyền riêng lẻ khi tập hợp cài sẵn không đủ.
+    3. Tạo khóa và sao chép bí mật một lần của nó ngay lập tức.
+    4. Mở khóa sau này để cập nhật cấp phát, tắt nó hoặc tạo lại bí mật.
+
+    Ngăn kéo tạo là nơi bạn chọn các cấp phát hẹp nhất yêu cầu bởi khối lượng công việc.
+
+    ![Ngăn kéo khóa API mới với các tập hợp quyền cài sẵn và các cấp phát riêng lẻ.](/images/dashboard/key-create.png)
+
+    Sau khi tạo, trang Keys hiển thị siêu dữ liệu liên tục và các hành động quản lý. Bí mật một lần không được hiển thị lại.
+
+    ![Trang Khóa API hiển thị quyền hạn khóa, thời gian tạo và các hành động tạo lại và tắt.](/images/dashboard/api-keys.png)
+
+    Sử dụng danh sách này để xem xét các cấp phát thường xuyên và tắt các khóa không còn ánh xạ tới khối lượng công việc hoạt động.
+  </Tab>
+  <Tab title="CLI">
+    ```bash
+    fp keys create production-agents \
+      --add events:add \
+      --add policies:pull
+    fp keys show production-agents
+    fp keys update production-agents --add events:read
+    fp keys regenerate production-agents --yes
+    fp keys disable production-agents
+    ```
+
+    Chuyển hướng hoặc ghi lại đầu ra tạo/tạo lại một cách an toàn; bí mật được trả về một lần.
+  </Tab>
+</Tabs>
+
+Hai quyền hạn yêu cầu bởi máy Failproof AI kết nối là độc lập:
+
+- `events:add` gửi sự kiện và dữ liệu phiên làm việc.
+- `policies:pull` truy xuất các triển khai chính sách được gán.
+
+Bí mật khóa được hiển thị khi được tạo hoặc tạo lại. Lưu trữ chúng trong trình quản lý bí mật và xoay chúng mà không tái sử dụng thông tin đăng nhập tương tác của nhà điều hành.
+
+## Danh mục quyền hạn
+
+| Lĩnh vực | Quyền hạn |
+| --- | --- |
+| Sự kiện | `events:add`, `events:read` |
+| Khóa | `keys:create`, `keys:read`, `keys:disable`, `keys:regenerate`; `keys:update` chỉ cho phiên con người |
+| Người dùng | `users:create`, `users:read`, `users:update`, `users:delete` |
+| Đánh giá | `evaluations:read`, `evaluations:trigger`, `evaluations:run` |
+| Bảng điều khiển | `dashboards:read`, `dashboards:write`, `dashboards:delete` |
+| Truy vấn | `queries:read`, `queries:write`, `queries:delete`, `queries:run` |
+| Trợ lý | `agent:use` |
+| Cài đặt | `settings:read`, `settings:write` |
+| Cảnh báo | `alerts:read`, `alerts:write` |
+| Vấn đề | `issues:read`, `issues:create`, `issues:close` |
+| Kiểm toán | `audits:read`, `audits:write` |
+| Chính sách | `policies:read`, `policies:write`, `policies:pull` |
+| Sử dụng | `usage:read` |
+
+`orgs:admin` được dành riêng cho nhà điều hành thực thể và không thể được cấp cho khóa tổ chức hoặc thành viên thường. Các mã thông báo `incidents:*` và `alerts:ack` đã loại bỏ được chấp nhận để tương thích và chuẩn hóa thành quyền hạn `issues:*` hiện tại.
+
+Các tập hợp quyền hạn tích hợp là `read-only`, `standard` và `admin`. `standard` thêm kích hoạt đánh giá, thực thi truy vấn, phản hồi vấn đề và sử dụng trợ lý cho quyền hạn đọc. Tạo khóa loại bỏ các cấp phát chỉ dành cho con người ngay cả khi tập hợp quyền hạn chứa chúng.
+
+<Warning>
+  Các khóa có phạm vi thực thể có thể chọn một tổ chức bằng tiêu đề `X-AgentEye-Org`. Đặt nó một cách rõ ràng trên các triển khai đa tổ chức; việc bỏ qua có thể chọn tổ chức mặc định.
+</Warning>

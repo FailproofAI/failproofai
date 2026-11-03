@@ -1,0 +1,121 @@
+---
+title: "Use a policy pack"
+description: "Plug in a Failproof AI policy pack for your use case, or a community pack from the policy hub, and choose what it enforces."
+icon: "package"
+---
+
+A pack is a set of policies published as a GitHub release. One command installs it: the release's checksums are verified before anything runs, and its digest is recorded so the pack cannot change under your machine afterwards.
+
+Browse every pack, and every policy in each, on the [policy hub](https://befailproof.ai/policy-hub/). There are two kinds:
+
+- **Failproof AI policy packs** — ready-made packs for predefined use cases: plug one in and it works. The [coding agent policy pack](https://befailproof.ai/policy-hub/failproofai/policies/) is available now, and packs for more use cases are coming soon.
+- **Community policy packs** — policies developers have written for their own use cases and published for anyone to take.
+
+## Failproof AI policy packs
+
+### Coding agent policy pack
+
+```bash
+failproofai policies add FailproofAI/policies
+```
+
+The pack carries 39 policies and switches on the 10 its manifest marks safe to enable unattended; the rest are listed for you to choose from. Some of the most used, and whether a plain `policies add` switches them on:
+
+| Policy | What it does | On by default |
+| --- | --- | --- |
+| `block-push-master` | Blocks direct pushes to protected branches | Yes |
+| `block-env-files` | Blocks reading and writing `.env` files | Yes |
+| `protect-env-vars` | Blocks commands that dump environment variables | Yes |
+| `block-sudo` | Blocks `sudo` unless an allow pattern matches | Yes |
+| `block-curl-pipe-sh` | Blocks downloaded scripts piped straight into a shell | Yes |
+| `sanitize-*` (five policies) | Report API keys, bearer tokens, JWTs, private keys, and connection strings found in tool output | Yes |
+| `block-rm-rf` | Blocks catastrophic recursive deletes | No |
+| `block-force-push` | Blocks force-pushes | No |
+| `block-secrets-write` | Blocks writes to credential and secret-key files | No |
+| `warn-destructive-sql` | Warns on `DROP`, `TRUNCATE`, and `DELETE` without `WHERE` | No |
+
+Switch on any that are off by name — `failproofai policies add block-rm-rf` — or take the whole pack with `--all`. See every policy in it, grouped by category:
+
+```bash
+failproofai policies show FailproofAI/policies
+```
+
+## Community policy packs
+
+Developers publish packs for the use cases they have met, and the [policy hub](https://befailproof.ai/policy-hub/) lists them. A community pack is published by its author, not audited by Failproof AI, so read what it carries before installing it:
+
+```bash
+failproofai policies show acme/support-agent
+```
+
+That lists every policy it carries, grouped by category, and marks which ones its author switches on by default. It reads **only the manifest** — the entry artifact is never downloaded or imported, so looking at a stranger's pack cannot run a stranger's code. The manifest is still checked against the release's own `SHA256SUMS`, so what you read is what would install.
+
+Then install it:
+
+```bash
+failproofai policies add acme/support-agent
+```
+
+Any of these work — paste whichever you have:
+
+| Source | Result |
+| --- | --- |
+| `acme/support-agent` | Newest release, **pinned** to the exact tag it resolved |
+| `acme/support-agent@v2.1.0` | That release |
+| `github:acme/support-agent@v2.1.0` | The same, written explicitly |
+| `https://github.com/acme/support-agent/releases/tag/v2.1.0` | The same, copied from a browser |
+
+Naming no tag installs the newest release **and pins it**, then tells you which tag it chose. What gets recorded always names exactly one release, so a reinstall cannot drift.
+
+## Take part of a pack
+
+By default you get the pack's **own** defaults — the policies its author marked safe to switch on unattended — not everything it contains.
+
+```bash
+failproofai policies add FailproofAI/policies --policy block-rm-rf          # one, or a comma-separated few
+failproofai policies add FailproofAI/policies --category dangerous-commands # a whole category
+failproofai policies add FailproofAI/policies --all                         # everything in it
+```
+
+`--category` and `--policy` combine as a union (`--only` is accepted as a synonym for `--policy`), and each may be repeated: `--policy a --policy b` takes both. When the pack is already installed, the flags add to what you had, and re-adding it with no flag and no terminal — to upgrade, say — keeps your selection as it is. At a terminal with no flag, `add` opens the picker instead, pre-ticked with the author's defaults, and what you tick replaces your selection.
+
+## Manage what is on
+
+```bash
+failproofai policies                                  # every source in one list, packs included
+failproofai policies add block-rm-rf                  # switch one policy on
+failproofai policies --uninstall block-refunds        # turn one pack policy off
+failproofai policies --install block-refunds          # and back on
+failproofai policies remove acme/support-agent        # uninstall the pack
+```
+
+Switching a pack policy on or off applies to the whole machine: the switch is recorded with the installed pack, not in a project's configuration, whatever `--scope` says.
+
+A name with no slash is a policy; anything with one is a pack source. A bare name resolves to the installed pack that declares it. When two installed packs declare the same name, name the one you mean:
+
+```bash
+failproofai policies --uninstall acme/support-agent:block-refunds
+```
+
+Scopes, parameters, and the files these commands write are covered in [local configuration](/policies/local-configuration).
+
+## What integrity does and does not buy
+
+`SHA256SUMS` ships in the same release as the artifact, so it is **not** a signature and proves nothing about who published it. What it does prove is that the bytes are the ones that release published — and because the digest is recorded when you add the pack and re-verified before every import, a pack cannot change under your machine afterwards. A repository that retags or replaces an asset stops loading instead of quietly running something else.
+
+At install time the pack is also **imported once** and checked against its own manifest. A pack whose artifact does not parse, or that registers something other than what it declares, is refused before anything is activated — rather than installing cleanly and failing on your next tool call. So is a pack whose id claims the `FailproofAI/` namespace but whose release is not in a FailproofAI repository.
+
+## When a pack will not load
+
+A pack this machine was told to enforce and cannot run **denies** the events its missing policies covered, rather than allowing them silently — as `pack/failproofai-pack-unavailable`, which outranks the policies that did load so the deny is attributed to the missing pack rather than to whichever guard happened to fire first. The exception is `UserPromptSubmit`, which instructs instead: denying there would lock you out of the agent you need in order to fix it. See [Failure behavior](/policies/failure-behavior).
+
+A pack can name the oldest failproofai it works with (`minCliVersion`, set by its publisher). An older CLI refuses to add it and prints the upgrade command, `npm i -g "failproofai@>=<minCliVersion>" && failproofai update` (a range, so npm picks a release that meets it — a bare `failproofai` installs `latest`, which can be older than a prerelease minimum); one already installed that the running CLI is too old for does not load, with the result above. A `minCliVersion` the CLI cannot read is ignored with a warning rather than refusing the pack.
+
+## Offline and mirrors
+
+| Variable | Effect |
+| --- | --- |
+| `FAILPROOFAI_NO_DOWNLOAD=1` | Refuses to fetch; packs already installed keep enforcing |
+| `FAILPROOFAI_PACK_BASE_URL` | Points pack fetching at a mirror instead of `github.com` |
+
+To share your own policies this way, see [Publish a policy pack](/policies/publish-a-pack).

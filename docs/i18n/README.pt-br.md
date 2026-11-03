@@ -8,18 +8,21 @@
 
 <img src="https://d2wq11aau0arks.cloudfront.net/failproof/fa_updated_full.svg" alt="failproof ai" width="220" />
 
+<a href="https://trendshift.io/repositories/69722?utm_source=trendshift-badge&amp;utm_medium=badge&amp;utm_campaign=badge-trendshift-69722" target="_blank" rel="noopener noreferrer"><img src="https://trendshift.io/api/badge/trendshift/repositories/69722/daily?language=TypeScript" alt="FailproofAI%2Ffailproofai | Trendshift" width="250" height="55"/></a>
+<a href="https://trendshift.io/repositories/69722?utm_source=trendshift-badge&amp;utm_medium=badge&amp;utm_campaign=badge-trendshift-69722" target="_blank" rel="noopener noreferrer"><img src="https://trendshift.io/api/badge/trendshift/repositories/69722/daily" alt="FailproofAI%2Ffailproofai | Trendshift" width="250" height="55"/></a>
+
 [![npm](https://img.shields.io/npm/v/failproofai?style=flat-square&color=CB3837)](https://www.npmjs.com/package/failproofai)
 [![CI](https://img.shields.io/github/actions/workflow/status/failproofai/failproofai/ci.yml?branch=main&style=flat-square&label=CI)](https://github.com/failproofai/failproofai/actions)
 [![Supply Chain](https://img.shields.io/badge/supply%20chain-secure-brightgreen?style=flat-square)](https://github.com/failproofai/failproofai/actions/workflows/osv-scanner.yml)
 [![Discord](https://img.shields.io/badge/Discord-join%20us-5865F2?style=flat-square&logo=discord)](https://discord.befailproof.ai/)
-[![Docs](https://img.shields.io/badge/docs-befailproof.ai-002CA7?style=flat-square)](https://docs.befailproof.ai/introduction)
+[![Reddit](https://img.shields.io/badge/Reddit-r%2Ffailproofai-FF4500?style=flat-square&logo=reddit)](https://www.reddit.com/r/failproofai/)
+[![Docs](https://img.shields.io/badge/docs-befailproof.ai-002CA7?style=flat-square)](https://docs.befailproof.ai/)
 [![License](https://img.shields.io/badge/license-MIT%20%2B%20Commons%20Clause-blue?style=flat-square)](../../LICENSE)
 
 **Traduções:** [简体中文](../../docs/i18n/README.zh.md) · [日本語](../../docs/i18n/README.ja.md) · [한국어](../../docs/i18n/README.ko.md) · [Español](../../docs/i18n/README.es.md) · [Português](../../docs/i18n/README.pt-br.md) · [Deutsch](../../docs/i18n/README.de.md) · [Français](../../docs/i18n/README.fr.md) · [Русский](../../docs/i18n/README.ru.md) · [हिन्दी](../../docs/i18n/README.hi.md) · [Türkçe](../../docs/i18n/README.tr.md) · [Tiếng Việt](../../docs/i18n/README.vi.md) · [Italiano](../../docs/i18n/README.it.md) · [العربية](../../docs/i18n/README.ar.md) · [עברית](../../docs/i18n/README.he.md)
 
-**Resolução de falhas em tempo de execução para agentes de código.**
-Integra-se ao Claude Code e ao Codex. Detecta loops, ações perigosas e vazamentos de segredos
-antes que se tornem incidentes. Latência zero. Executa localmente.
+**Observabilidade e controle de acesso para todos os harnesses em que seus agentes rodam.**
+Onde quer que seus agentes executem, nós enxergamos — e podemos dizer não. O Failproof conecta 12 harnesses de agentes — CLIs de codificação como Claude Code e Codex, gateways de chat como Hermes, assistentes auto-hospedados como OpenClaw — capturando cada execução e bloqueando chamadas de ferramentas perigosas antes que aconteçam. 39 políticas embutidas. Zero latência. Roda localmente.
 
 </div>
 
@@ -29,7 +32,11 @@ antes que se tornem incidentes. Latência zero. Executa localmente.
 
 ---
 
-## CLIs de agentes suportados
+## Harnesses suportados
+
+Doze harnesses em duas classes — dez CLIs de codificação e dois gateways de chat e assistente (Hermes, OpenClaw). Uma única API de políticas e um único histórico de sessões para todos eles. O que uma política pode *bloquear* varia por harness: interromper uma chamada de ferramenta antes de executar está verificado nos doze; portões de fim de turno funcionam em oito. A [matriz por harness](https://docs.befailproof.ai/reference/harnesses#enforcement-capability) lista os eventos que cada um respeita.
+
+Agentes que não rodam em nenhum deles reportam via [Python SDK](https://docs.befailproof.ai/reference/custom-agents), que oferece rastreamento, sessões e auditorias. Enforcement nesses casos requer um hook no seu próprio runtime — [fale conosco](mailto:support@befailproof.ai) e mapeamos juntos.
 
 {/* A 6-column table instead of inline <img> runs: table columns never re-wrap,
      so the grid stays 2×6 at any window width (scrolling on very narrow screens
@@ -129,32 +136,38 @@ antes que se tornem incidentes. Latência zero. Executa localmente.
 
 ```sh
 npm install -g failproofai
-failproofai policies --install   # or just run `failproofai` and accept the first-run prompt
-failproofai
+failproofai config                             # conecte seus agentes e o daemon
+failproofai policies add FailproofAI/policies  # escolha o que aplicar
+failproofai                                    # dashboard em localhost:8020
 ```
 
-30 políticas integradas são ativadas imediatamente. Dashboard em `localhost:8020`. Desative o prompt de primeira execução com `FAILPROOFAI_NO_FIRST_RUN=1`.
+A configuração conecta os hooks e não seleciona **nenhuma** política — o segundo comando é o que coloca as proteções na máquina, e qualquer pacote é adicionado da mesma forma (`failproofai policies add <owner>/<repo>`; `policies show <owner>/<repo>` lê um antes). Execute `failproofai config` sem terminal — em CI, num container, com um agente controlando — e ele aplica as configurações em vez de perguntar. Em uma máquina que nunca foi configurada, qualquer outro comando executa o mesmo assistente primeiro; desative isso com `FAILPROOFAI_NO_FIRST_RUN=1`.
+
+Até que um pacote chegue, a única coisa em vigor é `block-failproofai-commands`, que está sempre ativa e não pode ser desligada ou pausada: um agente que pode pausar o enforcement consegue desligar todas as outras políticas.
 
 ---
 
-## O que é bloqueado
+## O que ele bloqueia
 
 | Política | O que bloqueia |
 |---|---|
-| `block-push-master` | Pushes diretos para `main` / `master` |
-| `block-force-push` | `git push --force` |
-| `block-work-on-main` | Commits, merges e rebases em `main` / `master` |
+| `block-env-files` | Leitura de `.env` e outros arquivos de segredos |
+| `warn-repeated-tool-calls` | O agente em loop na mesma chamada |
+| `block-sudo` | Escalada de privilégios |
+| `warn-destructive-sql` | `DROP`, `TRUNCATE`, `DELETE` sem restrição |
+| `block-terraform` / `block-kubectl` | Alterações não revisadas em infraestrutura ativa |
 | `block-rm-rf` | Exclusão recursiva de arquivos |
-| `sanitize-api-keys` | Vazamento de chaves de API no contexto do agente |
+| `block-force-push` / `block-push-master` | `git push --force`, pushes diretos para `main` |
 
-→ [Todas as 30 políticas integradas](https://docs.befailproof.ai/built-in-policies)
+Cada uma dessas políticas intercepta a chamada *antes* de executar, então funcionam nos doze harnesses. As quatro primeiras se aplicam a qualquer agente que possa chamar uma ferramenta; as três últimas são as favoritas dos desenvolvedores — CLIs de codificação são a classe de harness que cobrimos com mais profundidade. A família `sanitize-*` é separada: ela roda após o retorno de uma ferramenta, então reporta um segredo na saída da ferramenta em vez de impedi-lo de entrar no contexto.
+
+→ [Todas as 39 políticas embutidas](https://docs.befailproof.ai/policies/packs)
 
 ---
 
 ## Suas próprias políticas
 
-Coloque um arquivo em `.failproofai/policies/` — ele é carregado automaticamente, sem necessidade de flags.
-Faça o commit e todo o time recebe na próxima atualização.
+Coloque um arquivo em `.failproofai/policies/` — ele é carregado automaticamente, sem flags necessárias. Faça commit e toda a equipe recebe na próxima vez que fizer pull.
 
 ```js
 import { customPolicies, deny, allow } from "failproofai";
@@ -176,50 +189,68 @@ Três decisões disponíveis para cada política:
 |---|---|
 | `allow()` | Permite a operação |
 | `deny(message)` | Bloqueia — a mensagem é enviada de volta ao agente |
-| `instruct(message)` | Permite a passagem, mas adiciona contexto ao próximo prompt do agente |
+| `instruct(message)` | Deixa passar, mas adiciona contexto ao próximo prompt do agente |
 
-→ [Guia de políticas personalizadas](https://docs.befailproof.ai/custom-policies)
+→ [Escrever uma política](https://docs.befailproof.ai/policies/editor)
 
 ---
 
-## Visibilidade da sessão
+## Observabilidade
 
-Cada chamada de ferramenta feita pelo seu agente é registrada localmente. O dashboard mostra o que foi executado,
-o que foi bloqueado e o que a política informou ao agente — sem deixar dúvidas
-quando algo dá errado. → [Guia do dashboard](https://docs.befailproof.ai/dashboard)
+Enforcement é uma metade. A outra metade é ver o que o agente realmente fez.
+
+Execute `failproofai` sem argumentos e ele serve um dashboard em `localhost:8020` lendo o histórico de execuções já presente na sua máquina — sem conta, sem cadastro, nada sai da máquina. Você obtém a lista de sessões, a sequência de chamadas ao modelo, chamadas de ferramentas e decisões de hooks dentro de cada execução, o que foi bloqueado e o que a política disse ao agente, além de uma auditoria offline (`failproofai audit`) que varre seu histórico em busca de padrões arriscados e sugere políticas para evitá-los.
+
+→ [Dashboard local](https://docs.befailproof.ai/reference/local-dashboard) ·
+[Ler um trace](https://docs.befailproof.ai/sessions/read-a-trace) ·
+[Auditoria local](https://docs.befailproof.ai/audits/local-audit)
+
+**Failproof AI Observability** é o lado hospedado do mesmo modelo de dados, para equipes que rodam agentes em uma frota: todas as execuções de todos os harnesses em um só lugar, um grafo de execução com sub-agentes paralelos em suas próprias trilhas, latência p50/p95/p99 para modelos, ferramentas e hooks, rastreamento de custo e janela de contexto por modelo, rastreamento de erros, SQL sobre seus próprios traces com dashboards compartilháveis, avaliações pontuadas pelo seu próprio serviço, auditorias programadas que transformam falhas recorrentes em descobertas embasadas em evidências, e alertas roteados para Slack, e-mail ou um webhook assinado. Auto-hospedagem no seu próprio cluster está disponível no plano Enterprise.
+
+→ [Sessões](https://docs.befailproof.ai/sessions/overview) ·
+[Auditorias](https://docs.befailproof.ai/audits/overview) ·
+[Agendar uma demo](https://befailproof.ai/get-a-demo)
 
 ---
 
 ## Documentação
 
-| | |
+| Começar | |
 |---|---|
-| [Primeiros Passos](https://docs.befailproof.ai/getting-started) | Instalação e configuração inicial |
-| [Políticas Integradas](https://docs.befailproof.ai/built-in-policies) | Todas as 30 políticas com parâmetros |
-| [Políticas Personalizadas](https://docs.befailproof.ai/custom-policies) | Escreva as suas próprias |
-| [Configuração](https://docs.befailproof.ai/configuration) | Escopos de configuração e regras de mesclagem |
-| [Dashboard](https://docs.befailproof.ai/dashboard) | Monitor de sessão e atividade de políticas |
-| [Arquitetura](https://docs.befailproof.ai/architecture) | Como o sistema de hooks funciona |
+| [Quickstart](https://docs.befailproof.ai/start/quickstart) | Instale, conecte um harness, veja a primeira execução |
+| [Conceitos](https://docs.befailproof.ai/start/concepts) | Como o sistema de hooks funciona |
+| [Harnesses suportados](https://docs.befailproof.ai/reference/harnesses) | Todos os 12 e o que cada um pode aplicar |
+
+| Observar | |
+|---|---|
+| [Sessões](https://docs.befailproof.ai/sessions/overview) | Acompanhe uma execução: modelos, ferramentas, erros, latência |
+| [Ler um trace](https://docs.befailproof.ai/sessions/read-a-trace) | O que o grafo de execução está dizendo |
+| [Auditorias](https://docs.befailproof.ai/audits/overview) | Encontre padrões de falha em muitas sessões |
+| [Dashboard local](https://docs.befailproof.ai/reference/local-dashboard) | `localhost:8020`, sem conta necessária |
+
+| Aplicar | |
+|---|---|
+| [Pacotes de políticas](https://docs.befailproof.ai/policies/packs) | As políticas do Failproof AI e pacotes do hub de políticas |
+| [Escrever uma política](https://docs.befailproof.ai/policies/editor) | A partir de uma auditoria ou em código |
+| [Configuração](https://docs.befailproof.ai/policies/local-configuration) | Escopos de configuração, regras de mesclagem e parâmetros de política |
+
+| Instrumentar seu próprio agente | |
+|---|---|
+| [Python SDK](https://docs.befailproof.ai/reference/custom-agents) | Reporte execuções de um agente sem harness |
+| [Policy SDK](https://docs.befailproof.ai/reference/policy-sdk) | Referência de `allow` / `deny` / `instruct` |
 
 ---
 
 ## Licença
 
-MIT com [Commons Clause](https://commonsclause.com/) — gratuito para uso interno e pessoal; a revenda comercial do próprio failproofai requer um acordo separado. Veja [LICENSE](../../LICENSE) para o texto completo.
+MIT com [Commons Clause](https://commonsclause.com/) — gratuito para uso interno e pessoal; a revenda comercial do failproofai em si requer um acordo separado. Veja [LICENSE](../../LICENSE) para o texto completo.
 
 ---
 
 ## Contribuindo
 
-Consulte [CONTRIBUTING.md](../../CONTRIBUTING.md). Novas políticas, casos extremos e traduções são bem-vindos.
-
-> **Compile antes de começar.** Execute `bun install && bun run build` primeiro. Este repositório executa
-> os próprios hooks do failproofai sobre si mesmo, e eles resolvem o import `failproofai` a partir do
-> bundle compilado em `dist/` — sem uma compilação você terá erros de hook `Cannot find package 'failproofai'`.
-> Recompile após alterar `src/`. Veja
-> [Build before the in-repo dev hooks will work](../../CONTRIBUTING.md#build-before-the-in-repo-dev-hooks-will-work).
+Veja [CONTRIBUTING.md](../../CONTRIBUTING.md). Novas políticas, casos extremos e traduções são sempre bem-vindos.
 
 ---
 
-Desenvolvido por [Nivedit Jain](https://github.com/NiveditJain) e [Nikita Agarwal](https://github.com/nk-ag).
-[befailproof.ai](https://befailproof.ai)
+Feito com ❤️ por [befailproof.ai](https://befailproof.ai) em SF e Bengaluru.

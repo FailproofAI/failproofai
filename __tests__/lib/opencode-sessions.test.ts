@@ -1,26 +1,73 @@
 // @vitest-environment node
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
-vi.mock("node:child_process", () => ({
-  execFileSync: vi.fn(),
+// The seam is the DB module: these read opencode's SQLite file directly now.
+// `lib/opencode-db.ts` is covered against a real database in
+// opencode-db.test.ts; here it is stubbed so the message/part translation
+// below is tested on canned rows, as it was when the seam was execFileSync.
+vi.mock("@/lib/opencode-db", () => ({
+  withOpenCodeDb: vi.fn(),
+  queryOpenCodeDb: vi.fn(),
 }));
 
 vi.mock("@/lib/runtime-cache", () => ({
   runtimeCache: vi.fn(<T extends (...args: unknown[]) => unknown>(fn: T) => fn),
 }));
 
-import { execFileSync } from "node:child_process";
+import { withOpenCodeDb } from "@/lib/opencode-db";
+import type { SqliteReader } from "@/lib/sqlite-reader";
 import { getOpenCodeSessionLog, getOpenCodeSessionExport } from "@/lib/opencode-sessions";
 
-const mockExec = vi.mocked(execFileSync);
+const mockWith = vi.mocked(withOpenCodeDb);
+
+/** Every SQL string the code under test ran, with its bound parameters. */
+let executed: Array<{ sql: string; params: unknown[] }> = [];
 
 beforeEach(() => {
-  mockExec.mockReset();
+  mockWith.mockReset();
+  executed = [];
 });
 
-/** Three queries get fired in order: session row, message rows, part rows. */
+/**
+ * Canned rows for the three tables, dispatched by the table each query names.
+ *
+ * Call sites pass `[session, messages, parts]` — the order the three queries
+ * used to be fired in, when each was its own subprocess. They are now issued
+ * from a single open, so nothing guarantees that order stays; reading the
+ * table out of the SQL keeps these tests describing WHAT each row set is.
+ */
 function mockQueries(rows: Array<unknown[]>) {
-  mockExec.mockImplementation(() => JSON.stringify(rows.shift() ?? []));
+  const [session = [], messages = [], parts = []] = rows;
+  const rowsFor = (sql: string): unknown[] =>
+    /\bFROM\s+session\b/i.test(sql) ? session
+      : /\bFROM\s+message\b/i.test(sql) ? messages
+        : parts;
+  const db: SqliteReader = {
+    query: <T,>(sql: string, params: unknown[] = []) => {
+      executed.push({ sql, params });
+      return rowsFor(sql) as T[];
+    },
+    close: () => {},
+  };
+  mockWith.mockImplementation(async (fn: (d: SqliteReader) => unknown) => fn(db) as never);
+}
+
+/** The database is unreadable. */
+function mockDbUnavailable() {
+  mockWith.mockImplementation(async () => null as never);
+}
+
+/** The session row loads, but the message and part queries blow up. */
+function mockSessionOkRestFails(sessionRow: unknown) {
+  const db: SqliteReader = {
+    query: <T,>(sql: string, params: unknown[] = []) => {
+      executed.push({ sql, params });
+      if (/\bFROM\s+session\b/i.test(sql)) return [sessionRow] as T[];
+      throw new Error("db locked");
+    },
+    close: () => {},
+  };
+  mockWith.mockImplementation(async (fn: (d: SqliteReader) => unknown) => fn(db) as never);
 }
 
 describe("getOpenCodeSessionLog", () => {
@@ -31,12 +78,12 @@ describe("getOpenCodeSessionLog", () => {
 
   it("returns null for a non-matching id pattern (SQL-injection guard)", async () => {
     expect(await getOpenCodeSessionLog("'; DROP TABLE session; --")).toBeNull();
-    // Should not even call the binary.
-    expect(mockExec).not.toHaveBeenCalled();
+    // Not even worth opening the database for.
+    expect(mockWith).not.toHaveBeenCalled();
   });
 
   it("returns null when binary is missing", async () => {
-    mockExec.mockImplementation(() => { throw new Error("ENOENT"); });
+    mockDbUnavailable();
     expect(await getOpenCodeSessionLog("ses_abc")).toBeNull();
   });
 
@@ -280,14 +327,7 @@ describe("getOpenCodeSessionLog", () => {
   });
 
   it("returns null when the messages query fails after a successful session lookup", async () => {
-    let callCount = 0;
-    mockExec.mockImplementation(() => {
-      callCount++;
-      if (callCount === 1) {
-        return JSON.stringify([{ id: "ses_x", project_id: "p1", slug: "x", directory: "/repo", title: "X", time_created: 1000, time_updated: 1000 }]);
-      }
-      throw new Error("db locked");
-    });
+    mockSessionOkRestFails({ id: "ses_x", project_id: "p1", slug: "x", directory: "/repo", title: "X", time_created: 1000, time_updated: 1000 });
     const log = await getOpenCodeSessionLog("ses_x");
     expect(log).not.toBeNull();
     expect(log!.entries).toEqual([]);
@@ -356,22 +396,13 @@ describe("getOpenCodeSessionExport", () => {
   });
 
   it("returns null for SQL-injection-shaped input without calling the binary", async () => {
-    mockExec.mockReset();
+    mockWith.mockReset();
     expect(await getOpenCodeSessionExport("'; DROP TABLE session; --")).toBeNull();
-    expect(mockExec).not.toHaveBeenCalled();
+    expect(mockWith).not.toHaveBeenCalled();
   });
 
   it("returns null when a follow-up message/part query fails (rather than serving an empty export)", async () => {
-    let call = 0;
-    mockExec.mockImplementation(() => {
-      call += 1;
-      if (call === 1) {
-        // session row succeeds
-        return JSON.stringify([{ id: "ses_x", project_id: "p1", slug: null, directory: "/repo", title: "T", time_created: 1, time_updated: 2 }]);
-      }
-      // message and part queries error out (simulate binary trouble mid-flight)
-      throw new Error("opencode db crashed");
-    });
+    mockSessionOkRestFails({ id: "ses_x", project_id: "p1", slug: null, directory: "/repo", title: "T", time_created: 1, time_updated: 2 });
     expect(await getOpenCodeSessionExport("ses_x")).toBeNull();
   });
 });

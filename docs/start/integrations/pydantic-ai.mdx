@@ -1,0 +1,209 @@
+---
+title: "Pydantic AI"
+sidebarTitle: "Pydantic AI"
+description: "Instrument typed agents, tools, model calls, and retries."
+icon: "/images/frameworks/pydantic-ai.svg"
+---
+
+## Install
+
+```bash
+pip install 'failproofai-sdk[pydantic-ai]'
+```
+
+Supported: `pydantic-ai-slim` 2.0 to 3.0. 2.0 removed `Agent(instrument=...)` and introduced the capability protocol this adapter is built on, so 1.x cannot be instrumented this way.
+
+## Instrument
+
+```python
+import failproofai_sdk
+from pydantic_ai import Agent
+
+failproofai_sdk.configure(environment="production")
+failproofai_sdk.instrument()          # before constructing any Agent
+
+agent = Agent("openai:gpt-4o-mini", system_prompt="Be terse.")
+
+with failproofai_sdk.session():
+    result = agent.run_sync("...")
+```
+
+<Warning>
+  `instrument()` must run before you construct an `Agent`. The capability is appended at construction, so an agent built earlier carries none and records nothing, with no error because nothing went wrong. This is the most common cause of an empty trace with this adapter.
+</Warning>
+
+Module-scope agents are where this bites:
+
+```python
+# agents.py
+agent = Agent("openai:gpt-4o-mini")   # constructed at import time
+
+# main.py
+import failproofai_sdk
+failproofai_sdk.instrument()          # run this FIRST
+import agents                         # now the agent gets the capability
+```
+
+Confirm it took:
+
+```python
+print([type(c).__name__ for c in agent.root_capability.capabilities])
+# ['FailproofAI', 'ToolSearch', 'PendingMessageDrainCapability']
+```
+
+Pydantic AI merges the list you pass into a single `root_capability`, so there is
+no `agent.capabilities` attribute to read.
+
+Agents built while instrumented keep the capability, so you can `uninstrument()` and re-instrument without rebuilding them.
+
+## What gets recorded
+
+| Pydantic AI | Failproof event |
+| --- | --- |
+| Agent run | `agent_start`, `agent_end` |
+| Model request | `model_request`, `model_response`, with token usage |
+| Tool call | `tool_use`, `tool_result`, with the arguments the model sent |
+| `ModelRetry` from a tool | `tool_result` carrying an error |
+| Unhandled exception | `error`, then `agent_end` with outcome `failed` |
+
+There is no hook pair and no human-in-the-loop pair here. Pydantic AI has no node or step boundary to bracket and no built-in human pause, so there is nothing to map. If you build either, emit the events yourself — see [Custom agents](/reference/custom-agents).
+
+`output_type` makes no difference to the trace. A typed run and a string run produce the same events.
+
+## Example
+
+```python
+import failproofai_sdk
+from pydantic import BaseModel
+from pydantic_ai import Agent, ModelRetry
+
+failproofai_sdk.configure(environment="production")
+failproofai_sdk.instrument()
+
+PRICE = {"widget": 42.0, "gadget": 17.5}
+STOCK = {"widget": 120, "gadget": 0}
+
+
+class Report(BaseModel):
+    headline: str
+    out_of_stock: list[str]
+
+
+agent = Agent(
+    "openai:gpt-4o-mini",
+    output_type=Report,
+    system_prompt="Use the tools for every number. If a tool fails, note it and continue.",
+)
+
+
+@agent.tool_plain
+def price_of(item: str) -> float:
+    """Unit price of an item. Valid: widget, gadget."""
+    return PRICE[item.lower().strip()]
+
+
+@agent.tool_plain
+def stock_of(item: str) -> int:
+    """Units in stock. Valid: widget, gadget."""
+    return STOCK[item.lower().strip()]
+
+
+@agent.tool_plain
+def restock_eta(item: str) -> str:
+    """Restock ETA. Not available."""
+    raise ModelRetry(f"no restock schedule for {item!r} — answer without it")
+
+
+with failproofai_sdk.session():
+    with failproofai_sdk.agent("inventory", goal="stock report"):
+        result = agent.run_sync(
+            "For widget and gadget, get price and stock. "
+            "For anything out of stock, try the restock ETA. Then produce the report."
+        )
+```
+
+In the trace, `restock_eta` appears as a `tool_result` carrying an error, followed by another model call where the agent works around it, and the run still ends `success`. Both facts are kept.
+
+## Errors, retries, and control flow
+
+Pydantic AI raises exceptions for three different things, and the adapter separates them:
+
+| Exception | Treated as | Result |
+| --- | --- | --- |
+| `ModelRetry`, `ToolRetryError`, `ToolFailedError` | A real tool failure | `tool_result` with an error; the run can still end `success` |
+| `SkipToolExecution`, `SkipToolValidation`, `SkipModelRequest`, `CallDeferred`, `ApprovalRequired` | Control flow | Not an error; the run is being steered |
+| Anything else | A failure | `error`, then `agent_end` with outcome `failed` |
+
+`ModelRetry` is in the first group deliberately. It means an attempt genuinely failed and the model was asked to try again, which is what a tool span's error field is for. Classifying it as control flow would hide real tool failures behind a green run.
+
+## Name your spans
+
+Pydantic AI's own run span is named `agent`. Wrap the call to give it a label you chose:
+
+```python
+with failproofai_sdk.session():
+    with failproofai_sdk.agent("inventory", goal="stock report"):
+        agent.run_sync("...")
+```
+
+The framework's span then nests under `inventory`, and that is where the model and tool events hang.
+
+Keep `agent_id` low cardinality. It is the primary facet on every dashboard surface, so use a role name, never a UUID or per-run string.
+
+## Control the session
+
+Resolved in this order, first match winning:
+
+1. `instrument("pydantic_ai", session_id=...)`
+2. The enclosing `failproofai_sdk.session()` scope
+3. The run's `conversation_id`, then its `run_id`
+4. A generated `uuid4().hex`
+
+```python
+with failproofai_sdk.session(f"chat-{user_id}"):
+    agent.run_sync("...")
+```
+
+## Options
+
+```python
+failproofai_sdk.instrument(
+    "pydantic_ai",
+    session_id=None,          # pin every run to one session id
+    capture_content=True,     # False drops prompts and completions from payloads
+)
+```
+
+## Common problems
+
+<AccordionGroup>
+  <Accordion title="The run works but no events appear">
+    The `Agent` was constructed before `instrument()` ran. See the warning above, and check `agent.root_capability.capabilities`.
+  </Accordion>
+
+  <Accordion title="A plain exception in a tool kills the run">
+    A bare `raise` propagates; that is Pydantic AI's design. To let the model work around it, raise `ModelRetry` with a message it can act on. The failure is recorded either way.
+  </Accordion>
+
+  <Accordion title="There is a nested agent span I did not create">
+    That child is Pydantic AI's own run span, and it is where the model and tool events hang. Drop your own scope if you want a single span, at the cost of the custom name.
+  </Accordion>
+
+  <Accordion title="Tracebacks start with a truncation marker">
+    Pydantic AI's async graph stack is longer than the payload field limit, and a traceback's last line is the exception itself. This field is trimmed from the front rather than the back, so the line you need survives.
+  </Accordion>
+</AccordionGroup>
+
+## Next
+
+<Columns cols={3}>
+  <Card title="How it works" icon="workflow" href="/start/integrations/custom-agents#going-deeper">
+    Pairs, ids, session lifecycle, and delivery.
+  </Card>
+  <Card title="Read a trace" icon="route" href="/sessions/read-a-trace">
+    Follow causality through the session you just captured.
+  </Card>
+  <Card title="Other frameworks" icon="plug" href="/start/integrations">
+    LangGraph, CrewAI, LlamaIndex, and custom agents.
+  </Card>
+</Columns>

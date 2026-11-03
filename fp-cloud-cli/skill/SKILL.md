@@ -1,0 +1,418 @@
+---
+name: fp-cloud-cli
+description: |-
+  The way to answer "how are my production AI agents doing?" and to run the team's agent-observability deployment — reach for it even on casual phrasing that names no tool.
+
+  Trigger when the user wants to:
+  • inspect agent telemetry — did agents error/fail/go flaky; sessions, events, latency, token usage, slowest models, sentiment; eval/quality scores and whether quality dropped;
+  • operate the deployment — triage issues and audits; manage alerts, access, keys, settings, dashboards, and queries;
+  • manage Cloud enforcement — compose/test/backtest/publish policy versions (regex, Jev or both), deploy them to fleet machines or single agents, inspect guardrails, promote, or roll back;
+  • author, dry-run, deploy and backfill hosted code, LLM-judge or Jev evaluators (`fp evaluators`).
+
+  Served by the `fp` CLI against FailproofAI Cloud.
+
+  NOT for publishing reusable GitHub policy packs (`failproofai-policy-publish`), deciding what to evaluate (`failproofai-eval-brainstorm`), designing an evaluation's logic (`failproofai-eval-author`), instrumenting an app (`failproofai-sdk`), or debugging the local collector/daemon.
+---
+
+# FailproofAI Cloud CLI
+
+`fp` is a command-line client for a FailproofAI Cloud deployment. It authenticates
+either as a signed-in **user** or with a scoped **API key** (§2), and every command
+takes `--json`, so it's built to be driven by an agent.
+
+## 1. Find how to invoke it
+
+Resolve this once, then reuse it for every call:
+
+1. If `fp` is on `PATH` (`command -v fp`) → use **`fp`** (it's
+   installed via pipx / uv tool / pip). This is the normal case.
+2. Else, if you're in (or under) a repo with an `fp-cloud-cli/` directory containing the
+   `fp_cli` package → run it from there with **`uv run fp`** (a local dev
+   build). The first run after a code change prints `Building…`/`Installed…` on
+   stderr — that's `uv`, not CLI output; ignore it.
+3. Else the CLI isn't available here → tell the user to install it
+   (`pipx install fp-cloud-cli` or `uv tool install fp-cloud-cli`) and stop. Don't try to
+   reach the dashboard another way.
+
+Don't go spelunking in the CLI source tree for flags — if you're unsure of one,
+run `fp <group> <cmd> --help`. The source is not the documented contract
+and reading it wastes effort.
+
+Throughout this skill, `fp` means "whichever form you resolved."
+
+## 2. The contract (the CLI enforces it, work with it, don't fight it)
+
+- **Global options go BEFORE the command:** `fp --json events`, never
+  `fp events --json`. Globals are `--base-url`, `--org`, `--token`,
+  `--api-key`, `--json`, `--insecure`/`--secure`, `--timeout`, `--quiet`/`-q`,
+  `--no-color`. After the command they're a usage error.
+- **Two ways to authenticate, and they are not interchangeable:**
+
+  | | How you supply it | What it is |
+  |---|---|---|
+  | **Session** | `fp login` (interactive; it emails a one-time code) | a signed-in **user**, carrying that person's org memberships and permissions |
+  | **API key** | `--api-key <key>`, or `FP_API_KEY` in the environment | a scoped **credential**, carrying exactly the permissions it was granted |
+
+  A key is what you want in CI or any other non-interactive context: no browser, no
+  emailed code, nothing to expire mid-run.
+
+  **Credential precedence, in full** (`resolve_auth`, `fp_cli/_context.py`). Read it
+  as a ladder — the first rung that applies wins, and an explicit flag outranks
+  *every* environment variable, not just its own:
+
+  0. `--api-key` **and** `--token` together → usage error, exit 2. A silent guess
+     about which you meant is the one outcome worth refusing.
+  1. `--api-key <key>` → key mode
+  2. `--token <tok>` → session mode. **This beats an ambient `FP_API_KEY`** — the
+     flag is checked before the environment value, so "`FP_API_KEY` wins" is only
+     true between the two env vars.
+  3. `FP_API_KEY` → key mode
+  4. `FP_TOKEN` → session mode
+  5. the saved session from `fp login` → session mode
+
+  The rung that catches people is 2: exporting `FP_API_KEY` in CI and *also*
+  passing `--token` runs as that user's saved session, with their org memberships,
+  rather than under the scoped key you meant to audit.
+
+  **A key is never written to the CLI's saved config** — pass it every time, from
+  the environment. `--api-key ""` means "no override" and does **not** fall back to
+  a saved session (Click treats an empty env var as unset, so it falls to rung 4).
+
+- **Some commands need a signed-in user.** `login`, `logout`, `orgs *`, the whole
+  `agent` group, `agent brief`, `orgs create`, `evaluators draft`, `query compose`, `slack *`, `plan`, `plan claim`, `keys update`, every
+  `policies` subcommand except `test` (it runs locally and calls nothing), and all of `fleet *` /
+  `guardrails *` refuse a key with a usage error (**exit 2**) and make **no
+  network call at all** — there is no user to sign in, no saved active org to
+  switch, no private assistant thread to own, and the enforcement write routes
+  are root-only and deliberately absent from `/v1`. `keys update` is in that list
+  rather than a special case: `keys:update` can never be granted to a key, so it
+  is refused up front like the rest. The key is not the problem to fix — plan
+  around them rather than retrying or hunting for a flag. The one inverse case:
+  `usage windows` is served on the versioned API only, so it needs `--api-key`
+  and refuses a session with exit 2.
+- **Default to `--json` and parse it.** It prints clean JSON to stdout and
+  nothing else. The plain output uses open Rich tables for human eyes. Use the
+  rendered output only when the user explicitly wants to *look* at something.
+- **Data → stdout, status/errors/prompts → stderr.** So a `--json` stdout
+  capture is pure JSON even when a status line is shown.
+- **Branch on exit codes — don't scrape error text:**
+
+  | code | meaning | what to do |
+  |---|---|---|
+  | 0 | ok | parse stdout |
+  | 1 | unexpected / server error | report it to the user |
+  | 2 | usage error (bad flags/args) | fix the command and retry |
+  | 3 | can't reach the dashboard | check base-url / connectivity |
+  | 4 | no usable credential — not signed in, session expired, **or the API key was rejected** | session: user must run `fp login`. Key: it's missing, mistyped, disabled, or belongs to another deployment — don't retry, and don't fall back to a session |
+  | 5 | authenticated but missing permission | message names the exact permission |
+  | 6 | resource not found / newer capability unavailable | check the id or Cloud version; do not retry blindly |
+
+## 3. First call: confirm you're connected
+
+Before real work, run `fp --json whoami` and react to the exit code:
+
+- **exit 4** → no usable credential. If the user is working from a session, tell
+  them to run `fp login` (it emails a one-time code and prompts
+  interactively — you can't complete it for them, and don't fabricate a token).
+  If a key was supplied, the key itself was rejected — say so and stop; logging in
+  is not the fix, and silently switching to a session would run the command as a
+  different identity than the user asked for.
+- **base-url** → the CLI defaults to the hosted product,
+  `https://app.befailproof.ai`, so a plain `fp login` works out of the box.
+  Only pass `--base-url <url>` (or set `FP_DASHBOARD_URL`) for a self-hosted
+  or dev deployment — a local dev stack is usually `http://localhost:3000`. A
+  scheme-less URL is rejected as a usage error (exit 2).
+- **exit 0** → `whoami` returns the active org slug and your permissions; trust
+  that for the org name and to know what you're allowed to do before attempting a
+  gated command (don't assume a particular org slug — read it from `whoami`).
+- **In key mode, `whoami` answers a different question.** It still exits 0 —
+  `whoami` never errors — but it reports *how* you are authenticated rather than
+  *who* you are: there is no signed-in user, so it says so and names the auth mode
+  and the org it will act on. Read the auth mode; don't read "no user" as "not
+  authenticated" and don't try to log in on the strength of it. Since it isn't a
+  permission check either, let your first real read (`fp --json list envs`)
+  be what confirms the key works.
+
+**Multi-tenant:** a user can belong to several orgs; the active one is chosen at
+login. Override for a single command with the global `--org <slug>`
+(`fp --org acme sessions`); change the saved default with
+`fp orgs switch <slug>`.
+
+> ⚠️ **With a key, name the org explicitly.** A key bound to one organization only
+> ever acts on that one. But a key that is **not** bound to a single organization
+> has nothing to fall back on — key mode never reads a saved active org — so the
+> deployment resolves it to its own default, and you get **that** org's data: no
+> error, no warning, results that look perfectly valid. If you cannot tell which
+> kind of key you hold, pass `--org <slug>` (or set `FP_ORG`) on every
+> command. Naming the org the key already belongs to is a no-op, and naming the
+> wrong one fails loudly instead of quietly — both better than guessing.
+
+## 4. Mutations: confirm with the user FIRST
+
+The CLI normally prompts "are you sure?" before a destructive action — **but it
+auto-skips that prompt whenever it isn't attached to a terminal, which is
+exactly how you run it. `--json` skips it too.** So the safety prompt will not
+fire for you.
+
+Therefore: **before running any command that changes state, tell the user
+plainly what will change (which resource, what value) and get an explicit OK.**
+Then run it. (When the user's request *is* the instruction to act — "create a
+key called X" — state the exact command you'll run and proceed; when it's vague
+or wide-blast — delete, disable a user, rotate a key, resolve an incident —
+stop and confirm.)
+
+If a create fails because the name already exists (exit 2), **report that and
+ask** — don't rename-and-retry or rotate/regenerate the existing one. A
+`keys regenerate` you didn't intend breaks whatever already uses that key.
+
+State-changing commands: `keys create/update/disable/regenerate`,
+`users create/update/disable/enable`, `settings set`,
+`alerts create/update/delete/test` and `alerts issues --create`, the writing `issues` subcommands
+(`ack/assign/resolve/close/archive/unarchive/clear/comment-add/comment-delete/subscribe/unsubscribe/open`),
+`audits create/edit/delete/run`, `audits contracts create/update` and the finding-triage verbs
+(`ack/mute/dismiss/resolve/reopen/assign`),
+`query create/update/delete`, `dashboards create/update/delete` and `dashboards tiles add/update/remove/layout`,
+`roles create/update/delete`, `users delete`, `settings context-windows set/delete`, `otel enable/disable`,
+`slack disconnect`, `orgs create`, `plan claim`, `sessions re-evaluate` and `sessions import`,
+`evaluators create/deploy/enable/disable/label/backfill` (an enabled evaluator scores every
+new session; judge/Jev evaluators and Jev dry-runs spend model budget),
+`policies backtest --run` (spends Jev allowance), `agent ask --approve`,
+`agent rename/delete`, `orgs switch`, and — the
+highest-consequence of the lot — `policies publish/enable/disable/delete` and
+`fleet deploy/rollback/rename`, which change what is ENFORCED on production
+machines. A `fleet deploy` replaces a machine's entire policy set, so name the
+policies being dropped, not just the ones being added.
+Read-only commands (§5 "Observe") never need this.
+
+## 5. Command map
+
+Pick the right group; full flags are in `references/commands.md` — read it when
+you need a flag you don't already know.
+
+**Observe (read-only):**
+- `events` — event log (light/payload-free responses by default; `--search` still scans payload server-side; `--full` or `--fields payload` returns the raw payload — keep bounded to a `--session-id`). `--session-id --event-type --env --agent-id --since --search --full --all`
+- `sessions` — agent runs (time/env/agent/session/status), no scores.
+- `evals` — evaluation results + scores; `--aggregate` for a health rollup; `--score key:min..max`.
+- `errors` — errored events; `--aggregate` for count / sessions / agents / last-seen.
+- `usage` — current org usage for its fixed 30-day metering window; needs `usage:read`.
+- `list <kind>` — **discover valid filter values first**: `envs agents event_types score_filters models hooks tools error_types trigger_events eval_envs metric_keys`.
+- `sessions show|export|history|re-evaluate <id>` — one run in depth; `sessions import FILE...` uploads transcripts/JSONL.
+- `events latency` — latency/token aggregate. `sentiment summary|messages|sessions|session <id>` — conversation sentiment.
+- `dashboards list|show|create|update|delete` + `dashboards tiles <id> list|add|update|remove|layout` — org dashboards of saved-query tiles.
+
+**Manage (permission-gated, mutations):**
+- `keys list|show|create|update|disable|regenerate` — API keys; secret shown once.
+- `users list|show|create|update|disable|enable` — referenced by **email**.
+- `settings list|schema|set` — fixed registry; `schema` shows what each key accepts.
+- `users delete <id>|defaults`, `roles list|show|create|update|delete` (permission sets), `settings context-windows list|set|delete`, `otel status|enable|disable`, `slack status|disconnect`, `orgs create`, `plan [claim]`.
+- `alerts list|show|create|update|delete|test|recipients|issues` — referenced by **name** (`issues` takes the alert id); full flags in `references/commands.md#alerts`.
+- `issues list|count|facets|show|ack|assign|resolve|close|archive|unarchive|clear|comment-add|comment-list|comment-delete|subscribe|subscribers|unsubscribe|open` — by id (short ids accepted). `list`/`count`/`facets` take the inbox filters (`--agent-id --env --machine --source --audit-id --assignee --archived --search --since`). **One board for everything needing attention**: alert breaches, hand-raised issues, and audit findings, told apart by a `source` of `alert` / `manual` / `audit`. (This group was called `incidents` before; the old name is gone.)
+- `audits list|show|create|edit|delete|run|runs` — scheduled sweeps, referenced by **name**; `audits findings|finding` + the triage verbs `ack|mute|dismiss|resolve|reopen|assign` act on a finding **id**. `audits run <name>` only *queues* a run (poll `audits runs <name>` for completion). `audits contracts list|show|create|update` — per-agent contracts the audits read. See §8.
+
+**Enforce (cloud-managed policy, session-only — see §2):**
+- `policies list|show|publish|enable|disable|delete|test|compose|author|backtest|candidacy` — policy versions. `author "<intent>" [--kind regex|jev|both]` drafts one from your org's events; `backtest` replays a file or published id against stored calls (jev/both: free estimate, `--run` spends Jev allowance); `candidacy --issue <id>` asks whether a policy could prevent an issue. None of the three publishes. `publish` mints a version of a kind — `regex` (a local `.mjs`), `jev` (`--semantic checks.json`: Jev declarations, no JavaScript) or `both` (the two, the JavaScript reviewable by its own checks); list/show print the kind and the Jev check names; `test` runs one against a synthetic context locally (it applies each policy's `match` filter, so a policy that does not cover the `--event`/`--tool` you pass is reported `skipped`, not run). `enable`/`disable`/`delete` take `--yes`.
+- `fleet list|show|deploy|diff|history|rollback|rename` — which machines run which policies, and the policy errors each machine reports. **`deploy` REPLACES a machine's whole set** (`--add`/`--remove` amend it, `--set` replaces, `--create` mints a deployment). `--target POLICY=INTEGRATION[/agt_ID]` scopes one assignment to an integration or a single agent (repeat to OR), `--all-agents POLICY` clears that scope. There is no Jev mode to set: FailproofAI Cloud turns Jev on for a machine while a `jev`/`both` policy is deployed to it (off otherwise); trial one with `:observe`. `deploy` prints the plan and asks **only on an interactive terminal without `--json`** — under `--json` or with stdin redirected it applies immediately, so read `fleet show` first if you want review.
+- `guardrails summary|timeline` — what enforcement actually did; `--since 1h|6h|24h|7d`, `--machine`.
+
+**Analytics & assistant:**
+- `query list|show|create|update|delete|run|schema` — saved ClickHouse SQL + ad-hoc runner (`query run <name>` or `query run --sql "…"`); `query schema [table]` for table layout.
+- `query compose "<question>" [--run]` (AI SQL, session only) and `query export <id>|--sql … [--format csv|json] [--out FILE]`.
+- `agent health|models|chats|ask|show|rename|delete|brief` — built-in assistant; `agent ask "…"` starts a chat, `--chat <short-id>` continues one. Assistant writes are declined in scripts/`--json` unless `--approve` (only with the user's explicit OK).
+- `evaluators list|show|create|deploy|draft|dry-run|enable|disable|label|instances|schema|jobs|backfill` — hosted evaluator authoring (see "Author an evaluator" below); `evals` stays the results reader.
+
+**Identity:** `login`, `logout`, `whoami`, `orgs {list,switch,current,perms,create}`, `version`, `help`.
+All of `login` / `logout` / `orgs` — like the whole `agent` group, `keys update`, and
+every `policies` (except `test`) / `fleet` / `guardrails` subcommand — are **session-only**: with a key
+they exit 2 without calling anything (§2). `whoami`, `version` and `help` work either way.
+
+## 6. Translating plain-English requests
+
+Users speak in outcomes, not commands ("is anything broken?", "give CI a key",
+"who has access?"). Map intent → command; when a value is fuzzy, run a discovery
+command (`list <kind>`, `whoami`, a `list` subcommand) before committing.
+
+| The user says… | Reach for |
+|---|---|
+| "is anything broken / failing today?", "any errors?" | `errors --since 24h --aggregate`, then `errors --since 24h --all --limit 1000` to break down |
+| "why did that run fail?", "what happened in session X?" | `events --session-id X --all --limit 1000` (and `errors --session-id X`) |
+| "how are my agents doing?", "show recent runs" | `sessions --since 24h` (add `--status error` for just failures) |
+| "are the evals / quality scores ok?", "did quality drop?" | `evals --aggregate`; drill with `evals --score <key>:..0.5` |
+| "how many events / how much traffic last week?" | `query schema` then `query run --sql "SELECT count() FROM events WHERE ts >= now() - INTERVAL 7 DAY"` |
+| "what has this org used this metering window?" | `usage` (or `--json usage` for the complete response) |
+| "is anything on fire?", "any alerts firing / open issues?" | `alerts list` + `issues list` (and `issues count`) |
+| "what's assigned to me?", "open issues for agent X" | `issues list --assignee me`, `issues list --agent-id X` (`issues facets` shows valid values) |
+| "alert me when errors spike" | `alerts create <name> --trigger-kind metric_threshold --trigger-spec '…' --severity warning` — **state it, then create** |
+| "would this policy have blocked anything?", "backtest it" | `policies backtest <file-or-id>` (jev/both: estimate first; `--run` only with the user's OK — it spends Jev allowance) |
+| "block X only for the Codex agent" | `fleet deploy <machine> --add <policy> --target <policy>=codex` — **confirm first** |
+| "add an evaluation for Y", "score sessions for Y" | `failproofai-eval-author` to design it, then `evaluators draft`/`create`/`deploy` (+ `--backfill 7d`) |
+| "upload these transcripts" | `sessions import <files> --dry-run`, then without `--dry-run` |
+| "ack / look at / resolve that issue" | `issues list` → `issues show <id>` → **confirm** → `issues ack`/`resolve <id>` |
+| "clear all our issues", "fresh start", "we changed the agents" | **settle the scope first** (`--all-audits` leaves alert and hand-opened issues alone; `--everything` does not; `--audit <id>` is one audit) → `issues clear <scope> --dry-run` → show the count → **confirm** → `issues clear <scope>` |
+| "we're not going to fix that one" | `issues close <id>` (NOT `resolve` — closed survives a recurrence) |
+| "get that off my board" | `issues archive <id>` |
+| "run an audit", "what did the audit find?", "any findings to triage?" | `audits list` → `audits run <name>` (queues) → `audits runs <name>` (wait for `succeeded`) → `audits findings --audit <name>`; triage with `audits resolve/mute/dismiss <id>` — **confirm first** |
+| "give CI / this service an API key" | `keys create <name> --add events:add` (scope to what they describe) — **state it, then create**; capture the one-time secret |
+| "who has access?", "add / remove a teammate", "make them read-only" | `users list` / `users show <email>` / `users create`/`update`/`disable` |
+| "change a setting", "what can I configure?" | `settings schema` (what's tunable) then `settings set <key> --value …` — **confirm first** |
+| "what models can the assistant use?", "ask the assistant …" | `agent models`; `agent ask "…"` |
+| "what can I query?", "run this SQL" | `query schema` / `query run --sql "…"` (or a saved `query run <name>`) |
+| "what am I allowed to do?", "which org am I in?" | `whoami`, `orgs current`, `orgs perms` |
+
+If the ask is ambiguous about scope (which org, which agent, read vs. change),
+resolve it with a discovery command or a quick clarifying question rather than
+guessing.
+
+## 7. How to actually use it (recipes)
+
+Discover → filter → read JSON → answer in prose:
+
+```bash
+fp --json list agents                                       # find valid agent ids
+fp --json errors --since 24h --aggregate                    # how bad is it right now? (full-window totals)
+fp --json errors --since 24h --all --limit 1000 | jq '.errors[] | {session_id, error_type}'
+fp --json sessions --status error --since 7d --all --limit 1000   # which runs failed
+fp --json events --session-id run-001 --all --limit 1000    # a run's timeline (light: summaries, no payload)
+fp --json events --full --session-id run-001 --all | jq '.events[].payload'   # that run's RAW payloads (--full, bounded)
+```
+
+- **Raw `payload` is opt-in** — `events`/`errors` responses are payload-free by default; add
+  `--full` (or `--fields payload`) to get it, and **always bound it to a `--session-id`**
+  (the full feed is slow/OOM-prone at scale). For one event or a precise slice, read the
+  column directly: `fp --json query run --sql "SELECT payload FROM events WHERE id = <id>"`
+  (or `WHERE session_id = '<id>'`). See `references/commands.md` → "Getting the raw payload".
+
+- **`list <kind>` before filtering** — don't guess an env or agent id; the
+  discovery command tells you exactly what exists.
+- **`--since`** takes `24h` / `7d` / etc.
+- **`--all` is bounded by `--limit`, which defaults to 50.** So a bare
+  `errors --since 24h --all` silently returns only the first 50 rows (with
+  `next_cursor: null`, looking complete). For a real sweep pass a high explicit
+  limit: **`--all --limit 1000`** (or higher). When you only need the totals, use
+  `--aggregate` — it covers the whole window regardless of row caps, so it's the
+  reliable cross-check that you pulled everything.
+- **Triage flow:** `issues list` → `issues show <id>` (read the activity
+  log) → confirm with the user → `issues ack <id>` or `resolve <id>`.
+- **`resolve` vs `close`:** `resolve` claims a fix, so a recurring audit finding
+  REOPENS it — that is the signal that the fix did not hold. `close` records a
+  decision (won't fix / not a problem / stale) and survives the recurrence. Pick
+  the one that matches what the user actually said; they are not synonyms.
+- **"clear all our issues" / "fresh start":** that is `issues clear`, not a loop
+  of `resolve`. **Settle the scope before you run anything** — "all our issues"
+  does not pick one: `--all-audits` leaves alert and hand-opened issues on the
+  board, `--everything` takes them too, and `--audit <id>` is one audit's work.
+  Ask which they mean, then `--dry-run` first, tell the user the number it
+  returns, and only then run it for real. It resolves the audit findings too and
+  writes **no** suppression, so anything still broken comes back and reopens its
+  issue — say that, because users often expect "clear" to mean "silence".
+- **Investigate a regression:** `evals --aggregate` to see which score dropped →
+  `evals --score helpfulness:..0.5` to list the bad runs → `events --session-id <id>`
+  to see what happened inside one.
+
+When you've pulled what you need, answer the user in prose or a small table —
+don't paste raw JSON back unless they asked for it.
+
+## 8. Audits — the async sweep, and how findings become issues
+
+An **audit** is a scheduled sweep that analyses recent agent behaviour (errors,
+runaway tool loops, leaked secrets, low eval scores, …) and emits **findings**.
+Two things about the flow matter when driving it from the CLI:
+
+- **`audits run <name>` is asynchronous — it only *queues*.** A `{"queued": true}`
+  does NOT mean the run finished (the analysis can take minutes). Poll
+  `audits runs <name>` until the newest row reads `succeeded` (or `failed`) before
+  reading findings — don't assume results are ready on the call that queued them.
+  A disabled audit, or one already mid-run, refuses to queue (exit 1).
+- **Findings ARE issues — it's one bucket.** Every finding graduates to an issue
+  (`source = audit`) and carries its full content there, so the same problem shows
+  up under both `audits findings` and `issues list`. Triage is **globally
+  consistent in both directions**: `audits resolve <finding-id>` closes the linked
+  issue, and `issues resolve <issue-id>` on an audit issue resolves the finding —
+  either surface works, they never disagree. Triage a finding with
+  `audits ack|mute|dismiss|resolve|reopen <id>` (durable **mute/dismiss** suppress
+  the pattern org-wide by fingerprint; **resolve** leaves no suppression, so a true
+  recurrence reopens the issue). Reads need `audits:read`, every mutation
+  `audits:write` (note: triaging a finding needs `audits:write`, not an `issues:*`
+  permission — the audit is the system of record and the issue follows it).
+
+Typical end-to-end: `audits list` → `audits run <name>` → poll `audits runs <name>`
+→ `audits findings --audit <name>` (highest priority first) → `audits finding <id>`
+for the full write-up → **confirm with the user** → `audits resolve <id>`.
+
+## Author an evaluator
+
+Use `fp evaluators` for hosted authoring; `fp evals` remains the results reader.
+To decide *what* to measure use `failproofai-eval-brainstorm`; to design the
+evaluation itself (code vs Jev vs LLM judge, the condition, the rubric) use
+`failproofai-eval-author` — then come back here to draft, dry-run and deploy it.
+Read [the evaluator command reference](references/commands.md#author-an-evaluator)
+for the full flags and API spec shape. Creation enables a definition by default;
+confirm the key, version, kind and budget before creating/deploying on a live org.
+
+Discover with `fp --json evaluators instances` and `fp --json evaluators schema`.
+The instance must be enabled. Authoring needs `evaluations:trigger`; session
+dry-runs and schema profiling also need `events:read`.
+
+Code workflow (write `error_free.py` as a single restricted Python expression,
+not a module with imports or a function):
+
+```python
+EvalResult(score=Score(1.0 if session.count("error") == 0 else 0.0), reasoning="Error-free session")
+```
+
+```bash
+fp --json evaluators draft "Measure the absence of error events with code" --kind code --out error-free.json
+fp --json evaluators create --file error-free.json --dry-run-on run-001
+fp --json evaluators dry-run --code error_free.py --session run-001
+fp --json evaluators deploy error_free --code error_free.py --version 2 --dry-run-on run-001
+fp --json evaluators list --key error_free --all
+fp --json evals --since 24h
+```
+
+Review the draft before creating. It may choose a different `eval_key`: read
+the file and use its key later; the filename does not determine the key.
+
+Judge workflow (server selects the model; judge dry-runs are refused):
+
+```bash
+fp --json evaluators create --key relevance --name Relevance --judge \
+  --criteria "Grade how directly the response answers the request" \
+  --step "Assess relevance and specificity on a continuous scale" --threshold 0.7
+fp --json evaluators deploy relevance --version 2 --judge \
+  --criteria "Grade relevance, accuracy and completeness" --threshold 0.8
+fp --json sessions re-evaluate run-001
+fp --json sessions history run-001
+```
+
+Jev workflow (dry-runs spend model budget):
+
+```bash
+fp --json evaluators create --key resolution --name Resolution --jev noul \
+  --instructions "Did the assistant resolve the request?" \
+  --true "Resolved with supporting evidence" --false "Unresolved" --threshold 0.8
+fp --json evaluators dry-run --jev noul --instructions "Was the request resolved?" \
+  --true "Resolved" --false "Unresolved" --session run-001
+fp --json evaluators deploy resolution --version 2 --jev noul \
+  --instructions "Was the request resolved without unsupported claims?" \
+  --true "Resolved with evidence" --false "Unresolved or unsupported"
+fp --json evaluators show resolution@2
+```
+
+Use `--jev score` with 3–5 distinct `--level` values, ordered worst to best, for
+a rubric. `deploy` creates the new immutable version **before** disabling older
+enabled versions. A partial failure names the new id: inspect `list --all`,
+then disable any remaining old version; do not retry creation blindly.
+Backfill (`evaluators backfill`, or `deploy --backfill 7d`) covers code, judge
+and Jev evaluators, at most 90 days, and queues only the (session, evaluator)
+pairs not scored yet; judge/Jev backfills spend model budget, so run
+`backfill --dry-run` first and tell the user the count.
+
+Human mode displays dry-run outcomes before creation/deployment. Failed runs
+stop the write unless `--force` is explicitly authorized; do not add it merely
+to get past a failed check. Plan offers and claims require `fp login`, not a key.
+
+AI drafting needs a signed-in session (`fp login`); evaluator API operations can
+use a scoped key. Unknown-route 404s exit 6 with “not available on this
+FailproofAI Cloud yet”; missing-record 404s report that the record was not found
+(also exit 6). An assistant approval is different from ordinary
+mutation confirmation: `agent ask` declines writes in scripts/`--json` unless
+`--approve` was explicitly authorized by the user.

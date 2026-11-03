@@ -1,0 +1,74 @@
+---
+title: "HTTP API"
+description: "Authentifizierung bei der öffentlichen Failproof AI Cloud `/v1` API und Verwendung der generierten Endpunkt-Referenz."
+icon: "braces"
+---
+
+Die öffentliche API ist unter `/v1` in Ihrem Failproof AI Dashboard erreichbar.
+
+## Schlüssel erstellen und Anfrage stellen
+
+<Tabs>
+  <Tab title="Dashboard">
+    1. Öffnen Sie **Administration → Keys**, wählen Sie **Schlüssel erstellen** und wählen Sie das engste Berechtigungs-Preset, das die Integration abdeckt.
+    2. Fügen Sie individuelle Berechtigungen nur bei Bedarf hinzu, erstellen Sie den Schlüssel und kopieren Sie das einmalig angezeigte Secret.
+    3. Stellen Sie eine Testanfrage an `/v1/sessions` und bestätigen Sie, dass der Schlüssel auf der Keys-Seite aktiv bleibt.
+    4. Rotieren oder deaktivieren Sie den Schlüssel über sein Aktionsmenü, wenn die Integration den Eigentümer wechselt.
+
+    ![Die neue API-Key-Seitenleiste mit Berechtigungs-Presets und individuellen Grants.](/images/dashboard/key-create.png)
+
+    Die Erstellungs-Seitenleiste ist oben abgebildet. Das einmalige Secret erscheint nur, nachdem Sie **Erstellen** ausgewählt haben; kopieren Sie es vor dem Schließen der Bestätigung.
+  </Tab>
+  <Tab title="CLI">
+    Erstellen Sie einen Leseschlüssel und verwenden Sie ihn direkt mit `fp` oder `curl`:
+
+    ```bash
+    fp keys create reliability-reader \
+      --permission-set read-only
+
+    fp --api-key <key> sessions --since 24h
+    ```
+
+    ```bash
+    curl "https://app.befailproof.ai/v1/sessions?limit=20" \
+      -H "Authorization: Bearer $FAILPROOFAI_KEY"
+    ```
+  </Tab>
+</Tabs>
+
+Schlüssel sind auf eine Organisation und ein Berechtigungs-Set beschränkt. Eine Anfrage ohne die erforderliche Berechtigung des Endpunkts gibt `403` zurück und benennt die fehlende Berechtigung.
+
+## Organisationsauswahl
+
+Ein Organisationsschlüssel wirkt automatisch auf seine Organisation. Ein instanzweit gültiger Schlüssel kann die Organisation pro Anfrage auswählen:
+
+<Tabs>
+  <Tab title="Dashboard">
+    Verwenden Sie den Organisations-Umschalter in der Dashboard-Kopfzeile, bevor Sie **Administration → Keys** öffnen. Dort erstellte Schlüssel gehören zur ausgewählten Organisation. Bestätigen Sie den Organisations-Slug in der URL und in den Schlüsseldetails, bevor Sie die Zugangsdaten in die Automatisierung übernehmen.
+
+  </Tab>
+  <Tab title="CLI">
+    Verwenden Sie `--org` vor dem Befehl oder senden Sie den Organisations-Header für einen instanzweit gültigen API-Schlüssel.
+
+    ```bash
+    fp orgs list
+    fp --org reliability-team sessions --since 24h
+    ```
+
+    ```bash
+    curl "https://app.befailproof.ai/v1/usage" \
+      -H "Authorization: Bearer $FAILPROOFAI_KEY" \
+      -H "X-AgentEye-Org: reliability-team"
+    ```
+  </Tab>
+</Tabs>
+
+Verwenden Sie die generierten Endpunkt-Seiten in diesem Abschnitt für aktuelle Pfade, Parameter, Berechtigungsanforderungen und Statuscodes. Die Spezifikation wird aus den Server-Routen-Annotationen generiert und gegen den `/v1`-Router geprüft.
+
+Die aktuelle Spezifikation deckt Routen, Methoden, Parameter, Berechtigungen und Statuscodes vollständig ab. Einige Response-Bodies bleiben absichtlich ohne Typisierung, da der Server sie noch als dynamisches JSON konstruiert. Untersuchen Sie eine echte Antwort, bevor Sie einen stark typisierten Client für einen Endpunkt ohne Response-Schema generieren.
+
+Verwenden Sie `Content-Type: application/json` für JSON-Schreiboperationen. Behandeln Sie `401` als fehlende oder ungültige Authentifizierung, `403` als gültige Identität ohne die erforderliche Berechtigung, `404` als fehlende oder organisationsseitig nicht zugängliche Ressource, `409` als Zustandskonflikt und `422` als ungültigen Feld- oder Berechtigungswert. Fehlerantworten enthalten eine lesbare Nachricht; Berechtigungsfehler nennen zusätzlich den erforderlichen Grant.
+
+<Warning>
+  Die Bereitstellung der Policy-Durchsetzung wird bewusst außerhalb der gewöhnlichen öffentlichen `/v1`-Oberfläche verwaltet. Verwenden Sie den unterstützten Cloud-Deployment-Workflow.
+</Warning>

@@ -221,8 +221,11 @@ describe("unsupported_platform — a permanent property of the machine", () => {
 });
 
 describe("reasons that are properties of the invocation, not the machine", () => {
-  it("re-offers for not_a_tty and running_as_sudo", () => {
-    for (const reason of ["not_a_tty", "running_as_sudo"] as const) {
+  it("re-offers for running_as_sudo", () => {
+    // `not_a_tty` was here too, and is gone with the refusal it named: a run
+    // with no terminal has no questions to ask, so it applies rather than
+    // declining, and there is nothing to re-offer.
+    for (const reason of ["running_as_sudo"] as const) {
       expect(blockerCleared(attempt({ reason }), probe()), reason).toBe(true);
     }
   });
@@ -249,7 +252,6 @@ describe("what the user is told", () => {
       "daemon_failed",
       "cancelled",
       "unsupported_platform",
-      "not_a_tty",
       "running_as_sudo",
     ] as const) {
       const text = attemptHintLines(attempt({ reason })).join("\n");
@@ -260,9 +262,33 @@ describe("what the user is told", () => {
 
   it("does not tell an unsupported-platform machine to re-run the command that just hard-failed", () => {
     // blockerCleared only re-offers this reason on a CLI version change, so
-    // `failproofai config` would hit the exact same guard right now.
+    // `failproofai config` would hit the exact same guard right now. (The
+    // command is written plain now, with no backticks, so the check is for
+    // the command itself.)
     const text = attemptHintLines(attempt({ reason: "unsupported_platform" })).join("\n");
-    expect(text).not.toContain("Run `failproofai config`");
+    expect(text).not.toContain("failproofai config");
     expect(text).toContain("update");
+  });
+
+  it("is one ▲ line and one fix line, the command plain without colour and pink with it", () => {
+    expect(attemptHintLines(attempt({ reason: "needs_root" }), { color: false })).toEqual([
+      "",
+      "▲ Setup is not finished: it needs root to install the failproofaid service.",
+      "  Run it when you are ready:  failproofai config",
+      "",
+    ]);
+    const saved = { COLORTERM: process.env.COLORTERM, TERM: process.env.TERM };
+    process.env.COLORTERM = "truecolor";
+    process.env.TERM = "xterm-256color";
+    try {
+      const [, state, fix] = attemptHintLines(attempt({ reason: "needs_root" }), { color: true });
+      expect(state).toMatch(/^\x1B\[38;2;227;179;65m▲\x1B\[0m Setup is not finished/);
+      expect(fix).toBe("  Run it when you are ready:  \x1B[38;2;228;88;125mfailproofai config\x1B[0m");
+    } finally {
+      for (const [k, v] of Object.entries(saved)) {
+        if (v === undefined) delete process.env[k];
+        else process.env[k] = v;
+      }
+    }
   });
 });

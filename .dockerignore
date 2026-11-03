@@ -1,0 +1,52 @@
+# Build context for the canary box images (integration-suite/local/Dockerfile.*),
+# whose context is the REPO ROOT because they bake the checkout in.
+#
+# Until those images existed no build had a repo-root context — the sandbox image
+# builds from integration-suite/, the runner from integration-suite/local/ — so a
+# stray file in the tree could never reach a layer. That changes here, and these
+# images are PUBLIC on GHCR, so this file is the boundary.
+#
+# THE CANARY WRITES REAL CREDENTIALS INTO ITS CHECKOUT AT RUN TIME. ci-entrypoint.sh
+# decodes the vendor OAuth tarballs and assembles the gateway env-file, and both
+# used to land under the repo root. They are moved to a run-scoped directory in
+# this same change, and they are ALSO named here: a cleanup trap that does not run
+# (a killed run, a `docker kill`) is the normal case, not the exotic one, and
+# `install.sh --build-local` builds from the operator's own checkout — which on the
+# box is the very tree those files land in.
+#
+# The Dockerfiles additionally ASSERT none of these arrived, so a rename here that
+# silently stops matching fails the build instead of publishing a credential.
+
+# ── credentials and per-run state (see above) ───────────────────────────────
+tokens/
+tokens-*/
+canary.env
+canary-*.env
+integration-suite-state*.json
+secrets.env
+*.pem
+*.key
+.env
+.env.*
+!.env.example
+
+# ── rebuilt inside the image, or irrelevant to it ───────────────────────────
+node_modules/
+.next/
+dist/
+out/
+coverage/
+target/
+*.tgz
+*.log
+
+# ── local scratch that has no business in a published image ─────────────────
+.claude/settings.local.json
+.vscode/
+.idea/
+**/.DS_Store
+
+# The SHA is passed as a build ARG instead — baking 100+ MB of history to run
+# `git rev-parse` once is not a trade. translate reconstitutes the one commit it
+# needs at run time (it has to reach the remote to push anyway).
+.git/

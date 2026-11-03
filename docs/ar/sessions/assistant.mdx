@@ -1,0 +1,53 @@
+---
+title: "مساعد Failproof"
+description: "حلل وشغل Failproof AI باستخدام اللغة الطبيعية، من الأسئلة والاستفسارات إلى لوحات المعلومات والتدقيق."
+icon: "message-square-text"
+---
+
+اطلب من مساعد Failproof القيام بأي شيء في Failproof AI باستخدام اللغة الطبيعية. يمكنه تحليل الجلسات والأعطال، وتشغيل الاستعلامات، وبناء لوحات المعلومات، والتحقيق في التقييمات والتنبيهات، والمساعدة في إنشاء وتشغيل عمليات التدقيق دون الحاجة إلى ترجمة المهمة إلى شاشات المنتج أو أوامر CLI.
+
+```text
+Why did production checkout agents regress this week?
+Build a dashboard for tool failures, latency, and evaluation scores.
+Create an audit that finds agents retrying the same failed action without changing approach.
+Show me the sessions behind the most common audit finding.
+```
+
+يعمل المساعد مع البيانات والأذونات المتاحة في المؤسسة النشطة. راجع أدلته والتغييرات المقترحة قبل تطبيق الإجراءات التي تؤثر على مستخدمين أو وكلاء آخرين.
+
+## اطلب من المساعد
+
+<Tabs>
+  <Tab title="Dashboard">
+    1. حدد **Open agent chat** واشرح ما تريد فهمه أو إنشاءه أو تشغيله.
+    2. راجع استدعاءات المساعد للأدوات والجداول ونتائج الاستعلام أثناء عمله.
+    3. افتح الجلسة المقتبسة أو التنبيه أو الاستعلام للتحقق من النتيجة مقابل البيانات الأصلية.
+    4. ابدأ دردشة جديدة للتحقيق في موضوع مختلف، أو استخدم سجل الدردشة لمتابعة نفس تسلسل التحليل.
+
+    ![مساعد Cloud يجيب على سؤال قابلية الملاحظة مع التحليل والاستعلامات الداعمة.](/images/dashboard/assistant.png)
+  </Tab>
+  <Tab title="CLI">
+    ```bash
+    fp agent health
+    fp agent models
+    fp agent ask "Which production checkout agents had the most tool errors in the last 24 hours?"
+    fp agent chats
+    fp agent show <chat-id>
+    fp agent ask "Open representative sessions" --chat <chat-id>
+    ```
+
+    استخدم `fp agent rename <chat-id> --title <title>` للحفاظ على التحقيق واضحًا و `fp agent delete <chat-id>` لحذفه.
+  </Tab>
+</Tabs>
+
+## العمل بفعالية مع المساعد
+
+- أعطه الهدف أولاً؛ أضف بيئة أو سير عمل أو نطاق زمني عند أهمية تلك الحدود.
+- تعامل مع SQL المُنشأ والملخصات كمساعدة للتحقيق، وليس كدليل نهائي.
+- افتح جلسات تمثيلية قبل إنشاء تدقيق أو مشكلة أو تنبيه أو سياسة.
+- اجعل مرشحات المؤسسة والبيئة والوقت واضحة.
+- احفظ SQL مفيدة كاستعلام حتى يتمكن مشغل آخر من إعادة إنتاج النتيجة.
+
+<Warning>
+  يمكن للمساعد فقط قراءة ما يمكن لمستخدمك الحالي الوصول إليه. لا توسع الأذونات لجعل السؤال يعمل؛ اطلب من مشغل مصرح به تشغيل التحقيق بدلاً من ذلك.
+</Warning>

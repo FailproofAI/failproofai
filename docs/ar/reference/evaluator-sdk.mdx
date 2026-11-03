@@ -1,0 +1,118 @@
+---
+title: "Evaluator SDK"
+description: "شغّل عامل التقييم الخاص بك، لقضاة LLM وأي شيء آخر لا يمكن لـ Python المستضاف القيام به."
+icon: "gauge"
+---
+
+يقوم Evaluator SDK بتشغيل التقييمات على بنيتك التحتية الخاصة. يسجّل عاملك التقييمات لديه في Failproof AI، ويستحوذ على الجلسات عند انتهائها، ويسجّلها، ويرسل النتائج، كل ذلك عبر HTTPS الصادرة: لا شيء يتصل بها. استخدمه فيما لا يمكن [لـ Python المستضاف](/ar/evaluations/write) القيام به — قضاة LLM ، استدعاءات النموذج، الحزم، الأسرار، والوصول إلى الشبكة. تظهر نتائجه بجانب النتائج المستضافة على [صفحة التقييمات](/ar/sessions/evaluations)، موسومة بـ **customer**.
+
+يتم شحنه في `failproofai-sdk`، تحت `failproofai_sdk.evaluator`؛ استيراد SDK التتبع لا يحمّله.
+
+```bash
+pip install failproofai-sdk
+```
+
+## اكتب التقييمات
+
+```python
+from failproofai_sdk.evaluator import ConditionResult, EvalResult, Evaluator, Metric, Score
+
+app = Evaluator(name="customer-production", version="2026.08.1")
+
+
+@app.eval(
+    "tool_efficiency",
+    version="1.0.0",
+    labels=["tools", "deterministic"],
+    when=lambda session: ConditionResult(session.count("tool_use") > 0, "no_tool_calls"),
+)
+def tool_efficiency(session):
+    calls = session.events_of_type("tool_use")
+    distinct = {e.payload.get("tool_name") for e in calls if e.payload.get("tool_name")}
+    value = len(distinct) / len(calls)
+    return EvalResult(
+        score=Score(value, passed=value >= 0.7),
+        metrics={"tool_call_count": Metric(len(calls), unit="events")},
+        reasoning=f"{len(distinct)} distinct tools across {len(calls)} calls",
+    )
+
+
+@app.eval(
+    "answer_relevance",
+    version="judge-v1",
+    labels=["llm_judge", "relevance"],
+    when=lambda session: ConditionResult(
+        session.count("human_input") > 0 and session.count("model_response") > 0,
+        "no_exchange",
+    ),
+    timeout_seconds=30,
+)
+async def answer_relevance(session):
+    question = session.events_of_type("human_input")[-1].payload.get("response")
+    answer = session.events_of_type("model_response")[-1].payload.get("content")
+    value, reasoning = await ask_judge(question, answer)  # your LLM call: a 0-1 score and why
+    return EvalResult(score=Score(value, passed=value >= 0.7), reasoning=reasoning)
+
+
+if __name__ == "__main__":
+    app.run_from_env()
+```
+
+- `@app.eval(key, version=...)` يسجّل تقييماً. المفتاح هو ما تتخطط نتائجه تحته؛ غيّر الإصدار كلما تغيرت المنطق، وكل نتيجة تحتفظ بالإصدار الذي أنتجها. عامل واحد يحمل ما يصل إلى 100 تقييم.
+- `result_kind` هو `"score"` ما لم تقل خلاف ذلك. للتقييم `"metric"` أو `"assertion"`، سمّ إدخال `metrics` أو `assertions` واحد باسم المفتاح: هذا الإدخال هو نتيجته.
+- `when` يقرر ما إذا كانت جلسة قابلة للتطبيق. أرجع `ConditionResult(False, "<reason>")` لتخطي واحدة، والسبب يتم تسجيله.
+- يمكن أن يكون التقييم دالة عادية أو `async`، و `timeout_seconds` يحدده.
+- مفاتيح الحمل الجديد — `tool_name` و `response` و `content` أعلاه — هي ما ترسله وكلاؤك، لذا اقرأها من جلسة حقيقية.
+
+## شغّل العامل
+
+ضع مفتاحاً بإذن `evaluations:run`، تم إنشاؤه تحت **Administration → Keys**، في `FAILPROOFAI_EVALUATOR_TOKEN` — اضبطه من متجر الأسرار بدلاً من كتابته في أمر — وابدأ العامل:
+
+```bash
+FAILPROOFAI_EVALUATOR_URL=https://app.befailproof.ai python evaluator.py
+```
+
+بدون كتلة `__main__`، `python -m failproofai_sdk.evaluator evaluator:app` يفعل الشيء نفسه.
+
+| المتغير | الافتراضي | الغرض |
+| --- | --- | --- |
+| `FAILPROOFAI_EVALUATOR_URL` | مطلوب | حيث يوجد Failproof AI: `https://app.befailproof.ai` للسحابة. HTTPS ما لم يشير إلى loopback |
+| `FAILPROOFAI_EVALUATOR_TOKEN` | مطلوب | مفتاح بـ `evaluations:run` |
+| `FAILPROOFAI_EVALUATOR_WORKER_ID` | `<hostname>-<pid>` | يسمّي هذا العامل |
+| `FAILPROOFAI_EVALUATOR_CONCURRENCY` | `1` | الجلسات التي يسجّلها هذا العامل في وقت واحد |
+| `FAILPROOFAI_EVALUATOR_REQUEST_TIMEOUT_SECONDS` | `30` | المهلة الزمنية لكل طلب إلى Failproof AI |
+| `FAILPROOFAI_EVALUATOR_DRAIN_TIMEOUT_SECONDS` | `60` | المدة التي ينتظرها العامل المتوقف عن التشغيل للتشغيل قيد الطيران |
+| `FAILPROOFAI_EVALUATOR_ALLOW_INSECURE_HTTP` | `false` | السماح بـ HTTP عادي لعنوان URL ليس loopback — انظر التحذير أدناه |
+| `FAILPROOFAI_EVALUATOR_MODULE` | لا شيء | `module:attribute` لـ `python -m failproofai_sdk.evaluator` |
+
+<Warning>
+  `FAILPROOFAI_EVALUATOR_ALLOW_INSECURE_HTTP` يرسل كل شيء بنص واضح. يحمل العامل `FAILPROOFAI_EVALUATOR_TOKEN` كرأس `Authorization: Bearer` في كل طلب، والنسخ المرسلة التي يجلبها هي الجلسات نفسها — لذا يقرأ أي شخص على المسار كلاهما، والمفتاح الذي يقرؤونه يشغّل التقييمات حتى تقوم بتدويره. استخدمه فقط على شبكة تطوير معزولة. في كل مكان آخر، يجب أن يكون العنوان HTTPS؛ loopback لا يحتاج إلى أي علم.
+</Warning>
+
+## أنواع النتائج
+
+| النوع | الحقول |
+| --- | --- |
+| `Score` | `value` (0 إلى 1)، `passed`، `unit` (الافتراضي `ratio`)، `display_value`، `description` |
+| `Metric` | `value`، `unit`، `display_value`، `description` |
+| `Assertion` | `passed`، `description` |
+| `EvalResult` | `score`، `metrics`، `assertions`، `reasoning`، `summary`، `labels` |
+| `ConditionResult` | `applicable`، `reason_code` |
+
+يحمل `EvalResult` على الأقل درجة واحدة أو متري أو تأكيد، وبحد أقصى 25، كل واحد تحت مفتاح فريد.
+
+## الجلسة
+
+| الحقل أو الطريقة | يعطيك |
+| --- | --- |
+| `session_id` و `agent_id` و `environment` | هوية الجلسة |
+| `started_at` و `ended_at` | متى بدأت وانتهت |
+| `event_count` و `events` | النسخة المرسلة الكاملة والمرتبة |
+| `count(event_type)` | عدد الأحداث من ذلك النوع التي تحتويها |
+| `events_of_type(event_type)` | تلك الأحداث، بالترتيب |
+
+يحمل كل حدث `id` و `ts` و `event_type` و `payload`.
+
+## مقيّم الإرث
+
+يتم إيقاف Evaluator SDK السابق — خدمة HTTP استدعاها Failproof AI على `EVALUATOR_ENDPOINT`، والإجابة على `/evaluate` والتحقيق من خلال `JobPending` —. قم ببناء مقيّمين جدد على هذا العامل؛ يمكن لمشغلي مثيل ذاتي الاستضافة الذي يقوم بتشغيل خدمة قديمة أن يحتفظوا بها خلال الانتقال.

@@ -1,0 +1,47 @@
+---
+title: "अपनी पहली विफलता को एक नीति से रोकें"
+description: "एक नीति संस्करण लेखक, इसे observe मोड में तैनात करें, और फिर इसे लागू करें।"
+icon: "shield-check"
+---
+
+किसी नीति का उपयोग केवल तभी करें जब आप असुरक्षित कार्रवाई और उन वैध कार्रवाइयों का वर्णन कर सकें जिन्हें अनुमति दी जानी चाहिए।
+
+<Tabs>
+  <Tab title="Dashboard">
+    <Steps>
+      <Step title="नीति लिखें">
+        **Admin → policy editor** पर जाएं। डेमो नीति से शुरू करें, इसके स्रोत की समीक्षा करें या संपादित करें, फिर **publish version** चुनें। प्रकाशन एक अपरिवर्तनीय संस्करण बनाता है जिसे आप मशीनों पर तैनात कर सकते हैं।
+
+        ![Policy editor compose view एक डेमो नीति के साथ एक अपरिवर्तनीय संस्करण के रूप में प्रकाशित होने के लिए तैयार है।](/images/dashboard/policy-editor.png)
+      </Step>
+      <Step title="इसे एक मशीन पर तैनात करें">
+        **Admin → enforcement** पर जाएं, लक्ष्य मशीन को विस्तृत करें, और **edit this machine** चुनें। प्रकाशित डेमो नीति जोड़ें, इसके संस्करण को पिन करें, **observe** चुनें, और तैनाती को लागू करें।
+
+        ![Machine deployment editor एक प्रकाशित नीति संस्करण के साथ observe मोड में चुना गया और तैनाती लागू करने से पहले।](/images/dashboard/enforcement-editor.png)
+      </Step>
+      <Step title="नीति सत्यापित करें">
+        उस मशीन पर एक नया agent session चलाएं, फिर **Observe → policy** खोलें। मशीन चुनें और पुष्टि करें कि डेमो नीति नीति मैपिंग और निर्णय टाइमलाइन में दिखाई देती है। Observe मोड रिकॉर्ड करता है कि नीति क्या करेगी बिना कार्रवाई को ब्लॉक किए।
+
+        ![Policy page निर्णय कुल, समय के साथ प्रवर्तन गतिविधि, और स्थानीय और Cloud-managed नीति मैपिंग दिखा रहा है।](/images/dashboard/policy-observe.png)
+      </Step>
+    </Steps>
+  </Tab>
+  <Tab title="CLI">
+    Cloud नीति लेखन और fleet तैनाती प्रशासनिक workflows हैं। इसे प्रकाशित करने से पहले एक ही नीति को मान्य करने के लिए स्थानीय CLI का उपयोग करें:
+
+    ```bash
+    failproofai policies --install --custom ./payment-retry.policies.ts \
+      --cli claude --scope project
+    failproofai config --status
+    ```
+
+    Cloud-visible नीति निर्णयों का निरीक्षण करने के लिए `fp` का उपयोग करें:
+
+    ```bash
+    fp events --event-type hook_completed --env production --since 24h
+    fp sessions --env production --since 24h
+    ```
+
+    दोनों चरण CLI से भी उपलब्ध हैं: `fp policies publish <id> <file>` एक संस्करण बनाता है और `fp fleet deploy <machine-id> --add <id>` इसे एक मशीन पर रखता है। Dashboard समकक्ष **Admin → policy editor** और **Admin → enforcement** हैं।
+  </Tab>
+</Tabs>

@@ -1,0 +1,48 @@
+---
+title: "LlamaIndex"
+description: "Установите, инструментируйте и посмотрите на первую трассировку."
+icon: "/images/frameworks/llamaindex.svg"
+---
+
+Три шага к первой трассировке LlamaIndex. Для шагов workflow, retrieval, reaper и опций см. [полное руководство](/ru/start/integrations/llamaindex).
+
+## Установка
+
+```bash
+pip install 'failproofai-sdk[llamaindex]'
+```
+
+## Инструментирование
+
+API агента LlamaIndex является асинхронным. Каждая область работает как с `async with`, так и с `with`.
+
+```python
+import asyncio
+
+import failproofai_sdk
+
+failproofai_sdk.configure(environment="production")
+failproofai_sdk.instrument()
+
+
+async def main():
+    async with failproofai_sdk.session():
+        await agent.run("...")
+
+
+asyncio.run(main())
+```
+
+<Warning>
+  Без одного дополнительного аргумента в вашей LLM каждый подсчет токенов в вашей трассировке будет null — `llama-index-llms-openai` не запрашивает использование при потоковой передаче. См. [Подсчет токенов](/ru/start/integrations/llamaindex#token-counts).
+</Warning>
+
+## Проверьте, что это пришло
+
+Запустите один раз, затем откройте **Observe → Sessions** и выберите вашу среду. Ваш запуск появится как восстановленная трассировка.
+
+Если ничего не появляется, подтвердите подключение машины с помощью `failproofai config --status`.
+
+<Card title="Полное руководство LlamaIndex" icon="arrow-right" href="/ru/start/integrations/llamaindex">
+  Подсчет токенов, что записывается, шаги workflow, retrieval, опции и распространенные проблемы.
+</Card>

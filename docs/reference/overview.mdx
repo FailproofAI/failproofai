@@ -1,0 +1,87 @@
+---
+title: "Integrations and reference"
+description: "Connect supported agent harnesses, SDKs, CLIs, and the HTTP API."
+icon: "braces"
+---
+
+Choose the integration closest to where your agent already runs.
+
+<Columns cols={2}>
+  <Card title="Agent harnesses" icon="plug-zap" href="/reference/harnesses">
+    Install hooks for supported coding and autonomous agent CLIs.
+  </Card>
+  <Card title="Agent frameworks and SDKs" icon="plug" href="/start/integrations">
+    Instrument LangGraph, CrewAI, LlamaIndex, Pydantic AI, or a custom agent.
+  </Card>
+  <Card title="Python SDK reference" icon="python" href="/reference/custom-agents">
+    Configuration, the event catalog, correlation rules, and delivery.
+  </Card>
+  <Card title="Local dashboard" icon="monitor-cog" href="/reference/local-dashboard">
+    Review local projects, sessions, policy activity, and offline audits.
+  </Card>
+  <Card title="Failproof AI CLI" icon="terminal" href="/reference/failproof-cli">
+    Configure local capture, hooks, policies, audits, delivery, and machine state.
+  </Card>
+  <Card title="Jev integration" icon="shield-check" href="/reference/jev">
+    Compare session evaluations with live policy review, then configure providers, keys, and modes.
+  </Card>
+  <Card title="Failproof Cloud CLI" icon="cloud-cog" href="/reference/cloud-cli#cli-commands">
+    Query and administer Cloud sessions, audits, issues, alerts, keys, users, and settings.
+  </Card>
+  <Card title="Evaluator SDK" icon="gauge" href="/reference/evaluator-sdk">
+    Score complete or inactive sessions with a FastAPI service.
+  </Card>
+  <Card title="Custom policies" icon="shield-plus" href="/reference/policy-sdk">
+    Author and test workflow-specific allow, instruct, and deny decisions.
+  </Card>
+  <Card title="Self-hosting" icon="cloud-cog" href="/reference/self-hosting">
+    Deploy the Cloud control plane on a customer-managed Kubernetes cluster.
+  </Card>
+</Columns>
+
+The generated [HTTP API reference](/reference/http-api) covers the public `/v1` surface. Hand-written pages explain workflows that span multiple endpoints or use administrative interfaces outside that public surface.
+
+## Connect an agent and verify data
+
+<Tabs>
+  <Tab title="Dashboard">
+    1. Open **Administration → Keys**, create a key with `events:add` and `policies:pull`, and copy the secret.
+    2. Configure the integration using the matching page above.
+    3. Open **Observe → Events** to confirm events arrive, then **Observe → Sessions** to confirm they form complete runs.
+    4. Filter to the integration's environment and inspect one session for the model, tool, error, and policy fields needed by audits.
+
+    Start with the key drawer. The selected grants determine whether the machine can send events and receive Cloud-managed policies.
+
+    ![The new API key drawer used to grant event ingestion and policy delivery permissions.](/images/dashboard/key-create.png)
+
+    After connecting the integration, use the Sessions list to confirm that its events are being grouped into complete runs in the expected environment.
+
+    ![The Sessions list used to verify that a newly connected integration is reporting complete agent runs.](/images/dashboard/sessions-list.png)
+
+    Open one of these sessions before considering the integration complete; the trace should contain the model, tool, error, and policy evidence your audits need.
+  </Tab>
+  <Tab title="CLI">
+    Create a machine key, then read the secret it prints into the shell. `read -s` takes it at a prompt that does not echo, so it never appears in a command or in shell history:
+
+    ```bash
+    fp keys create agent-production \
+      --add events:add \
+      --add policies:pull
+    read -rs FAILPROOFAI_CLOUD_TOKEN && export FAILPROOFAI_CLOUD_TOKEN
+    ```
+
+    Connect the Failproof daemon and verify the first session:
+
+    ```bash
+    failproofai config
+
+    failproofai flush --wait
+    fp sessions --since 1h --env production
+    fp events --since 1h --env production --limit 20
+    ```
+
+    Use `fp --json sessions ...` when another tool will consume the result. Global flags such as `--json`, `--org`, and `--base-url` must come before the command.
+
+    See the [Failproof AI CLI reference](/reference/failproof-cli) for local commands and the [Failproof Cloud CLI reference](/reference/cloud-cli#cli-commands) for `fp` commands.
+  </Tab>
+</Tabs>

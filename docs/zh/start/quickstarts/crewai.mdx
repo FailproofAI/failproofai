@@ -1,0 +1,37 @@
+---
+title: "CrewAI"
+description: "安装、接入并查看你的第一条追踪记录。"
+icon: "/images/frameworks/crewai.svg"
+---
+
+三步完成你的第一条 CrewAI 追踪。关于每个事件的内容、流程及故障排查，请参阅[完整指南](/zh/start/integrations/crewai)。
+
+## 安装
+
+```bash
+pip install 'failproofai-sdk[crewai]'
+```
+
+## 接入
+
+```python
+import failproofai_sdk
+
+failproofai_sdk.configure(environment="production")
+failproofai_sdk.instrument()
+
+with failproofai_sdk.session():
+    Crew(agents=[analyst, writer], tasks=[gather, summarise]).kickoff()
+```
+
+你的 crew、agents、tasks 或 tools 无需任何改动。`instrument()` 会订阅 CrewAI 的模块级事件总线。
+
+## 确认数据已到达
+
+运行一次后，打开 **Observe → Sessions** 并选择你的环境。你的运行将以重建的追踪形式出现。
+
+如果没有数据到达，请使用 `failproofai config --status` 确认机器已连接。
+
+<Card title="完整 CrewAI 指南" icon="arrow-right" href="/zh/start/integrations/crewai">
+  记录的内容、流程、Token 用量、Span 命名、配置选项及常见问题。
+</Card>

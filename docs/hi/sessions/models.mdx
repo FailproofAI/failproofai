@@ -1,0 +1,27 @@
+---
+title: "Models"
+description: "मॉडल लेटेंसी, टोकन, कॉन्टेक्स्ट उपयोग और ट्रैफिक वितरण की तुलना करें।"
+icon: "cpu"
+---
+
+Models का उपयोग यह देखने के लिए करें कि क्या किसी मॉडल, एजेंट, environment, या समय सीमा के साथ reliability या cost में परिवर्तन हुआ है।
+
+<Tabs>
+  <Tab title="Dashboard">
+    1. **Observe → Models** पर जाएं।
+    2. समय सीमा सेट करें, फिर environment, मॉडल, एजेंट, या session ID द्वारा फ़िल्टर करें।
+    3. लेटेंसी, टोकन खपत, कॉन्टेक्स्ट-विंडो उपयोग और मॉडल वितरण की समीक्षा करें।
+    4. मिलान करने वाली events को खोलने के लिए एक चार्ट पॉइंट या वितरण सेगमेंट चुनें।
+
+    ![Models पेज जो लेटेंसी, percentile, टोकन, cost, कॉन्टेक्स्ट-विंडो और मॉडल-वितरण views दिखा रहा है।](/images/dashboard/models.png)
+  </Tab>
+  <Tab title="CLI">
+    ```bash
+    fp list models
+    fp events --event-type model_request,model_response --env production --since 24h
+    fp --json events --fields ts,agent_id,session_id,event_type,output_tokens,context_fill
+    ```
+
+    मॉडल-स्तर के aggregates के लिए एक सहेजी गई query का उपयोग करें जो dedicated CLI command के रूप में exposed नहीं हैं।
+  </Tab>
+</Tabs>

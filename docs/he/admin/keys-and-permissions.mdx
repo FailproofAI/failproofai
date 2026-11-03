@@ -1,0 +1,74 @@
+---
+title: "מפתחות והרשאות"
+description: "צור מפתחות API בהיקף מוגדר למכונות, אוטומציה ומפעילים."
+icon: "key-round"
+---
+
+מפתחות API שייכים לארגון ונושאים הרשאות מפורשות. השתמש במפתחות נפרדים לספיגת סוכנים, משלוח מדיניות, מעריכים, אוטומציית CI וסקריפטים ניהוליים.
+
+## יצירה וסיבוב של מפתח
+
+<Tabs>
+  <Tab title="Dashboard">
+    1. עבור אל **Administration → Keys**, בחר **new key**, והזן שם עומס עבודה.
+    2. בחר סט הרשאות והתאם הרשאות בודדות רק כאשר הקבוע אינו מספיק.
+    3. צור את המפתח והעתק את הסוד החד-פעמי שלו מיד.
+    4. פתח את המפתח מאוחר יותר כדי לעדכן הענקות, להשבית אותו או ליצור מחדש את הסוד.
+
+    תיקיית היצירה היא המקום בו אתה בוחר בהענקות הצרות ביותר הנדרשות על ידי עומס העבודה.
+
+    ![תיקיית מפתח ה-API החדשה עם הגדרות הרשאות והענקות בודדות.](/images/dashboard/key-create.png)
+
+    לאחר יצירה, דף Keys מציג את המטא-נתונים הקבועים וכללי ניהול. הסוד החד-פעמי לא יוצג שוב.
+
+    ![דף API Keys המציג הרשאות מפתח, זמן יצירה וכללי Regenerate וDisable.](/images/dashboard/api-keys.png)
+
+    השתמש ברשימה זו כדי לבדוק הענקות בעיתוי קבוע והשבת מפתחות שלא עוד תואמים עומס עבודה פעיל.
+  </Tab>
+  <Tab title="CLI">
+    ```bash
+    fp keys create production-agents \
+      --add events:add \
+      --add policies:pull
+    fp keys show production-agents
+    fp keys update production-agents --add events:read
+    fp keys regenerate production-agents --yes
+    fp keys disable production-agents
+    ```
+
+    הפנה או תפוס פלט יצירה/יצירה מחדש בצורה מאובטחת; הסוד מוחזר פעם אחת.
+  </Tab>
+</Tabs>
+
+שתי ההרשאות הנדרשות על ידי מכונת Failproof AI מחוברת הן עצמאיות:
+
+- `events:add` שולח אירועים ונתוני הפעלה.
+- `policies:pull` משחזר פריסות מדיניות משויכות.
+
+סודות המפתח מוצגים כאשר נוצרים או נוצרים מחדש. אחסן אותם במנהל סודות וסובב אותם מבלי להשתמש בחדשות הקלט האינטראקטיביות של מפעיל.
+
+## קטלוג הרשאות
+
+| אזור | הרשאות |
+| --- | --- |
+| Events | `events:add`, `events:read` |
+| Keys | `keys:create`, `keys:read`, `keys:disable`, `keys:regenerate`; `keys:update` הוא רק הפעלת אדם |
+| Users | `users:create`, `users:read`, `users:update`, `users:delete` |
+| Evaluations | `evaluations:read`, `evaluations:trigger`, `evaluations:run` |
+| Dashboards | `dashboards:read`, `dashboards:write`, `dashboards:delete` |
+| Queries | `queries:read`, `queries:write`, `queries:delete`, `queries:run` |
+| Assistant | `agent:use` |
+| Settings | `settings:read`, `settings:write` |
+| Alerts | `alerts:read`, `alerts:write` |
+| Issues | `issues:read`, `issues:create`, `issues:close` |
+| Audits | `audits:read`, `audits:write` |
+| Policies | `policies:read`, `policies:write`, `policies:pull` |
+| Usage | `usage:read` |
+
+`orgs:admin` שמור למפעיל המופע ולא ניתן להעניק למפתח ארגוני או לחבר רגיל. אסימונים `incidents:*` ו-`alerts:ack` מיושנים מתקבלים לתאימות ומנורמלים להרשאות `issues:*` עדכניות.
+
+סטי הרשאות מובנים הם `read-only`, `standard` ו-`admin`. `standard` מוסיף השראת הערכה, ביצוע שאילתה, תגובה בנושא והשתמשות בעוזר להרשאות קריאה. יצירת מפתח מסיר הענקות שרק לאדם גם כאשר סט הרשאות מכיל אותן.
+
+<Warning>
+  מפתחות בהיקף מופע יכולים לבחור ארגון עם כותרת `X-AgentEye-Org`. קבע זאת במפורש בפריסות ארגוניות מרובות; השמטה עשויה לבחור בארגון ברירת המחדל.
+</Warning>

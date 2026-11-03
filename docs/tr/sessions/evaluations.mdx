@@ -1,0 +1,56 @@
+---
+title: "Değerlendirme sonuçlarını okuyun"
+description: "Zaman içinde değerlendirme puanlarını grafikle gösterin, ajanları ve ortamları karşılaştırın, bir oturumun neden düşük puan aldığını görün ve asistana soruları sorun."
+icon: "gauge"
+---
+
+Her değerlendirmeden gelen sonuçlar, barındırılan veya kendi worker'ınızdan gelen sonuçlar, aynı yerlere kaydedilir.
+
+## Puanları zaman içinde karşılaştırın
+
+<Tabs>
+  <Tab title="Dashboard">
+    **Observe → evaluations** bölümüne gidin.
+
+    - **Recent runs**, her değerlendirmeyi geldiği sırayla listeler: barındırılan (**managed**) veya kendi (**customer**) evaluator'ünüzden gelip gelmediğini, ajanı ve oturumu, değerlendirmesini ve sürümünü, durumunu ve puanını veya metriklerini gösterir.
+    - **Score over time**, istediğiniz şeyi çizer. **add series** seçin ve bir ajan, bir ortam, bir değerlendirme ve bir istatistik seçin: avg, min, max, p50, p75, p90, p95, p99, stddev, veya mode. Her seri bir satırdır; ayrı bir grafikte çizmek için ona kendi **curve**'ünü verin.
+
+    ![Değerlendirmeler sayfası: customer olarak etiketlenmiş son çalıştırmalar, 0.5 ve 0.8 referans çizgileriyle bir puanı zaman içinde grafik ve tüm ajanlar ve ortamlar arasında finished_clean'i ortalaması alan bir seri.](/images/dashboard/evaluations-chart.png)
+
+    Bir zaman aralığı ve bir bin boyutu tüm serilere uygulanır. İnce bir bin bir olayı bulur; kaba bir bin trend gösterir ve aradığınız ani yükselişleri gizleyebilir. Hiçbir şeyin puanlanmadığı bir bucket, satırda bir boşluk olup, hiçbir zaman sıfır değildir ve referans çizgileri 0.5 ve 0.8'i işaretler.
+
+    Görünümün her parçası URL'de yaşar: **share** onu kopyalar ve onu açan herkes tam olarak oluşturduğunuz karşılaştırmayı görür.
+  </Tab>
+  <Tab title="CLI">
+    ```bash
+    fp evals --agent-id checkout-agent --aggregate
+    fp evals --aggregate --env production --status error
+    fp evals --score helpfulness:0.8.. --since 7d
+    ```
+
+    Otomasyon için `evals` öncesinde genel `--json` ekleyin, örneğin `fp --json evals --aggregate --env production`.
+  </Tab>
+</Tabs>
+
+Aynı değerlendirme için iyi bir ortalamanın kötü bir tail'i gizleyip gizlemediğini görmek için **avg** ve **p90** çizin veya iki ajan için veya production ve staging için aynı değerlendirmeyi çizin, bunları bir eksende karşılaştırmak için. Birimler taşıyan maliyetler, gecikmeler ve token sayıları, **Observe → metrics** altında birim başına bir grafik olarak grafiklendirilir.
+
+## Bir oturumun neden düşük puan aldığını görün
+
+**Observe → sessions** bölümünden bir oturum açın; grid, her oturumun puanlarını taşır ve puan aralığına göre filtreler. Oturumun sağ raya, değerlendirme özeti ile başlar, sonra her puan için altında evaluator'ün akıl yürütmesi vardır.
+
+![Tam izlemenin yanında değerlendirme puanları ve akıl yürütmeyi gösteren bir oturum ayrıntı görünümü.](/images/dashboard/session-detail.png)
+
+## Asistana soruları sorun
+
+Değerlendirme verileri hakkında düz İngilizce ile soruları sorun: "bana son değerlendirmelerden bazılarından bahset" veya hangi ajanların puanlarının düştüğü. [Asistan](/tr/sessions/assistant) sonuçları okur ve analiz eder ve takip edebileceğiniz tablolarla cevap verir ve tutulması gereken bir soru [query](/tr/sessions/queries) veya [dashboard](/tr/sessions/dashboards) haline gelebilir.
+
+![Değerlendirmeler sayfası asistan'ın yanında, "bana son değerlendirmelerden bazılarından bahset" sorusuna toplam, durumlar ve puanların özeti ile cevap verir.](/images/dashboard/evaluations-assistant.png)
+
+## İzleyin ve harekete geçin
+
+- **Dashboards**, **Analyze → dashboards** altında, öne çıkardığınız puanları, ajan ve ortam başına, tüm kuruluş için trendler.
+
+  ![Ortalama değerlendirme puanları ve zaman içinde trendleri gösteren bir kalite dashboard'u.](/images/dashboard/dashboard-quality.png)
+
+- **Alerts**, bir puan bir eşiği geçtiğinde sizi bilgilendirir. Bkz. [alerts](/tr/audits/alerts).
+- Bir puan birçok oturum arasında düştüğünde, nedenini öğrenmek için [bir audit çalıştırın](/tr/audits/run); neden tekrarlanabilir bir eylem olduğunda, [bir policy yazın](/tr/policies/editor).

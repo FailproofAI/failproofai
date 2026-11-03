@@ -1,0 +1,60 @@
+# The canary box's NIGHTLY TRANSLATION image.
+#
+#   docker build -t failproofai-translate -f integration-suite/local/Dockerfile.translate \
+#     --build-arg FP_SHA=$(git rev-parse --short HEAD) .
+#
+# Context is the repo root; the image is the commit. No docker client and no
+# socket — this job spawns nothing, and the cron line that runs it should not be
+# able to reach the host daemon.
+#
+# NO .git, ON PURPOSE. This job commits and pushes, so it needs a git identity for
+# exactly one commit — and baking 100+ MB of history to get it would be the
+# largest layer in the image by an order of magnitude. jobs/translate.sh
+# reconstitutes what it needs at run time by fetching the ONE baked commit
+# (`git fetch --depth 1 origin $CANARY_BAKED_SHA`), which costs a second and is a
+# network call it has to make anyway to push. Fetching the baked SHA rather than
+# the branch tip is load-bearing: reset --soft onto a NEWER main would leave HEAD
+# claiming commits this tree does not have, and the next `git add -A` would stage
+# the reversal of everything that landed since the image was built.
+FROM node:22-bookworm-slim
+
+COPY --from=oven/bun:latest /usr/local/bin/bun /usr/local/bin/bun
+
+RUN apt-get update -qq \
+ && apt-get install -y -qq --no-install-recommends git ca-certificates curl \
+ && rm -rf /var/lib/apt/lists/*
+
+# Mintlify, for `mintlify validate`. Pinned and baked rather than installed per
+# run: a night when npm is unreachable should cost nothing.
+ARG MINTLIFY_VERSION=4.2.680
+RUN npm install -g "mintlify@${MINTLIFY_VERSION}" && npm cache clean --force
+
+WORKDIR /opt/failproofai
+COPY . .
+
+RUN set -e; \
+    for p in tokens tokens-beta canary.env canary-beta.env secrets.env .env; do \
+      if [ -e "$p" ]; then echo "REFUSING TO BUILD: $p reached the build context" >&2; exit 1; fi; \
+    done
+
+RUN bun install --frozen-lockfile --ignore-scripts
+
+ARG FP_SHA=unknown
+# RFC3339, passed by CI. The entrypoint turns it into an age and refuses to call
+# an image fresh when it cannot parse one.
+ARG BUILT_AT=unknown
+# The FULL object id as well as the short one. `git fetch origin <sha>` rejects an
+# abbreviated id ("couldn't find remote ref"), and translate fetches its own
+# baked commit to get a git identity — verified against github.com, both forms.
+ARG FP_SHA_FULL=unknown
+ENV CANARY_BAKED_AT=${BUILT_AT} \
+    CANARY_BAKED_SHA_FULL=${FP_SHA_FULL} \
+    CANARY_BAKED_SHA=${FP_SHA} \
+    CANARY_JOB=translate \
+    CANARY_CLONE=/opt/failproofai
+
+COPY integration-suite/local/job-entrypoint.sh /usr/local/bin/job-entrypoint.sh
+RUN chmod +x /usr/local/bin/job-entrypoint.sh \
+ && bun --version && node --version && git --version && mintlify --version
+
+ENTRYPOINT ["/usr/local/bin/job-entrypoint.sh"]

@@ -69,13 +69,13 @@ export const ARCHITECT_CAUTION_SIGNALS = new Set(["reread-after-edit", "redundan
 
 /**
  * Mapping from policy/detector short-name → which archetype its hits feed,
- * and how heavily (intensity within the cluster). Every one of the 39 builtin
+ * and how heavily (intensity within the cluster). Every one of the 40 builtin
  * policies and 8 audit-only detectors maps exactly once — no overlaps, full
  * coverage. Weights express *severity within* a persona; cross-persona
  * fairness is handled later by lift normalisation, not by these numbers.
  */
 export const SIGNAL_MAP: Record<string, { archetype: ArchetypeKey; weight: number }> = {
-  // ── cowboy ── destructive / forceful / bypasses guardrails (20) ───────────
+  // ── cowboy ── destructive / forceful / bypasses guardrails (21) ───────────
   "block-rm-rf":               { archetype: "cowboy", weight: 2.0 },
   "block-failproofai-commands":{ archetype: "cowboy", weight: 2.0 },
   "block-sudo":                { archetype: "cowboy", weight: 1.5 },
@@ -88,6 +88,7 @@ export const SIGNAL_MAP: Record<string, { archetype: ArchetypeKey; weight: numbe
   "git-commit-no-verify":      { archetype: "cowboy", weight: 1.5 },
   "warn-git-amend":            { archetype: "cowboy", weight: 0.8 },
   "warn-git-stash-drop":       { archetype: "cowboy", weight: 1.0 },
+  "warn-git-clean":            { archetype: "cowboy", weight: 1.0 },
   "warn-all-files-staged":     { archetype: "cowboy", weight: 0.6 },
   "block-kubectl":             { archetype: "cowboy", weight: 1.5 },
   "block-terraform":           { archetype: "cowboy", weight: 1.5 },

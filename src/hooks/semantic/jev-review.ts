@@ -1,0 +1,615 @@
+/**
+ * Starts Jev's review of one tool call, in parallel with the regex policies,
+ * for the two-tier evaluator.
+ *
+ * Loaded by `handler.ts` with a dynamic import, and only once a Jev config
+ * (BYOK) exists and the call is a gate event — so a machine without
+ * `jev.json` never loads the semantic evaluator at all, and its hook path is
+ * exactly what it was before two tiers existed.
+ *
+ * Or once FailproofAI Cloud sets this machine's Jev mode to `observe` or
+ * `enforce` (CONTRACT C10): then the call goes to FailproofAI Cloud on the
+ * Cloud Jev credential (`JevCallContext.cloud`), Cloud decides the checks it
+ * deployed here, and `evaluateCloudSemantic` merges that verdict with the
+ * machine's own. Cloud's outcomes are filed as their policy's OWN reviewers
+ * (`reviewerKey`), so a `both` policy is cleared by its Cloud checks alone.
+ *
+ * Everything the request needs comes through the §7 contracts:
+ * `transportForConfig` (T1) for the provider, `throttleTransport` (T5) for the
+ * cache and rate limit (scoped to the config's provider, endpoint and model;
+ * see `throttleScope`), `readIntent` (T4) for what the human asked. Jev's own
+ * verdict is intent v1 (`decideV1` with `DEFAULT_THRESHOLDS_V1`).
+ *
+ * The returned promise never rejects: every failure is a `fallback` review,
+ * which the combine turns into today's regex result. A `fallback` means Jev
+ * produced NO verdict — a genuine transport or degraded failure (timeout, 429,
+ * 402, 5xx, malformed body, model mismatch, no transport, a config that cannot
+ * be built) — and it deliberately carries no decision, so a verdict Jev DID
+ * produce can never be dropped on the way in.
+ *
+ * A verdict given on an envelope that could not carry everything is not that.
+ * It comes through as `answered` with `requestCut: true` when what did not fit
+ * was part of the call: it clears nothing, and it still counts toward the
+ * most-severe rule, because padding a call must not be a way to stop Jev's own
+ * deny applying. Size reaches neither the degrade path nor a refusal —
+ * `buildEnvelope` spends a hard budget and never throws, and being over it is
+ * recorded rather than acted on, so the strictest thing a big call can be is
+ * whatever Jev says about it (see `envelope.ts` and `combine.ts`).
+ *
+ * `truncated` — an over-long human turn, the agent's last message, or a prompt
+ * the intent store had already capped — rides along for the verdict log and
+ * changes nothing. It is not a fallback, it withdraws no clear, and the review
+ * it rides on is recorded `jev`.
+ *
+ * Both of those last two paragraphs are a DEPARTURE from plan §4, which files
+ * "the envelope was truncated" in one row with the degraded cases and asks for
+ * the regex result plus a `jev-fallback` reason. The shipped rule splits that
+ * row: a cut CALL is a fallback that clears nothing but keeps Jev's own
+ * severity, and a cut MESSAGE is not a fallback at all. `combine.ts`'s header
+ * ("Where this departs from plan §4") is the single statement of that rule and
+ * of why it is the safe reading; this file only has to produce the two shapes
+ * it distinguishes, which is what `toReview` below does.
+ */
+import { BUILTIN_POLICIES } from "../builtin-policies";
+import { cloudReviewerName } from "../cloud-managed-policies";
+import type { AgentIdentity } from "../agent-targets";
+import { recordJevBudgetDrops } from "../cloud-policy-errors";
+import { normalizePolicyName } from "../policy-registry";
+import { effectiveAuthority, type PolicyAuthority, type RegisteredPolicy } from "../policy-types";
+import type { JevMode, JevReview, TwoTierReview } from "./combine";
+import { DEFAULT_THRESHOLDS_V1 } from "./decide";
+import { evaluateCloudSemantic, type CloudSemanticOutcome } from "./cloud-jev";
+import {
+  BREAKER_SKIP_REASON,
+  classifyCloudJevReview,
+  cloudJevGate,
+  recordCloudJevResult,
+  reportCloudJevHealth,
+} from "./cloud-jev-health";
+import { DEFAULT_JEV_TIMEOUT_MS, appendVerdictLog, evaluateSemantic, verdictLogRow, type SemanticOutcome } from "./evaluator";
+import * as intentStore from "./intent";
+import { JevError, transportForConfig, type JevTransport } from "./jev-client";
+import { DEFAULT_JEV_MODE, type JevConfig } from "./jev-config";
+import * as jevThrottle from "./jev-throttle";
+import { sessionProjectRoot } from "./session-root";
+import type { PolicyOutcome, SemanticInput } from "./types";
+import { JEV_CHECKS_MAX, JEV_CHECK_PROBES_MAX, JEV_PROBE_ID_RE, round2, type JevCheckRecord } from "../jev-activity";
+
+/**
+ * T5's throttle as this file calls it. §7 declares only
+ * `throttleTransport(t)`; T5 added the `scope` option and the
+ * `isCachedJevResponse` probe, and both are used through this shape so the
+ * call compiles against the contract stub and the real module alike. The
+ * probe is optional: without it every answer counts as a fresh one.
+ */
+interface JevThrottle {
+  throttleTransport(t: JevTransport, opts?: { scope?: string }): JevTransport;
+  isCachedJevResponse?(response: unknown): boolean;
+}
+const throttle: JevThrottle = jevThrottle;
+
+/**
+ * T4's intent store as this file calls it: §7's `readIntent(sessionId)`,
+ * returning what the human typed and the agent's last message. That is all it
+ * returns.
+ *
+ * There was a second, optional field here — a store that had CUT either
+ * message reporting so out of band, which the evaluator believes
+ * (`SemanticOptions.contextTruncated`) — and nothing has ever written it.
+ * `readIntent` in `intent.ts` returns the two fields above, so the branch
+ * reading the third was dead while its comment claimed the store reports its
+ * cuts. Removed rather than left standing: what actually decides is the
+ * evaluator's narrower guess (`intentStoreCut` in `evaluator.ts` — its own
+ * omission mark in a message that also fills the cap), so a store cut can go
+ * unnoticed, and that belongs in the open.
+ *
+ * Wiring it is one line if T4's store is ever taught to report the cut
+ * (`capWithin` in `intent.ts` is what makes it): pass `contextTruncated` to
+ * `evaluateSemantic` below. It has to stay out of band like that, never read
+ * out of the message text, because the messages are agent-authored — a cut
+ * inferred from their content would let repo text switch the semantic tier off
+ * for a call.
+ */
+interface IntentStore {
+  /**
+   * `profile` is required here, unlike in `intent.ts`: the hook path always
+   * reads under the agent profile the prompt was captured under, never the
+   * flat store, so one profile's prompt can never be another's intent.
+   */
+  readIntent(
+    sessionId: string | undefined,
+    now: number | undefined,
+    profile: intentStore.IntentProfile,
+  ): { userSaid: string[]; agentLastMessage: string | null };
+}
+const intentReader: IntentStore = intentStore;
+
+/** Whether T5's cache, not the provider, produced this response. Never throws. */
+function servedFromCache(response: unknown): boolean {
+  try {
+    const probe = throttle.isCachedJevResponse;
+    return typeof probe === "function" && probe(response) === true;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Where a config's answers come from — provider, endpoint (base URL,
+ * Cloudflare account) and the model id sent — as T5's cache scope.
+ *
+ * The cache lives as long as the warm worker, which outlives any one
+ * `jev.json`, and the request alone does not say who answered it: two
+ * providers asked for the same model build byte-identical requests. Unscoped,
+ * an answer one config got — from a plain-http loopback proxy T1 allows only in
+ * observe mode, say — would clear denies under the next config in enforce mode
+ * without that provider ever being asked. The scope is only hashed into the
+ * cache key, never stored, so a URL carrying a credential is safe here.
+ */
+export function throttleScope(cfg: JevConfig, route: { via: string; model: string }): string {
+  return JSON.stringify([route.via, cfg.baseUrl ?? null, cfg.accountId ?? null, route.model]);
+}
+
+/**
+ * The self-protection guard (and anything else `alwaysOn`) is hard whatever
+ * it declares. Registered policies do not carry `alwaysOn`, so it is looked up
+ * from the builtin definitions by canonical name.
+ */
+const ALWAYS_ON: ReadonlySet<string> = new Set(
+  BUILTIN_POLICIES.filter((p) => p.alwaysOn).map((p) => normalizePolicyName(p.name)),
+);
+
+export function authorityOf(p: Pick<RegisteredPolicy, "name" | "authority" | "reviewedBy">): {
+  authority: PolicyAuthority;
+  reviewedBy: string[];
+} {
+  const authority = effectiveAuthority({ authority: p.authority, reviewedBy: p.reviewedBy, alwaysOn: ALWAYS_ON.has(p.name) });
+  if (authority !== "reviewable") return { authority, reviewedBy: [] };
+  const reviewedBy = (p.reviewedBy ?? []).filter((n): n is string => typeof n === "string" && n.length > 0);
+  return { authority, reviewedBy };
+}
+
+export interface JevCallContext {
+  eventType: string;
+  toolName: string;
+  toolInput: unknown;
+  cwd?: string;
+  permissionMode?: string;
+  sessionId?: string;
+  cli: string;
+  /**
+   * The runtime agent identity of the profile making the call (the handler's
+   * `readRuntimeAgentIdentity`; null when it has none). With `cli`, it names
+   * the intent store slot the human's prompts are read from, so they are the
+   * prompts typed into this profile and no other. Absent is read as null.
+   */
+  agent?: AgentIdentity | null;
+  /**
+   * Set when FailproofAI Cloud's Jev mode asks (CONTRACT C10.2): the call goes
+   * to Cloud with this machine's id, and the deployment it was made under
+   * scopes the answer cache (a new deployment can change Cloud's checks).
+   */
+  cloud?: {
+    machineId: string;
+    deployment: number | null;
+    mode: "observe" | "enforce";
+    agent?: AgentIdentity | null;
+    /** Cloud policies whose Jev assignment here is `observe`: recorded, never applied. */
+    observedPolicies?: ReadonlyArray<string>;
+  };
+  /**
+   * A session pause is active. It suspends local policy, so no installed
+   * pack's check is asked; FailproofAI Cloud's checks are exempt from a pause
+   * (as Cloud JS assignments are) and still are. Only meaningful with `cloud`.
+   */
+  localPaused?: boolean;
+}
+
+export function resolveMode(cfg: JevConfig): JevMode {
+  return cfg.mode === "observe" || cfg.mode === "enforce" ? cfg.mode : DEFAULT_JEV_MODE;
+}
+
+/**
+ * Bounds on how long one call may wait for Jev — the same bounds T1's config
+ * loader enforces, applied again here because this is the component that
+ * knows what they protect: every millisecond is added to the tool call, and
+ * the daemon client gives a whole hook 30 s before it fail-closed denies.
+ */
+export const MIN_JEV_TIMEOUT_MS = 100;
+export const MAX_JEV_TIMEOUT_MS = 10_000;
+/**
+ * How long past its own timeout a review may run before it is abandoned as a
+ * timeout anyway: a transport that ignores its abort signal must not be able
+ * to hold a hook open.
+ */
+export const JEV_DEADLINE_GRACE_MS = 250;
+
+/** The config's timeout, clamped to the bounds above; anything unusable → the 3000 ms default. */
+export function resolveTimeout(cfg: JevConfig): number {
+  const t = cfg.timeoutMs;
+  if (typeof t !== "number" || !Number.isFinite(t) || t <= 0) return DEFAULT_JEV_TIMEOUT_MS;
+  return Math.min(MAX_JEV_TIMEOUT_MS, Math.max(MIN_JEV_TIMEOUT_MS, t));
+}
+
+/**
+ * The reviewer an outcome answers for: a FailproofAI Cloud check's is
+ * `cloud:<policyId>/<name>` (its outcome's own `origin.cloudPolicyId`, carried
+ * pack-shaped as `cloud:<id>`), which is what a Cloud `both` policy registers
+ * its `reviewedBy` as — so only that policy's own Cloud outcomes can clear it,
+ * and a Cloud outcome never clears an installed pack's policy (CONTRACT C10.5).
+ * An installed pack's check is its plain name, as it always was.
+ */
+export function reviewerKey(o: Pick<PolicyOutcome, "policy" | "origin">): string {
+  const packId = o.origin?.packId;
+  return packId !== undefined && packId.startsWith("cloud:") ? cloudReviewerName(packId.slice("cloud:".length), o.policy) : o.policy;
+}
+
+/** Whether an outcome came from FailproofAI Cloud (its `cloud:<id>` origin; see `parseCloudReply`). */
+function isCloudOutcome(o: Pick<PolicyOutcome, "origin">): boolean {
+  return o.origin?.packId?.startsWith("cloud:") === true;
+}
+
+/** The semantic policy an attributable Jev verdict is filed under. */
+function jevDecider(outcome: Extract<SemanticOutcome, { status: "ok" }>) {
+  const wanted = outcome.verdict.decision === "deny" ? "deny" : "instruct";
+  return outcome.verdict.outcomes.find((o) => o.verdict === wanted);
+}
+
+function jevPolicyName(outcome: Extract<SemanticOutcome, { status: "ok" }>): string {
+  const first = jevDecider(outcome);
+  if (first) return `semantic/${first.policy}`;
+  return outcome.verdict.beyondTask ? "semantic/beyond-task" : "semantic/jev";
+}
+
+/**
+ * A fallback reason as a short stable code (`timeout`, `http-429`,
+ * `model-mismatch`, …). Degraded reasons can carry an exception message after
+ * a colon; that detail stays in the local verdict log and never reaches the
+ * activity row, which telemetry may ship.
+ */
+export function fallbackCode(reason: string): string {
+  const code = reason.split(":")[0].trim();
+  return /^[a-z0-9][a-z0-9-]{0,63}$/.test(code) ? code : "error";
+}
+
+/** Why an outcome ended where it did (`JevCheckRecord.why`), from its own fields. */
+function checkWhy(o: PolicyOutcome): JevCheckRecord["why"] {
+  switch (o.verdict) {
+    case "none":
+      // Both deciders: under `fire` nothing fired; at or over it only the exemption stops it.
+      return o.evidence < DEFAULT_THRESHOLDS_V1.fire ? "not-detected" : "exempt";
+    case "overridden":
+      return o.intent === "op-requested" ? "op-requested" : o.intent === "task-step" ? "task-step" : "user-asked";
+    case "deny":
+      return o.escalatedByInjection ? "injection" : "fired";
+    default:
+      if (o.intent === "downgraded-task-step") return "downgraded";
+      return o.targetScanIncomplete ? "scan-incomplete" : "fired";
+  }
+}
+
+/** Who declared a check, as a registered-name prefix: `cloud/<id>@<v>` or `pack/<id>@<v>`. */
+function checkPolicy(o: PolicyOutcome): string | undefined {
+  const packId = o.origin?.packId;
+  if (!packId) return undefined;
+  const at = o.origin?.packVersion ? `@${o.origin.packVersion}` : "";
+  return packId.startsWith("cloud:") ? `cloud/${packId.slice("cloud:".length)}${at}` : `pack/${packId}${at}`;
+}
+
+/**
+ * Every asked check's answer, for the activity row (`jevChecks`): verdict,
+ * why, evidence, exempt and each probe's probability. `answers` holds the
+ * machine's own answers and Cloud's for its checks (`<check>.<probe>`).
+ */
+export function checkRecords(
+  outcomes: ReadonlyArray<PolicyOutcome>,
+  answers: Readonly<Record<string, number>>,
+  watched: ReadonlyArray<PolicyOutcome> = [],
+): JevCheckRecord[] {
+  const all = [...outcomes.map((o) => ({ o, watched: false })), ...watched.map((o) => ({ o, watched: true }))];
+  return all.slice(0, JEV_CHECKS_MAX).map(({ o, watched: isWatched }) => {
+    const probes: Record<string, number> = {};
+    const prefix = `${o.policy}.`;
+    for (const [id, p] of Object.entries(answers)) {
+      if (Object.keys(probes).length >= JEV_CHECK_PROBES_MAX) break;
+      if (!id.startsWith(prefix)) continue;
+      const part = id.slice(prefix.length);
+      // `exempt` has its own field; `user_asked` (v0) is a consent question, not a probe.
+      if (part === "exempt" || part === "user_asked" || !JEV_PROBE_ID_RE.test(part)) continue;
+      probes[part] = round2(p);
+    }
+    const policy = checkPolicy(o);
+    return {
+      check: o.policy,
+      ...(policy ? { policy } : {}),
+      verdict: o.verdict,
+      why: checkWhy(o),
+      p: round2(o.evidence),
+      ...(o.exempt !== null ? { exempt: round2(o.exempt) } : {}),
+      ...(Object.keys(probes).length > 0 ? { probes } : {}),
+      ...(isWatched ? { watched: true as const } : {}),
+    };
+  });
+}
+
+/**
+ * @param cached - the answer came from T5's cache, not the provider: it is
+ *   applied like any other, but its ~0 ms is not a latency (`latencyMs`
+ *   null, so latency percentiles only ever measure the provider).
+ */
+export function toReview(outcome: SemanticOutcome, cached = false): JevReview {
+  if (outcome.status === "degraded") {
+    // No verdict at all. The `fallback` variant carries no decision, by design:
+    // see "One rule about a partial picture" in `combine.ts`.
+    return { kind: "fallback", reason: fallbackCode(outcome.reason), latencyMs: outcome.latencyMs, model: null };
+  }
+  const sent = outcome.via !== "none";
+  const latencyMs = sent && !cached ? outcome.latencyMs : null;
+  const model = sent ? outcome.model : null;
+  const outcomes = outcome.verdict.outcomes;
+  // A FailproofAI Cloud outcome is trusted only for a check the reply's own
+  // `asked` names. `parseCloudReply` already refuses a reply that contradicts
+  // itself; this keeps the review from relying on that alone, because a Cloud
+  // outcome is what clears a `both` policy's regex half. One it cannot vouch
+  // for — or a Cloud-origin outcome with no Cloud reply at all — means the
+  // picture is not one to clear anything on: the regex decides alone.
+  const cloudSummary = "cloud" in outcome ? (outcome as CloudSemanticOutcome & { status: "ok" }).cloud : null;
+  const cloudAsked = cloudSummary ? new Set(cloudSummary.asked) : null;
+  const unvouched = outcomes.some((o) => isCloudOutcome(o) && !(cloudAsked?.has(o.policy) ?? false));
+  if (unvouched) return { kind: "fallback", reason: "malformed", latencyMs, model: null };
+  // `null` when the injection probe was not in the request, which now means
+  // only that no request was made: v1 asks it on every call it sends, with or
+  // without a recorded human message (see `compile.ts`).
+  const injection = sent ? outcome.verdict.injectionSuspected : null;
+  // Fired, and no consent softened it: an `instruct` the human's own task did
+  // not downgrade from a deny (see "A check that fired without consent keeps
+  // the floor" in `combine.ts`).
+  const warned = (o: (typeof outcomes)[number]) => o.verdict === "instruct" && o.intent !== "downgraded-task-step";
+  const cloudAnswers = cloudSummary?.answers ?? {};
+  const watched = cloudSummary?.observedOutcomes ?? [];
+  return {
+    kind: "answered",
+    decision: outcome.verdict.decision,
+    // What each asked check concluded, for the activity row. `[]` when the
+    // request carried no check (globals only, or Cloud's short-circuit).
+    checks: sent ? checkRecords(outcomes, { ...outcome.answers, ...cloudAnswers }, watched) : [],
+    reason: outcome.verdict.reason,
+    policyName: jevPolicyName(outcome),
+    ...(jevDecider(outcome)?.origin ? { origin: jevDecider(outcome)?.origin } : {}),
+    // Every selected policy's questions were in the request, and `readAnswers`
+    // refuses a response missing any of them — so selected == asked, and only
+    // when a request was actually made.
+    asked: sent ? outcomes.map(reviewerKey) : [],
+    // `none` found nothing, `overridden` is what the human asked for, and a
+    // deny the human's task softened to a warning is that task's consent — all
+    // three clear. A `deny`, or a warning nobody consented to, keeps the block.
+    notDenied: sent ? outcomes.filter((o) => o.verdict !== "deny" && !warned(o)).map(reviewerKey) : [],
+    injectionAsked: injection !== null,
+    injected: injection !== null && injection >= DEFAULT_THRESHOLDS_V1.injection,
+    // A check that CAN deny warned without consent: nothing may be cleared on
+    // this call (see "A check that fired without consent keeps the floor" in
+    // `combine.ts`).
+    unclearableWarned: outcomes.some((o) => o.mode === "deny" && warned(o)),
+    // Something did not fit — a human turn, the agent's message, or what T4's
+    // store had already capped before the envelope saw it (it caps to fit the
+    // envelope, so the envelope cannot see that cut; only the evaluator's
+    // `intentStoreCut` guess can, since nothing reports it out of band — see
+    // `IntentStore`). `outcome.truncated` covers both (see `prepareSemantic`).
+    // Carried for the verdict log; `combine.ts`
+    // reads nothing from it, because the length of what a human typed is not
+    // evidence about the call.
+    //
+    // Only when a request was actually sent: with no semantic policy applying
+    // nothing reaches Jev, so nothing was judged on a cut envelope at all.
+    truncated: outcome.truncated && sent,
+    // §4's row, one field over: part of the CALL — or of the deterministic
+    // facts about it — was not shown. Every clear is withdrawn and the call is
+    // recorded as `jev-fallback` / `request-cut`; Jev's own deny or instruct
+    // still counts, because padding must not be a way to stop it applying, and
+    // nothing else is added, because padding must not be a way to invent a
+    // deny either.
+    //
+    // Same "only if a request was sent" rule: with no semantic policy applying
+    // nothing was judged, so nothing was hidden from the judging.
+    requestCut: outcome.requestCut && sent,
+    latencyMs,
+    model,
+    // An `observe` Cloud assignment's checks: asked, recorded, never applied.
+    ...(sent && cloudSummary?.observedAsked?.length ? { observedAsked: cloudSummary.observedAsked } : {}),
+    ...(cloudSummary?.observed?.length
+      ? {
+          observedCloud: cloudSummary.observed.map((o) => ({
+            cloudPolicyId: o.cloudPolicyId,
+            cloudVersion: o.cloudVersion,
+            decision: o.decision,
+            reason: o.reason,
+          })),
+        }
+      : {}),
+  };
+}
+
+function toolInputRecord(raw: unknown): Record<string, unknown> {
+  return raw && typeof raw === "object" && !Array.isArray(raw) ? (raw as Record<string, unknown>) : {};
+}
+
+/**
+ * Kick off the request now; the caller runs the regex policies meanwhile and
+ * awaits `review` only if no hard deny decided first.
+ */
+export function startJevReview(cfg: JevConfig, call: JevCallContext): TwoTierReview {
+  const mode = resolveMode(cfg);
+  const controller = new AbortController();
+  let settled = false;
+  const handle = (review: Promise<JevReview>): TwoTierReview => ({
+    mode,
+    review: review.finally(() => {
+      settled = true;
+    }),
+    abort: () => {
+      if (!settled) controller.abort();
+    },
+    authorityOf,
+    ...(call.cloud ? { cloud: true } : {}),
+  });
+
+  let route: ReturnType<typeof transportForConfig>;
+  let throttled: JevTransport;
+  try {
+    route = transportForConfig(cfg);
+    // A Cloud answer also depends on what Cloud deployed to this machine, which
+    // the request does not show: a new deployment is a new cache scope.
+    const scope = call.cloud
+      ? `${throttleScope(cfg, route)}\u0000cloud\u0000${call.cloud.machineId}\u0000${call.cloud.deployment ?? "-"}`
+      : throttleScope(cfg, route);
+    throttled = throttle.throttleTransport(route.transport, { scope });
+  } catch (err) {
+    const reason = err instanceof JevError ? err.code : "config";
+    return handle(Promise.resolve({ kind: "fallback", reason, latencyMs: null, model: null }));
+  }
+
+  // FailproofAI Cloud Jev that keeps failing is skipped for a while, so every
+  // tool call does not wait out its timeout (`cloud-jev-health.ts`).
+  const cloud = call.cloud;
+  const healthScope = cloud ? JSON.stringify([cfg.baseUrl ?? null, cloud.machineId]) : "";
+  let probe = false;
+  if (cloud) {
+    const gate = cloudJevGate(healthScope);
+    if (!gate.ask) {
+      return handle(Promise.resolve({ kind: "fallback", reason: BREAKER_SKIP_REASON, latencyMs: null, model: null }));
+    }
+    probe = gate.probe;
+  }
+
+  let intent: ReturnType<IntentStore["readIntent"]>;
+  try {
+    intent = intentReader.readIntent(call.sessionId, undefined, {
+      cli: call.cli,
+      agent: call.agent !== undefined ? call.agent : (call.cloud?.agent ?? null),
+    });
+  } catch {
+    intent = { userSaid: [], agentLastMessage: null };
+  }
+
+  // Never throws; null only without a cwd, and then there is nothing to pin.
+  const projectRoot = sessionProjectRoot(call.sessionId, call.cwd);
+
+  const input: SemanticInput = {
+    eventType: call.eventType,
+    toolName: call.toolName,
+    toolInput: toolInputRecord(call.toolInput),
+    ...(call.cwd ? { cwd: call.cwd } : {}),
+    ...(projectRoot ? { projectRoot } : {}),
+    ...(call.permissionMode ? { permissionMode: call.permissionMode } : {}),
+    userSaid: intent.userSaid,
+    agentLastMessage: intent.agentLastMessage,
+  };
+
+  /** Set when the answer came from T5's cache (a hit carries the original `usage` and no real latency). */
+  let cached = false;
+  /** A local inert allow or a cached reply cannot prove Cloud is healthy now. */
+  let reachedCloud = false;
+  const transport: JevTransport = async (request, signal) => {
+    const response = await throttled(request, signal);
+    cached = servedFromCache(response);
+    return response;
+  };
+
+  const timeoutMs = resolveTimeout(cfg);
+  /** Set once the backstop below gave up on the answer: a late one is logged, never applied. */
+  let abandoned = false;
+  const options = {
+    transport,
+    cli: call.cli,
+    via: route.via,
+    model: route.model,
+    timeoutMs,
+    intent: "v1" as const,
+    v1: { thresholds: DEFAULT_THRESHOLDS_V1 },
+    signal: controller.signal,
+    // No `contextTruncated`: nothing reports a store cut out of band, so the
+    // evaluator's own (narrower) guess stands. See `IntentStore` above.
+  };
+  const evaluated: Promise<SemanticOutcome | CloudSemanticOutcome> = cloud
+    ? evaluateCloudSemantic(input, {
+        ...options,
+        machineId: cloud.machineId,
+        agent: cloud.agent,
+        observedPolicies: cloud.observedPolicies ?? [],
+        // Paused: no installed pack's check is sent, only the globals, and
+        // Cloud's own checks are selected and decided on Cloud as ever.
+        ...(call.localPaused ? { policies: [] } : {}),
+      })
+    : evaluateSemantic(input, options);
+  const answered = evaluated
+    .then((outcome): JevReview => {
+      const hit = cached && outcome.status === "ok";
+      reachedCloud = outcome.status === "ok" && !hit && outcome.via !== "none";
+      const review = toReview(outcome, hit);
+      // The machine's own pack checks Cloud dropped from this request
+      // (CONTRACT C10.5), reported for the deployment it happened under. Only
+      // from an answer that arrived in time: one the backstop abandoned is not
+      // applied, and neither is anything it said. A group dropped because a
+      // Cloud check of the same name was selected (Cloud wins the name, D-S-2)
+      // is told apart from a budget drop: that Cloud check is in `asked`, or in
+      // `droppedCloud` when the budget then dropped it too.
+      if (cloud && !abandoned && outcome.status === "ok" && "cloud" in outcome && outcome.cloud.droppedLocal.length > 0) {
+        const cloudNames = new Set([...outcome.cloud.asked, ...outcome.cloud.droppedCloud]);
+        recordJevBudgetDrops(
+          { machineId: cloud.machineId, deployment: cloud.deployment, jevMode: cloud.mode },
+          outcome.cloud.droppedLocal.map((d) => ({
+            packId: d.packId ?? "unknown",
+            name: d.name,
+            ...(cloudNames.has(d.name) ? { clash: true } : {}),
+          })),
+        );
+      }
+      // An aborted request has nothing worth replaying; everything else goes
+      // to the local verdict log (never shipped), so any verdict can be
+      // re-derived offline from its recorded probabilities. A cache hit is
+      // marked, and its tokens are not counted again.
+      if (!(outcome.status === "degraded" && outcome.reason === "aborted")) {
+        const row = verdictLogRow(input, hit ? { ...outcome, inputTokens: null } : outcome, {
+          sessionId: call.sessionId,
+          cli: call.cli,
+          eventType: call.eventType,
+          applied: abandoned || review.kind !== "answered" ? "legacy-fallback" : mode === "observe" ? "observe" : "two-tier",
+        });
+        const withCloud = outcome.status === "ok" && "cloud" in outcome ? { ...row, cloud: outcome.cloud } : row;
+        appendVerdictLog(hit ? { ...withCloud, cached: true } : withCloud);
+      }
+      return review;
+    })
+    .catch((): JevReview => ({ kind: "fallback", reason: "error", latencyMs: null, model: null }));
+
+  // The backstop: `evaluateSemantic` times out through the transport's
+  // abort signal, which only works if the transport honours it. Whatever the
+  // transport does, the review settles shortly after the configured timeout.
+  // Deliberately NOT unref'd: in a one-shot hook process a transport stuck on
+  // nothing the event loop can see would otherwise let the process exit with
+  // the review still pending — an empty stdout, which every CLI reads as allow.
+  let deadline: ReturnType<typeof setTimeout> | undefined;
+  const expired = new Promise<JevReview>((resolve) => {
+    deadline = setTimeout(() => {
+      abandoned = true;
+      controller.abort();
+      resolve({ kind: "fallback", reason: "timeout", latencyMs: timeoutMs + JEV_DEADLINE_GRACE_MS, model: null });
+    }, timeoutMs + JEV_DEADLINE_GRACE_MS);
+  });
+  const raced = Promise.race([answered, expired]).finally(() => {
+    if (deadline !== undefined) clearTimeout(deadline);
+  });
+  if (!cloud) return handle(raced);
+  return handle(
+    raced.then((review) => {
+      recordCloudJevResult(
+        healthScope,
+        classifyCloudJevReview(review, { reachedCloud }),
+        review.kind === "fallback" ? review.reason : null,
+        probe,
+      );
+      reportCloudJevHealth();
+      return review;
+    }),
+  );
+}

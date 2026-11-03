@@ -1,0 +1,56 @@
+---
+title: "ביקורות"
+description: "בדוק אוכלוסיית פגיעויות מוגדרת לכשלים שעקבות בלבד לא יגידו עליהם."
+icon: "scan-search"
+---
+
+ביקורת חוקרת קבוצה נבחרת של הפעלות בחיפוש אחר מטרת כשל מסוימת. היא משלבת ראיות עקבות, תוצאות הערכה, פגיעות בנהלים והקשר התייחסות כדי לייצר ממצאים שעליהם תוכל לפעול.
+
+<div style={{ position: "relative", width: "100%", paddingBottom: "56.25%", height: 0, overflow: "hidden", borderRadius: "12px", margin: "1.5rem 0" }}>
+  <iframe src="https://www.youtube.com/embed/C5nHKGQIqZQ?rel=0&playsinline=1" title="Find agent failures automatically with Failproof AI audits" allow="accelerometer; autoplay; encrypted-media; gyroscope; picture-in-picture; fullscreen" allowFullScreen style={{ position: "absolute", top: 0, left: 0, width: "100%", height: "100%", border: 0 }}></iframe>
+</div>
+
+ראה כיצד ביקורת עוברת מריצה מתוזמנת לכשלים תמוכים בראיות שתוכל לתקן.
+
+## פתח ביקורות
+
+<Tabs>
+  <Tab title="Dashboard">
+    עבור אל **Analyze → Audits**. הדף מציג מצב מתוזמן, ממצאים פתוחים, ריצה אחרונה, ריצה הבאה, קדנציה, והאם לביקורת יש עמודי תיאור קצר או התייחסות. בחר בכרטיס להגדרות והיסטוריית ריצה; בחר **new audit** כדי ליצור אחד.
+
+    ![עמוד הביקורות המציג ביקורות חוזרות עם לוח הזמנים, הרגישות ומצב הריצה שלהם.](/images/dashboard/audits.png)
+  </Tab>
+  <Tab title="CLI">
+    ```bash
+    fp audits list
+    fp audits list --enabled-only --show-id
+    fp audits show <audit-name>
+    fp audits findings --status open --limit 20
+    ```
+  </Tab>
+</Tabs>
+
+השתמש בביקורת כאשר עליך לענות על שאלה ברמת אוכלוסיה כגון:
+
+- היכן סוכנים נטשים משימות ללא הסלמה?
+- אילו כשלי כלים מובילים לנסיונות חוזרים לא יעילים?
+- האם סוכנים ניגשים לנתונים מחוץ לזרימת העבודה המכוונת?
+- מה השתנה לאחר שחרור מודל, הנחיה או כלי?
+
+## זרימת תגובה ביקורת
+
+```text
+Session → Audit → Finding → Issue → Policy
+                         ↘ Alert for recurrence
+```
+
+ממצא צריך לשמור את מצב הכשל ולהצביע על ראיות. בעיה תחזיק בתיקון. נהל למנע דפוס פעולה ידוע; התראה גוזרת הישנות כאשר מניעה אינה אפשרית או צריכה ניטור.
+
+<Columns cols={2}>
+  <Card title="הגדר ביקורת" icon="sliders-horizontal" href="/he/audits/setup">
+    הגדר את המטרה, האוכלוסיה והקשר התייחסות לפני הריצה הראשונה.
+  </Card>
+  <Card title="הוסף הקשר סוכן" icon="bot" href="/he/audits/agent-contracts">
+    ציין מה כל סוכן חייב לייצר ומה הוא לעולם לא עשוי לעשות.
+  </Card>
+</Columns>

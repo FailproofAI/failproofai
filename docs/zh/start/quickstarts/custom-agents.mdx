@@ -1,0 +1,50 @@
+---
+title: "自定义 Agent"
+description: "用三个 `with` 块包裹你的 agent，它就会开始记录。"
+icon: "code"
+---
+
+适用于你自己编写的 agent，或 Failproof AI 尚无适配器的框架。
+
+你只需用 `with` 块包裹已有的代码逻辑，每个块会自动记录开始时间、结束时间以及耗时——无需调用任何其他接口。
+
+## 安装
+
+```bash
+pip install failproofai-sdk
+```
+
+无需额外依赖。
+
+## 埋点
+
+```python
+import failproofai_sdk
+
+failproofai_sdk.configure(environment="production")
+
+with failproofai_sdk.session():                 # 一次运行
+    with failproofai_sdk.agent("planner"):      # 一个工作单元
+        with failproofai_sdk.tool_call("search", input={"q": q}) as t:
+            t.output = search(q)                # 一次工具调用
+```
+
+从上到下阅读，一目了然：
+
+| 包裹方式 | 含义 |
+| --- | --- |
+| `session()` | 这些事件属于同一次运行 |
+| `agent()` | 某个组件正在执行工作——为其取一个便于识别的名称 |
+| `tool_call()` | 这是一次工具调用，以及它的返回值 |
+
+按照代码的嵌套结构自由嵌套即可。你无需手动传递 ID：每个块会自动感知自身所处的上下文，所有记录的事件都会自动关联到正确的运行和 agent。`async with` 的用法完全相同。
+
+## 确认数据已到达
+
+运行一次后，打开 **Observe → Sessions** 并选择你的环境，运行记录将以重建的追踪链路形式呈现。
+
+如果没有数据到达，请通过 `failproofai config --status` 确认当前机器已成功连接。
+
+<Card title="自定义 Agent 完整指南" icon="arrow-right" href="/zh/start/integrations/custom-agents">
+  包含所有事件方法、代码抛出异常时的处理方式、完整示例、多线程与异步支持，以及如何为无适配器的框架进行埋点。
+</Card>

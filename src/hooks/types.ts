@@ -1,5 +1,19 @@
 /**
- * Constants and interfaces for agent CLI hooks integrations (Claude Code, OpenAI Codex, GitHub Copilot, Cursor Agent, OpenCode, Pi, …).
+ * Constants and interfaces for agent harness hook integrations.
+ *
+ * A harness is whatever an agent runs inside. The twelve below are two classes:
+ * ten coding CLIs (Claude Code, Codex, Copilot, Cursor, OpenCode, Pi, Factory,
+ * Devin, Antigravity, Goose) and two chat/assistant gateways (Hermes, OpenClaw).
+ *
+ * An agent instrumented directly via the Python SDK is NOT one of these twelve
+ * and is not a third class here: the SDK reports events, it does not sit in the
+ * tool-call path, so it delivers observability without enforcement. Copy that
+ * lists it alongside the twelve overstates what it does.
+ *
+ * INTEGRATION_TYPES below is the authoritative list:
+ * __tests__/scripts/copy-counts.test.ts pins its length, and the policy, event
+ * and enforcement counts, against the harness and policy counts stated in
+ * README.md, package.json and docs/index.mdx.
  */
 
 export const HOOK_SCOPES = ["user", "project", "local"] as const;
@@ -73,6 +87,10 @@ export const CODEX_TOOL_MAP: Record<string, string> = {
 // specific tools (skill_view, cronjob, browser_*, memory, session_search,
 // clarify, process) pass through unchanged so they still appear in the audit,
 // just unmatched by builtin policies.
+//
+// Hermes 0.21.x renamed three tools (process -> process_manage, cronjob ->
+// cronjob_manage, todo -> todo_list). The new names map to what the old ones
+// produce, so a policy written for one Hermes version still fires on the other.
 export const HERMES_TOOL_MAP: Record<string, string> = {
   terminal: "Bash",
   bash: "Bash",
@@ -83,6 +101,9 @@ export const HERMES_TOOL_MAP: Record<string, string> = {
   web_extract: "WebFetch",
   search_files: "Grep",
   todo: "TodoWrite",
+  todo_list: "TodoWrite",
+  process_manage: "process",
+  cronjob_manage: "cronjob",
 };
 
 // Hermes tool-INPUT key canonicalization, keyed by the *canonical* tool name
@@ -99,13 +120,13 @@ export const HERMES_TOOL_INPUT_MAP: Record<string, Record<string, string>> = {
   Edit: { path: "file_path" },
 };
 
-// Hermes live-hook (Pillar 1) events + scopes. Hermes fires these snake_case
-// events with a JSON payload on stdin; the command we install runs
-// `failproofai --hook <event> --cli hermes`. Config is USER-scope only
-// (`~/.hermes/config.yaml`; Hermes has no project scope). `pre_tool_call` is the
-// core deny point — it fires for tool calls from every source
-// (slack/telegram/cli/cron) and internal subagents, so a single install
-// intercepts all platforms.
+// Hermes live-hook (Pillar 1) events + scopes. The native Python plugin sends
+// these events to failproofaid's warm worker. It also handles `pre_llm_call`,
+// `on_session_reset`, and `on_session_finalize` locally for instruction context
+// and ledger cleanup, so those do not need canonical policy-event mappings.
+// Config is USER-scope only (`~/.hermes/config.yaml`; Hermes has no project
+// scope). `pre_tool_call` is the core gate and fires for tool calls from every
+// source (Slack/Telegram/CLI/cron) and internal subagents.
 //
 // `pre_verify` IS a turn-end gate — the earlier claim here that Hermes has none
 // was wrong. We deliberately do NOT install it (product decision, 2026-07-29);
@@ -129,7 +150,7 @@ export const HERMES_TOOL_INPUT_MAP: Record<string, Record<string, string>> = {
 //   2. Capped at 3 nudges per turn (`DEFAULT_MAX_VERIFY_NUDGES`,
 //      `agent/verify_hooks.py:21`), operator-overridable; resets each turn.
 //   3. It landed upstream ~2026-06-30. Older Hermes fails the key against
-//      VALID_HOOKS and warn-and-skips it SILENTLY (`agent/shell_hooks.py:325`).
+//      VALID_HOOKS and warn-and-skips it silently.
 //
 // Until it is installed, `HERMES_EVENT_MAP` emits no `Stop` and those 5
 // builtins remain inapplicable on Hermes.
@@ -842,16 +863,19 @@ export const ANTIGRAVITY_EVENT_MAP: Record<AntigravityHookEventType, HookEventTy
 /**
  * Antigravity's tool names → Claude PascalCase canonical names so existing
  * builtin policies (which match `toolName === "Bash"`, etc.) fire unchanged.
- * Tool names VERIFIED against the agy binary's tool registry + live transcripts:
- * the file tool is `write_to_file` (NOT `write_file`), listing is `list_dir`
- * (NOT `list_directory`), and glob is `find_by_name` (NOT `find_filepath`) — the
- * earlier best-effort names were wrong, so `block-env-files`/`block-secrets-write`
- * silently no-op'd on Antigravity file writes. Unknown tools pass through via the
- * `?? raw` fallback.
+ * Tool names VERIFIED against live recorder-hook captures, and they have moved
+ * once: agy 1.4.9 and 1.4.12 deliver `read_file`/`write_file`/`edit_file`, with
+ * listing and search reached through `read_file` on a directory and `run_command`.
+ * Earlier builds delivered `view_file`/`write_to_file`/`replace_file_content`/
+ * `list_dir`/`find_by_name`/`grep_search`; those stay mapped for installs that
+ * have not updated. A file tool missing here is not an error anywhere: every
+ * policy matching on the canonical name silently allows it. Unknown tools pass
+ * through via the `?? raw` fallback.
  */
 export const ANTIGRAVITY_TOOL_MAP: Record<string, string> = {
   run_command: "Bash",
   write_to_file: "Write",
+  write_file: "Write",
   read_file: "Read",
   view_file: "Read",
   edit_file: "Edit",
@@ -865,20 +889,20 @@ export const ANTIGRAVITY_TOOL_MAP: Record<string, string> = {
 
 /**
  * Antigravity tool args are PascalCase. Keyed by the CANONICAL tool name
- * (canonicalizeToolInput runs after canonicalizeToolName). VERIFIED live:
- * `run_command` delivers `CommandLine`/`Cwd`; `write_to_file` delivers the path
- * as `TargetFile` and body as `CodeContent`. Without the Write/Edit/Read entries
- * the path/content builtins (`block-env-files`, `block-secrets-write`,
- * `block-read-outside-cwd`) never saw a `file_path` and silently no-op'd on
- * Antigravity file operations. Read/Edit path keys are best-effort within the
- * same tool family (all file tools operate on `TargetFile`); extra keys are
- * harmless (only remapped when present).
+ * (canonicalizeToolInput runs after canonicalizeToolName). VERIFIED live against
+ * agy 1.4.12: `run_command` delivers `CommandLine`; `read_file` delivers `Path`;
+ * `write_file` delivers `Path`/`Content`; `edit_file` delivers
+ * `Path`/`Target`/`Replacement`. Earlier builds delivered `AbsolutePath` on
+ * `view_file` and `TargetFile`/`CodeContent` on `write_to_file`, kept because
+ * extra keys are harmless (only remapped when present). Without these entries
+ * the path/content builtins, and the always-on guard over failproofai's own
+ * state, never see a `file_path` and silently allow the call.
  */
 export const ANTIGRAVITY_TOOL_INPUT_MAP: Record<string, Record<string, string>> = {
   Bash: { CommandLine: "command", Cwd: "cwd" },
-  Write: { TargetFile: "file_path", CodeContent: "content" },
-  Edit: { TargetFile: "file_path" },
-  Read: { TargetFile: "file_path", AbsolutePath: "file_path", File: "file_path" },
+  Write: { Path: "file_path", Content: "content", TargetFile: "file_path", CodeContent: "content" },
+  Edit: { Path: "file_path", Target: "old_string", Replacement: "new_string", TargetFile: "file_path" },
+  Read: { Path: "file_path", TargetFile: "file_path", AbsolutePath: "file_path", File: "file_path" },
 };
 
 // ── Goose (codename goose, Block) ────────────────────────────────────────────
@@ -1045,7 +1069,7 @@ export type HookEventType = (typeof HOOK_EVENT_TYPES)[number];
  *
  * It stays in `HOOK_EVENT_TYPES` because that list is the canonical set a
  * policy may subscribe to; this one governs what we write into settings.json.
- * No builtin matches it (all 39 match only PreToolUse / PostToolUse /
+ * No builtin matches it (all 40 match only PreToolUse / PostToolUse /
  * PermissionRequest / Stop), so nothing is lost by not registering.
  */
 export const CLAUDE_INSTALL_EVENT_TYPES = HOOK_EVENT_TYPES.filter(

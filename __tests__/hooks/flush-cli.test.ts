@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from "node:fs";
+import { mkdtempSync, mkdirSync, writeFileSync, rmSync, utimesSync } from "node:fs";
 import { existsSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -15,7 +15,7 @@ vi.mock("../../src/hooks/daemon-service", () => ({
   isDaemonSupportedPlatform: vi.fn(() => true),
 }));
 
-import { runFlushCommand, pendingBatches, flushRequestPath } from "../../src/hooks/flush-cli";
+import { runFlushCommand, pendingBatches, spoolBacklog, flushRequestPath } from "../../src/hooks/flush-cli";
 import { readConfig } from "../../src/hooks/fp-config";
 import { readIngestCredential } from "../../src/hooks/collector-config";
 import { daemonServiceStatus } from "../../src/hooks/daemon-service";
@@ -52,6 +52,65 @@ describe("pendingBatches", () => {
 
   it("is zero when nothing has ever spooled", () => {
     expect(pendingBatches(home)).toBe(0);
+  });
+});
+
+// The daemon writes batches FLAT into state/spool (`own_spool_dir` in
+// crates/fpai-collect/src/config.rs) and the SDKs into custom-agents/events;
+// parked batches go flat into state/failed.
+const flat = (rel: string, files: string[]) => {
+  const dir = join(home, ".failproofai", rel);
+  mkdirSync(dir, { recursive: true });
+  for (const f of files) writeFileSync(join(dir, f), "{}\n");
+};
+
+describe("pendingBatches, against the layout the daemon writes", () => {
+  it("counts batches directly in state/spool and in the SDK spool", () => {
+    flat("state/spool", ["hooks-activity-1-0.jsonl", "claude-2-0.jsonl", "x.tmp"]);
+    flat("custom-agents/events", ["sdk-3-0.jsonl"]);
+    expect(pendingBatches(home)).toBe(3);
+  });
+});
+
+describe("spoolBacklog", () => {
+  it("counts what pendingBatches counts, and says how long the oldest has waited", () => {
+    flat("state/spool", ["young.jsonl", "old.jsonl", "half.tmp"]);
+    flat("custom-agents/events", ["sdk.jsonl"]);
+    const now = Date.now();
+    const old = new Date(now - 20 * 60_000);
+    utimesSync(join(home, ".failproofai", "state", "spool", "old.jsonl"), old, old);
+    const backlog = spoolBacklog(home, now);
+    expect(backlog.count).toBe(3);
+    expect(backlog.count).toBe(pendingBatches(home));
+    expect(backlog.oldestAgeMs).toBeGreaterThanOrEqual(20 * 60_000 - 1_000);
+    expect(backlog.oldestAgeMs).toBeLessThan(21 * 60_000);
+  });
+
+  it("has no age when nothing is queued", () => {
+    expect(spoolBacklog(home)).toEqual({ count: 0 });
+  });
+});
+
+describe("runFlushCommand with parked batches", () => {
+  it("does not call them delivered, and says how they are retried", async () => {
+    flat("state/failed", ["hooks-activity-1-0.a1.jsonl", "b.a3.jsonl.poison"]);
+    const r = await runFlushCommand({ home });
+    expect(r.exitCode).toBe(0);
+    const out = r.lines.join("\n");
+    expect(out).not.toContain("everything already delivered");
+    expect(out).toContain("1 batch parked");
+    expect(out).toContain("retries them");
+    // Flush does not resend parked batches, so it must not claim a request.
+    expect(existsSync(flushRequestPath(home))).toBe(false);
+  });
+
+  it("names them beside a real flush", async () => {
+    flat("state/spool", ["hooks-activity-2-0.jsonl"]);
+    flat("state/failed", ["p.a1.jsonl", "q.a2.jsonl"]);
+    const r = await runFlushCommand({ home });
+    expect(r.lines[0]).toContain("1 batch spooled");
+    expect(r.lines.join("\n")).toContain("2 batches parked");
+    expect(existsSync(flushRequestPath(home))).toBe(true);
   });
 });
 
@@ -136,5 +195,19 @@ describe("runFlushCommand request", () => {
     expect(r.exitCode).toBe(1);
     expect(r.pending).toBe(1);
     expect(r.lines.join(" ")).toContain("Delivery continues in the background");
+  });
+
+  it("marks the timeout line itself, so the report's failure glyph is not guessed onto the first line", async () => {
+    spool("claude", ["a.jsonl"]);
+    const realNow = Date.now;
+    let t = realNow();
+    vi.spyOn(Date, "now").mockImplementation(() => t);
+    const sleep = async () => {
+      t += 1000;
+    };
+    const r = await runFlushCommand({ home, wait: true, timeoutSecs: 2, sleep });
+    vi.mocked(Date.now).mockRestore();
+    expect(r.lines[0]).toMatch(/^1 batch spooled\. Requested delivery\.$/);
+    expect(r.lines.find((l) => l.includes("Still 1 batch"))).toBe("▲ Still 1 batch spooled after 2s.");
   });
 });

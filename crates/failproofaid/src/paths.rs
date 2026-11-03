@@ -66,7 +66,7 @@ pub fn worker_socket_path() -> io::Result<PathBuf> {
 /// disk, and the CLI read an empty directory and enforced nothing. Both halves
 /// looked healthy; only the combination was broken.
 pub fn cloud_managed_policy_dir() -> io::Result<PathBuf> {
-    if let Some(path) = std::env::var_os("FAILPROOFAI_CLOUD_POLICY_DIR") {
+    if let Some(path) = std::env::var_os(CLOUD_POLICY_DIR_ENV) {
         return Ok(PathBuf::from(path));
     }
     // A CHILD of `policies/` — every policy on the machine lives under one
@@ -76,6 +76,30 @@ pub fn cloud_managed_policy_dir() -> io::Result<PathBuf> {
     // `cloudPoliciesDir()` in fp-home.ts, and the cross-language test at the
     // bottom of this file executes that module to prove the two agree.
     Ok(failproofai_home()?.join("policies").join("cloud-policies"))
+}
+
+/// Overrides [`cloud_managed_policy_dir`], for tests and development.
+pub const CLOUD_POLICY_DIR_ENV: &str = "FAILPROOFAI_CLOUD_POLICY_DIR";
+
+/// `~/.failproofai/policies/packs` — the installed policy packs, whose
+/// `installed.json` names them. Mirrors `packsRoot()` in the CLI's
+/// `pack-manifest.ts` (`FAILPROOFAI_PACK_DIR`, else `packsDir()` in
+/// `fp-home.ts`). Read only to tell whether a pack a report names is still
+/// installed.
+pub fn packs_dir() -> io::Result<PathBuf> {
+    if let Some(path) = std::env::var_os(PACK_DIR_ENV) {
+        return Ok(PathBuf::from(path));
+    }
+    Ok(failproofai_home()?.join("policies").join("packs"))
+}
+
+/// Overrides [`packs_dir`], as it overrides the CLI's.
+pub const PACK_DIR_ENV: &str = "FAILPROOFAI_PACK_DIR";
+
+/// Whether [`cloud_managed_policy_dir`] is the operator's choice rather than
+/// the default — a directory that may hold more than this daemon's own files.
+pub fn cloud_managed_policy_dir_overridden() -> bool {
+    std::env::var_os(CLOUD_POLICY_DIR_ENV).is_some()
 }
 
 // ── Layout 2 ─────────────────────────────────────────────────────────────────
@@ -188,6 +212,12 @@ pub fn failproofai_home() -> io::Result<PathBuf> {
     let home = std::env::var_os("HOME")
         .ok_or_else(|| io::Error::other("HOME is not set; cannot resolve the failproofai home"))?;
     Ok(PathBuf::from(home).join(".failproofai"))
+}
+
+/// The owner-only agent/profile inventory. Matches `agentRosterFile()` in
+/// `fp-home.ts`; config paths never leave this file for Cloud.
+pub fn agent_roster_path() -> io::Result<PathBuf> {
+    Ok(failproofai_home()?.join("agents").join("roster.json"))
 }
 
 /// The on-disk layout this binary speaks. Mirrors `LAYOUT_VERSION` in
@@ -505,6 +535,11 @@ mod tests {
                 "workerSocket()",
             ),
             ("lock_path", lock_path().unwrap(), "daemonLock()"),
+            (
+                "agent_roster_path",
+                agent_roster_path().unwrap(),
+                "agentRosterFile()",
+            ),
             (
                 "cloud_managed_policy_dir",
                 cloud_managed_policy_dir().unwrap(),

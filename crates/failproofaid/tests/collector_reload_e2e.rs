@@ -117,7 +117,12 @@ impl Drop for DaemonGuard {
 }
 
 fn spawn_daemon(home: &Path) -> DaemonGuard {
+    spawn_daemon_with(home, &[])
+}
+
+fn spawn_daemon_with(home: &Path, env: &[(&str, &str)]) -> DaemonGuard {
     let mut child = Command::new(binary_path())
+        .envs(env.iter().copied())
         .env("FAILPROOFAI_HOME", home)
         .env(
             "FAILPROOFAI_DAEMON_SOCKET",
@@ -256,22 +261,57 @@ fn disabling_collection_stops_it_and_re_enabling_starts_it_again() {
     // `--disconnect` used to require a restart to take effect, so a machine that
     // had left its organisation went on shipping. The reverse matters just as
     // much: re-enabling must not need one either, or the fix is half a fix.
+    //
+    // The lever is the CREDENTIAL, because that is what `--disconnect` actually
+    // removes (`clearIngestCredential` in cloud-enrollment-cli.ts). This used to
+    // toggle `collector.hooks` as a stand-in, which no longer disables anything:
+    // that flag gates the daemon's own hook-activity source and deliberately
+    // does NOT gate delivery, since the spool also carries batches the
+    // `failproofai-sdk` wrote from the user's own process. Toggling the real
+    // thing is a stronger test of the scenario this exists for, and the
+    // companion test below pins the behaviour that replaced the old lever.
     let home = unique_home("toggle");
     make_home(&home, "a-stable-key");
     let daemon = spawn_daemon(&home);
     daemon.wait_for("collector enabled", 1, Duration::from_secs(20));
 
-    let cfg = home.join("config.json");
-    let on = std::fs::read_to_string(&cfg).unwrap();
-    // JSON now, so the edit is on the key/value pair, not a TOML line. A
-    // string replace that silently matches nothing writes the file back
-    // unchanged and the test then waits 20s for a reload that never had a
-    // reason to happen — which is exactly how this broke.
-    std::fs::write(&cfg, on.replace(r#""hooks":true"#, r#""hooks":false"#)).unwrap();
+    let creds = home.join("credentials.json");
+    let on = std::fs::read_to_string(&creds).unwrap();
+    std::fs::remove_file(&creds).unwrap();
     daemon.wait_for("no longer enabled", 1, Duration::from_secs(20));
 
-    std::fs::write(&cfg, &on).unwrap();
+    std::fs::write(&creds, &on).unwrap();
     daemon.wait_for("collector enabled", 2, Duration::from_secs(20));
+    let _ = std::fs::remove_dir_all(&home);
+}
+
+#[test]
+fn turning_both_capture_sources_off_leaves_delivery_running() {
+    // The counterweight to the change above, and the bug it came from: with
+    // `sessions` and `hooks` both false the daemon used to start NOTHING — no
+    // spool watcher, no sweeper, no log line — so every batch the SDK wrote
+    // sat on disk forever, with no error on either side and an unread spool
+    // indistinguishable from an idle one.
+    //
+    // Those two settings gate the daemon's own capture sources, and each is
+    // checked again where its source is registered, so leaving them off still
+    // starts neither. What they must not gate is delivery.
+    let home = unique_home("sources-off");
+    make_home(&home, "a-stable-key");
+    let cfg = home.join("config.json");
+    let on = std::fs::read_to_string(&cfg).unwrap();
+    std::fs::write(&cfg, on.replace(r#""hooks":true"#, r#""hooks":false"#)).unwrap();
+
+    let daemon = spawn_daemon(&home);
+    daemon.wait_for("collector enabled", 1, Duration::from_secs(20));
+    // The watcher is the thing that ships an SDK batch; without it this daemon
+    // is a process that reports healthy and delivers nothing.
+    daemon.wait_for("spool watcher started", 1, Duration::from_secs(20));
+    assert!(
+        !daemon.stderr().contains("hook-activity source started"),
+        "hooks=false must still switch the daemon's own hook source off:\n{}",
+        daemon.stderr()
+    );
     let _ = std::fs::remove_dir_all(&home);
 }
 
@@ -337,5 +377,150 @@ fn an_extra_capture_path_added_by_hand_is_registered_without_a_restart() {
     // says the entry was parsed and not rejected.
     daemon.wait_for("also capturing", 1, Duration::from_secs(20));
     daemon.wait_for("collector started", 2, Duration::from_secs(20));
+    let _ = std::fs::remove_dir_all(&home);
+}
+
+/// `--connect` with a replacement key writes the credential, then recovers the
+/// batches the old key had refused and asks for a flush. When both land in one
+/// tick, the flush must be served by the collector running the NEW key: the
+/// old one retries with the refused key and re-parks them as 401.
+#[tokio::test(flavor = "multi_thread")]
+async fn a_flush_after_a_key_rotation_is_delivered_with_the_new_key() {
+    use wiremock::matchers::{header, method};
+    use wiremock::{Mock, MockServer, ResponseTemplate};
+    let server = MockServer::start().await;
+    Mock::given(method("POST"))
+        .and(header("Authorization", "Bearer replacement"))
+        .respond_with(
+            ResponseTemplate::new(200).set_body_json(serde_json::json!({"accepted":1,"skipped":0})),
+        )
+        .mount(&server)
+        .await;
+    Mock::given(method("POST"))
+        .respond_with(ResponseTemplate::new(401))
+        .mount(&server)
+        .await;
+    let home = unique_home("flush-rotation");
+    make_home(&home, "unused");
+    let credentials = |key: &str| {
+        std::fs::write(
+            home.join("credentials.json"),
+            format!(
+                r#"{{"ingest":{{"url":"{}/v1/events","key":"{key}"}}}}"#,
+                server.uri()
+            ),
+        )
+        .unwrap();
+    };
+    credentials("revoked");
+    let daemon = spawn_daemon(&home);
+    daemon.wait_for("collector enabled", 1, Duration::from_secs(20));
+    // Let the first deployment's start-up passes finish before the rotation.
+    std::thread::sleep(Duration::from_millis(1500));
+    // What the CLI does, in its order: credential first, then recovery.
+    let failed = home.join("state/failed");
+    std::fs::create_dir_all(&failed).unwrap();
+    credentials("replacement");
+    let recovered = failed.join("refused-batch.a1.jsonl");
+    std::fs::write(&recovered, "{\"marker\":\"RECOVERED\"}\n").unwrap();
+    std::fs::write(
+        home.join("state/flush-request.json"),
+        r#"{"requestedAtMs":1}"#,
+    )
+    .unwrap();
+    let deadline = Instant::now() + Duration::from_secs(30);
+    while recovered.exists() {
+        assert!(
+            Instant::now() < deadline,
+            "recovered batch was never delivered: {:?}\n{}",
+            std::fs::read_dir(&failed)
+                .unwrap()
+                .flatten()
+                .map(|e| e.file_name())
+                .collect::<Vec<_>>(),
+            daemon.stderr()
+        );
+        tokio::time::sleep(Duration::from_millis(100)).await;
+    }
+    for request in server.received_requests().await.unwrap() {
+        if String::from_utf8_lossy(&request.body).contains("RECOVERED") {
+            assert_eq!(
+                request.headers.get("authorization").unwrap(),
+                "Bearer replacement",
+                "the old deployment flushed the recovered batch with the refused key"
+            );
+        }
+    }
+    let leftovers: Vec<_> = std::fs::read_dir(&failed)
+        .unwrap()
+        .flatten()
+        .map(|e| e.file_name().to_string_lossy().to_string())
+        .filter(|n| n.contains("refused-batch"))
+        .collect();
+    assert!(leftovers.is_empty(), "re-parked: {leftovers:?}");
+    drop(daemon);
+    let _ = std::fs::remove_dir_all(&home);
+}
+
+/// A collector that is slow to stop (busy uploading a large backfill) used to
+/// end the collector manager for good: it gave up waiting, logged, and
+/// returned, so nothing was collected again until the daemon restarted. A zero
+/// stop budget makes every ordinary collector "slow to stop".
+#[test]
+fn a_collector_slow_to_stop_is_replaced_once_it_stops_after_a_config_change() {
+    let home = unique_home("slow-stop-config");
+    make_home(&home, "first-key");
+    let daemon = spawn_daemon_with(&home, &[("FAILPROOFAI_COLLECTOR_STOP_BUDGET_MS", "0")]);
+    daemon.wait_for("collector started", 1, Duration::from_secs(20));
+
+    write_credentials(&home, "second-key");
+    daemon.wait_for(
+        "previous collector is still draining",
+        1,
+        Duration::from_secs(20),
+    );
+    daemon.wait_for("previous collector stopped", 1, Duration::from_secs(20));
+    daemon.wait_for("collector started", 2, Duration::from_secs(20));
+
+    // Still managing: a later change cycles again rather than being ignored.
+    write_credentials(&home, "third-key");
+    daemon.wait_for("collector started", 3, Duration::from_secs(20));
+    assert!(
+        !daemon
+            .stderr()
+            .contains("refusing to start a second collector")
+    );
+    let _ = std::fs::remove_dir_all(&home);
+}
+
+#[test]
+fn a_backfill_taken_while_the_collector_drains_is_applied_once_it_stops() {
+    let home = unique_home("slow-stop-backfill");
+    make_home(&home, "first-key");
+    let daemon = spawn_daemon_with(&home, &[("FAILPROOFAI_COLLECTOR_STOP_BUDGET_MS", "0")]);
+    daemon.wait_for("collector started", 1, Duration::from_secs(20));
+
+    std::fs::write(
+        home.join("state/backfill-request.json"),
+        r#"{"kind":"user","sinceMs":0}"#,
+    )
+    .unwrap();
+    daemon.wait_for(
+        "previous collector is still draining",
+        1,
+        Duration::from_secs(20),
+    );
+    // The request was already taken off disk; it must survive the wait.
+    daemon.wait_for("backfill requested", 1, Duration::from_secs(20));
+    daemon.wait_for("collector started", 2, Duration::from_secs(20));
+    let log = daemon.stderr();
+    let drained = log
+        .find("previous collector stopped")
+        .expect("never stopped");
+    let applied = log.find("backfill requested").unwrap();
+    assert!(
+        drained < applied,
+        "cursors were rewound while the old collector could still write them:\n{log}"
+    );
     let _ = std::fs::remove_dir_all(&home);
 }

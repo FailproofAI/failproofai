@@ -1,0 +1,37 @@
+---
+title: "CrewAI"
+description: "התקן, כיול, וראה את העקבות הראשונים שלך."
+icon: "/images/frameworks/crewai.svg"
+---
+
+שלוש שלבים לעקבות CrewAI הראשונים שלך. לקבלת פרטים על כל אירוע, זרימות וטיפול בבעיות, ראה [את המדריך המלא](/he/start/integrations/crewai).
+
+## התקנה
+
+```bash
+pip install 'failproofai-sdk[crewai]'
+```
+
+## כיול
+
+```python
+import failproofai_sdk
+
+failproofai_sdk.configure(environment="production")
+failproofai_sdk.instrument()
+
+with failproofai_sdk.session():
+    Crew(agents=[analyst, writer], tasks=[gather, summarise]).kickoff()
+```
+
+שום דבר בקבוצה, סוכנים, משימות או כלים שלך לא משתנה. `instrument()` מירתם לאוטובוס האירועים ברמת המודול של CrewAI.
+
+## בדוק שהגיע
+
+הרץ פעם אחת, ואז פתח **Observe → Sessions** ובחר את הסביבה שלך. ההרצה שלך מופיעה כעקבות משוחזר.
+
+אם כלום לא הגיע, אשר שהמכונה מחוברת עם `failproofai config --status`.
+
+<Card title="מדריך CrewAI מלא" icon="arrow-right" href="/he/start/integrations/crewai">
+  מה מתועד, זרימות, שימוש בטוקנים, שמות span, אפשרויות, והבעיות הנפוצות.
+</Card>

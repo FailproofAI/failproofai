@@ -34,8 +34,35 @@ if (!process.env.FAILPROOFAI_DIST_PATH) {
 
 const args = process.argv.slice(2);
 
-// Normalize 'p' → 'policies' (shorthand alias)
-if (args[0] === "p") args[0] = "policies";
+// ── one noun for policies ──────────────────────────────────────────────────
+// `policies`, `policy` and `pack` were three commands for one idea, two of them
+// a single letter apart and doing unrelated things. They are now three
+// spellings of the same command. Rewritten HERE, above SUBCOMMANDS and every
+// dispatch below, so the rest of this file mentions only the canonical name and
+// no branch has to remember the aliases.
+//
+// Nothing anybody has typed before stops working — the old spellings are
+// translated, not rejected — which matters because they are printed in shipped
+// help output, in this repo's docs, and in the release notes of every pack
+// published so far.
+if (args[0] === "p" || args[0] === "policy") args[0] = "policies";
+if (args[0] === "pack") {
+  args[0] = "policies";
+  if (args[1] === "list") {
+    // `pack list` was two commands wearing one name: bare it listed what is
+    // installed here, with an argument it previewed a pack that is not. Those
+    // are different questions, so they are different words now — the bare form
+    // and `show`.
+    const hasSource = args[2] && !args[2].startsWith("-");
+    if (hasSource) args.splice(1, 1, "show");
+    else args.splice(1, 1);
+  } else if (args[1] === "build") {
+    // `pack build` produced the release assets and stopped. That is exactly
+    // `publish` with nowhere to publish to, so it IS publish — the local half
+    // of it. `publish` with no --repo does the same thing and says so.
+    args.splice(0, 2, "publish");
+  }
+}
 // Normalize 'configure' / 'setup' → 'config' (aliases), so every later check
 // (SUBCOMMANDS, dispatch) mentions only the canonical name.
 if (args[0] === "configure" || args[0] === "setup") args[0] = "config";
@@ -93,9 +120,16 @@ async function exitAfterFlush(code) {
 const hookIdx = args.indexOf("--hook");
 if (hookIdx >= 0) {
   if (!args[hookIdx + 1]) {
-    console.error("Error: Missing event type after --hook");
-    console.error("Usage: failproofai --hook <event> [--cli <claude|codex|copilot|cursor|opencode|pi|hermes|openclaw|factory|devin|antigravity|goose>]");
-    process.exit(1);
+    // The notice shape, written out by hand and never coloured: importing the
+    // kit here — the first module this file imports — moves `tui.ts` ahead of
+    // the builtin policies in the bundle, so its top-level `ctx` renames their
+    // `ctx` parameters and changes the audit cache key (`engineVersion`) for
+    // every user. It also keeps the hook path an agent spawns per tool call
+    // loading nothing new. Written, not `console.error`, which Bun paints red.
+    process.stderr.write(
+      "✕ Missing event type after --hook.\n  Run  failproofai help hook  for the events and agent ids.\n",
+    );
+    await exitAfterFlush(1);
   }
   const eventType = args[hookIdx + 1];
   const cliIdx = args.indexOf("--cli");
@@ -119,7 +153,22 @@ if (hookIdx >= 0) {
     )
       ? cliArg
       : "claude";
+  const scopeIdx = args.indexOf("--agent-scope");
+  const scopeArg = scopeIdx >= 0 ? args[scopeIdx + 1] : undefined;
+  const scopeHint = scopeIdx < 0
+    ? undefined
+    : scopeArg === "user" || scopeArg === "project" || scopeArg === "local"
+      ? scopeArg
+      : null;
   try {
+    const { runtimeAgentSettingsPath } = await import("../src/hooks/agent-roster");
+    // An empty path is deliberate: it means the originating hook could not
+    // prove which installed scope fired. Forward it rather than omitting the
+    // field and letting the warm worker infer a different profile from its own
+    // environment.
+    const agentSettingsPath = (scopeHint === null
+      ? null
+      : runtimeAgentSettingsPath(cli, process.cwd(), undefined, scopeHint)) ?? "";
     // Daemon-aware path — inert (and this whole block skipped) on every
     // machine until `failproofai config` has installed failproofaid AND
     // written the daemonConfigured marker (Stage 4). Until then this is
@@ -138,6 +187,7 @@ if (hookIdx >= 0) {
         // process is spawned fresh, at that location, by the calling agent
         // CLI's own hook mechanism. See daemon-client.ts / PROTOCOL.md.
         cwd: process.cwd(),
+        agentSettingsPath,
       });
 
       // On a daemon-configured machine the daemon is the ONLY evaluator. Every
@@ -167,7 +217,7 @@ if (hookIdx >= 0) {
         const reason =
           attempt.failure === "protocol-mismatch"
             ? "failproofaid is running a different protocol version than this CLI, so it " +
-              "cannot evaluate this call. Run `failproofai config` to update the daemon."
+              "cannot evaluate this call. Run `failproofai update` to update the daemon."
             : "failproofaid could not be reached. This machine is configured to run hooks through it " +
               "— check the daemon (see `failproofai config`) rather than retrying blindly.";
         result = await evaluateHookEvent(eventType, cli, stdinRead.payload, {
@@ -181,7 +231,7 @@ if (hookIdx >= 0) {
     }
 
     const { handleHookEvent } = await import("../src/hooks/handler");
-    const exitCode = await handleHookEvent(eventType, cli);
+    const exitCode = await handleHookEvent(eventType, cli, agentSettingsPath);
     // handleHookEvent already flushes its own telemetry before returning; this
     // is the normal, reliable exit.
     await exitAfterFlush(exitCode);
@@ -269,155 +319,283 @@ if (hookIdx >= 0) {
  * CliError  → clean message, no stack trace, exit exitCode (1 or 2)
  * Error     → unexpected; shows message only, exits 2
  */
+/**
+ * Every `--help` in this file, and the index itself, drawn by ONE renderer.
+ *
+ * They used to be twelve template literals: `USAGE` on one screen and `Usage:`
+ * on the next, a description column hand-counted per screen, no version on any
+ * of them, and no colour on any of them while the index they were reached from
+ * had all three. The words are still each screen's own — this owns the shape,
+ * so a screen cannot drift out of the family without editing the family.
+ *
+ * Drawn by `screenKit().helpPage` at the terminal's width; descriptions are
+ * prose and may be shortened on a terminal, never in a pipe.
+ */
+/**
+ * Lines a module ALREADY laid out with the kit — `harness`, `publish`,
+ * `policies add`, the pack lane — printed with the outer margins every other
+ * screen gets. They used to go out one `console.log` at a time, which is the
+ * one thing `printBlock` exists to own: the block arrived flush against the
+ * prompt above it while every neighbouring command was breathing.
+ */
+async function printLines(lines, ok = true) {
+  const { printBlock } = await import("../src/hooks/tui");
+  printBlock(ok ? process.stdout : process.stderr, lines);
+}
+
+/**
+ * What an action surface prints when it is done: a heading naming the command,
+ * then the lines it produced, indented and margined like every other screen.
+ *
+ * The modules keep returning bare facts — `runFlushCommand` says "2 batches
+ * spooled", not how to draw it — so the presentation lives in exactly one
+ * place instead of five, and a flush report and a `policies` listing stop
+ * looking like output from two different programs.
+ *
+ * Lines that already carry their own leading space are passed through: those
+ * are sub-items a module laid out on purpose, and re-wrapping them would
+ * flatten the structure they were expressing.
+ */
+async function printReport(command, lines, opts = {}) {
+  const { printBlock, optsFor, screenKit, paint: palette } = await import("../src/hooks/tui");
+  const { reportBody } = await import("../src/hooks/report-body");
+  const ok = opts.ok !== false;
+  const stream = ok ? process.stdout : process.stderr;
+  const o = optsFor(stream);
+  const kit = screenKit(o);
+  const c = palette(o.color);
+  // `\`like this\`` becomes pink, and loses the backticks. These messages name
+  // the command to run next more often than not, and pink is what you type
+  // everywhere. Applied AFTER wrapping, because an escape sequence has no
+  // width and colouring first would make every wrap measure the wrong length.
+  //
+  // A line that opens on a state glyph gets that glyph in its role colour, the
+  // way a notice draws it: `update` reports a daemon that needs root that way.
+  const glyphRoles = { "✓": c.guide, "▲": c.warn, "✕": c.err };
+  const paint = (line) => {
+    const typed =
+      (line.match(/`/g) || []).length % 2 === 0 ? line.replace(/`([^`]+)`/g, (_, cmd) => c.pink(cmd)) : line;
+    const lead = /^(\s*)([✓▲✕]) /.exec(typed);
+    return lead ? `${lead[1]}${glyphRoles[lead[2]](lead[2])}${typed.slice(lead[1].length + 1)}` : typed;
+  };
+  // The 2026-10 shape: the header names the command, top-level lines start at
+  // column 0, and lines a module indented on purpose keep their indent. A
+  // failed run opens with ✕, so it reads as the failure it is — unless its
+  // lines already mark their own state; see report-body.ts.
+  const name = command.charAt(0).toUpperCase() + command.slice(1);
+  const body = reportBody(lines, { ok, width: o.cols - 2 }).map(paint);
+  printBlock(stream, [kit.header(opts.meta ? `${name}  ·  ${opts.meta}` : name), "", ...body]);
+}
+
+async function printHelp(spec) {
+  const { screenKit, optsFor, printBlock } = await import("../src/hooks/tui");
+  // Descriptions are prose and may be shortened to fit a terminal; nothing is
+  // ever cut in a pipe, and a command, flag or path is never cut anywhere.
+  const kit = screenKit({ ...optsFor(process.stdout), fit: !!process.stdout.isTTY });
+  printBlock(process.stdout, kit.helpPage(spec));
+}
+
 async function runCli() {
-  // --help / -h  (only when not inside a subcommand that handles its own --help)
-  const SUBCOMMANDS = ["policies", "policy", "audit", "config", "uninstall", "backfill", "flush", "harness"];
-  if ((args.includes("--help") || args.includes("-h")) && !SUBCOMMANDS.includes(args[0])) {
-    const extraArgs = args.filter((a) => a !== "--help" && a !== "-h");
-    if (extraArgs.length > 0) {
-      throw new CliError(`Unexpected argument: ${extraArgs[0]}\nRun \`failproofai --help\` for usage.`);
+  // One page for `policies --help` and `policies add|remove|show --help`: it
+  // carries every flag of every policies lane, so `help policies add` lands on
+  // the right page with no routing of its own. Defined here, inside runCli,
+  // so the bundle gains no top-level name.
+  const POLICIES_HELP = {
+    name: "policies",
+    usage: [
+      ["failproofai policies [--list]", "List every policy and whether it is on"],
+      ["failproofai policies add [name | owner/repo]", "Turn one on, install a pack, or pick from a list"],
+      ["failproofai policies remove [name | pack-id]", "Turn one off, uninstall a pack, or pick from a list"],
+      ["failproofai policies show <owner/repo>", "See what a pack holds"],
+      ["failproofai policies --install [names...]", "Install hooks and turn on any policies named"],
+      ["failproofai policies --uninstall [names...]", "Turn named policies off; with none, remove hooks"],
+    ],
+    options: [
+      ["-i, -u", "Short for --install and --uninstall"],
+      ["--policy, --only <a,b>", "Install only these policies from a pack"],
+      ["--category <x,y>", "Install only these categories from a pack"],
+      ["--all", "List every policy; with a pack, install all of it"],
+      ["--cli <agent...>", "Apply to these agents only"],
+      ["", "claude, codex, copilot, cursor, opencode, pi,"],
+      ["", "hermes, openclaw, factory, devin, antigravity, goose"],
+      ["--scope <scope>", "user, project, local (default user); all when removing"],
+      ["--beta", "Include beta policies"],
+      ["-c, --custom <file>", "With --install, add a custom policy file (repeatable)"],
+      ["", "--uninstall -c removes every custom policy file"],
+      ["--releases", "With show: list its releases, and which one is here"],
+    ],
+    examples: [
+      "failproofai policies add FailproofAI/policies",
+      "failproofai policies add FailproofAI/policies --category git",
+      "failproofai policies remove block-sudo",
+    ],
+  };
+  // `--cli` in the three policies lanes: one or more space-separated agents,
+  // optionally repeated, read until the next flag or the first word that is
+  // not an agent, since a policy name may follow the list. One wording for
+  // every mistake, built from INTEGRATION_TYPES: the message this replaced
+  // named eight of the twelve agents, and said "Missing" for a typo too.
+  async function readCliFlag(list) {
+    const { INTEGRATION_TYPES } = await import("../src/hooks/types");
+    const agents = new Set(INTEGRATION_TYPES);
+    const cliFlagValues = [];
+    const cliConsumedIdxs = new Set();
+    for (let idx = 0; idx < list.length; idx++) {
+      if (list[idx] !== "--cli") continue;
+      let consumed = 0;
+      for (let j = idx + 1; j < list.length && !list[j].startsWith("-") && agents.has(list[j]); j++) {
+        cliFlagValues.push(list[j]);
+        cliConsumedIdxs.add(j);
+        consumed++;
+      }
+      if (consumed > 0) continue;
+      const half = Math.ceil(INTEGRATION_TYPES.length / 2);
+      const everyAgent =
+        `Use any of: ${INTEGRATION_TYPES.slice(0, half).join(", ")},\n` +
+        `            ${INTEGRATION_TYPES.slice(half).join(", ")}`;
+      const given = list[idx + 1];
+      if (given === undefined || given.startsWith("-")) {
+        throw new CliError(`Missing agent name after --cli.\n${everyAgent}`);
+      }
+      const { nearestName } = await import("../src/hooks/did-you-mean");
+      const near = nearestName(given, INTEGRATION_TYPES);
+      throw new CliError(`Not an agent: ${given}${near ? ` (did you mean ${near}?)` : "."}\n${everyAgent}`);
     }
-    console.log(`
-failproofai v${version}
+    return { cliFlagValues, cliConsumedIdxs };
+  }
+  // --help / -h  (only when not inside a subcommand that handles its own --help)
+  // `update` and `migrate` were missing here, so `failproofai update --help`
+  // exited 1 with "Unexpected argument" — both commands had no reachable help
+  // at all, only the paragraph in the top-level dump that this rewrite moved.
+  // `help` and `publish` are new. `policy` and `pack` are canonicalized to
+  // `policies` above and never reach this list.
+  const SUBCOMMANDS = ["policies", "audit", "config", "uninstall", "backfill", "flush", "harness", "otel", "jev", "publish", "update", "migrate", "help"];
+  // ── help ─────────────────────────────────────────────────────────────────
+  //
+  // The index and the reference manual used to be the same document: 152 lines,
+  // six screens at 80x24, with every flag of every command inlined. That is a
+  // help tier collapse — the thing you read to find a command was the thing you
+  // read to use one — and the cost fell on the person who knew least.
+  //
+  // Now: ONE screen of what exists, and `help <command>` for everything else.
+  // `help <command>` is literally `<command> --help`, dispatched below, so there
+  // is exactly one copy of each command's documentation and the two spellings
+  // cannot drift.
+  const helpTopic = args[0] === "help" ? args[1] : undefined;
+  if (args[0] === "help" && helpTopic) {
+    // `--hook` is the entry point an agent CLI spawns per tool call. It is
+    // documented in NO help output — only a module docblock and one error
+    // string — so it gets a topic here rather than a line on the index, where a
+    // machine-facing flag would only take space from the human-facing commands.
+    if (helpTopic === "hook") {
+      await printHelp({
+        name: "hook",
+        usage: [["failproofai --hook <event> [--cli <agent>]", "Called by your agents on every tool call"]],
+        options: [
+          ["--hook <event>", "PreToolUse, PostToolUse, UserPromptSubmit, Stop and more"],
+          ["--cli <agent>", "claude (default), codex, copilot, cursor, opencode, pi,"],
+          ["", "hermes, openclaw, factory, devin, antigravity, goose"],
+        ],
+      });
+      process.exit(0);
+      process.exit(0);
+    }
+    // Canonicalize the topic the same way a typed command is canonicalized, so
+    // `help pack` and `help policy` answer instead of erroring.
+    const canonical =
+      helpTopic === "p" || helpTopic === "policy" || helpTopic === "pack"
+        ? "policies"
+        : helpTopic === "configure" || helpTopic === "setup"
+          ? "config"
+          : helpTopic;
+    if (!SUBCOMMANDS.includes(canonical)) {
+      throw new CliError(
+        `There is no help for '${helpTopic}'.\n` +
+        "Run  `failproofai help`  to see every command.",
+      );
+    }
+    // `policies add|remove|show` has its own help, distinct from the listing's.
+    args.splice(0, 2, canonical, ...(canonical === "policies" && !args[2] ? [] : []), "--help");
+  }
 
-USAGE
-  failproofai [command] [options]
-
-COMMANDS
-  (no args)                      Launch the policy dashboard
-  config                         Interactive setup — pick scope, agents & policies
-    --connect <url> --token <key>  Connect to FailproofAI Cloud non-interactively
-    --machine-id <id>              Stable id for this machine
-    --machine-label <name>         Human-readable name in the dashboard
-    --no-transcripts               Report decisions only, never transcripts
-    --disconnect                   Stop pulling policy and sending activity
-    --status                       Show connection, daemon and pause state
-    --pause / --resume             Pause or resume enforcement
-
-  policy add <name>              Enable a single policy (see \`policy --help\`)
-  policy remove <name>           Disable a single policy
-
-  policies, p                    List all available policies and their status
-  policies --install, -i         Enable policies in agent CLI settings
-    [names...]                     Specific policy names to enable
-    --cli claude|codex|copilot|cursor|opencode|pi|hermes|openclaw|factory|devin|antigravity|goose
-                                   Agent CLI(s) to install for; space-separated
-                                   (e.g. --cli claude codex copilot cursor opencode pi hermes openclaw factory devin antigravity goose) or repeated.
-                                   Default: detect installed CLIs and prompt.
-    --scope user|project|local     Config scope to write to (default: user)
-                                   (Codex / Copilot / Cursor / OpenCode / Pi support user|project only)
-    --beta                         Include beta policies
-    --custom, -c <path>            Custom policy file (repeat for multiple files)
-
-  policies --uninstall, -u       Disable policies or remove hooks
-    [names...]                     Specific policy names to disable
-    --cli claude|codex|copilot|cursor|opencode|pi|hermes|openclaw|factory|devin|antigravity|goose
-                                   Agent CLI(s) to uninstall from
-    --scope user|project|local|all Config scope to remove from (default: user)
-    --beta                         Remove only beta policies
-    --custom, -c                   Clear all explicit custom policy paths
-
-  policies --help, -h            Show this help for the policies command
-
-  harness list                   Show extra capture paths per agent CLI
-  harness add-path <h> <path>    Also capture sessions from <path> for harness
-                                 <h>. Accepts \`<label>=<path>\`; the label
-                                 namespaces agent ids so two copies of one
-                                 project stay distinct.
-  harness remove-path <h> <p>    Stop capturing that path
-  harness --help, -h             Show this help for the harness command
-
-  audit                          Audit your agent's behavior, then open the
-                                 dashboard at http://localhost:8020/audit
-  audit --schedule [days]        Audit on a timer (default 7 days) and email you
-                                 what it finds. Signs you in the first time;
-                                 --email <address> skips that question
-  audit --no-schedule            Stop auditing on a timer
-  audit --status                 Whether scheduling is on, where reports go, and
-                                 when the next scan is due
-  audit --help, -h               Show this help for the audit command
-
-  backfill                       Re-send history the collector already read past
-                                 — after clearing the dashboard, re-enrolling a
-                                 machine, or connecting later than the work
-    --since <when>                 How far back: 30d, 6m, or YYYY-MM-DD
-                                   (default: 30 days)
-    --dry-run                      Report what would be re-read, change nothing
-
-  flush                          Deliver everything already spooled, now,
-                                 instead of waiting for the next sweep
-    --wait                         Block until the spool drains (or --timeout)
-    --timeout <secs>               How long to wait with --wait (default: 60)
-
-  update                         Finish an upgrade npm cannot: migrate
-                                 ~/.failproofai to this version's layout, put the
-                                 matching daemon binary in place, restart it.
-                                 Run after \`npm install -g failproofai@latest\`.
-    --no-daemon                    Migrate the home only
-
-  migrate                        Run pending layout migrations on their own,
-                                 keyed on the layout in ~/.failproofai/VERSION
-                                 (not the npm version, so skipping releases with
-                                 no layout change runs nothing)
-    --dry-run                      Print the steps and change nothing
-
-  uninstall                      Remove failproofai from this machine: hook
-                                 entries from every agent CLI, and the daemon
-                                 service. Run this BEFORE \`npm rm -g failproofai\`
-                                 — npm runs no uninstall script, so removing the
-                                 package alone leaves both behind.
-    --purge                        Also delete ~/.failproofai (settings,
-                                   credentials, audit history, daemon binary)
-    --dry-run                      Show what would be removed, change nothing
-    --yes, -y                      Skip the confirmation prompt
-
-  --version, -v                  Print version and exit
-  --help, -h                     Show this help message
-
-CONVENTION POLICIES
-  Drop *policies.{js,mjs,ts} files into .failproofai/policies/ for auto-loading.
-  Works at project level (.failproofai/policies/) and user level (~/.failproofai/policies/).
-  No --custom flag or config changes needed — just drop files and they're picked up.
-
-EXAMPLES
-  failproofai policies
-  failproofai policies --install
-  failproofai policies --install block-sudo sanitize-api-keys --scope project
-  failproofai policies --install --cli codex --scope project
-  failproofai policies --install --cli copilot --scope project
-  failproofai policies --install --cli cursor --scope project
-  failproofai policies --install --cli opencode --scope project
-  failproofai policies --install --cli pi --scope project
-  failproofai policies --install --cli factory --scope project
-  failproofai policies --install --cli devin --scope project
-  failproofai policies --install --cli claude codex copilot cursor opencode pi hermes openclaw factory devin antigravity goose
-  failproofai policies --install --custom ./my-policies.js
-  failproofai policies -i -c ./my-policies.js
-  failproofai policies --uninstall block-sudo
-  failproofai policies --uninstall --cli codex
-  failproofai policies --uninstall --cli copilot
-  failproofai policies --uninstall --cli cursor
-  failproofai policies --uninstall --cli opencode
-  failproofai policies --uninstall --cli pi
-  failproofai policies --uninstall --custom
-  failproofai backfill --since 6m
-  failproofai backfill --dry-run
-  failproofai flush --wait
-  failproofai config --status
-
-LINKS
-  ⭐ Star us:      https://github.com/failproofai/failproofai
-  📖 Docs:         https://docs.befailproof.ai/introduction
-  💬 Discord:      https://discord.befailproof.ai/
-`.trimStart());
+  if (
+    args[0] === "help" ||
+    ((args.includes("--help") || args.includes("-h")) && !SUBCOMMANDS.includes(args[0]))
+  ) {
+    const extraArgs = args.filter((a) => a !== "--help" && a !== "-h" && a !== "help");
+    if (extraArgs.length > 0) {
+      throw new CliError(`Unexpected argument: ${extraArgs[0]}.\nRun  \`failproofai help\`  for usage.`);
+    }
+    // The index and every `<command> --help` page are built from the same kit,
+    // so a row added here cannot end up in a different dialect from the page it
+    // points at. Colour is decoration and never meaning: the column already says
+    // which half is a command, so this reads the same under NO_COLOR, piped to a
+    // file, or on a terminal that has never heard of 24-bit.
+    {
+      // The index, in the design's shape: what to do first, then every command by
+      // what it is for. Composed here from the kit rather than a builder in tui.ts,
+      // so the bundle gains no top-level name (see the audit-cache note there).
+      const { screenKit, optsFor, printBlock } = await import("../src/hooks/tui");
+      const kit = screenKit({ ...optsFor(process.stdout), fit: !!process.stdout.isTTY });
+      // The command sits in the SECOND column here, so these rows never go
+      // through rows()' description slot, which is the one shortened to fit.
+      const steps = [
+        ["Set up this machine", "failproofai config"],
+        ["Turn on policies", "failproofai policies add FailproofAI/policies"],
+        ["See what your agents did", "failproofai"],
+      ];
+      const section = (heading, entries) => [
+        "",
+        kit.head(heading),
+        ...kit.rows(entries.map(([name, description]) => [name === "(no args)" ? name : kit.cmd(name), description]), 12),
+      ];
+      await printBlock(process.stdout, [
+        kit.header("Guardrails for coding agents on this machine"),
+        "",
+        kit.head("Get started"),
+        ...steps.map(([label, command], i) => `  ${i + 1}  ${label.padEnd(27)}  ${kit.cmd(command)}`),
+        ...section("Set up", [
+          ["config", "Connect to cloud or use open source, and pick agents to trace"],
+          ["update", "Finish an npm upgrade: migrate this machine and match the daemon"],
+          ["uninstall", "Remove hooks and the daemon from this machine"],
+        ]),
+        ...section("Enforce", [
+          ["policies", "List policies, turn them on or off, install packs"],
+          ["publish", "Ship your own policies as a pack anyone can install"],
+          ["jev", "Have Jev judge tool calls on top of the regex policies"],
+        ]),
+        ...section("Observe", [
+          ["(no args)", "Open the policy dashboard on localhost:8020"],
+          ["audit", "Scan your agents' history for risky and wasteful patterns"],
+          ["otel", "Opt in to OpenTelemetry from agents and apps"],
+        ]),
+        ...section("Less often", [
+          ["harness", "Collect sessions from extra locations per agent"],
+          ["flush", "Send queued events to cloud now"],
+          ["backfill", "Re-send history the collector already read"],
+          ["migrate", "Bring ~/.failproofai up to this version's layout"],
+        ]),
+        "",
+        kit.head("Examples"),
+        ...kit.rows([
+          [kit.cmd("failproofai config --status"), "Check the daemon, cloud and pauses"],
+          [kit.cmd("failproofai policies add block-sudo"), "Turn on one policy"],
+          [kit.cmd("failproofai policies show acme/guards"), "Preview a pack before installing it"],
+        ]),
+        "",
+        `Run ${kit.cmd("failproofai help <command>")} for its options, ${kit.cmd("failproofai -v")} for the version.`,
+        "docs.befailproof.ai  ·  discord.befailproof.ai",
+      ]);
+    }
     process.exit(0);
   }
+
 
   // --version / -v
   if ((args.includes("--version") || args.includes("-v")) && !SUBCOMMANDS.includes(args[0])) {
     const extraArgs = args.filter((a) => a !== "--version" && a !== "-v");
     if (extraArgs.length > 0) {
-      throw new CliError(`Unexpected argument: ${extraArgs[0]}\nRun \`failproofai --help\` for usage.`);
+      throw new CliError(`Unexpected argument: ${extraArgs[0]}.\nRun  \`failproofai help\`  for usage.`);
     }
     console.log(version);
     process.exit(0);
@@ -492,8 +670,9 @@ LINKS
       // entry point can see this ordering.
       const { checkLayoutForCli } = await import("../src/hooks/fp-reset");
       const check = await checkLayoutForCli();
-      for (const line of check.lines) console.error(line);
-      if (check.fatal) process.exit(1);
+      // Written rather than `console.error`, which Bun paints red on a terminal.
+      if (check.lines.length > 0) process.stderr.write(`${check.lines.join("\n")}\n`);
+      if (check.fatal) await exitAfterFlush(1);
       // `check.didReset` is deliberately not read. It used to force the wizard
       // below; see the note at `shouldOfferFirstRun` for why a migrated machine
       // no longer needs setup re-run, and `didReset` in `fp-reset.ts` for what
@@ -523,6 +702,9 @@ LINKS
     // never block a command on reporting
   }
 
+  // True once the setup wizard has run in this process. It opens with the
+  // logomark, so the dashboard launch at the end must not draw a second one.
+  let setupWizardRan = false;
   const { shouldOfferFirstRun } = await import("../src/hooks/first-run-gate");
   // `|| layoutWasReset` stood here, with `force: layoutWasReset` below, because a
   // migration used to delete the home's policy config while leaving the agent
@@ -542,7 +724,7 @@ LINKS
       const { maybeFirstRunConfigure } = await import("../src/hooks/configure-wizard");
       // `audit` runs its own scan immediately after this returns; firing the
       // post-setup audit too would scan the whole history twice in a row.
-      await maybeFirstRunConfigure({}, { postSetupAudit: args[0] !== "audit" });
+      setupWizardRan = await maybeFirstRunConfigure({}, { postSetupAudit: args[0] !== "audit" });
     } catch {
       // Onboarding is never allowed to block the command the user actually typed.
     }
@@ -558,27 +740,17 @@ LINKS
   if (args[0] === "flush") {
     const subArgs = args.slice(1);
     if (subArgs.includes("--help") || subArgs.includes("-h")) {
-      console.log(`
-failproofai flush — deliver what is already spooled, now
-
-USAGE
-  failproofai flush [--wait] [--timeout <secs>]
-
-WHY
-  The collector is unhurried on purpose: a batch is swept once it is older than
-  two minutes, at most 64 per pass, on a 60-second cadence. That pacing keeps a
-  backlog from stampeding the server, and it is exactly wrong when you are
-  standing at a dashboard waiting to see your own events — "not delivered yet"
-  and "not working" look identical from there.
-
-  This asks the daemon to make a pass right now, with no minimum age and no
-  per-pass cap. It re-sends nothing: only batches already spooled and not yet
-  delivered. For history the collector has already read past, use \`backfill\`.
-
-OPTIONS
-  --wait             Block until the spool drains, or --timeout elapses.
-  --timeout <secs>   How long --wait waits. Default: 60.
-`);
+      await printHelp({
+        name: "flush",
+        usage: [["failproofai flush [options]", "Send queued events to cloud now"]],
+        options: [
+          // The queue on THIS machine: a batch set aside after repeated failures
+          // leaves it empty without having been delivered.
+          ["--wait", "Wait until the queue is empty"],
+          ["--timeout <secs>", "How long --wait waits (default 60)"],
+        ],
+        optionsCol: 20,
+      });
       process.exit(0);
     }
 
@@ -587,19 +759,21 @@ OPTIONS
       (a, i) => a.startsWith("-") && !KNOWN.has(a) && subArgs[i - 1] !== "--timeout",
     );
     if (unknown) {
-      throw new CliError(`Unexpected argument: ${unknown}\nRun \`failproofai flush --help\` for usage.`);
+      throw new CliError(`Unexpected argument: ${unknown}.\nRun  \`failproofai flush --help\`  for usage.`);
     }
 
     let timeoutSecs;
     const tIdx = subArgs.indexOf("--timeout");
     if (tIdx >= 0) {
       const raw = subArgs[tIdx + 1];
-      if (!raw || raw.startsWith("-")) throw new CliError("Missing value after --timeout.");
+      if (!raw || raw.startsWith("-")) {
+        throw new CliError("Missing value after --timeout.\nFor example:  `failproofai flush --wait --timeout 60`");
+      }
       const n = Number(raw);
       // Rejected rather than coerced: NaN would silently become "wait forever
       // or not at all" depending on the comparison, and neither is what was asked.
       if (!Number.isFinite(n) || n <= 0) {
-        throw new CliError(`Could not read --timeout ${raw}. Give a number of seconds.`);
+        throw new CliError(`Could not read --timeout ${raw}.\nGive a number of seconds, for example  \`--timeout 60\``);
       }
       timeoutSecs = n;
     }
@@ -607,10 +781,7 @@ OPTIONS
     lastSubcommand = "flush";
     const { runFlushCommand } = await import("../src/hooks/flush-cli");
     const result = await runFlushCommand({ wait: subArgs.includes("--wait"), timeoutSecs });
-    for (const line of result.lines) {
-      if (result.exitCode === 0) console.log(line);
-      else console.error(line);
-    }
+    await printReport("flush", result.lines, { ok: result.exitCode === 0 });
     await track("cli_flush", {
       ok: result.exitCode === 0,
       waited: subArgs.includes("--wait"),
@@ -624,36 +795,39 @@ OPTIONS
   if (args[0] === "backfill") {
     const subArgs = args.slice(1);
     if (subArgs.includes("--help") || subArgs.includes("-h")) {
-      console.log(`
-failproofai backfill — re-send history the collector has already read past
-
-USAGE
-  failproofai backfill [--since <when>] [--dry-run]
-
-WHY
-  The collector never re-reads a file it has a cursor for, which is right until
-  the dashboard's data is cleared, a machine is re-enrolled, or cursors advanced
-  before there was anywhere to send. Then the history exists on disk and nowhere
-  else, with no way to ask for it again.
-
-  Re-sending is safe: redaction is deterministic, so a re-sent event hashes
-  identically to its first send and collapses into the row already there.
-
-OPTIONS
-  --since <when>   How far back. \`30d\`, \`6m\`, or \`YYYY-MM-DD\`.
-                   Default: 30 days.
-  --dry-run        Report what would be re-read and change nothing.
-
-  Which streams are sent follows [collector] in ~/.failproofai/config.toml —
-  a backfill never sends something your config says you do not want.
-`);
+      await printHelp({
+        name: "backfill",
+        usage: [["failproofai backfill [options]", "Re-send history the collector already read"]],
+        options: [
+          ["--since <when>", "How far back: 30d, 6m, 1y or YYYY-MM-DD (default 30d)"],
+          ["--agents <a,b>", "Only these traced agents (default: every traced agent)"],
+          ["--dry-run", "Show what would be sent, send nothing"],
+        ],
+        examples: ["failproofai backfill --since 6m", "failproofai backfill --agents claude,codex --dry-run"],
+        optionsCol: 20,
+      });
       process.exit(0);
     }
 
-    const KNOWN = new Set(["--since", "--dry-run"]);
-    const unknown = subArgs.find((a, i) => a.startsWith("-") && !KNOWN.has(a) && subArgs[i - 1] !== "--since");
+    const KNOWN = new Set(["--since", "--dry-run", "--agents"]);
+    const TAKES_VALUE = new Set(["--since", "--agents"]);
+    // Every word is checked, not only the ones that start with "-": a bare
+    // `backfill 6m` used to be ignored, and ran the default 30 days instead of
+    // the six months that were typed.
+    const unknown = subArgs.find((a, i) => !KNOWN.has(a) && !TAKES_VALUE.has(subArgs[i - 1]));
     if (unknown) {
-      throw new CliError(`Unexpected argument: ${unknown}\nRun \`failproofai backfill --help\` for usage.`);
+      const looksLikeWindow = /^\d+[dmy]$/.test(unknown) || !Number.isNaN(Date.parse(unknown));
+      throw new CliError(
+        `Unexpected argument: ${unknown}.\n` +
+          (looksLikeWindow ? `Did you mean  \`failproofai backfill --since ${unknown}\`?` : "See its options:  `failproofai backfill --help`"),
+      );
+    }
+    let agents;
+    const agentsIdx = subArgs.indexOf("--agents");
+    if (agentsIdx >= 0) {
+      const raw = subArgs[agentsIdx + 1];
+      if (!raw || raw.startsWith("-")) throw new CliError("Missing value after --agents.");
+      agents = raw.split(",").map((a) => a.trim()).filter(Boolean);
     }
 
     let sinceMs;
@@ -680,12 +854,23 @@ OPTIONS
 
     lastSubcommand = "backfill";
     const { runBackfillCommand } = await import("../src/hooks/backfill-cli");
-    const result = runBackfillCommand({ sinceMs, dryRun: subArgs.includes("--dry-run") });
-    for (const line of result.lines) {
-      if (result.exitCode === 0) console.log(line);
-      else console.error(line);
-    }
-    await track("cli_backfill", { ok: result.exitCode === 0, dry_run: subArgs.includes("--dry-run"), explicit_since: sinceIdx >= 0 });
+    const { optsFor } = await import("../src/hooks/tui");
+    const result = await runBackfillCommand({
+      sinceMs,
+      since: sinceIdx >= 0 ? subArgs[sinceIdx + 1] : undefined,
+      dryRun: subArgs.includes("--dry-run"),
+      agents,
+      // Drawn for stdout. A refusal goes to stderr, and printBlock drops the
+      // colour there when stderr cannot show it.
+      render: optsFor(process.stdout),
+    });
+    await printLines(result.lines, result.exitCode === 0);
+    await track("cli_backfill", {
+      ok: result.exitCode === 0,
+      dry_run: subArgs.includes("--dry-run"),
+      explicit_since: sinceIdx >= 0,
+      agents_named: agents ? agents.length : 0,
+    });
     lastSubcommand = null;
     await exitAfterFlush(result.exitCode);
     return;
@@ -697,80 +882,161 @@ OPTIONS
   // nothing else — no root, no daemon call — so it works on a machine whose
   // daemon is stopped, which is when someone is most likely to be fixing what
   // it captures.
+  // There is no `pack` branch here on purpose. `pack`, `policy` and `p` are
+  // rewritten to `policies` at the top of this file, above every dispatch, so
+  // `args[0]` can never be "pack" by the time this runs. One lived here anyway
+  // for a while, unreachable, carrying a sixty-line help screen that still
+  // advertised `pack list`, `pack add` and `pack build` — three spellings this
+  // CLI no longer has — in a third heading dialect nothing else used. Nobody
+  // could reach it to notice. The pack lane is entered from
+  // `policies add|remove|show` below, which is the only door it has.
+
+  if (args[0] === "otel") {
+    const subArgs = args.slice(1);
+    if (!subArgs.length || subArgs.includes("--help") || subArgs.includes("-h")) {
+      const verb = ["status", "enable", "disable", "env"].includes(subArgs[0]) ? subArgs[0] : null;
+      const usages = {
+        status: "failproofai otel status",
+        enable: "failproofai otel enable <agent|all> [--local] [--no-content] [--yes]",
+        disable: "failproofai otel disable <agent|all>",
+        env: "failproofai otel env [--service <name>] [--local]",
+      };
+      const options = {
+        enable: [
+          ["--local", "Use the loopback OTLP relay. Automatic for Copilot."],
+          ["--no-content", "Do not capture prompt text or tool details."],
+          ["--yes", "Accept switching this agent from transcript upload to OTEL."],
+        ],
+        env: [
+          ["--service <name>", "Service name for env (default: my-agent)."],
+          ["--local", "Use the loopback OTLP relay."],
+        ],
+        status: [],
+        disable: [],
+      };
+      const acceptedOptions = verb ? options[verb] : [...options.enable, options.env[0]];
+      await printHelp({
+        name: verb ? `otel ${verb}` : "otel",
+        usage: (verb ? [usages[verb]] : Object.values(usages)).map(usage => [
+          usage,
+          verb === "enable" || verb === "disable" || !verb ? "Agents: claude, codex, copilot, all" : "",
+        ]),
+        options: acceptedOptions,
+        examples: verb === "status" ? ["failproofai otel status"] :
+          verb === "disable" ? ["failproofai otel disable all"] :
+          verb === "env" ? ["failproofai otel env --service my-agent --local"] :
+          ["failproofai otel enable claude", "failproofai otel enable codex --local --no-content", "failproofai otel disable all"],
+      });
+      process.exit(0);
+    }
+    lastSubcommand = "otel";
+    const { runOtelCommand } = await import("../src/hooks/otel-cli");
+    const { otelReportLines } = await import("../src/hooks/otel-output");
+    const result = await runOtelCommand(subArgs, { onEvent: track });
+    // env is shell input and must not be wrapped in a styled report.
+    if (subArgs[0] === "env" && result.exitCode === 0) console.log(result.lines.join("\n"));
+    else await printReport(`otel ${subArgs[0]}`, otelReportLines(subArgs[0], result), { ok: result.exitCode === 0 });
+    lastSubcommand = null;
+    await exitAfterFlush(result.exitCode);
+    return;
+  }
+
   if (args[0] === "harness") {
     const subArgs = args.slice(1);
     if (subArgs.length === 0 || subArgs.includes("--help") || subArgs.includes("-h")) {
-      console.log(`
-failproofai harness — capture sessions from more than one location per agent CLI
-
-USAGE
-  failproofai harness list [<harness>]
-  failproofai harness add-path <harness> [<label>=]<path>
-  failproofai harness remove-path <harness> <path|label>
-
-WHY
-  Each agent CLI is watched wherever its own installer put it — ~/.claude/projects,
-  ~/.hermes/state.db, and so on. That misses every other arrangement: a second
-  profile, a mounted team share, a container's home beside the host's, an agent
-  an operator moved. Those hold real sessions and nothing collects them.
-
-THE LABEL
-  An entry is \`<path>\` or \`<label>=<path>\`. The label namespaces agent ids as
-  <label>-<agentId>, and it matters: two locations holding the same project
-  derive the SAME id (it comes from the cwd inside the transcript, identical in
-  both copies), so without a label they merge into one agent whose sessions
-  interleave from two machines' worth of history. Omit it and one is derived
-  from the folder name.
-
-HARNESSES
-  claude, codex, copilot, openclaw, pi, factory, antigravity, cursor,
-  goose, opencode, devin, hermes
-
-  \`claude\` covers subagent transcripts too — they live under the same root.
-
-NOTES
-  • Session collection must be on for any of this to be read; extra paths live
-    under "collector" in ~/.failproofai/config.json like the default ones do.
-  • A path overlapping one already captured is REFUSED by the daemon at startup
-    rather than collected twice under two ids. It says so in the journal.
-  • Two entries sharing a LABEL are refused too: they would share one cursor
-    directory, whose whole map is written at once, so each would clobber the
-    other's watermark and re-read from zero after every restart.
-  • Takes effect within seconds — the daemon re-reads config.json on an interval
-    and cycles its collector. No restart, no sudo.
-
-EXAMPLES
-  failproofai harness add-path claude work=/srv/team/.claude/projects
-  failproofai harness add-path hermes prod=/srv/hermes-prod/state.db
-  failproofai harness add-path codex /mnt/other-home/.codex/sessions
-  failproofai harness list
-  failproofai harness remove-path claude work
-
-  One home per person — label them, or both derive the same folder-name label
-  and the second is refused:
-  failproofai harness add-path openclaw user1=/srv/.openclaw-user1
-  failproofai harness add-path openclaw user2=/srv/.openclaw-user2
-
-  Containers: FAILPROOFAI_<HARNESS>_EXTRA_PATHS replaces the file's entries.
-  FAILPROOFAI_OPENCLAW_EXTRA_PATHS="user1=/srv/.openclaw-user1,user2=/srv/.openclaw-user2"
-
-`.trimStart());
+      await printHelp({
+        name: "harness",
+        usage: [
+          ["failproofai harness list [agent]", "Show extra capture paths"],
+          ["failproofai harness add-path <agent> [label=]<path>", "Also capture from here"],
+          ["failproofai harness remove-path <agent> <path | label>", "Stop capturing from here"],
+        ],
+        // For hermes, goose, opencode and devin the extra path is a database file.
+        examples: [
+          "failproofai harness add-path claude work=/srv/team/.claude/projects",
+          "failproofai harness add-path hermes prod=/srv/hermes-prod/state.db",
+          "failproofai harness remove-path claude work",
+        ],
+      });
       process.exit(0);
     }
 
     lastSubcommand = "harness";
     const { runHarnessCommand } = await import("../src/hooks/harness-cli");
     const result = runHarnessCommand(subArgs);
-    for (const line of result.lines) {
-      if (result.exitCode === 0) console.log(line);
-      else console.error(line);
-    }
+    await printLines(result.lines, result.exitCode === 0);
     await track("cli_harness", {
       ok: result.exitCode === 0,
       // The subcommand only — never the harness name, the label or the path.
       // A path is a value the user typed, and `enterprise-docs/product-analytics.md`
       // promises we send shape, never value.
       sub: ["list", "add-path", "remove-path"].includes(subArgs[0]) ? subArgs[0] : "unknown",
+    });
+    lastSubcommand = null;
+    await exitAfterFlush(result.exitCode);
+    return;
+  }
+
+  // jev --url <url> | jev setup | status | test | remove
+  //
+  // The customer's own Jev endpoint and key (BYOK), the only opt-in to the
+  // two-tier hook evaluator. Writes ~/.failproofai/jev.json and nothing else —
+  // no root, no daemon call; hooks re-read the file on every event. The key is
+  // taken on stdin or at a masked prompt and never printed, so it stays out of
+  // `ps`, shell history and scrollback; `--token` is the one spelling that does
+  // put it on the command line, and says so every time it is used.
+  if (args[0] === "jev") {
+    const subArgs = args.slice(1);
+    if (subArgs.length === 0 || subArgs.includes("--help") || subArgs.includes("-h")) {
+      await printHelp({
+        name: "jev",
+        // One row per subcommand: the design's `status | test | models | remove`
+        // runs as a shell pipeline if pasted, and the four take different flags.
+        usage: [
+          ["failproofai jev setup --provider <kind> --key-stdin", "Turn Jev on"],
+          ["failproofai jev --url <url> --key-stdin", "Turn Jev on from a URL"],
+          ["failproofai jev setup --provider failproofai", "Use FailproofAI Cloud"],
+          ["failproofai jev status [--json]", "Show config and activity"],
+          ["failproofai jev test [--json]", "Send one live request"],
+          ["failproofai jev models [--provider <kind>] [--url <base>] [--json]"],
+          ["failproofai jev remove", "Delete the config"],
+        ],
+        options: [
+          ["--provider <kind>", "typesafe openrouter vercel cloudflare custom failproofai"],
+          ["--key-stdin", "Read the API key from stdin, or a prompt on a terminal"],
+          ["--key-from-env", "Store no key; read it from FAILPROOFAI_JEV_API_KEY"],
+          ["--token <token>", "The API key on the command line; prefer --key-stdin"],
+          ["--url <url>", "The API base URL; picks the provider from its host"],
+          ["--base-url <url>", "Override the API base; default clears it"],
+          ["--mode <m>", "enforce, observe (log Jev, enforce regex) or off"],
+          ["--model <id>", "Override the model id; default clears it"],
+          ["--account-id <id>", "Cloudflare account id, 32 hex characters"],
+          ["--timeout-ms <n>", "Time per call before falling back to regex (default 3000)"],
+          ["--json", "Print JSON (status, test and models)"],
+        ],
+        examples: [
+          "failproofai jev setup --provider typesafe --key-stdin < key.txt",
+          "failproofai jev setup --mode observe",
+          "failproofai jev test",
+        ],
+      });
+      process.exit(0);
+    }
+
+    lastSubcommand = "jev";
+    const { runJevCommand } = await import("../src/hooks/jev-cli");
+    const result = await runJevCommand(subArgs);
+    if (subArgs.includes("--json") && result.json !== undefined) {
+      process.stdout.write(`${result.json}\n`);
+    } else {
+      await printLines(result.lines, result.exitCode === 0);
+    }
+    await track("cli_jev", {
+      ok: result.exitCode === 0,
+      // The subcommand only — never the provider, a URL, a model id or the key.
+      // An argv opening with an option is the one-shot form of `setup`, and is
+      // reported as `setup`: the literal, never the option or what follows it.
+      sub: subArgs[0].startsWith("-") ? "setup" : ["setup", "status", "test", "models", "remove"].includes(subArgs[0]) ? subArgs[0] : "unknown",
     });
     lastSubcommand = null;
     await exitAfterFlush(result.exitCode);
@@ -786,30 +1052,12 @@ EXAMPLES
   if (args[0] === "migrate") {
     const subArgs = args.slice(1);
     if (subArgs.includes("--help") || subArgs.includes("-h")) {
-      console.log(`
-failproofai migrate — bring ~/.failproofai up to the layout this version speaks
-
-USAGE
-  failproofai migrate [--dry-run]
-
-WHY
-  npm cannot update an installed package on its own, so a machine can sit on an
-  old version for months and then jump several layouts at once. This runs the
-  steps for that jump in order, keyed on the LAYOUT recorded in
-  ~/.failproofai/VERSION rather than on the npm version — so skipping thirty
-  releases with no layout change runs nothing at all.
-
-  It normally happens by itself, on the first command after an upgrade. This is
-  for running it deliberately, and for seeing what it would do first.
-
-  Your settings, cloud enrolment, policy selection, your own policy files,
-  decision history and undelivered events are carried across, not removed. The
-  irreplaceable files are copied to migrations/backup-layout<n>/ before anything
-  runs, and every step is recorded in migrations/applied.json.
-
-OPTIONS
-  --dry-run   Print the steps and the files that would be saved. Change nothing.
-`);
+      await printHelp({
+        name: "migrate",
+        usage: [["failproofai migrate", "Bring ~/.failproofai up to this version's layout"]],
+        options: [["--dry-run", "Show the steps, change nothing"]],
+        optionsCol: 20,
+      });
       process.exit(0);
     }
 
@@ -817,7 +1065,7 @@ OPTIONS
     const unknown = subArgs.find((a) => a.startsWith("-") && !KNOWN.has(a));
     if (unknown) {
       throw new CliError(
-        `Unexpected argument: ${unknown}\nRun \`failproofai migrate --help\` for usage.`,
+        `Unexpected argument: ${unknown}.\nRun  \`failproofai migrate --help\`  for usage.`,
       );
     }
 
@@ -831,11 +1079,12 @@ OPTIONS
     // data is fine and an upgrade would read it, so migrating "forward" from it
     // is not a thing that exists.
     if (state.kind === "future") {
-      console.error(
-        `This machine's failproofai directory was written by a newer version (layout ${state.found};`,
-      );
-      console.error(`this build speaks ${LAYOUT_VERSION}). Upgrade rather than migrate:`);
-      console.error(`  npm install -g failproofai@latest`);
+      await printReport("migrate", [
+        `This machine's failproofai directory was written by a newer version ` +
+          `(layout ${state.found}; this build speaks ${LAYOUT_VERSION}). Upgrade rather than migrate:`,
+        "",
+        "  npm install -g failproofai@latest",
+      ], { ok: false, meta: `layout ${state.found}` });
       await track("cli_migrate", { ok: false, reason: "future_layout" });
       lastSubcommand = null;
       await exitAfterFlush(1);
@@ -844,7 +1093,7 @@ OPTIONS
 
     const from = state.kind === "stale" ? state.found : LAYOUT_VERSION;
     if (subArgs.includes("--dry-run")) {
-      for (const line of describePlan(from)) console.log(line);
+      await printReport("migrate", describePlan(from), { meta: "dry run" });
       await track("cli_migrate", { ok: true, dry_run: true, from });
       lastSubcommand = null;
       await exitAfterFlush(0);
@@ -852,7 +1101,7 @@ OPTIONS
     }
 
     if (state.kind !== "stale") {
-      console.log(`Already at layout ${LAYOUT_VERSION}. Nothing to migrate.`);
+      await printReport("migrate", [`Already at layout ${LAYOUT_VERSION}. Nothing to migrate.`]);
       await track("cli_migrate", { ok: true, from, steps: 0 });
       lastSubcommand = null;
       await exitAfterFlush(0);
@@ -860,16 +1109,23 @@ OPTIONS
     }
 
     const run = runMigrations(from);
-    for (const step of run.steps) {
-      console.log(`${step.ok ? "migrated" : "FAILED  "} layout ${step.from} → ${step.to}`);
-    }
-    if (run.backedUp.length > 0) {
-      console.log(`Saved first: ${run.backedUp.join(", ")}`);
-    }
+    const report = run.steps.map(
+      (step) => `  ${step.ok ? "migrated" : "FAILED  "} layout ${step.from} → ${step.to}`,
+    );
+    if (run.backedUp.length > 0) report.push("", `Saved first: ${run.backedUp.join(", ")}`);
+    // The failing step is marked where it is: the backup line comes first, and
+    // left to printReport's guess it took the ✕ with the error indented under it.
     if (run.failed) {
-      console.error(`Step ${run.failed.from} → ${run.failed.to} did not finish: ${run.failed.error}`);
-      console.error(`The home is still marked layout ${from} and will be retried.`);
+      report.push(
+        "",
+        `✕ Step ${run.failed.from} → ${run.failed.to} did not finish: ${run.failed.error}`,
+        `  The home is still marked layout ${from} and will be retried.`,
+      );
     }
+    await printReport("migrate", report, {
+      ok: !run.failed,
+      meta: `layout ${from} → ${LAYOUT_VERSION}`,
+    });
     await track("cli_migrate", {
       ok: !run.failed,
       from,
@@ -884,26 +1140,12 @@ OPTIONS
   if (args[0] === "update") {
     const subArgs = args.slice(1);
     if (subArgs.includes("--help") || subArgs.includes("-h")) {
-      console.log(`
-failproofai update — finish an upgrade: migrate the home, match the daemon
-
-USAGE
-  npm install -g failproofai@latest && failproofai update [--no-daemon]
-
-WHY
-  npm replaces the CLI and nothing else. The daemon binary lives at
-  ~/.failproofai/bin/failproofaid-<version> and stays exactly where it was, so
-  after an npm upgrade the two halves are different versions — and failproofaid
-  refuses to start against a layout it does not speak, which is the loud version
-  of that problem rather than the silent one.
-
-  This does the rest of the upgrade: runs any pending layout migrations, puts the
-  matching daemon binary in place, and restarts the service.
-
-OPTIONS
-  --no-daemon   Migrate the home only. Leaves a version-skewed daemon in place,
-                so prefer letting it run.
-`);
+      await printHelp({
+        name: "update",
+        usage: [["npm i -g failproofai@latest && failproofai update"]],
+        options: [["--no-daemon", "Migrate everything but leave the daemon as is"]],
+        optionsCol: 20,
+      });
       process.exit(0);
     }
 
@@ -911,7 +1153,7 @@ OPTIONS
     const unknown = subArgs.find((a) => a.startsWith("-") && !KNOWN.has(a));
     if (unknown) {
       throw new CliError(
-        `Unexpected argument: ${unknown}\nRun \`failproofai update --help\` for usage.`,
+        `Unexpected argument: ${unknown}.\nRun  \`failproofai update --help\`  for usage.`,
       );
     }
 
@@ -927,17 +1169,22 @@ OPTIONS
     const state = detectLayout();
 
     if (state.kind === "future") {
-      console.error(
-        `This machine's failproofai directory was written by a NEWER version (layout ${state.found};`,
-      );
-      console.error(`this build speaks ${LAYOUT_VERSION}). This CLI is the stale half:`);
-      console.error(`  npm install -g failproofai@latest`);
+      await printReport("update", [
+        `This machine's failproofai directory was written by a NEWER version ` +
+          `(layout ${state.found}; this build speaks ${LAYOUT_VERSION}). This CLI is the stale half:`,
+        "",
+        "  npm install -g failproofai@latest",
+      ], { ok: false, meta: `layout ${state.found}` });
       await track("cli_update", { ok: false, reason: "future_layout" });
       lastSubcommand = null;
       await exitAfterFlush(1);
       return;
     }
 
+    // Collected rather than printed as it goes, so `update` closes with ONE
+    // report — heading, then both halves of the upgrade under it — instead of
+    // a run of bare sentences at column zero.
+    const report = [];
     let migrationsRan = 0;
     let migrationFailed = false;
     if (state.kind === "stale") {
@@ -945,17 +1192,21 @@ OPTIONS
       migrationsRan = run.steps.length;
       migrationFailed = Boolean(run.failed);
       for (const step of run.steps) {
-        console.log(`${step.ok ? "migrated" : "FAILED  "} layout ${step.from} → ${step.to}`);
+        report.push(`  ${step.ok ? "migrated" : "FAILED  "} layout ${step.from} → ${step.to}`);
       }
-      if (run.backedUp.length > 0) console.log(`Saved first: ${run.backedUp.join(", ")}`);
+      if (run.backedUp.length > 0) report.push("", `Saved first: ${run.backedUp.join(", ")}`);
+      // Each failing half marks its own line (the daemon's lines arrive with
+      // their ✕ already): the report opens on whatever ran first, often a
+      // success, and printReport's guess would put the ✕ there.
       if (run.failed) {
-        console.error(
-          `Step ${run.failed.from} → ${run.failed.to} did not finish: ${run.failed.error}`,
+        report.push(
+          "",
+          `✕ Step ${run.failed.from} → ${run.failed.to} did not finish: ${run.failed.error}`,
+          `  The home is still marked layout ${state.found} and will be retried.`,
         );
-        console.error(`The home is still marked layout ${state.found} and will be retried.`);
       }
     } else {
-      console.log(`Home is at layout ${LAYOUT_VERSION}; no migration was needed.`);
+      report.push(`Home is at layout ${LAYOUT_VERSION}; no migration was needed.`);
     }
 
     // The daemon is refreshed even when a step failed, and deliberately: the
@@ -964,59 +1215,74 @@ OPTIONS
     // the half that can be fixed. The exit code still reports the failure.
     let daemonOk = true;
     if (subArgs.includes("--no-daemon")) {
-      console.log("Skipped the daemon (--no-daemon). Its version may not match this CLI.");
+      report.push("", "Skipped the daemon (--no-daemon). Its version may not match this CLI.");
     } else {
       const svc = await import("../src/hooks/daemon-service");
       if (!svc.isDaemonSupportedPlatform()) {
-        console.log(`failproofaid does not run on ${process.platform}; nothing to update.`);
+        report.push("", `failproofaid does not run on ${process.platform}; nothing to update.`);
       } else {
         // `refreshDaemonToCliVersion` answers "is there a service at all" itself,
         // so there is no separate installed check to get out of step with it.
         const result = await svc.refreshDaemonToCliVersion();
-        for (const line of result.lines) console.log(line);
+        report.push("", ...result.lines);
         daemonOk = result.ok;
       }
     }
 
+    // Hermes is migrated AFTER the daemon, and gated on what the daemon that is
+    // now running can do: the native plugin needs `policyEvaluation`, which
+    // ≤1.0.5 daemons lack, so when the swap above could not happen (a sudo
+    // system service with no sudo) the shell hooks stay and this fails loudly.
+    let hermesOk = true;
+    let hermesMigrated = 0;
+    try {
+      const { runHermesUpdateMigration } = await import("../src/hooks/hermes-update");
+      const svc = await import("../src/hooks/daemon-service");
+      const hermesResult = await runHermesUpdateMigration({
+        daemonSupportsPolicyEvaluation: () => svc.probeDaemonPolicyEvaluation(),
+      });
+      if (hermesResult.lines.length > 0) {
+        // Its lines open on a "Hermes:" heading over one row per profile; on a
+        // failure the heading carries the ✕ and the rows say which profile.
+        const [heading, ...rest] = hermesResult.lines;
+        report.push("", hermesResult.ok ? heading : `✕ ${heading}`, ...rest);
+      }
+      hermesOk = hermesResult.ok;
+      hermesMigrated = hermesResult.profiles.filter((p) => p.status === "migrated").length;
+    } catch (err) {
+      report.push("", `✕ Hermes migration failed: ${err instanceof Error ? err.message : String(err)}`);
+      hermesOk = false;
+    }
+
+    const updateOk = daemonOk && !migrationFailed && hermesOk;
+    // No `v${version}` meta: the header already names the version.
+    await printReport("update", report, { ok: updateOk });
     await track("cli_update", {
-      ok: daemonOk && !migrationFailed,
+      ok: updateOk,
       migrations: migrationsRan,
       migration_failed: migrationFailed,
+      hermes_ok: hermesOk,
+      hermes_migrated: hermesMigrated,
     });
     lastSubcommand = null;
-    await exitAfterFlush(daemonOk && !migrationFailed ? 0 : 1);
+    await exitAfterFlush(updateOk ? 0 : 1);
     return;
   }
 
   if (args[0] === "uninstall") {
     const subArgs = args.slice(1);
     if (subArgs.includes("--help") || subArgs.includes("-h")) {
-      console.log(`
-failproofai uninstall — remove failproofai from this machine
-
-USAGE
-  failproofai uninstall [--purge] [--dry-run] [--yes]
-
-WHAT IT REMOVES
-  • failproofai hook entries from every agent CLI that has them
-  • the failproofaid daemon service — ASKED on a plain uninstall (kept unless
-    you say yes); always removed with --purge, which prompts for your password
-    rather than printing commands to paste
-  • the "require the daemon" flag — cleared FIRST, so a partial uninstall can
-    never leave this machine denying every tool call
-
-OPTIONS
-  --purge         Also delete ~/.failproofai — settings, credentials, audit
-                  history and the downloaded daemon binary. Off by default so a
-                  reinstall keeps your history.
-  --dry-run       Print what would be removed and change nothing.
-  --yes, -y       Skip the confirmation prompt. Required when there is no TTY.
-
-WHY THIS EXISTS
-  npm runs no uninstall script, so \`npm rm -g failproofai\` removes the package
-  and leaves the hook entries and the service behind. Run this first, then:
-      npm rm -g failproofai
-`);
+      await printHelp({
+        name: "uninstall",
+        usage: [["failproofai uninstall [options]"]],
+        options: [
+          ["--purge", "Also delete ~/.failproofai: settings, keys and history"],
+          ["--dry-run", "Show what would be removed, change nothing"],
+          ["--yes, -y", "Skip confirmation, remove the daemon; needed without a TTY"],
+        ],
+        examples: ["failproofai uninstall && npm rm -g failproofai"],
+        optionsCol: 20,
+      });
       process.exit(0);
     }
 
@@ -1024,79 +1290,47 @@ WHY THIS EXISTS
     const unknown = subArgs.find((a) => !KNOWN.has(a));
     if (unknown) {
       throw new CliError(
-        `Unexpected argument: ${unknown}\nRun \`failproofai uninstall --help\` for usage.`,
+        `Unexpected argument: ${unknown}.\nRun  \`failproofai uninstall --help\`  for usage.`,
       );
     }
 
     lastSubcommand = "uninstall_command";
     const { runUninstallCommand } = await import("../src/hooks/uninstall-cli");
+    const { screenKit, optsFor, printBlock, stack } = await import("../src/hooks/tui");
     const purge = subArgs.includes("--purge");
     const dryRun = subArgs.includes("--dry-run");
     const yes = subArgs.includes("--yes") || subArgs.includes("-y");
+    const render = optsFor(process.stdout);
+    const kit = screenKit(render);
 
-    // Set only when the prompt actually rendered the plan, which is the one
-    // case where printing it again would duplicate it.
+    // Set only when the question was actually asked, which is the one case
+    // where the plan is already on screen and printing it again would
+    // duplicate it.
     let planWasShown = false;
     const result = await runUninstallCommand({
       purge,
       dryRun,
       yes,
       cwd: process.cwd(),
-      // Only offered when a person can actually answer. Without a TTY the
-      // command requires --yes rather than assuming consent — see the module.
+      render,
+      // ONE question (D17): the plan says exactly what goes, and `y` removes all
+      // of it, the daemon service included — the same thing `--yes` does. Only
+      // offered when a person can actually answer: without a TTY the command
+      // requires --yes rather than assuming consent — see the module.
       confirm: process.stdin.isTTY
         ? async (planLines) => {
             planWasShown = true;
-            const { selectOne } = await import("../src/hooks/tui");
-            // "No" first, so the default landing position on Enter is the
-            // non-destructive one.
-            const answer = await selectOne({
-              message: purge
-                ? "Remove failproofai and DELETE ~/.failproofai?"
-                : "Remove failproofai from this machine?",
-              body: planLines,
-              choices: [
-                { label: "No, cancel", value: false },
-                { label: purge ? "Yes, remove and purge" : "Yes, remove it", value: true },
-              ],
-            });
-            return answer === true;
+            process.stdout.write(["", kit.header("Uninstall"), "", ...planLines].join("\n") + "\n");
+            return kit.confirm({ stdin: process.stdin, stdout: process.stdout });
           }
         : undefined,
-      // Only on a plain uninstall: `--purge` removes the service unconditionally
-      // because it deletes the binary the service points at. Absent without a TTY,
-      // which the module reads as "keep it".
-      confirmDaemon:
-        process.stdin.isTTY && !purge
-          ? async () => {
-              const { selectOne } = await import("../src/hooks/tui");
-              const answer = await selectOne({
-                message: "Remove the failproofaid background service too?",
-                body: [
-                  "It runs as a system service and needs sudo to remove, so you",
-                  "will be asked for your password.",
-                  "",
-                  "Keeping it is fine if you plan to reinstall — the hooks are",
-                  "already gone either way, so nothing is being enforced.",
-                ],
-                choices: [
-                  { label: "Yes, remove the service", value: true },
-                  { label: "No, leave it installed", value: false },
-                ],
-              });
-              return answer === true;
-            }
-          : undefined,
     });
 
-    // The prompt already rendered the plan as its body; re-printing it would
-    // show the same block twice. `planLines` is reported by the command rather
-    // than guessed from the text — see UninstallResult.
-    const skip = planWasShown ? result.planLines : 0;
-    for (const line of result.lines.slice(skip)) {
-      if (result.exitCode === 0) console.log(line);
-      else console.error(line);
-    }
+    // The question already printed the header and the plan; the outcome goes
+    // under it. `planLines` is reported by the command rather than guessed from
+    // the text — see UninstallResult.
+    const outcome = planWasShown ? result.lines.slice(result.planLines) : [kit.header("Uninstall"), "", ...result.lines];
+    printBlock(result.exitCode === 0 ? process.stdout : process.stderr, stack(outcome));
     // NOT after a purge. `track` resolves the instance id, and `getInstanceId()`
     // lazily WRITES ~/.failproofai/state/telemetry-id — which re-created the
     // whole directory seconds after the purge deleted it, leaving a machine the
@@ -1115,355 +1349,170 @@ WHY THIS EXISTS
     return;
   }
 
-  // policies [--install|-i|--uninstall|-u|--help|-h] [names...] [--scope] [--beta] [--custom|-c <path>]
-  if (args[0] === "policies") {
+  // publish — build the release assets AND put them on a GitHub release.
+  //
+  // Top level rather than under `policies`, because it is a PRODUCER verb: the
+  // four consumer words are what every user reads, and almost none of them will
+  // ever ship a pack. `pack build` is canonicalized into this above.
+  if (args[0] === "publish") {
     const subArgs = args.slice(1);
-
-    const isInstall   = subArgs.includes("--install")   || subArgs.includes("-i");
-    const isUninstall = subArgs.includes("--uninstall")  || subArgs.includes("-u");
-    const isHelp      = subArgs.includes("--help")       || subArgs.includes("-h");
-
-    if (isHelp) {
-      console.log(`
-failproofai policies — manage Failproof AI policies
-
-USAGE
-  failproofai policies                       List all policies and their status
-  failproofai policies --install, -i         Enable policies
-  failproofai policies --uninstall, -u       Disable policies or remove hooks
-
-OPTIONS (install)
-  [names...]                     Specific policy names to enable (omit for interactive)
-  --cli claude|codex|copilot|cursor|opencode|pi|hermes|openclaw|factory|devin|antigravity|goose
-                                 Agent CLI(s) to install for; space-separated
-                                 (e.g. --cli claude codex copilot cursor opencode pi hermes openclaw factory devin antigravity goose) or repeated.
-                                 Omit to detect installed CLIs and prompt (or
-                                 auto-pick if only one is found).
-  --scope user|project|local     Config scope to write to (default: user)
-                                 (Codex / Copilot / Cursor / OpenCode / Pi support user|project only)
-  --beta                         Include beta policies
-  --custom, -c <path>            Custom policy file (repeat for multiple files)
-                                 (skips interactive prompt; validates file first)
-
-OPTIONS (uninstall)
-  [names...]                     Specific policy names to disable (omit to remove hooks)
-  --cli claude|codex|copilot|cursor|opencode|pi|hermes|openclaw|factory|devin|antigravity|goose
-                                 Agent CLI(s) to uninstall from
-  --scope user|project|local|all Config scope to remove from (default: user)
-  --beta                         Remove only beta policies
-  --custom, -c                   Clear all explicit custom policy paths
-
-EXAMPLES
-  failproofai policies
-  failproofai policies --install
-  failproofai policies --install block-sudo sanitize-api-keys
-  failproofai policies --install --cli codex --scope project
-  failproofai policies --install --cli copilot --scope project
-  failproofai policies --install --cli cursor --scope project
-  failproofai policies --install --cli opencode --scope project
-  failproofai policies --install --cli pi --scope project
-  failproofai policies --install --cli factory --scope project
-  failproofai policies --install --cli devin --scope project
-  failproofai policies --install --cli claude codex copilot cursor opencode pi hermes openclaw factory devin antigravity goose
-  failproofai policies --install --custom ./my-policies.js
-  failproofai policies --install --custom ./security.js --custom ./workflow.js
-  failproofai policies -i -c ./my-policies.js
-  failproofai policies --uninstall block-sudo
-  failproofai policies --uninstall --cli codex
-  failproofai policies --uninstall --cli copilot
-  failproofai policies --uninstall --cli cursor
-  failproofai policies --uninstall --cli opencode
-  failproofai policies --uninstall --cli pi
-  failproofai policies -u
-  failproofai policies --uninstall --custom
-`.trimStart());
-      process.exit(0);
-    }
-
-    if (isInstall) {
-      lastSubcommand = "install";
-      const { installHooks } = await import("../src/hooks/manager");
-      const { resolveTargetClis } = await import("../src/hooks/install-prompt");
-
-      const scopeIdx = subArgs.indexOf("--scope");
-      const scope = scopeIdx >= 0 ? subArgs[scopeIdx + 1] : "user";
-      if (scopeIdx >= 0 && (!scope || scope.startsWith("-"))) {
-        throw new CliError("Missing value for --scope. Valid values: user, project, local");
-      }
-      if (scopeIdx >= 0 && !["user", "project", "local"].includes(scope)) {
-        throw new CliError(`Invalid scope: ${scope}. Valid values: user, project, local`);
-      }
-
-      const customIdxs = subArgs
-        .map((arg, index) => (arg === "--custom" || arg === "-c" ? index : -1))
-        .filter((index) => index >= 0);
-      const customPoliciesPaths = customIdxs.map((index) => subArgs[index + 1]);
-      if (customPoliciesPaths.some((path) => !path || path.startsWith("-"))) {
-        throw new CliError("Missing path after --custom/-c\nUsage: --custom <path>  (e.g. --custom ./my-policies.js)");
-      }
-
-      // --cli accepts one or more space-separated values, optionally repeated:
-      //   --cli claude codex copilot
-      //   --cli claude --cli codex
-      // Values are consumed greedily until the next flag or end of argv.
-      const VALID_CLIS = new Set(["claude", "codex", "copilot", "cursor", "opencode", "pi", "hermes", "openclaw", "factory", "devin", "antigravity", "goose"]);
-      const cliFlagValues = [];
-      const cliConsumedIdxs = new Set();
-      const cliFlagIdxs = subArgs.map((a, i) => (a === "--cli" ? i : -1)).filter((i) => i >= 0);
-      for (const idx of cliFlagIdxs) {
-        let consumed = 0;
-        for (let j = idx + 1; j < subArgs.length; j++) {
-          const v = subArgs[j];
-          if (v.startsWith("-")) break;
-          // Stop at the first non-CLI token so a policy name following --cli
-          // (e.g. `--cli claude block-sudo`) is not mis-consumed as a CLI.
-          if (!VALID_CLIS.has(v)) break;
-          cliFlagValues.push(v);
-          cliConsumedIdxs.add(j);
-          consumed++;
-        }
-        if (consumed === 0) {
-          throw new CliError("Missing value(s) for --cli. Usage: --cli claude codex copilot cursor opencode pi hermes openclaw (or any subset)");
-        }
-      }
-
-      const includeBeta = subArgs.includes("--beta");
-
-      // Collect positional policy names — args that don't start with - and aren't
-      // values consumed by --scope, --custom/-c, or --cli (tracked by index, not value,
-      // so a policy named "user" isn't incorrectly dropped by the default scope).
-      const consumedIdxs = new Set();
-      if (scopeIdx >= 0) consumedIdxs.add(scopeIdx + 1);
-      for (const customIdx of customIdxs) consumedIdxs.add(customIdx + 1);
-      for (const i of cliConsumedIdxs) consumedIdxs.add(i);
-      const flags = new Set(["--install", "-i", "--scope", "--beta", "--custom", "-c", "--cli"]);
-      const unknownInstallFlag = subArgs.find((a) => a.startsWith("-") && !flags.has(a));
-      if (unknownInstallFlag) {
-        throw new CliError(`Unknown flag: ${unknownInstallFlag}\nRun \`failproofai policies --help\` for usage.`);
-      }
-
-      const explicitPolicyNames = subArgs.filter(
-        (a, idx) => !a.startsWith("-") && !consumedIdxs.has(idx)
-      );
-
-      // When --custom/-c is present but no explicit policy names, pass [] so
-      // installHooks uses the existing enabled policies and skips the interactive
-      // prompt — validation of the custom file happens inside installHooks.
-      const policyNames =
-        explicitPolicyNames.length > 0 ? explicitPolicyNames
-        : customPoliciesPaths.length > 0 ? []
-        : undefined;
-
-      const cli = await resolveTargetClis(
-        cliFlagValues.length > 0 ? cliFlagValues : undefined,
-        "install",
-      );
-
-      await installHooks(
-        policyNames,
-        scope,
-        undefined,
-        includeBeta,
-        undefined,
-        customPoliciesPaths.length > 0 ? customPoliciesPaths : undefined,
-        false,
-        cli,
-      );
-      await track("cli_install_success", {
-        scope,
-        cli,
-        cli_count: cli.length,
-        explicit_policies: explicitPolicyNames.length > 0,
-        include_beta: includeBeta,
-        has_custom_path: customPoliciesPaths.length > 0,
+    // NOT `subArgs.length === 0`. A bare `failproofai publish` is the headline
+    // of the help this used to print instead — "TWO COMMANDS, FROM NOTHING:
+    // --init to start, publish to ship it" — and every argument it needs is
+    // worked out from the directory and the git remote. Printing help there
+    // made the one documented command the only one that did nothing.
+    if (subArgs.includes("--help") || subArgs.includes("-h")) {
+      await printHelp({
+        name: "publish",
+        usage: [
+          ["failproofai publish --init [file]", "Write a starter policy file"],
+          ["failproofai publish [file]", "Build and release it on GitHub"],
+        ],
+        options: [
+          ["--repo <owner/repo>", "Where to release, created if missing (default: origin)"],
+          ["--version <v>", "Name the version (default: HEAD's tag, else short sha)"],
+          ["--id <publisher/name>", "The pack id (default: the repo)"],
+          ["--tag <tag>", "Release tag (default: the version, v prefix ok)"],
+          ["--notes <text>", "Release notes (default: policy counts and the commit)"],
+          ["--out <dir>", "Where to write the assets (default: dist-pack)"],
+          ["--effect <e>", "enforce (default), or observe: record without blocking"],
+          ["--min-cli-version <v>", "Oldest failproofai version that may install it"],
+          ["--dry-run", "Build the assets and publish nothing"],
+          ["--allow-private", "Publish to a private repo anyway; installs will fail"],
+          ["--entry <file>", "The policy file, same as [file]"],
+        ],
+        examples: [
+          "failproofai publish --init guards",
+          "failproofai policies -i -c ./guards.mjs",
+          "failproofai publish --repo me/guards",
+        ],
+        optionsCol: 24,
       });
       process.exit(0);
     }
 
-    if (isUninstall) {
-      lastSubcommand = "uninstall";
-      const { removeHooks } = await import("../src/hooks/manager");
-      const { resolveTargetClis } = await import("../src/hooks/install-prompt");
-
-      const scopeIdx = subArgs.indexOf("--scope");
-      const scope = scopeIdx >= 0 ? subArgs[scopeIdx + 1] : "user";
-      if (scopeIdx >= 0 && (!scope || scope.startsWith("-"))) {
-        throw new CliError("Missing value for --scope. Valid values: user, project, local, all");
-      }
-      if (scopeIdx >= 0 && !["user", "project", "local", "all"].includes(scope)) {
-        throw new CliError(`Invalid scope: ${scope}. Valid values: user, project, local, all`);
-      }
-
-      // --cli accepts one or more space-separated values; same parser as install.
-      const VALID_CLIS = new Set(["claude", "codex", "copilot", "cursor", "opencode", "pi", "hermes", "openclaw", "factory", "devin", "antigravity", "goose"]);
-      const cliFlagValues = [];
-      const cliConsumedIdxs = new Set();
-      const cliFlagIdxs = subArgs.map((a, i) => (a === "--cli" ? i : -1)).filter((i) => i >= 0);
-      for (const idx of cliFlagIdxs) {
-        let consumed = 0;
-        for (let j = idx + 1; j < subArgs.length; j++) {
-          const v = subArgs[j];
-          if (v.startsWith("-")) break;
-          // Stop at the first non-CLI token so a policy name following --cli
-          // (e.g. `--cli claude block-sudo`) is not mis-consumed as a CLI.
-          if (!VALID_CLIS.has(v)) break;
-          cliFlagValues.push(v);
-          cliConsumedIdxs.add(j);
-          consumed++;
-        }
-        if (consumed === 0) {
-          throw new CliError("Missing value(s) for --cli. Usage: --cli claude codex copilot cursor opencode pi hermes openclaw (or any subset)");
-        }
-      }
-
-      const betaOnly = subArgs.includes("--beta");
-      const removeCustomHooks = subArgs.includes("--custom") || subArgs.includes("-c");
-
-      const consumedIdxs = new Set();
-      if (scopeIdx >= 0) consumedIdxs.add(scopeIdx + 1);
-      for (const i of cliConsumedIdxs) consumedIdxs.add(i);
-      const flags = new Set(["--uninstall", "-u", "--scope", "--beta", "--custom", "-c", "--cli"]);
-      const unknownUninstallFlag = subArgs.find((a) => a.startsWith("-") && !flags.has(a));
-      if (unknownUninstallFlag) {
-        throw new CliError(`Unknown flag: ${unknownUninstallFlag}\nRun \`failproofai policies --help\` for usage.`);
-      }
-
-      const policyNames = subArgs.filter(
-        (a, idx) => !a.startsWith("-") && !consumedIdxs.has(idx)
-      );
-
-      const cli = await resolveTargetClis(
-        cliFlagValues.length > 0 ? cliFlagValues : undefined,
-        "uninstall",
-      );
-
-      await removeHooks(
-        policyNames.length > 0 ? policyNames : undefined,
-        scope,
-        undefined,
-        { betaOnly, removeCustomHooks, cli },
-      );
-      await track("cli_uninstall_success", {
-        scope,
-        cli,
-        cli_count: cli.length,
-        beta_only: betaOnly,
-        remove_custom_hooks: removeCustomHooks,
-        explicit_policies: policyNames.length > 0,
-      });
-      process.exit(0);
-    }
-
-    // Default: list policies
-    // Accept --list as a no-op alias (common intuition), reject all other unknown flags
-    // and unexpected positional args (e.g. "hi").
-    const knownListFlags = new Set(["--install", "-i", "--uninstall", "-u", "--help", "-h", "--list"]);
-    const unknownListArg = subArgs.find((a) => a.startsWith("-") && !knownListFlags.has(a));
-    if (unknownListArg) {
-      throw new CliError(
-        `Unknown flag: ${unknownListArg}\n` +
-        `Run \`failproofai policies --help\` for usage.`
-      );
-    }
-    const positionalArgs = subArgs.filter((a) => !a.startsWith("-"));
-    if (positionalArgs.length > 0) {
-      throw new CliError(
-        `Unexpected argument: ${positionalArgs[0]}\n` +
-        `Run \`failproofai policies --help\` for usage.`
-      );
-    }
-
-    lastSubcommand = "list";
-    const { listHooks } = await import("../src/hooks/manager");
-    await listHooks();
-    await track("cli_list_invoked", {});
-    process.exit(0);
-  }
-
-  // audit — scan local agent-CLI history, then launch the dashboard at /audit.
-  if (args[0] === "audit") {
-    lastSubcommand = "audit";
-    const { runAuditCli } = await import("../src/audit/cli");
-    await runAuditCli(args.slice(1));
-    // No process.exit(): on the success path runAuditCli calls launch(), which
-    // keeps this process alive running the dashboard. The --help / no-sessions
-    // paths exit inside runAuditCli; failures throw a CliError handled below.
+    lastSubcommand = "publish";
+    const { runPublishCommand } = await import("../src/hooks/pack-cli");
+    const result = await runPublishCommand(subArgs);
+    await printLines(result.lines, result.exitCode === 0);
+    // Shape, never value: whether it published and whether it worked. Never the
+    // repo, the pack id or the entry path — all three are things the user typed.
+    await track("cli_publish", { ok: result.exitCode === 0, dry_run: subArgs.includes("--dry-run") });
+    lastSubcommand = null;
+    await exitAfterFlush(result.exitCode);
     return;
   }
 
-  // policy — single-policy shortcut over `policies --install <name>`.
-  //   failproofai policy add <name>     enable one policy (defaults: claude/user)
-  //   failproofai policy remove <name>  disable one policy
+  // policies add | remove | show — one noun for policies.
+  //
+  // `policies`, `policy` and `pack` were three commands for one idea. They are
+  // one now, and `add`/`remove` take EITHER a policy name or a pack source,
+  // told apart by a SLASH: a policy name matches /^[A-Za-z0-9._-]+$/, so a
+  // slash is already illegal in one and unambiguous in the other. That is the
+  // rule npm and docker use, and it means nobody has to discover a flag before
+  // they can install somebody else's policies.
+  //
   // Honors the same --cli / --scope / --beta flags as `policies --install`.
-  if (args[0] === "policy") {
+  if (
+    args[0] === "policies" &&
+    (args[1] === "add" || args[1] === "remove" || args[1] === "show")
+  ) {
     lastSubcommand = "policy";
     const subArgs = args.slice(1);
 
     if (subArgs.length === 0 || subArgs.includes("--help") || subArgs.includes("-h")) {
-      console.log(`
-failproofai policy — manage a single FailproofAI policy
-
-USAGE
-  failproofai policy add <name>      Enable one policy
-  failproofai policy remove <name>   Disable one policy
-
-OPTIONS
-  --cli claude|codex|copilot|cursor|opencode|pi|hermes|openclaw|factory|devin|antigravity|goose
-                                     Agent CLI(s) to apply to; space-separated or repeated.
-                                     Omit to detect installed CLIs and prompt.
-  --scope user|project|local         Config scope (default: user)
-  --beta                             Allow beta policies
-
-EXAMPLES
-  failproofai policy add block-sudo
-  failproofai policy add sanitize-api-keys --scope project
-  failproofai policy add block-force-push --cli claude codex
-  failproofai policy remove block-sudo
-`.trimStart());
+      await printHelp(POLICIES_HELP);
       process.exit(0);
     }
 
     const action = subArgs[0];
-    if (action !== "add" && action !== "remove") {
-      throw new CliError(
-        `Unknown policy subcommand: ${action}\n` +
-        `Run \`failproofai policy --help\` for usage.`,
-      );
-    }
-
     const rest = subArgs.slice(1);
 
-    const scopeIdx = rest.indexOf("--scope");
-    const scope = scopeIdx >= 0 ? rest[scopeIdx + 1] : "user";
-    if (scopeIdx >= 0 && (!scope || scope.startsWith("-"))) {
-      throw new CliError("Missing value for --scope. Valid values: user, project, local");
+    // A policy name matches /^[A-Za-z0-9._-]+$/ (pack-manifest.ts owns that
+    // rule), so a slash can only ever mean a pack. `core` is the one name
+    // without a slash that is still a source — it is the short spelling of our
+    // own pack, and is checked by the pack lane itself rather than duplicated
+    // here.
+    // The first positional that is NOT some flag's value.
+    //
+    // A plain `rest.find(a => !a.startsWith("-"))` reads the first VALUE it
+    // meets instead: `policies add --cli claude codex acme/x` picked "claude",
+    // decided that was not a source because it has no slash, and sent the whole
+    // command down the policy lane — where it died on "Unknown flag: --policy".
+    // The same shape works, and misroutes, for --scope and --custom.
+    //
+    // `--cli` takes SEVERAL values, bounded the way pack-cli.ts bounds them: a
+    // pack source always carries a slash and an agent name never does, which
+    // separates the list from what follows it exactly.
+    const VALUE_TAKING = new Set(["--scope", "--policy", "--category", "--only", "--custom", "-c"]);
+    const skip = new Set();
+    for (let i = 0; i < rest.length; i += 1) {
+      if (VALUE_TAKING.has(rest[i])) skip.add(i + 1);
+      if (rest[i] !== "--cli") continue;
+      for (let j = i + 1; j < rest.length && !rest[j].startsWith("-") && !rest[j].includes("/"); j += 1) {
+        skip.add(j);
+      }
     }
+    const firstPositional = rest.find((a, i) => !a.startsWith("-") && !skip.has(i));
+    let looksLikeSource =
+      !!firstPositional &&
+      (firstPositional.includes("/") || firstPositional.startsWith("github:"));
+    if (!looksLikeSource && firstPositional) {
+      // A retired spelling of our own pack — `core` and friends — is still
+      // routed to the pack lane, which is the only layer that can say what to
+      // type instead. Sent anywhere else it reads as an unknown POLICY name and
+      // the reply lists 38 names, none of which is the answer.
+      //
+      // Read from the layer that owns the set rather than restated here, where
+      // the copy would drift. That exact drift already shipped once, when the
+      // dashboard could not resolve a name the CLI could.
+      const { RETIRED_CORE_ALIASES } = await import("../src/hooks/pack-store");
+      looksLikeSource = RETIRED_CORE_ALIASES.has(firstPositional.toLowerCase());
+    }
+
+    if (action === "show" || looksLikeSource) {
+      if (action === "show" && !firstPositional) {
+        throw new CliError(
+          "Name the pack to show, as <owner>/<repo>.\n" +
+          "To see what is installed here, run  `failproofai policies`",
+        );
+      }
+      // One lane, one implementation. `show` is the pack lane's remote preview,
+      // and add/remove of a source are its add/remove — routed by translating
+      // the words rather than by growing a second copy of either.
+      const packArgs =
+        action === "show" ? ["list", ...rest] : [action, ...rest];
+      const { runPackCommand } = await import("../src/hooks/pack-cli");
+      const result = await runPackCommand(packArgs);
+      await printLines(result.lines, result.exitCode === 0);
+      await track("cli_pack", {
+        ok: result.exitCode === 0,
+        // The subcommand only — never the pack id, source or policy names. A
+        // pack source is a value the user typed and a third-party pack name is
+        // a publisher-controlled string; we send shape, never value.
+        sub: action,
+      });
+      lastSubcommand = null;
+      await exitAfterFlush(result.exitCode);
+      return;
+    }
+
+    // `show` left above, so only add and remove reach here. A branch for any
+    // other word stood here, unreachable: this lane is entered for those three.
     const validScopes = action === "remove"
       ? ["user", "project", "local", "all"]
       : ["user", "project", "local"];
+    const scopeIdx = rest.indexOf("--scope");
+    const scope = scopeIdx >= 0 ? rest[scopeIdx + 1] : "user";
+    if (scopeIdx >= 0 && (!scope || scope.startsWith("-"))) {
+      throw new CliError(`Missing value for --scope.\nUse one of: ${validScopes.join(", ")}`);
+    }
     if (scopeIdx >= 0 && !validScopes.includes(scope)) {
-      throw new CliError(`Invalid scope: ${scope}. Valid values: ${validScopes.join(", ")}`);
+      throw new CliError(`Invalid scope: ${scope}.\nUse one of: ${validScopes.join(", ")}`);
     }
 
     // --cli accepts one or more space-separated values, optionally repeated.
-    const VALID_CLIS = new Set(["claude", "codex", "copilot", "cursor", "opencode", "pi", "hermes", "openclaw", "factory", "devin", "antigravity", "goose"]);
-    const cliFlagValues = [];
-    const cliConsumedIdxs = new Set();
-    const cliFlagIdxs = rest.map((a, i) => (a === "--cli" ? i : -1)).filter((i) => i >= 0);
-    for (const idx of cliFlagIdxs) {
-      let consumed = 0;
-      for (let j = idx + 1; j < rest.length; j++) {
-        const v = rest[j];
-        if (v.startsWith("-")) break;
-        if (!VALID_CLIS.has(v)) break;
-        cliFlagValues.push(v);
-        cliConsumedIdxs.add(j);
-        consumed++;
-      }
-      if (consumed === 0) {
-        throw new CliError("Missing value(s) for --cli. Usage: --cli claude codex copilot cursor opencode pi hermes openclaw (or any subset)");
-      }
-    }
+    const { cliFlagValues, cliConsumedIdxs } = await readCliFlag(rest);
 
     const includeBeta = rest.includes("--beta");
 
@@ -1471,7 +1520,17 @@ EXAMPLES
     const knownFlags = new Set(["--scope", "--cli", "--beta"]);
     const unknownFlag = rest.find((a) => a.startsWith("-") && !knownFlags.has(a));
     if (unknownFlag) {
-      throw new CliError(`Unknown flag: ${unknownFlag}\nRun \`failproofai policy --help\` for usage.`);
+      // -c is on the shared help page, for --install and --uninstall; pointing
+      // back at that page answered the question with itself.
+      const custom = unknownFlag === "-c" || unknownFlag === "--custom";
+      throw new CliError(
+        `Unknown flag: ${unknownFlag}.\n` +
+          (custom
+            ? action === "add"
+              ? "Add a custom policy file with  `failproofai policies --install -c <file>`"
+              : "Remove custom policy files with  `failproofai policies --uninstall -c`"
+            : `Run  \`failproofai policies ${action} --help\`  for usage.`),
+      );
     }
 
     // Positional policy names = anything not consumed by --scope / --cli.
@@ -1483,16 +1542,21 @@ EXAMPLES
     );
 
     if (positional.length === 0) {
-      throw new CliError(
-        `Missing policy name.\n` +
-        `Usage: failproofai policy ${action} <name>\n` +
-        `Run \`failproofai policies\` to see available names.`,
-      );
+      // Naming nothing is a question, not a mistake. It used to be an error
+      // telling you to go and read a list somewhere else and come back — so
+      // the answer is to SHOW the list, here, with what is already on ticked.
+      const { runPolicyPicker } = await import("../src/hooks/pack-cli");
+      const result = await runPolicyPicker(action, { stdin: process.stdin, stdout: process.stdout });
+      await printLines(result.lines, result.exitCode === 0);
+      await track("cli_policy_picker", { ok: result.exitCode === 0, action });
+      lastSubcommand = null;
+      await exitAfterFlush(result.exitCode);
+      return;
     }
     if (positional.length > 1) {
       throw new CliError(
-        `\`policy ${action}\` takes exactly one policy name (got ${positional.length}).\n` +
-        `For multiple policies use \`failproofai policies --${action === "add" ? "install" : "uninstall"} ${positional.join(" ")}\`.`,
+        `policies ${action} takes one policy name, not ${positional.length}.\n` +
+        `For several, run  \`failproofai policies --${action === "add" ? "install" : "uninstall"} ${positional.join(" ")}\``,
       );
     }
     const policyName = positional[0];
@@ -1504,6 +1568,9 @@ EXAMPLES
     );
 
     lastPolicyAction = action;
+    // `syncAgentSelection` on both: an agent hooked here is traced, and one
+    // unhooked at user scope (`policies remove all`) is not, so the next
+    // `failproofai config` neither undoes nor resurrects what this ran.
     if (action === "add") {
       const { installHooks } = await import("../src/hooks/manager");
       await installHooks(
@@ -1515,6 +1582,7 @@ EXAMPLES
         undefined,
         false,
         cli,
+        { syncAgentSelection: true },
       );
       await track("cli_policy_add_success", {
         scope,
@@ -1535,7 +1603,7 @@ EXAMPLES
         [policyName],
         scope,
         undefined,
-        { betaOnly: false, removeCustomHooks: false, cli },
+        { betaOnly: false, removeCustomHooks: false, cli, syncAgentSelection: true },
       );
       await track("cli_policy_remove_success", {
         scope,
@@ -1548,6 +1616,200 @@ EXAMPLES
     lastPolicyAction = null;
     process.exit(0);
   }
+  // policies [--install|-i|--uninstall|-u|--help|-h] [names...] [--scope] [--beta] [--custom|-c <path>]
+  if (args[0] === "policies") {
+    const subArgs = args.slice(1);
+
+    const isInstall   = subArgs.includes("--install")   || subArgs.includes("-i");
+    const isUninstall = subArgs.includes("--uninstall")  || subArgs.includes("-u");
+    const isHelp      = subArgs.includes("--help")       || subArgs.includes("-h");
+
+    if (isHelp) {
+      await printHelp(POLICIES_HELP);
+      process.exit(0);
+    }
+
+    if (isInstall) {
+      lastSubcommand = "install";
+      const { installHooks } = await import("../src/hooks/manager");
+      const { resolveTargetClis } = await import("../src/hooks/install-prompt");
+
+      const scopeIdx = subArgs.indexOf("--scope");
+      const scope = scopeIdx >= 0 ? subArgs[scopeIdx + 1] : "user";
+      if (scopeIdx >= 0 && (!scope || scope.startsWith("-"))) {
+        throw new CliError("Missing value for --scope.\nUse one of: user, project, local");
+      }
+      if (scopeIdx >= 0 && !["user", "project", "local"].includes(scope)) {
+        throw new CliError(`Invalid scope: ${scope}.\nUse one of: user, project, local`);
+      }
+
+      const customIdxs = subArgs
+        .map((arg, index) => (arg === "--custom" || arg === "-c" ? index : -1))
+        .filter((index) => index >= 0);
+      const customPoliciesPaths = customIdxs.map((index) => subArgs[index + 1]);
+      if (customPoliciesPaths.some((path) => !path || path.startsWith("-"))) {
+        throw new CliError("Missing path after --custom/-c.\nFor example:  `failproofai policies -i -c ./my-policies.js`");
+      }
+
+      // --cli accepts one or more space-separated values, optionally repeated:
+      //   --cli claude codex copilot
+      //   --cli claude --cli codex
+      // Values are consumed greedily until the next flag, or the first word that
+      // is not an agent so a policy name following --cli (e.g. `--cli claude
+      // block-sudo`) is not mis-consumed as one.
+      const { cliFlagValues, cliConsumedIdxs } = await readCliFlag(subArgs);
+
+      const includeBeta = subArgs.includes("--beta");
+
+      // Collect positional policy names — args that don't start with - and aren't
+      // values consumed by --scope, --custom/-c, or --cli (tracked by index, not value,
+      // so a policy named "user" isn't incorrectly dropped by the default scope).
+      const consumedIdxs = new Set();
+      if (scopeIdx >= 0) consumedIdxs.add(scopeIdx + 1);
+      for (const customIdx of customIdxs) consumedIdxs.add(customIdx + 1);
+      for (const i of cliConsumedIdxs) consumedIdxs.add(i);
+      const flags = new Set(["--install", "-i", "--scope", "--beta", "--custom", "-c", "--cli"]);
+      const unknownInstallFlag = subArgs.find((a) => a.startsWith("-") && !flags.has(a));
+      if (unknownInstallFlag) {
+        throw new CliError(`Unknown flag: ${unknownInstallFlag}.\nRun  \`failproofai policies --help\`  for usage.`);
+      }
+
+      const explicitPolicyNames = subArgs.filter(
+        (a, idx) => !a.startsWith("-") && !consumedIdxs.has(idx)
+      );
+
+      // When --custom/-c is present but no explicit policy names, pass [] so
+      // installHooks uses the existing enabled policies and skips the interactive
+      // prompt — validation of the custom file happens inside installHooks.
+      const policyNames =
+        explicitPolicyNames.length > 0 ? explicitPolicyNames
+        : customPoliciesPaths.length > 0 ? []
+        : undefined;
+
+      const cli = await resolveTargetClis(
+        cliFlagValues.length > 0 ? cliFlagValues : undefined,
+        "install",
+      );
+
+      // An agent hooked here is traced from now on, so the next
+      // `failproofai config` keeps these hooks instead of taking them out.
+      await installHooks(
+        policyNames,
+        scope,
+        undefined,
+        includeBeta,
+        undefined,
+        customPoliciesPaths.length > 0 ? customPoliciesPaths : undefined,
+        false,
+        cli,
+        { syncAgentSelection: true },
+      );
+      await track("cli_install_success", {
+        scope,
+        cli,
+        cli_count: cli.length,
+        explicit_policies: explicitPolicyNames.length > 0,
+        include_beta: includeBeta,
+        has_custom_path: customPoliciesPaths.length > 0,
+      });
+      process.exit(0);
+    }
+
+    if (isUninstall) {
+      lastSubcommand = "uninstall";
+      const { removeHooks } = await import("../src/hooks/manager");
+      const { resolveTargetClis } = await import("../src/hooks/install-prompt");
+
+      const scopeIdx = subArgs.indexOf("--scope");
+      const scope = scopeIdx >= 0 ? subArgs[scopeIdx + 1] : "user";
+      if (scopeIdx >= 0 && (!scope || scope.startsWith("-"))) {
+        throw new CliError("Missing value for --scope.\nUse one of: user, project, local, all");
+      }
+      if (scopeIdx >= 0 && !["user", "project", "local", "all"].includes(scope)) {
+        throw new CliError(`Invalid scope: ${scope}.\nUse one of: user, project, local, all`);
+      }
+
+      // --cli accepts one or more space-separated values; same parser as install.
+      const { cliFlagValues, cliConsumedIdxs } = await readCliFlag(subArgs);
+
+      const betaOnly = subArgs.includes("--beta");
+      const removeCustomHooks = subArgs.includes("--custom") || subArgs.includes("-c");
+
+      const consumedIdxs = new Set();
+      if (scopeIdx >= 0) consumedIdxs.add(scopeIdx + 1);
+      for (const i of cliConsumedIdxs) consumedIdxs.add(i);
+      const flags = new Set(["--uninstall", "-u", "--scope", "--beta", "--custom", "-c", "--cli"]);
+      const unknownUninstallFlag = subArgs.find((a) => a.startsWith("-") && !flags.has(a));
+      if (unknownUninstallFlag) {
+        throw new CliError(`Unknown flag: ${unknownUninstallFlag}.\nRun  \`failproofai policies --help\`  for usage.`);
+      }
+
+      const policyNames = subArgs.filter(
+        (a, idx) => !a.startsWith("-") && !consumedIdxs.has(idx)
+      );
+
+      const cli = await resolveTargetClis(
+        cliFlagValues.length > 0 ? cliFlagValues : undefined,
+        "uninstall",
+      );
+
+      // Hooks taken out at user scope or every scope stop the agent being
+      // traced; a project- or local-only removal leaves the selection alone.
+      await removeHooks(
+        policyNames.length > 0 ? policyNames : undefined,
+        scope,
+        undefined,
+        { betaOnly, removeCustomHooks, cli, syncAgentSelection: true },
+      );
+      await track("cli_uninstall_success", {
+        scope,
+        cli,
+        cli_count: cli.length,
+        beta_only: betaOnly,
+        remove_custom_hooks: removeCustomHooks,
+        explicit_policies: policyNames.length > 0,
+      });
+      process.exit(0);
+    }
+
+    // Default: list policies
+    // Accept --list as a no-op alias (common intuition), reject all other unknown flags
+    // and unexpected positional args (e.g. "hi"). --all lists every policy instead of
+    // folding the off ones into one line per category.
+    const knownListFlags = new Set(["--install", "-i", "--uninstall", "-u", "--help", "-h", "--list", "--all"]);
+    const unknownListArg = subArgs.find((a) => a.startsWith("-") && !knownListFlags.has(a));
+    if (unknownListArg) {
+      throw new CliError(
+        `Unknown flag: ${unknownListArg}.\n` +
+        "Run  `failproofai policies --help`  for usage."
+      );
+    }
+    const positionalArgs = subArgs.filter((a) => !a.startsWith("-"));
+    if (positionalArgs.length > 0) {
+      throw new CliError(
+        `Unexpected argument: ${positionalArgs[0]}.\n` +
+        "Run  `failproofai policies --help`  for usage."
+      );
+    }
+
+    lastSubcommand = "list";
+    const { listHooks } = await import("../src/hooks/manager");
+    await listHooks(undefined, { all: subArgs.includes("--all") });
+    await track("cli_list_invoked", {});
+    process.exit(0);
+  }
+
+  // audit — scan local agent-CLI history, then launch the dashboard at /audit.
+  if (args[0] === "audit") {
+    lastSubcommand = "audit";
+    const { runAuditCli } = await import("../src/audit/cli");
+    await runAuditCli(args.slice(1));
+    // No process.exit(): on the success path runAuditCli calls launch(), which
+    // keeps this process alive running the dashboard. The --help / no-sessions
+    // paths exit inside runAuditCli; failures throw a CliError handled below.
+    return;
+  }
+
 
   // config — the interactive setup launcher (scope, agents, policies).
   // `configure` and `setup` are canonicalized to "config" up top. Running it
@@ -1555,66 +1817,72 @@ EXAMPLES
   // onboarding via bare `failproofai`).
   if (args[0] === "config") {
     if (args.includes("--help") || args.includes("-h")) {
-      console.log(`
-failproofai config — interactive setup
-
-USAGE
-  failproofai config             Guided setup: choose scope, agents, and policies
-  failproofai configure          Alias for config
-  failproofai setup              Alias for config
-
-WHAT IT DOES
-  Walks you through 4 quick steps and writes everything for you:
-    1. Where      — global (all projects) or just this project
-    2. Harnesses  — which agent CLIs to protect (Claude, Codex, ...)
-    3. Policies   — presets (combine any), Everything, or a custom pick
-    4. Review     — confirms the exact files it will change, then applies
-
-FAILPROOF CLOUD
-  failproofai config --connect <url> --token <key> [--machine-id <id>]
-                                    Connect this machine to FailproofAI Cloud
-                                    [--no-transcripts] decisions only, no transcripts
-  failproofai config --disconnect   Stop pulling policy and sending activity
-  failproofai config --status       Show connection, daemon and pause state
-  failproofai config --pause [--session <id>]
-                                    Pause enforcement, time-boxed
-  failproofai config --resume [--all]
-                                    Resume enforcement
-
-    --machine-label <name>          Human-readable name in the dashboard
-                                    (use alone to rename an already-connected machine)
-
-  One connection, two capabilities: this machine PULLS centrally-managed
-  policies and SENDS what its hooks decided, so the dashboard shows the fleet
-  it is enforcing on. Both are checked against the server before anything is
-  written, and reported separately — a key carrying policies:pull but not
-  events:add connects for policy and says exactly why the dashboard is empty.
-
-  Tokens are stored owner-only in ~/.failproofai/, never in the service unit —
-  that file is world-readable. Connecting needs no sudo, and the machine id
-  defaults to this host's name.
-
-  Connecting sends BOTH policy decisions and full session transcripts. A
-  transcript carries prompts, file contents and whatever was pasted into a
-  terminal — that is the point of connecting, and it is stated here rather than
-  buried behind a flag nobody finds. Use --no-transcripts for decisions only.
-
-PAUSING ENFORCEMENT (one session, always time-boxed)
-  failproofai config --pause         Pause this directory's newest agent session (30m)
-  failproofai config --pause 10m     Pause for a given time (max 8h; s/m/h, bare = minutes)
-  failproofai config --resume        End the pause early
-  failproofai config --status        Show what is paused and when it lifts
-    --session <id>                     Target a specific session
-    --all                              With --resume, end every active pause
-
-  A pause suspends builtin, custom and convention policies for that session
-  only, and always expires on its own. Cloud-managed policies keep enforcing.
-
-  Prefer flags? See \`failproofai policies --help\`.
-`.trimStart());
+      await printHelp({
+        name: "config",
+        usage: [["failproofai config [options]"]],
+        options: [
+          ["--token <key>", "Connect with this key; prefer FAILPROOFAI_CLOUD_TOKEN"],
+          ["--oss", "Use open source; leaves any connection as it is"],
+          ["--agents <a,b>", "Trace these agents, or all, without asking"],
+          ["--status", "Show the cloud connection, daemon version and pauses"],
+          ["--pause [time]", "Pause enforcement for a session (default 30m, max 8h)"],
+          ["--resume [--all]", "End a pause early, or every pause with --all"],
+          ["--session <id>", "Session to pause or resume (default: newest one here)"],
+          ["--connect <url>", "Connect to cloud only (for a machine already set up)"],
+          ["--disconnect", "Stop pulling policies and sending activity"],
+          ["--no-transcripts", "Send policy decisions only, not session transcripts"],
+          ["--url <url>", "Use a self-hosted cloud (or FAILPROOFAI_CLOUD_URL)"],
+          ["--machine-label <name>", "Rename this machine; with --token, set up under it"],
+          ["--machine-id <id>", "Machine id for --connect (default: a stable id)"],
+        ],
+        // The key never goes on the command line: config itself warns that argv
+        // lands in shell history and the process list.
+        examples: [
+          "read -rs FAILPROOFAI_CLOUD_TOKEN && export FAILPROOFAI_CLOUD_TOKEN",
+          "failproofai config",
+          "failproofai config --pause 1h",
+        ],
+        optionsCol: 22,
+      });
+      process.exit(0);
       process.exit(0);
     }
     lastSubcommand = "config";
+
+    // Every option config takes. A typo used to fall through to the full setup
+    // run with the option ignored, so `--agent claude` asked every question.
+    //
+    // `--send-transcripts` is retired, not unknown: it was the transcript
+    // opt-in until transcripts became the default (#653), and provisioning
+    // scripts written then still pass it. Accepted, and does nothing.
+    const CONFIG_FLAGS = new Set([
+      "--token", "--oss", "--agents", "--status", "--pause", "--resume", "--all", "--session",
+      "--connect", "--disconnect", "--no-transcripts", "--url", "--machine-label", "--machine-id",
+      "--send-transcripts",
+    ]);
+    const CONFIG_VALUE_FLAGS = new Set([
+      "--token", "--agents", "--pause", "--session", "--connect", "--url", "--machine-label", "--machine-id",
+    ]);
+    const configRest = args.slice(1);
+    const strayConfig = configRest.find(
+      (a, i) => !CONFIG_FLAGS.has(a) && !(CONFIG_VALUE_FLAGS.has(configRest[i - 1]) && !a.startsWith("-")),
+    );
+    if (strayConfig) {
+      const asFlag = `--${strayConfig.replace(/^-+/, "")}`;
+      throw new CliError(
+        `Unexpected argument: ${strayConfig}.\n` +
+          (CONFIG_FLAGS.has(asFlag) && asFlag !== strayConfig
+            ? `Did you mean  \`failproofai config ${asFlag}\`?`
+            : "See its options:  `failproofai config --help`"),
+      );
+    }
+
+    if (args.includes("--send-transcripts") && args.includes("--no-transcripts")) {
+      throw new CliError(
+        "--send-transcripts and --no-transcripts cannot be combined.\n" +
+          "Transcripts are sent by default; --no-transcripts alone turns them off.",
+      );
+    }
 
     // --pause / --resume / --status are non-interactive session actions that
     // share `config`'s surface but not the wizard. They write session state,
@@ -1631,8 +1899,33 @@ PAUSING ENFORCEMENT (one session, always time-boxed)
     // keeps its old meaning (the name to enrol under); on its own it changes the
     // name of a machine that is already connected, which previously required
     // re-running enrolment with the url and token again just to fix a display name.
+    //
+    // Alongside a setup option (--token, --oss, --agents) it is the name to set up
+    // under: `config --token K --machine-label L` used to run as a rename, so
+    // setup never ran and the key was ignored. Setup applies it when it connects;
+    // otherwise it is refused up front or applied as a rename afterwards (below).
     const wantsRename =
-      connectIdx < 0 && !wantsDisconnect && args.includes("--machine-label");
+      connectIdx < 0 &&
+      !wantsDisconnect &&
+      args.includes("--machine-label") &&
+      !["--token", "--oss", "--agents"].some((flag) => args.includes(flag));
+    // A key given as --token is in shell history whatever became of the run.
+    const warnTokenOnArgv = async () => {
+      if (!args.includes("--token")) return;
+      const { CONFIG_TOKEN_HISTORY_WARNING } = await import("../src/hooks/cloud-enrollment-cli");
+      const { screenKit, colorsEnabled } = await import("../src/hooks/tui");
+      const kit = screenKit({ color: colorsEnabled(process.stderr) });
+      process.stderr.write(`\n${kit.notice("caution", CONFIG_TOKEN_HISTORY_WARNING.join("\n")).join("\n")}\n`);
+    };
+    // The fix for a flag given no value. Never "put the key after --token": the
+    // whole point of the variable is that a key on argv lands in shell history.
+    const missingValue = (flag) =>
+      new CliError(
+        `Missing value after ${flag}.\n` +
+          (flag === "--token"
+            ? "Or leave --token out and set FAILPROOFAI_CLOUD_TOKEN."
+            : "Run  `failproofai config --help`  for what it takes."),
+      );
     if (connectIdx >= 0 || wantsDisconnect || wantsRename) {
       if (connectIdx >= 0 && wantsDisconnect) {
         throw new CliError("--connect and --disconnect cannot be combined.");
@@ -1641,7 +1934,7 @@ PAUSING ENFORCEMENT (one session, always time-boxed)
         const i = args.indexOf(flag);
         if (i < 0) return undefined;
         const v = args[i + 1];
-        if (!v || v.startsWith("-")) throw new CliError(`Missing value after ${flag}.`);
+        if (!v || v.startsWith("-")) throw missingValue(flag);
         return v;
       };
       let result;
@@ -1656,7 +1949,9 @@ PAUSING ENFORCEMENT (one session, always time-boxed)
         const { runConnectCommand } = await import("../src/hooks/cloud-enrollment-cli");
         result = await runConnectCommand({
           url: valueAfter("--connect"),
-          token: valueAfter("--token"),
+          // The same fallback the headless `config` path has, and the one
+          // `config --help` documents: it keeps the key out of shell history.
+          token: valueAfter("--token") ?? process.env.FAILPROOFAI_CLOUD_TOKEN,
           machineId: valueAfter("--machine-id"),
           machineLabel: valueAfter("--machine-label"),
           defaultMachineId: hostname(),
@@ -1669,10 +1964,12 @@ PAUSING ENFORCEMENT (one session, always time-boxed)
           sessions: !args.includes("--no-transcripts"),
         });
       }
-      for (const line of result.lines) {
-        if (result.exitCode === 0) console.log(line);
-        else console.error(line);
-      }
+      // Through the shared presenter: a header naming what ran, and a failure
+      // opening with ✕ and its fix under it, like every other action result.
+      await printReport(wantsRename ? "rename" : wantsDisconnect ? "disconnect" : "connect", result.lines, {
+        ok: result.exitCode === 0,
+      });
+      await warnTokenOnArgv();
       await track("cli_cloud_enrollment", {
         action: wantsRename ? "rename" : wantsDisconnect ? "disconnect" : "connect",
         ok: result.exitCode === 0,
@@ -1687,11 +1984,22 @@ PAUSING ENFORCEMENT (one session, always time-boxed)
     if (pauseIdx >= 0 || wantsResume || wantsStatus) {
       const chosen = [pauseIdx >= 0 && "--pause", wantsResume && "--resume", wantsStatus && "--status"].filter(Boolean);
       if (chosen.length > 1) {
-        throw new CliError(`${chosen.join(" and ")} cannot be combined.`);
+        throw new CliError(`${chosen.join(" and ")} cannot be combined.\nRun them one at a time.`);
+      }
+      // `--status` answers "what is this machine's state?": the daemon, the
+      // dashboard and any pauses, the cloud connection and whether data
+      // arrives, and what enforcement is doing — one screen, one column.
+      if (wantsStatus) {
+        const { runStatusCommand } = await import("../src/hooks/config-status");
+        const status = await runStatusCommand({ cwd: process.cwd() });
+        await printLines(status.lines);
+        await track("cli_pause_invoked", { action: "status", ok: true, affected: status.paused });
+        await exitAfterFlush(0);
+        return;
       }
       const sessionIdx = args.indexOf("--session");
       if (sessionIdx >= 0 && !args[sessionIdx + 1]) {
-        throw new CliError("Missing session id after --session.");
+        throw new CliError("Missing session id after --session.\nOr leave --session out to use the newest session here.");
       }
       // A bare `--pause` takes the default duration, so only treat the next
       // token as a duration when it isn't another flag.
@@ -1700,28 +2008,15 @@ PAUSING ENFORCEMENT (one session, always time-boxed)
 
       const { runPauseCommand } = await import("../src/hooks/session-pause-cli");
       const result = runPauseCommand({
-        action: pauseIdx >= 0 ? "pause" : wantsResume ? "resume" : "status",
+        action: pauseIdx >= 0 ? "pause" : "resume",
         duration,
         sessionId: sessionIdx >= 0 ? args[sessionIdx + 1] : undefined,
         all: args.includes("--all"),
         cwd: process.cwd(),
       });
-      // `--status` answers "what is this machine's state?", which is both
-      // halves: whether enforcement is paused AND whether cloud is connected.
-      if (wantsStatus) {
-        const { connectionStatusLines } = await import("../src/hooks/cloud-enrollment-cli");
-        for (const line of connectionStatusLines()) console.log(line);
-        // Always printed, including where reports can never work: "why am I
-        // not getting them?" is the question --status exists to answer, and an
-        // omitted line answers it with silence.
-        console.log("");
-      }
-      for (const line of result.lines) {
-        if (result.exitCode === 0) console.log(line);
-        else console.error(line);
-      }
+      await printLines(result.lines, result.exitCode === 0);
       await track("cli_pause_invoked", {
-        action: pauseIdx >= 0 ? "pause" : wantsResume ? "resume" : "status",
+        action: pauseIdx >= 0 ? "pause" : "resume",
         ok: result.exitCode === 0,
         affected: result.affected,
       });
@@ -1729,8 +2024,80 @@ PAUSING ENFORCEMENT (one session, always time-boxed)
       return;
     }
 
+    // Headless setup. `--token` IS the request to connect — there is no other
+    // reason to pass a key — so there is no separate --connect to remember, and
+    // the URL keeps the default the wizard already infers rather than being a
+    // question the flag path alone asks.
+    //
+    // The key is taken from the environment when the flag is absent, because a
+    // secret on argv is readable from `ps` by every user on the box and lands
+    // in shell history and CI logs. FAILPROOFAI_CLOUD_TOKEN is the name the
+    // Rust daemon already reads, so this unifies rather than invents.
+    const valueFor = (flag) => {
+      const i = args.indexOf(flag);
+      if (i < 0) return undefined;
+      const v = args[i + 1];
+      if (!v || v.startsWith("-")) throw missingValue(flag);
+      return v;
+    };
+    // --oss skips the connect step and leaves any connection as it is (Tab's
+    // meaning, decision D4); --disconnect is what removes one. It overrides a
+    // key in the environment, and only an explicit --token contradicts it.
+    const oss = args.includes("--oss");
+    if (oss && args.includes("--token")) {
+      throw new CliError("--oss and --token cannot be combined: one uses open source, the other connects.");
+    }
+    // --agents: any of the twelve, or `all`, validated here so a typo is an
+    // error rather than an agent silently left untraced.
+    let agents;
+    if (args.includes("--agents")) {
+      const raw = valueFor("--agents");
+      const { INTEGRATION_TYPES } = await import("../src/hooks/types");
+      const ids = raw === "all" ? [...INTEGRATION_TYPES] : raw.split(",").map((a) => a.trim()).filter(Boolean);
+      const unknown = ids.filter((id) => !INTEGRATION_TYPES.includes(id));
+      if (ids.length === 0 || unknown.length > 0) {
+        throw new CliError(`Not an agent: ${unknown.join(", ") || raw}.\nAgents: ${INTEGRATION_TYPES.join(", ")}, or all`);
+      }
+      agents = ids;
+    }
+    // `--machine-label` here is the name to connect under. When this run cannot
+    // connect at all it is refused now, before anything is written; on a
+    // machine that stays connected as it was, it is applied after setup.
+    const machineLabel = valueFor("--machine-label");
+    if (machineLabel !== undefined) {
+      const { machineLabelRefusal } = await import("../src/hooks/cloud-enrollment-cli");
+      const refusal = machineLabelRefusal({
+        oss,
+        keyGiven: !oss && Boolean(valueFor("--token") ?? process.env.FAILPROOFAI_CLOUD_TOKEN),
+        interactive: Boolean(process.stdin.isTTY && process.stdout.isTTY),
+      });
+      if (refusal) throw new CliError(refusal);
+    }
     const { runConfigureWizard } = await import("../src/hooks/configure-wizard");
-    const result = await runConfigureWizard();
+    const result = await runConfigureWizard(
+      {},
+      {
+        token: oss ? undefined : (valueFor("--token") ?? process.env.FAILPROOFAI_CLOUD_TOKEN),
+        url: valueFor("--url") ?? process.env.FAILPROOFAI_CLOUD_URL,
+        machineId: valueFor("--machine-id"),
+        machineLabel,
+        noTranscripts: args.includes("--no-transcripts"),
+        oss,
+        agents,
+      },
+    );
+    // Setup names the machine only when it connects; when it left a
+    // connection as it was, the label is the rename the flag asked for.
+    let labelExit = 0;
+    if (result.applied && machineLabel !== undefined) {
+      const { applyMachineLabelAfterSetup } = await import("../src/hooks/cloud-enrollment-cli");
+      const renamed = await applyMachineLabelAfterSetup(machineLabel);
+      if (renamed) {
+        await printReport("rename", renamed.lines, { ok: renamed.exitCode === 0 });
+        labelExit = renamed.exitCode;
+      }
+    }
+    await warnTokenOnArgv();
     await track("cli_configure_invoked", {
       applied: result.applied,
       // `target` and `scopes`, not `scope`: the wizard rework replaced that
@@ -1741,74 +2108,50 @@ PAUSING ENFORCEMENT (one session, always time-boxed)
       scopes: result.scopes ?? [],
       cli_count: result.clis?.length ?? 0,
       abort: result.abort ?? null,
+      oss,
+      agents_named: agents ? agents.length : 0,
     });
     // `abort` is the field `WizardAbort` exists to expose, and exiting 0
     // regardless discarded it: a fleet script could not tell "the user pressed
     // Esc" from "this machine could not install the required daemon and is
     // unconfigured". Cancelling is not a failure; the other two are.
-    await exitAfterFlush(!result.applied && result.abort && result.abort !== "cancelled" ? 1 : 0);
+    await exitAfterFlush(!result.applied && result.abort && result.abort !== "cancelled" ? 1 : labelExit);
     return;
   }
 
-  // Shared by both "unknown thing" guards below, so a mistyped SUBCOMMAND gets
-  // the same nearest-match treatment a mistyped flag already got.
-  function levenshtein(a, b) {
-    const m = a.length, n = b.length;
-    const dp = Array.from({ length: m + 1 }, (_, i) =>
-      Array.from({ length: n + 1 }, (_, j) => (i === 0 ? j : j === 0 ? i : 0))
-    );
-    for (let i = 1; i <= m; i++)
-      for (let j = 1; j <= n; j++)
-        dp[i][j] = a[i - 1] === b[j - 1]
-          ? dp[i - 1][j - 1]
-          : 1 + Math.min(dp[i - 1][j], dp[i][j - 1], dp[i - 1][j - 1]);
-    return dp[m][n];
-  }
-
-  // Unknown flag guard — must appear after all known-flag branches
+  // Unknown flag guard — must appear after all known-flag branches.
+  //
+  // Both guards below suggest a whole command, runnable as printed, or nothing
+  // at all. The nearest-spelling guess they replaced always answered, so
+  // `status` got `flush`, `install` got `uninstall` and `-i` got `audit`; see
+  // did-you-mean.ts for the table of words people type and the cut-off.
   const knownFlags = ["--version", "-v", "--help", "-h", "--hook"];
   const unknownFlag = args.find(a => a.startsWith("-") && !knownFlags.includes(a));
 
   if (unknownFlag) {
-    const primary = ["--version", "--help", "--hook", "policies", "policy", "audit"];
-    const closest = primary.reduce((best, flag) => {
-      const dist = levenshtein(unknownFlag, flag);
-      return dist < best.dist ? { flag, dist } : best;
-    }, { flag: primary[0], dist: Infinity });
-
+    const { suggestFlag } = await import("../src/hooks/did-you-mean");
+    const suggestion = suggestFlag(unknownFlag);
     throw new CliError(
-      `Unknown flag: ${unknownFlag}\n` +
-      `Did you mean: ${closest.flag}?\n` +
-      `Run \`failproofai --help\` for usage details.`
+      `Unknown flag: ${unknownFlag}.\n` +
+      (suggestion ? `Did you mean  \`${suggestion}\`?` : "Run  `failproofai help`  for usage.")
     );
   }
 
   // Unknown subcommand guard (non-flag args that aren't a known subcommand)
   const unknownSubcommand = args.find(a => !a.startsWith("-") && !SUBCOMMANDS.includes(a));
   if (unknownSubcommand) {
-    // Nearest match rather than a hardcoded "policies", which was wrong for
-    // every input that was not a typo of it. `auth` made that concrete: it was
-    // a real subcommand until this release, so an old script or plain muscle
-    // memory lands here, and answering "did you mean policies?" sends someone
-    // to the one command that has nothing to do with what they typed.
-    const nearest = SUBCOMMANDS.reduce(
-      (best, name) => {
-        const dist = levenshtein(unknownSubcommand, name);
-        return dist < best.dist ? { name, dist } : best;
-      },
-      { name: SUBCOMMANDS[0], dist: Infinity },
-    );
+    const { suggestCommand } = await import("../src/hooks/did-you-mean");
+    const suggestion = suggestCommand(unknownSubcommand, SUBCOMMANDS);
     throw new CliError(
-      `Unknown command: ${unknownSubcommand}\n` +
-      `Did you mean: failproofai ${nearest.name}?\n` +
-      `Run \`failproofai --help\` for usage details.`
+      `There is no command called '${unknownSubcommand}'.\n` +
+      (suggestion ? `Did you mean  \`${suggestion}\`?` : "Run  `failproofai help`  to see every command.")
     );
   }
 
   // Dashboard launch — always production mode. Runs on every bare `failproofai`
   // (first-run onboarding, if any, already ran above).
   const { launch } = await import("../scripts/launch");
-  launch("start");
+  launch("start", { logo: !setupWizardRan });
 }
 
 // ── Import CliError for use in the guard above ────────────────────────────────
@@ -1836,8 +2179,19 @@ try {
         exit_code: err.exitCode,
       });
     }
-    console.error(`Error: ${err.message}`);
-    process.exit(err.exitCode);
+    // `✕ <what went wrong>`, then each fix on its own line, indented two, with
+    // the command in pink (see `notice` in tui.ts). The exit code is the error's.
+    // Written rather than `console.error`, which Bun paints red on a terminal —
+    // a colour from outside the palette — and drained before exiting.
+    let failureText = `✕ ${err.message}`;
+    try {
+      const { screenKit, colorsEnabled } = await import("../src/hooks/tui");
+      failureText = screenKit({ color: colorsEnabled(process.stderr) }).notice("fail", err.message).join("\n");
+    } catch {
+      // The plain glyph is still the right shape; the kit is decoration.
+    }
+    process.stderr.write(`${failureText}\n`);
+    await exitAfterFlush(err.exitCode);
   }
   // Unexpected internal error — show message only, no stack trace
   const msg = err instanceof Error ? err.message : String(err);
@@ -1855,6 +2209,8 @@ try {
       error_type: err instanceof Error ? err.name : "unknown",
     });
   }
-  console.error(`Unexpected error: ${msg}`);
-  process.exit(2);
+  // Plain, never through the kit: this is the path for an install so broken
+  // that anything could be the next thing to fail.
+  process.stderr.write(`✕ Unexpected error: ${msg}\n`);
+  await exitAfterFlush(2);
 }

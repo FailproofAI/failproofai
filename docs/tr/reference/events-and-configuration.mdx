@@ -1,0 +1,84 @@
+---
+title: "Etkinlikler ve yapılandırma"
+description: "Etkinlik modelini, ortamları, yerel depolamayı ve yapılandırma sınırlarını referans alın."
+icon: "list-tree"
+---
+
+## Etkinlik aileleri
+
+- Aracı başlama, sonlandırma, duraklatma ve devam ettirme
+- Model isteği ve yanıtı
+- Araç kullanımı ve sonucu
+- Hook tetikleme ve tamamlama
+- İnsan bekleme, giriş, duraklatma ve kesme
+- Açık hatalar
+
+Her etkinlik bir zaman damgası, oturum kimliği, aracı kimliği, etkinlik türü ve ortam taşır. Etkinliğe özgü alanlar model, araç, korelasyon, sonuç, içerik, süre veya hata verilerini içerir.
+
+## Etkinlik sözleşmesini inceleyin
+
+<Tabs>
+  <Tab title="Dashboard">
+    1. **Observe → Events** (Gözlemle → Etkinlikler) bölümünü açın.
+    2. Kısa bir zaman aralığı ayarlayın ve ortam, aracı ve etkinlik türüne göre filtreleyin.
+    3. Normalize edilmiş alanlarını ve ham yükünü incelemek için bir etkinlik seçin, sonra yürütme bağlamını görmek için oturumunu açın.
+    4. Eşleştirilmiş bir süre eksikse, başlama ve tamamlama etkinliklerinin aynı korelasyon kimliğini kullanıp kullanmadığını doğrulayın.
+
+    Verileri tek bir aracı çalışmasına daraltmak ve normalize edilmiş etkinlik alanlarını incelemek için Events akışını kullanın.
+
+    ![Ortam, aracı, oturum ve etkinlik türü filtreleri olan canlı Events akışı.](/images/dashboard/events-stream.png)
+
+    Ardından etkinliği oturumuna takip edin. İz, bundan hemen önce ve sonra neler olduğunu gösterir; bu, yükün tek başına belirsiz olması durumunda gereklidir.
+
+    ![Etkinliği yürütme bağlamında incelemek için kullanılan bağlantılı oturum izi.](/images/dashboard/session-detail.png)
+
+    Eşleştirilmiş bir etkinlik veya süre eksikse, her iki görünümde korelasyon kimliklerini ve zaman damgalarını karşılaştırın.
+  </Tab>
+  <Tab title="CLI">
+    Geçerli filtre değerlerini keşfedin, ardından bir oturum için tam etkinlik yüklerini alın:
+
+    ```bash
+    fp list event_types
+    fp list envs
+    fp events --since 1h \
+      --env production \
+      --event-type tool_use,tool_result \
+      --session-id <session-id> \
+      --full
+    ```
+
+    Makine tarafından okunabilir inceleme için `fp --json events ... --fields ts,event_type,session_id,payload` kullanın.
+  </Tab>
+</Tabs>
+
+## Ayrılmış SDK alanları
+
+`timestamp`, `session_id`, `agent_id`, `type` veya `environment` öğelerini özel Python SDK alanları olarak kullanmayın. Araç sonucu süresi gibi eşleştirilmiş etkinlik süreleri SDK tarafından hesaplanır ve manuel olarak sağlanamaz.
+
+## Yerel sınırlar
+
+- Failproof AI durumu açıkça farklı yapılandırılmadığı sürece `~/.failproofai` altında yer alır.
+- `failproofai-sdk` her zaman `~/.failproofai/custom-agents` altında biriktirme yapar. `FAILPROOFAI_HOME` bu ev dizinini yeniden konumlandırır; `custom-agents` segmenti her zaman eklenir, bu nedenle biriktirme onun dışına yerleştirilemez. Sadece SDK'nın kendi `configure(base_dir=...)` başka yerlerde yazılır. `AGENTEYE_HOME` eski `agenteye-collector` tarafından okunur ve SDK'nın nereye yazacağını etkilemez artık.
+- Ortam etiketleri SDK yapılandırması veya `AGENTEYE_ENVIRONMENT` aracılığıyla ayarlanabilir.
+- Daemon kimlik bilgileri gizli olmayan ayarlardan ayrı olarak depolanır.
+
+İstikrarlı, düşük kardinaliteli ortam adlarını kullanın. Daemon ortam etiketlerinde virgüller desteklenmez.
+
+## Ortam etiketini değiştirin
+
+<Tabs>
+  <Tab title="Dashboard">
+    Ortam etiketleri, yayın yapan SDK veya Failproof daemon tarafından atanır. Bir etiketi değiştirdikten sonra **Observe → Sessions** (Gözlemle → Oturumlar) bölümünü açın ve ortam filtresini kullanarak yeni oturumların yeni değeri taşıdığını doğrulayın. Mevcut oturumlar orijinal ortamlarını korur.
+
+  </Tab>
+  <Tab title="CLI">
+    `failproofai-sdk` için ortamı kod içinde veya eski ortam değişkeni ile yapılandırın. Makine düzeyindeki ayarları değiştirirken daemon yapılandırmasını yeniden çalıştırın.
+
+    ```bash
+    export AGENTEYE_ENVIRONMENT=production-us-east
+    failproofai config
+    failproofai config --status
+    fp sessions --since 1h --env production-us-east
+    ```
+  </Tab>
+</Tabs>

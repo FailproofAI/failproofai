@@ -1,0 +1,244 @@
+---
+title: "LangChain と LangGraph"
+sidebarTitle: "LangChain と LangGraph"
+description: "グラフ、ノード、ツール、リトリーバー、モデル呼び出しを1回の呼び出しでインストルメント化します。"
+icon: "/images/frameworks/langchain.svg"
+---
+
+アダプターは両方に対応しています。LangGraph は `langchain-core` のコールバックマネージャー上で動作するため、一方をインストルメント化すればもう一方も自動的にインストルメント化されます。
+
+## インストール
+
+```bash
+pip install 'failproofai-sdk[langgraph]'
+```
+
+LangGraph を使わない LangChain のみの場合は `failproofai-sdk[langchain]` を使用してください。
+
+対応バージョン: `langchain-core` 1.4.7〜2.0、`langgraph` 1.2〜2.0。この範囲外でもアダプターはインストールされ、一度だけ警告が表示されます。
+
+## インストルメント化
+
+```python
+import failproofai_sdk
+
+failproofai_sdk.configure(environment="production")
+failproofai_sdk.instrument()
+
+with failproofai_sdk.session():
+    graph.invoke({"messages": [HumanMessage("...")]})
+```
+
+`instrument()` は `langchain_core.tracers.context.register_configure_hook` を通じてトレーサーを登録します。LangChain はビルドするすべてのコールバックマネージャーにこれを注入するため、グラフ、ツール、モデルは呼び出し箇所を変更することなくキャプチャされます。自分で書いていないライブラリ内部の呼び出しも含まれます。
+
+## 記録される内容
+
+| LangChain または LangGraph | Failproof イベント |
+| --- | --- |
+| ルート実行 | `agent_start`、`agent_end` |
+| LangGraph ノード | `hook_triggered`、`hook_completed` |
+| コンパイル済みサブグラフ | ネストされた `agent_start`、`agent_end` |
+| ツール実行 | `tool_use`、`tool_result` |
+| リトリーバー実行 | `tool_use`、`tool_result`、出力はサマリー化 |
+| チャットモデルまたは LLM 実行 | `model_request`、`model_response`（トークン使用量含む） |
+| ストリームトークン | チャンク数と最初のトークンまでの時間としてレスポンスに統合 。トークン数には `ChatOpenAI(stream_usage=True)` が必要 — 以下参照 |
+| `interrupt()` | `human_wait`、`agent_pause` |
+| `Command(resume=...)` | `agent_resume`、`human_input`。`Interrupt.id` で相関付け — 同じチェックポインターに対して別プロセスでレジュームが発生した場合も含む |
+| 未処理の例外 | `error`、その後 `outcome` が `failed` の `agent_end` |
+
+**ノードはネストされたエージェントではなく、フックになります。** `agent_id` はすべてのダッシュボード画面における主要なファセットです。`retrieve`、`grade_documents`、`should_continue` をエージェントに昇格させると識別が困難になり、最初に実行されたノードの名前でセッションがラベル付けされてしまいます。
+
+フックスパンは同じ方法でレンダリングされ、ノードごとのレイテンシビューも提供されます。
+
+<Note>
+  **ノードの名前は自由に付けられます。** ノードの実行は、その*形状*（LangGraph 独自のステップタグを持つ非リーフ実行）によって識別されます — 名前では識別されません。
+</Note>
+
+| 記述内容 | 記録される内容 |
+| --- | --- |
+| `add_node("lookup_population", ToolNode([...]))` | ツール |
+| `add_node("ChatOpenAI", ...)` | モデル呼び出し |
+
+以前は、実行するものにちなんでノードに名前を付けると、そのもののイベントが消えてしまっていました。現在はそのような問題はありません。
+
+### ストリーミング
+
+`.stream()` および `.astream()` はトークンごとのイベントを発行しません。クロージング `model_response` にまとめられます:
+
+| フィールド | 内容 |
+| --- | --- |
+| `fw_chunks` | 到着したチャンク数 |
+| `fw_ttft_ms` | 最初のトークンまでの時間 |
+
+### ストリームレスポンスのトークン数
+
+別の問題であり、見落としやすい点です: OpenAI はストリームレスポンスで使用量を送信するのは**リクエストした場合のみ**です。
+
+```python
+ChatOpenAI(model="gpt-4o-mini", stream_usage=True)   # このフラグがないとトークン数が記録されません
+```
+
+アダプターはフレームワークから渡された内容を記録します。このフラグがないと記録するものがなく、`model_response` はトークン数なしで届きます。
+
+## サンプル
+
+```python
+import failproofai_sdk
+from langchain_core.messages import HumanMessage
+from langchain_core.tools import tool
+from langchain_openai import ChatOpenAI
+from langgraph.prebuilt import ToolNode, create_react_agent
+
+failproofai_sdk.configure(environment="production")
+failproofai_sdk.instrument()
+
+
+@tool
+def price_of(item: str) -> float:
+    """Return the unit price of an item in USD."""
+    return {"widget": 42.0, "gadget": 17.5}[item.lower().strip()]
+
+
+@tool
+def stock_of(item: str) -> int:
+    """Return the units of an item currently in stock."""
+    return {"widget": 120, "gadget": 0}[item.lower().strip()]
+
+
+tools = ToolNode([price_of, stock_of], handle_tool_errors=True)
+graph = create_react_agent(ChatOpenAI(model="gpt-4o-mini"), tools)
+
+with failproofai_sdk.session():
+    with failproofai_sdk.agent("analyst", goal="price and stock report"):
+        result = graph.invoke({
+            "messages": [HumanMessage("Price and stock for widget and gadget?")]
+        })
+```
+
+## スパンの名前付け
+
+デフォルトでは、ルートスパンにグラフ自身の名前が使用されます。任意のラベルを付けるにはラップしてください:
+
+```python
+with failproofai_sdk.session():
+    with failproofai_sdk.agent("analyst", goal="price and stock report"):
+        graph.invoke(...)
+```
+
+マルチエージェント構成の場合はスコープをネストします。各ワーカーは `parent_id` を持つ子スパンになります:
+
+```python
+with failproofai_sdk.session():
+    with failproofai_sdk.agent("supervisor"):
+        with failproofai_sdk.agent("researcher"):
+            research_graph.invoke(...)
+        with failproofai_sdk.agent("writer"):
+            writer_graph.invoke(...)
+```
+
+`agent_id` のカーディナリティは低く保ってください。ロール名やノード名を使用し、UUID や実行ごとの文字列は使わないでください。
+
+## セッションの制御
+
+セッション ID は以下の順序で解決され、最初に一致したものが使用されます:
+
+1. `instrument("langchain", session_id=...)`
+2. `config={"metadata": {"failproofai_sdk_session_id": ...}}`
+3. 囲んでいる `failproofai_sdk.session()` スコープ
+4. `metadata["session_id"]`、`metadata["conversation_id"]`、または `metadata["thread_id"]`
+5. ルート実行 ID
+
+セッション ID はゼロから生成されることはありません。合成 ID は1つの実行を複数のセッションに分割してしまうためです。
+
+```python
+graph.invoke(
+    {"messages": [...]},
+    config={"metadata": {"failproofai_sdk_session_id": f"chat-{user_id}"}},
+)
+```
+
+## オプション
+
+```python
+failproofai_sdk.instrument(
+    "langchain",
+    session_id=None,          # すべての実行を1つのセッション ID に固定
+    include_chains=set(),     # 中間チェーンをフックペアとしてアローリスト登録
+    capture_content=True,     # False にするとプロンプトと補完をペイロードから除外
+    graph_callbacks=True,     # interrupt と resume をファーストクラスで扱う。langgraph 1.2+ が必要
+)
+```
+
+規制対象データには `capture_content=False` を設定してください。構造、タイミング、トークン数、ツール名、結果は引き続き記録されますが、メッセージ本文は記録されません。
+
+`include_chains` は**ネストされた**実行にのみ適用されます。トップレベルで呼び出す Runnable はセッションのルートとなるため、フックペアではなくエージェントスパンになります。ここで名前を指定しても効果はありません。
+
+## ヒューマン・イン・ザ・ループ
+
+`interrupt()` は4つのイベントを生成し、どちらのペアも冗長ではありません:
+
+```python
+from langgraph.types import Command, interrupt
+
+def approve(state):
+    decision = interrupt({"prompt": "Ship it?", "options": ["yes", "no"]})
+    return {"approved": decision == "yes"}
+
+with failproofai_sdk.session():
+    graph.invoke(state, config)                    # human_wait、agent_pause
+    graph.invoke(Command(resume="yes"), config)    # agent_resume、human_input
+```
+
+`human_wait` から `human_input` にはプロンプトと回答が含まれます（`capture_content=False` の場合は両方が除外されます。リトリーバルのドキュメントソースも同様ですが、ドキュメント数は残ります）。`agent_pause` から `agent_resume` は一時停止時間を計測する唯一のペアであるため、これがないと10分間の人間の待機がアクティブなエージェント時間として計上されます。ルートスパンは間隔を超えて開いたままになり、両方の呼び出しが1つのセッションに保たれます。
+
+## よくある問題
+
+<AccordionGroup>
+  <Accordion title="例外を発生させるツールがグラフ全体を中断する">
+    `create_react_agent` は例外を伝播させます。モデルが失敗を確認して継続できるようにするには、ツールノードを明示的に構築してください:
+
+    ```python
+    from langgraph.prebuilt import ToolNode, create_react_agent
+
+    tools = ToolNode([price_of, stock_of], handle_tool_errors=True)
+    graph = create_react_agent(model, tools)
+    ```
+
+    いずれの場合も、失敗はエラーを含む `tool_result` として記録されます。これは実行がその失敗から回復するかどうかだけを決定します。
+  </Accordion>
+
+  <Accordion title="モデルクラス名のエージェントがトレースに表示される">
+    グラフ外での直接的な `llm.invoke()` には親実行がないため、ルートスパンが開かれ、その中にモデルペアが発行されます。ダッシュボードはリーフを開いているエージェントの子として扱うため、このスパンは意図的なものです。名前を付けてください:
+
+    ```python
+    with failproofai_sdk.agent("summariser"):
+        summary = ChatOpenAI(model="gpt-4o-mini").invoke([HumanMessage(text)])
+    ```
+  </Accordion>
+
+  <Accordion title="すべてのイベントが2回表示される">
+    `instrument()` を呼び出した上に、`config={"callbacks": [...]}` で Failproof ハンドラーも渡しています。それを削除してください。configure フック はプロセス内のすべてのコールバックマネージャーをすでにカバーしています。
+  </Accordion>
+
+  <Accordion title="人間の承認がエラーとして表示される">
+    そうはなりません。LangGraph は `GraphInterrupt` を実際の例外と同じパスで発生させるため、すべての一時停止がエラーコールバックとしてトレーサーに到達します。`GraphBubbleUp` のサブクラスはコントロールフローとして扱われるため、承認が赤いエラーとして表示されることはありません。
+  </Accordion>
+
+  <Accordion title="何も記録されない">
+    以下の順序で確認してください: `instrument()` がグラフ実行前に呼び出されているか；呼び出しを囲む `with failproofai_sdk.session():` があるか；`FAILPROOFAI_SDK_STRICT=1` が設定されている場合、デグレードしたフックは握りつぶされずに例外を発生させます。
+  </Accordion>
+</AccordionGroup>
+
+## 次のステップ
+
+<Columns cols={3}>
+  <Card title="仕組みを理解する" icon="workflow" href="/ja/start/integrations/custom-agents#going-deeper">
+    ペア、ID、セッションライフサイクル、デリバリーについて。
+  </Card>
+  <Card title="トレースを読む" icon="route" href="/ja/sessions/read-a-trace">
+    キャプチャしたセッションの因果関係を追う。
+  </Card>
+  <Card title="他のフレームワーク" icon="plug" href="/ja/start/integrations">
+    CrewAI、LlamaIndex、Pydantic AI、カスタムエージェント。
+  </Card>
+</Columns>

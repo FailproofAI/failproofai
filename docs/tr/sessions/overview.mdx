@@ -1,0 +1,57 @@
+---
+title: "Oturumlar"
+description: "Bir aracı çalışmasının tam kaydıyla başlayın."
+icon: "workflow"
+---
+
+Bir oturum, bir aracı beklenmedik şekilde davrandığında başlamak için en iyi noktadır. Model isteklerini, yanıtlarını, araç çağrılarını, insan etkileşimlerini, hataları, değerlendirmeleri ve bir çalışmaya ait ilke kararlarını bir araya getirir.
+
+Oturumlar, bunları üreten araç ne olursa olsun aynı görünür. Bir depoyu yeniden yazan Claude Code çalışması, Slack'te müşteriye yanıt veren bir Hermes aracısı ve SDK ile enstrümente edilmiş bir Python hizmeti, hepsi aynı izleme biçimine ulaşır, bu nedenle bir görünüm tüm filo için yeterlidir.
+
+<div style={{ position: "relative", width: "100%", paddingBottom: "56.25%", height: 0, overflow: "hidden", borderRadius: "12px", margin: "1.5rem 0" }}>
+  <iframe src="https://www.youtube.com/embed/VWxukZc5k7s?rel=0&playsinline=1" title="Agent tracing with Failproof AI" allow="accelerometer; autoplay; encrypted-media; gyroscope; picture-in-picture; fullscreen" allowFullScreen style={{ position: "absolute", top: 0, left: 0, width: "100%", height: "100%", border: 0 }}></iframe>
+</div>
+
+Bir aracı çalışmasını hedefinizden model çağrıları, araçlar ve son yanıt aracılığıyla takip edin.
+
+## Bir oturum bulun
+
+<Tabs>
+  <Tab title="Pano">
+    1. Bulut kenar çubuğunda **Gözlemle → Oturumlar**'a gidin.
+    2. Zaman penceresini ayarlayın, ardından ortam, durum, aracı veya oturum kimliğine göre filtreleyin.
+    3. Kalite, maliyet, token veya gecikme dilimi gerektiğinde puan veya metrik aralıkları ekleyin.
+    4. İzlemeyi açmak için bir satır seçin. Paylaşırken oturum kimliğinin yanındaki kopyalama denetimini kullanın.
+
+    ![Oturumlar listesi ortam, aracı, durum ve değerlendirme puanı filtreleriyle her çalışma için bir satır gösteriyor.](/images/dashboard/sessions-list.png)
+  </Tab>
+  <Tab title="CLI">
+    ```bash
+    fp sessions --env production --since 24h
+    fp sessions --status error,timeout --agent-id checkout-agent
+    fp --json sessions --session-id <session-id>
+    ```
+
+    Çok aracılı çalışmaları genişletmek için `--agents` ekleyin, sayfalandırmak için `--all` ekleyin veya çıktı sütunlarını seçmek için `--fields` ekleyin.
+  </Tab>
+</Tabs>
+
+## Yapabilecekleriniz
+
+- Bir çalışmayı aracı, ortam, zaman, model, olay türü veya hata durumuna göre bulun.
+- Bir sonucu üreten kesin sırayı takip edin.
+- Başarılı ve başarısız çalışmaları karşılaştırın.
+- Bir denetim bulgusunun veya uyarı olayının kullandığı kanıtları açın.
+- Çevrimdışı bir kayda ihtiyaç duyduğunuzda bir oturum dışa aktarın.
+
+## Güvenilir bir araştırma sırası
+
+1. Oturum hedefini ve ortamını onaylayın.
+2. İlk hatayı veya beklenmedik kararı bulun—sadece nihai hatayı değil.
+3. Hemen önceki model bağlamını ve araç girişini inceleyin.
+4. Yeniden denemeleri, gecikmeyi ve insan müdahalelerini kontrol edin.
+5. Değerlendirme puanlarını ve ilke kararlarını gözden geçirin.
+
+<Card title="İzlemeyi oku" icon="route" href="/tr/sessions/read-a-trace">
+  Oturum özetinden sonucu etkileyen olaya nasıl geçileceğini öğrenin.
+</Card>

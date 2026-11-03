@@ -1,0 +1,55 @@
+---
+title: "Déployer et versionner une évaluation"
+description: "Déployez une version immuable, consultez ce qui est en production, publiez de nouvelles versions, effectuez un rollback et notez des sessions existantes."
+icon: "cloud-upload"
+---
+
+## Déployer
+
+Sélectionnez **deploy `<key>@<version>`** en bas de la page d'authoring. La version est immuable une fois publiée : à partir de ce moment, chaque session terminée à laquelle sa condition s'applique est notée par elle.
+
+## Voir ce qui est en production
+
+**Analyze → eval authoring** liste les définitions hébergées de votre organisation, c'est-à-dire les évaluations que l'évaluateur géré exécute pour elle. Chaque ligne affiche :
+
+- son nom, sa clé, sa version et son type de résultat
+- son checksum source, qui permet de distinguer les révisions déployées sans ouvrir le code
+- si elle est **conditionnelle** ou s'exécute sur **toutes les sessions terminées** — la condition est ce qui restreint une évaluation à des agents ou des environnements particuliers
+- son timeout, ses labels et la date de sa dernière modification
+
+![La liste des définitions hébergées : nom, clé, version, type de résultat, checksum, timeout et périmètre de chaque évaluation, avec les options nouvelle version et activer ou désactiver.](/images/dashboard/eval-definitions.png)
+
+Recherchez dans la liste ou filtrez-la par état. Les évaluations enregistrées par votre propre worker ne sont pas listées ici ; leurs résultats portent un tag **customer** sur la [page des évaluations](/fr/sessions/evaluations), tandis que celles hébergées portent le tag **managed**.
+
+Une organisation peut avoir jusqu'à 100 évaluations hébergées différentes activées simultanément.
+
+## Publier une nouvelle version
+
+Sélectionnez **new version** sur une ligne. La page d'authoring s'ouvre avec le code de cette version ; modifiez-le, testez-le et déployez-le. Sa clé et son type de résultat sont conservés et ne peuvent pas être modifiés.
+
+La publication d'une version successeur désactive la version précédente et la conserve dans la liste. Les résultats gardent la version qui les a produits, de sorte qu'un graphique indique précisément quand la nouvelle logique a pris effet.
+
+## Effectuer un rollback
+
+Sélectionnez **disable** sur la version actuelle et **enable** sur celle que vous souhaitez restaurer. Rien n'est supprimé et chaque résultat reste tel qu'il était.
+
+## Arrêter une évaluation
+
+Sélectionnez **disable**. Sans version activée, l'évaluation cesse de s'exécuter sur les nouvelles sessions. Pour arrêter une évaluation que votre propre worker exécute, cessez de l'enregistrer : supprimez-la du worker ou arrêtez le worker.
+
+## Noter des sessions existantes
+
+L'exécution des évaluations se fait vers l'avant : une version déployée maintenant ne notera jamais une session qui s'est terminée avant son déploiement. Pour noter l'historique, ouvrez **score sessions you already have** sur la page d'authoring des évaluations, choisissez une fenêtre allant jusqu'à 90 jours et, optionnellement, une seule évaluation, puis comptez avant d'exécuter. Le comptage correspond exactement à ce qui sera exécuté, et chaque paire session-évaluation qu'il contient est une évaluation facturable.
+
+Ce mécanisme comble uniquement les lacunes. Une session qui possède déjà un résultat pour cette évaluation le conserve, et exécuter la même fenêtre deux fois ne note rien de nouveau.
+
+Pour noter à nouveau une session — après un correctif, ou pour une session qui ne s'est jamais terminée proprement — sélectionnez **re-evaluate** sur sa page. Le nouveau résultat est ajouté à l'historique de la session ; les résultats précédents sont conservés.
+
+## Permissions
+
+| Permission | Vous permet de |
+| --- | --- |
+| `evaluations:read` | Voir les résultats et ouvrir la page d'authoring des évaluations |
+| `evaluations:trigger` | Voir, déployer, versionner, activer et désactiver les définitions hébergées ; les tester ; noter l'historique ; réévaluer une session |
+| `events:read` | Tester sur des sessions réelles et ancrer les brouillons dans vos clés de payload, en complément de `evaluations:trigger` |
+| `evaluations:run` | Exécuter votre propre worker d'évaluateur |

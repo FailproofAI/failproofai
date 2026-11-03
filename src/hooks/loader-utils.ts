@@ -191,7 +191,13 @@ export async function createEsmShim(
   const shimCode = [
     `import _cjs from '${distUrl}';`,
     `export const customPolicies = _cjs.customPolicies;`,
+    // Every name a policy file may import has to be listed HERE as well as in
+    // `src/index.ts`: this shim is an ESM module, so importing a name it does not
+    // declare is a link-time error, not an undefined at runtime. A pack entry
+    // calling `semanticPolicies.add` would fail to load entirely.
+    `export const semanticPolicies = _cjs.semanticPolicies;`,
     `export const getCustomHooks = _cjs.getCustomHooks;`,
+    `export const getSemanticRegistrations = _cjs.getSemanticRegistrations;`,
     `export const clearCustomHooks = _cjs.clearCustomHooks;`,
     `export const allow = _cjs.allow;`,
     `export const deny = _cjs.deny;`,

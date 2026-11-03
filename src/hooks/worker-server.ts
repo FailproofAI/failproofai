@@ -17,7 +17,10 @@
  * evaluations could have request B's `clearPolicies()` wipe request A's
  * in-flight registration. Serializing keeps the existing registry code
  * correct with zero changes; a worker_threads/process pool is a valid
- * future enhancement if this becomes a real throughput bottleneck.
+ * future enhancement if this becomes a real throughput bottleneck. The one
+ * exception is the network wait of a two-tier (Jev) review, which happens
+ * after the registry is no longer read and so does not hold the queue (see
+ * `enqueue`).
  */
 import { createConnection, createServer, type Server, type Socket } from "node:net";
 import { existsSync, unlinkSync } from "node:fs";
@@ -33,6 +36,7 @@ interface WorkerHookRequest {
   cli: IntegrationType;
   stdin: string;
   cwd?: string;
+  agentSettingsPath?: string;
 }
 
 function isWorkerHookRequest(msg: unknown): msg is WorkerHookRequest {
@@ -51,7 +55,9 @@ function isWorkerHookRequest(msg: unknown): msg is WorkerHookRequest {
     // `failproofai config` aborted with "its worker process could not be run"
     // against a daemon and worker that were both perfectly healthy. On a
     // daemonConfigured machine the same mismatch denies the tool call.
-    (m.cwd === undefined || m.cwd === null || typeof m.cwd === "string")
+    (m.cwd === undefined || m.cwd === null || typeof m.cwd === "string") &&
+    (m.agentSettingsPath === undefined || m.agentSettingsPath === null ||
+      typeof m.agentSettingsPath === "string")
   );
 }
 
@@ -74,7 +80,8 @@ const TASK_DEADLINE_MS = 60_000;
 
 /**
  * Serializes every request across every connection through one chain, so
- * `evaluateHookEvent` calls never overlap. `.catch()` on each link keeps the
+ * `evaluateHookEvent` calls never overlap while reading the registry (see
+ * `release` below). `.catch()` on each link keeps the
  * chain alive even if a handler throws unexpectedly — one bad request must
  * never wedge every request queued behind it.
  *
@@ -97,37 +104,115 @@ const TASK_DEADLINE_MS = 60_000;
  * worker whose `try_wait()` reports it gone), which costs one cold start and
  * denies the in-flight requests — the same fail-closed outcome they were headed
  * for anyway, but recovered on the next call instead of never.
+ *
+ * A task may hand its place in the chain back early by calling `release`:
+ * the next request starts while the task finishes on its own. Only the
+ * two-tier (Jev) path does, at the point it stops reading the registry and
+ * starts waiting on Jev's network answer (`EvaluateHookEventOptions.
+ * releaseRegistry`). Without that, every hook on the machine — PostToolUse,
+ * UserPromptSubmit, other agents' calls — would queue behind each gated call's
+ * round trip, and a slow or unreachable provider would push the calls at the
+ * back of the queue past the client's 30 s budget into fail-closed denies.
+ * A released task no longer holds the registry, so the deadline it was running
+ * under — the one that protects the QUEUE — has done its job. It gets a fresh
+ * one of its own instead of none: it is still running, its connection's later
+ * replies still queue behind it (see `handleConnection`), and a task that has
+ * not settled a minute after handing the queue back is wedged on something
+ * that is not going to finish. Its Jev wait is bounded by the configured
+ * timeout, so nothing on the intended path comes close.
+ *
+ * Released tasks therefore run concurrently with each other and with the
+ * queue: two gated calls can be waiting on Jev at once (T5's throttle shares
+ * one cache and token bucket across them, and does not merge identical
+ * in-flight requests). Replies on one connection still leave in request order
+ * (see `handleConnection`).
  */
 const WEDGED_EXIT_CODE = 75;
+/**
+ * A released task's own deadline, counted from the moment it handed the queue
+ * back. Its Jev wait is bounded by the configured timeout (at most 10 s, plus
+ * the review's own backstop), so only a task stuck on something else ever
+ * reaches this.
+ */
+const RELEASED_TASK_DEADLINE_MS = 60_000;
+
+/** What a wedged task costs: this worker, so the supervisor respawns a clean one. */
+function exitWedged(ms: number, released: boolean): void {
+  hookLogWarn(
+    `worker: a ${released ? "released " : ""}request did not settle within ${ms}ms; ` +
+      `exiting so the supervisor can respawn a clean worker`,
+  );
+  process.exit(WEDGED_EXIT_CODE);
+}
+
+export interface QueuedTaskOptions {
+  taskMs?: number;
+  releasedMs?: number;
+  onWedged?: (ms: number, released: boolean) => void;
+}
+
+/**
+ * Runs one queued task under a wedge deadline, calling `settle` when the next
+ * task may start — because this one finished, or because it handed its place
+ * back early with the `release` it is given. A released task keeps running
+ * under a deadline of its own (see `RELEASED_TASK_DEADLINE_MS`); dropping the
+ * deadline at that point would have made every wedge past the release
+ * invisible.
+ *
+ * Exported for the deadlines' own tests: they are a minute long and expiry
+ * exits the process, so a test passes its own values and its own `onWedged`.
+ */
+export function runQueuedTask(task: (release: () => void) => Promise<void>, settle: () => void, opts: QueuedTaskOptions = {}): void {
+  const onWedged = opts.onWedged ?? exitWedged;
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  let finished = false;
+  let started = false;
+  const arm = (ms: number, released: boolean) => {
+    clearTimeout(timer);
+    timer = setTimeout(() => onWedged(ms, released), ms);
+    // Never let the deadline itself hold the event loop open.
+    timer.unref?.();
+  };
+  /** The next task starts once, whether this one released first or just finished. */
+  const startNext = () => {
+    if (started) return;
+    started = true;
+    settle();
+  };
+  const finish = () => {
+    finished = true;
+    clearTimeout(timer);
+    startNext();
+  };
+  const release = () => {
+    if (finished) return;
+    arm(opts.releasedMs ?? RELEASED_TASK_DEADLINE_MS, true);
+    startNext();
+  };
+  arm(opts.taskMs ?? TASK_DEADLINE_MS, false);
+  void task(release).then(finish, finish);
+}
 
 let processingChain: Promise<void> = Promise.resolve();
-function enqueue(task: () => Promise<void>): void {
-  processingChain = processingChain
-    .then(
-      () =>
-        new Promise<void>((settle) => {
-          const timer = setTimeout(() => {
-            hookLogWarn(
-              `worker: a request did not settle within ${TASK_DEADLINE_MS}ms; ` +
-                `exiting so the supervisor can respawn a clean worker`,
-            );
-            process.exit(WEDGED_EXIT_CODE);
-          }, TASK_DEADLINE_MS);
-          // Never let the deadline itself hold the event loop open.
-          timer.unref?.();
-          const done = () => {
-            clearTimeout(timer);
-            settle();
-          };
-          void task().then(done, done);
-        }),
-    )
-    .catch(() => {});
+function enqueue(task: (release: () => void) => Promise<void>): void {
+  processingChain = processingChain.then(() => new Promise<void>((settle) => runQueuedTask(task, settle))).catch(() => {});
 }
 
 function handleConnection(socket: Socket, shutdown: () => void): void {
   let recvBuf = Buffer.alloc(0);
   let declaredLen: number | null = null;
+  /**
+   * Hook replies leave in the order their requests arrived on this
+   * connection. The wire carries no request id, so a client that pipelines
+   * several requests on one connection can match replies only by order — which
+   * the strictly serialized queue used to guarantee by itself. A two-tier task
+   * that releases the queue early (see `enqueue`) can finish after a request
+   * that arrived behind it, so each reply waits for every earlier one on its
+   * connection. The Rust supervisor opens one connection per request, so today
+   * this never delays anything; it keeps the ordering true for any client that
+   * does pipeline.
+   */
+  let replies: Promise<void> = Promise.resolve();
 
   socket.on("data", (chunk: Buffer) => {
     recvBuf = Buffer.concat([recvBuf, chunk]);
@@ -178,26 +263,40 @@ function handleConnection(socket: Socket, shutdown: () => void): void {
       }
       const request = message;
 
-      enqueue(async () => {
+      let deliver!: (frame: Buffer) => void;
+      const reply = new Promise<Buffer>((resolveReply) => {
+        deliver = resolveReply;
+      });
+      replies = replies
+        .then(() => reply)
+        .then((frame) => {
+          socket.write(frame);
+        })
+        .catch(() => {});
+
+      enqueue(async (release) => {
         try {
           const result = await evaluateHookEvent(request.hookEvent, request.cli, request.stdin, {
             awaitTelemetryFlush: false,
             // Normalised here so no consumer has to know the wire spells
             // "absent" as null.
             fallbackCwd: request.cwd ?? undefined,
+            agentSettingsPath: request.agentSettingsPath ?? undefined,
+            releaseRegistry: release,
           });
-          socket.write(
+          deliver(
             encodeFrame({
               type: "hookResult",
               exitCode: result.exitCode,
               stdout: result.stdout,
               stderr: result.stderr,
+              evaluation: result.evaluation,
             }),
           );
         } catch (err) {
           const msg = err instanceof Error ? err.message : String(err);
           hookLogWarn(`worker: evaluateHookEvent threw: ${msg}`);
-          socket.write(encodeFrame({ type: "error", message: msg }));
+          deliver(encodeFrame({ type: "error", message: msg }));
         }
       });
     }

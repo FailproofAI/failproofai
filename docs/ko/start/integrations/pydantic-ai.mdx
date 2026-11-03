@@ -1,0 +1,208 @@
+---
+title: "Pydantic AI"
+sidebarTitle: "Pydantic AI"
+description: "타입이 지정된 에이전트, 도구, 모델 호출, 재시도를 계측합니다."
+icon: "/images/frameworks/pydantic-ai.svg"
+---
+
+## 설치
+
+```bash
+pip install 'failproofai-sdk[pydantic-ai]'
+```
+
+지원 버전: `pydantic-ai-slim` 2.0~3.0. 2.0에서 `Agent(instrument=...)`가 제거되고 이 어댑터가 기반으로 하는 capability 프로토콜이 도입되었으므로, 1.x는 이 방식으로 계측할 수 없습니다.
+
+## 계측
+
+```python
+import failproofai_sdk
+from pydantic_ai import Agent
+
+failproofai_sdk.configure(environment="production")
+failproofai_sdk.instrument()          # Agent를 생성하기 전에 호출
+
+agent = Agent("openai:gpt-4o-mini", system_prompt="Be terse.")
+
+with failproofai_sdk.session():
+    result = agent.run_sync("...")
+```
+
+<Warning>
+  `instrument()`는 반드시 `Agent`를 생성하기 전에 실행되어야 합니다. capability는 생성 시점에 추가되므로, 이전에 생성된 에이전트는 capability를 가지지 않으며 아무것도 기록하지 않습니다. 오류도 발생하지 않아 문제를 알아채기 어렵습니다. 이것이 이 어댑터에서 빈 트레이스가 나타나는 가장 흔한 원인입니다.
+</Warning>
+
+모듈 스코프 에이전트에서 이 문제가 자주 발생합니다:
+
+```python
+# agents.py
+agent = Agent("openai:gpt-4o-mini")   # 임포트 시점에 생성됨
+
+# main.py
+import failproofai_sdk
+failproofai_sdk.instrument()          # 이것을 먼저 실행
+import agents                         # 이제 에이전트가 capability를 얻음
+```
+
+적용 여부 확인:
+
+```python
+print([type(c).__name__ for c in agent.root_capability.capabilities])
+# ['FailproofAI', 'ToolSearch', 'PendingMessageDrainCapability']
+```
+
+Pydantic AI는 전달한 목록을 단일 `root_capability`로 병합하므로, 읽을 수 있는 `agent.capabilities` 속성은 없습니다.
+
+계측 중에 생성된 에이전트는 capability를 유지하므로, 에이전트를 다시 빌드하지 않고도 `uninstrument()` 후 재계측할 수 있습니다.
+
+## 기록되는 항목
+
+| Pydantic AI | Failproof 이벤트 |
+| --- | --- |
+| 에이전트 실행 | `agent_start`, `agent_end` |
+| 모델 요청 | `model_request`, `model_response` (토큰 사용량 포함) |
+| 도구 호출 | `tool_use`, `tool_result` (모델이 전달한 인자 포함) |
+| 도구에서 발생한 `ModelRetry` | 오류를 담은 `tool_result` |
+| 처리되지 않은 예외 | `error`, 이후 결과가 `failed`인 `agent_end` |
+
+훅 페어와 휴먼-인-더-루프 페어는 없습니다. Pydantic AI는 브래킷을 감쌀 수 있는 노드나 스텝 경계가 없고 내장된 휴먼 일시정지 기능도 없으므로 매핑할 대상이 없습니다. 이를 직접 구현하는 경우 이벤트를 직접 발행하세요 — [커스텀 에이전트](/ko/reference/custom-agents)를 참고하세요.
+
+`output_type`은 트레이스에 영향을 주지 않습니다. 타입이 지정된 실행과 문자열 실행은 동일한 이벤트를 생성합니다.
+
+## 예제
+
+```python
+import failproofai_sdk
+from pydantic import BaseModel
+from pydantic_ai import Agent, ModelRetry
+
+failproofai_sdk.configure(environment="production")
+failproofai_sdk.instrument()
+
+PRICE = {"widget": 42.0, "gadget": 17.5}
+STOCK = {"widget": 120, "gadget": 0}
+
+
+class Report(BaseModel):
+    headline: str
+    out_of_stock: list[str]
+
+
+agent = Agent(
+    "openai:gpt-4o-mini",
+    output_type=Report,
+    system_prompt="Use the tools for every number. If a tool fails, note it and continue.",
+)
+
+
+@agent.tool_plain
+def price_of(item: str) -> float:
+    """Unit price of an item. Valid: widget, gadget."""
+    return PRICE[item.lower().strip()]
+
+
+@agent.tool_plain
+def stock_of(item: str) -> int:
+    """Units in stock. Valid: widget, gadget."""
+    return STOCK[item.lower().strip()]
+
+
+@agent.tool_plain
+def restock_eta(item: str) -> str:
+    """Restock ETA. Not available."""
+    raise ModelRetry(f"no restock schedule for {item!r} — answer without it")
+
+
+with failproofai_sdk.session():
+    with failproofai_sdk.agent("inventory", goal="stock report"):
+        result = agent.run_sync(
+            "For widget and gadget, get price and stock. "
+            "For anything out of stock, try the restock ETA. Then produce the report."
+        )
+```
+
+트레이스에서 `restock_eta`는 오류를 담은 `tool_result`로 나타나고, 이후 에이전트가 이를 우회하는 모델 호출이 이어지며 실행은 `success`로 종료됩니다. 두 사실 모두 기록됩니다.
+
+## 오류, 재시도, 제어 흐름
+
+Pydantic AI는 세 가지 서로 다른 상황에서 예외를 발생시키며, 어댑터는 이를 구분합니다:
+
+| 예외 | 처리 방식 | 결과 |
+| --- | --- | --- |
+| `ModelRetry`, `ToolRetryError`, `ToolFailedError` | 실제 도구 실패 | 오류가 담긴 `tool_result`; 실행은 여전히 `success`로 끝날 수 있음 |
+| `SkipToolExecution`, `SkipToolValidation`, `SkipModelRequest`, `CallDeferred`, `ApprovalRequired` | 제어 흐름 | 오류 아님; 실행이 조율되고 있는 상태 |
+| 그 외 | 실패 | `error`, 이후 결과가 `failed`인 `agent_end` |
+
+`ModelRetry`는 의도적으로 첫 번째 그룹에 포함됩니다. 이는 시도가 실제로 실패하여 모델에게 재시도를 요청한 것으로, 도구 스팬의 오류 필드가 담당하는 역할입니다. 이를 제어 흐름으로 분류하면 실제 도구 실패가 성공한 실행 뒤에 숨겨집니다.
+
+## 스팬 이름 지정
+
+Pydantic AI의 자체 실행 스팬은 `agent`로 명명됩니다. 원하는 레이블을 부여하려면 호출을 래핑하세요:
+
+```python
+with failproofai_sdk.session():
+    with failproofai_sdk.agent("inventory", goal="stock report"):
+        agent.run_sync("...")
+```
+
+그러면 프레임워크의 스팬이 `inventory` 아래에 중첩되고, 모델과 도구 이벤트가 거기에 연결됩니다.
+
+`agent_id`는 낮은 카디널리티를 유지하세요. 이는 모든 대시보드 화면의 기본 패싯이므로 역할 이름을 사용하고 UUID나 실행별 문자열은 사용하지 마세요.
+
+## 세션 제어
+
+다음 순서로 결정되며, 첫 번째로 일치하는 것이 적용됩니다:
+
+1. `instrument("pydantic_ai", session_id=...)`
+2. 감싸고 있는 `failproofai_sdk.session()` 스코프
+3. 실행의 `conversation_id`, 이후 `run_id`
+4. 생성된 `uuid4().hex`
+
+```python
+with failproofai_sdk.session(f"chat-{user_id}"):
+    agent.run_sync("...")
+```
+
+## 옵션
+
+```python
+failproofai_sdk.instrument(
+    "pydantic_ai",
+    session_id=None,          # 모든 실행을 하나의 세션 id에 고정
+    capture_content=True,     # False로 설정하면 페이로드에서 프롬프트와 완성 결과를 제외
+)
+```
+
+## 자주 발생하는 문제
+
+<AccordionGroup>
+  <Accordion title="실행은 정상이지만 이벤트가 나타나지 않음">
+    `Agent`가 `instrument()` 실행 이전에 생성된 경우입니다. 위의 경고를 참고하고 `agent.root_capability.capabilities`를 확인하세요.
+  </Accordion>
+
+  <Accordion title="도구에서 발생한 일반 예외가 실행을 중단시킴">
+    단순한 `raise`는 그대로 전파됩니다. 이것이 Pydantic AI의 설계입니다. 모델이 이를 우회할 수 있도록 하려면 모델이 활용할 수 있는 메시지와 함께 `ModelRetry`를 발생시키세요. 어느 경우든 실패는 기록됩니다.
+  </Accordion>
+
+  <Accordion title="직접 생성하지 않은 중첩된 에이전트 스팬이 있음">
+    해당 자식 스팬은 Pydantic AI 자체의 실행 스팬으로, 모델과 도구 이벤트가 연결되는 곳입니다. 커스텀 이름을 포기하는 대신 단일 스팬을 원한다면 자체 스코프를 제거하세요.
+  </Accordion>
+
+  <Accordion title="트레이스백이 잘림 표시로 시작됨">
+    Pydantic AI의 비동기 그래프 스택이 페이로드 필드 제한보다 길며, 트레이스백의 마지막 줄은 예외 자체입니다. 이 필드는 뒤가 아닌 앞에서 잘리므로 필요한 줄은 유지됩니다.
+  </Accordion>
+</AccordionGroup>
+
+## 다음 단계
+
+<Columns cols={3}>
+  <Card title="작동 방식" icon="workflow" href="/ko/start/integrations/custom-agents#going-deeper">
+    페어, id, 세션 생명주기, 전달 방식.
+  </Card>
+  <Card title="트레이스 읽기" icon="route" href="/ko/sessions/read-a-trace">
+    방금 캡처한 세션에서 인과관계를 추적합니다.
+  </Card>
+  <Card title="다른 프레임워크" icon="plug" href="/ko/start/integrations">
+    LangGraph, CrewAI, LlamaIndex, 커스텀 에이전트.
+  </Card>
+</Columns>

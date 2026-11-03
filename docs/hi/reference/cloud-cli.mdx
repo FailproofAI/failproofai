@@ -1,0 +1,399 @@
+---
+title: "Failproof Cloud CLI"
+description: "Failproof AI Cloud के साथ fp का उपयोग करके क्वेरी और प्रशासन के लिए संपूर्ण संदर्भ।"
+icon: "cloud-cog"
+---
+
+`fp` का उपयोग Cloud टेलीमेट्री को निरीक्षण करने, cloud-managed enforcement (policies, fleet deployments, guardrail decisions) को प्रबंधित करने, और audits, findings, issues, alerts, keys, users, queries, और settings को प्रबंधित करने के लिए करें। स्थानीय hooks, policies, capture, और machine enrollment के लिए [`failproofai`](/hi/reference/failproof-cli) का उपयोग करें।
+
+Cloud CLI को एक isolated tool के रूप में install करें:
+
+```bash
+uv tool install fp-cloud-cli
+fp version
+```
+
+## साइन इन करें
+
+```bash
+fp login
+fp whoami
+```
+
+## सिंटैक्स
+
+```text
+fp [GLOBAL_OPTIONS] COMMAND [SUBCOMMAND] [ARGUMENTS] [OPTIONS]
+```
+
+Global options को command से पहले आना चाहिए:
+
+```bash
+fp --json sessions --since 24h
+```
+
+Terminal help के लिए `fp COMMAND --help` या `fp COMMAND SUBCOMMAND --help` चलाएं।
+
+## CLI commands
+
+### Authentication
+
+| Command | Purpose | Options |
+| --- | --- | --- |
+| `fp login` | ईमेल किए गए one-time code के साथ साइन इन करें और एक organization चुनें। | `--email`, `-e`; `--org`; `--force` |
+| `fp logout` | सहेजे गए user session को revoke और remove करें। | — |
+| `fp whoami` | वर्तमान identity, authentication mode, organization, और permissions दिखाएं। | — |
+| `fp version` | स्थापित CLI version दिखाएं। | — |
+| `fp help` | शीर्ष-स्तर command help दिखाएं। | — |
+
+```bash
+fp login --email you@example.com --org reliability-team
+fp whoami
+```
+
+### Events
+
+```text
+fp events [OPTIONS]
+```
+
+व्यक्तिगत agent events को सूचीबद्ध करता है। डिफ़ॉल्ट light feed raw payloads को बाहर करता है; `--full` का उपयोग केवल bounded investigation के लिए करें।
+
+| Option | Description |
+| --- | --- |
+| `--limit`, `-n <n>` | अधिकतम कुल rows। डिफ़ॉल्ट: `50`। |
+| `--since <window>` | `all`, `15m`, `1h`, `6h`, `24h`, या `7d`। |
+| `--from <timestamp>` / `--to <timestamp>` | ISO 8601 UTC range; `--since` को override करता है। |
+| `--env <value>` | Environment filter; values को repeat या comma-separate करें। |
+| `--event-type <value>` | Event-type filter; values को repeat या comma-separate करें। |
+| `--agent-id <value>` | Agent filter; values को repeat या comma-separate करें। |
+| `--session-id <value>` | Session filter; values को repeat या comma-separate करें। |
+| `--search <text>` | Payload text search; repeatable, किसी भी term के साथ matching। |
+| `--order asc\|desc` | समय क्रम। डिफ़ॉल्ट: newest first। |
+| `--all` | Auto-paginate `--limit` तक। |
+| `--cursor <token>` | एक opaque cursor से resume करें। |
+| `--page-size <n>` | `--all` के साथ rows per request; अधिकतम `200`। |
+| `--full` | heavier event endpoint के माध्यम से raw payloads शामिल करें। |
+| `--fields <csv>` | केवल selected fields return करें; `payload` को requesting करने से full mode enable होता है। |
+
+```bash
+fp events --session-id <session-id> --order asc --all --limit 10000
+fp --json events --full --session-id <session-id> --all --limit 10000
+```
+
+<Note>
+  `--all` **`--limit` तक पaginates करता है**, जिसका डिफ़ॉल्ट **50** है — तो अकेले `--all` 50 rows पर रुकता है। जब यह जल्दी रुकता है तो response एक `next_cursor` carry करता है; `"next_cursor": null` का मतलब है कि feed वास्तव में exhausted था।
+</Note>
+
+### Sessions
+
+```text
+fp sessions [OPTIONS]
+```
+
+| Option | Description |
+| --- | --- |
+| `--limit`, `-n <n>` | अधिकतम कुल rows। डिफ़ॉल्ट: `50`। |
+| `--since <window>` | `all`, `15m`, `1h`, `6h`, `24h`, या `7d`। |
+| `--from <timestamp>` / `--to <timestamp>` | ISO 8601 UTC range; `--since` को override करता है। |
+| `--env <value>` | Environment filter; values को repeat या comma-separate करें। |
+| `--status <value>` | `done`, `error`, या `timeout`; values को repeat या comma-separate करें। |
+| `--agent-id <value>` | किसी भी selected agent को शामिल करने वाले sessions को match करें। |
+| `--session-id <value>` | Session filter; values को repeat या comma-separate करें। |
+| `--all` | Auto-paginate `--limit` तक। |
+| `--cursor <token>` | एक opaque cursor से resume करें। |
+| `--page-size <n>` | `--all` के साथ rows per request; अधिकतम `200`। |
+| `--fields <csv>` | केवल selected fields return करें। |
+| `--full-ids` | Terminal output में session IDs को shorten न करें। |
+| `--agents` | Multi-agent sessions के लिए agent roster को expand करें। |
+
+### Evaluations
+
+```text
+fp evals [OPTIONS]
+```
+
+| Option | Description |
+| --- | --- |
+| `--aggregate` | Individual evaluations के बजाय totals और per-score statistics दिखाएं। |
+| `--limit`, `-n <n>` | अधिकतम list rows। डिफ़ॉल्ट: `50`। |
+| `--since`, `--from`, `--to` | समय range को चुनें। |
+| `--env`, `--status`, `--agent-id`, `--session-id` | एक exact value प्रति filter तक narrow करें। |
+| `--score KEY:MIN..MAX` | Score range; repeatable और सभी ranges को match करना होगा। |
+| `--all`, `--cursor`, `--page-size` | List pagination को control करें। |
+| `--fields <csv>` | केवल selected fields return करें। |
+| `--full-ids` | पूर्ण session IDs दिखाएं। |
+| `--scores-full` | Terminal output में हर score दिखाएं। |
+
+### Errors
+
+```text
+fp errors [OPTIONS]
+```
+
+| Option | Description |
+| --- | --- |
+| `--aggregate` | Rows को list करने के बजाय matching errors को summarize करें। |
+| `--limit`, `-n <n>` | अधिकतम list rows। डिफ़ॉल्ट: `50`। |
+| `--since`, `--from`, `--to` | समय range को चुनें। |
+| `--env`, `--error-type`, `--event-type`, `--agent-id`, `--session-id` | Error population को narrow करें। |
+| `--search <text>` | Payload text को search करें; repeatable। |
+| `--order asc\|desc` | समय क्रम। |
+| `--all`, `--cursor`, `--page-size` | List pagination को control करें। |
+| `--fields <csv>` | केवल selected fields return करें। |
+| `--full-ids` | पूर्ण session IDs दिखाएं। |
+
+### Usage और filter values
+
+| Command | Purpose |
+| --- | --- |
+| `fp usage` | वर्तमान metering window के लिए usage दिखाएं। |
+| `fp list envs` | Observed environments को list करें। |
+| `fp list agents` | Observed agent IDs को list करें। |
+| `fp list event_types` | Event types को list करें। |
+| `fp list score_filters` | Evaluation score keys को list करें। |
+| `fp list models` | Model names को list करें। |
+| `fp list hooks` | Hook names को list करें। |
+| `fp list tools` | Tool names को list करें। |
+| `fp list error_types` | Error types को list करें। |
+
+### Organizations
+
+| Command | Purpose |
+| --- | --- |
+| `fp orgs list` | Accessible organizations को list करें। |
+| `fp orgs switch [SLUG]` | एक active organization को save करें; omitted होने पर prompts। |
+| `fp orgs current` | Active organization दिखाएं। |
+| `fp orgs perms` | Active organization में आपकी permissions दिखाएं। |
+
+### API keys
+
+| Command | Purpose | Options |
+| --- | --- | --- |
+| `fp keys list` | Organization keys को list करें। | `--show-id`; `--fields <csv>` |
+| `fp keys show NAME` | एक key और इसके grants दिखाएं। | — |
+| `fp keys create NAME` | एक key बनाएं और इसके secret को एक बार reveal करें। | `--permission-set`; `--add`; `--remove` |
+| `fp keys update NAME` | Permission set को replace करें या grants को adjust करें। | `--permission-set`; `--add`; `--remove`; `--yes`, `-y` |
+| `fp keys regenerate NAME` | Secret को rotate करें और replacement को एक बार reveal करें। | `--yes`, `-y` |
+| `fp keys disable NAME` | एक key को permanently revoke करें। | `--yes`, `-y` |
+
+Permission tokens `resource:action` का उपयोग करते हैं, जैसे `events:add`। `--add` को repeat करें, tokens को comma-separate करें, या `events:read.add` जैसे dotted actions का उपयोग करें।
+
+### Queries
+
+| Command | Purpose | Options |
+| --- | --- | --- |
+| `fp query list` | Saved queries को list करें। | `--show-id`; `--fields <csv>` |
+| `fp query show NAME` | एक query दिखाएं। | — |
+| `fp query create NAME` | एक query को save करें। | `--sql <text\|@file>`; `--description` |
+| `fp query update NAME` | एक query को update या rename करें। | `--name`; `--sql`; `--description`; `--yes`, `-y` |
+| `fp query delete NAME` | एक saved query को delete करें। | `--yes`, `-y` |
+| `fp query run [NAME]` | एक saved query या ad-hoc SQL को run करें। | `--sql`; `--limit`; `--all`; `--arg`, `--param` |
+| `fp query schema [TABLE]` | Queryable tables को list करें या एक table को inspect करें। | — |
+
+### Users
+
+| Command | Purpose | Options |
+| --- | --- | --- |
+| `fp users list` | Organization members को list करें। | `--active-only`; `--show-id` |
+| `fp users show EMAIL` | एक member और उनके grants दिखाएं। | — |
+| `fp users create EMAIL` | एक member को add करें। | `--permission-set`; `--add`; `--remove` |
+| `fp users update EMAIL` | एक member के grants को change करें। | `--permission-set`; `--add`; `--remove`; `--yes`, `-y` |
+| `fp users disable EMAIL` | Sign-in को disable करें। | `--yes`, `-y` |
+| `fp users enable EMAIL` | Sign-in को re-enable करें। | `--yes`, `-y` |
+
+### Settings
+
+| Command | Purpose | Options |
+| --- | --- | --- |
+| `fp settings list` | Organization settings और current values को list करें। | — |
+| `fp settings schema` | Accepted values और descriptions दिखाएं। | — |
+| `fp settings set KEY` | एक existing setting को change करें। | `--value`, `--json-value`, `--file` में से बिल्कुल एक; optional `--yes`, `-y` |
+
+### Alerts
+
+| Command | Purpose | Options |
+| --- | --- | --- |
+| `fp alerts list` | Alert rules को list करें। | `--show-id` |
+| `fp alerts show NAME` | एक alert दिखाएं। | — |
+| `fp alerts create NAME` | एक alert बनाएं। | `--file`; `--description`; `--severity`; `--trigger-kind`; `--trigger-spec`; `--channels`; `--eval-interval-secs`; `--min-breaches`; `--eval-window` |
+| `fp alerts update NAME` | एक alert को update या rename करें। | create options plus `--name`; `--yes`, `-y` |
+| `fp alerts delete NAME` | एक alert को delete करें। | `--yes`, `-y` |
+| `fp alerts test NAME` | एक test notification भेजें। | `--channels`; `--yes`, `-y` |
+
+Alert severities हैं `info`, `warning`, और `critical`। Trigger kinds हैं `metric_threshold`, `custom_sql`, `evaluation_score`, `eval_compound`, और `per_event`। Evaluation intervals 30 और 86,400 seconds के बीच होने चाहिए।
+
+### Audits
+
+| Command | Purpose | Options |
+| --- | --- | --- |
+| `fp audits list` | Audits को list करें। | `--enabled-only`; `--show-id` |
+| `fp audits show NAME` | एक audit definition और state दिखाएं। | — |
+| `fp audits create NAME` | एक audit बनाएं और तुरंत इसके first run को queue करें। | [create options](#audit-create-options) देखें। |
+| `fp audits edit NAME` | Audit settings को replace करें जबकि unspecified values को retain करें। | create definition options; `--name`; `--yes`, `-y` |
+| `fp audits delete NAME` | एक audit, इसके findings, और run history को delete करें। | `--yes`, `-y` |
+| `fp audits run NAME` | एक manual run को queue करें। | — |
+| `fp audits runs NAME` | Run history को list करें। | `--limit`, `-n`; `--show-id` |
+| `fp audits context-show NAME` | Brief और reference URL fetch state दिखाएं। | — |
+| `fp audits context-set NAME` | Brief या reference URLs को change करें। | `--text`; `--text-file`; `--url`; `--clear-urls` |
+| `fp audits context-refresh NAME` | Reference URLs को re-fetch करें। | — |
+| `fp audits findings` | Findings को list करें। | `--audit`; `--run-id`; `--status`; `--limit`, `-n`; `--offset`; `--show-id` |
+| `fp audits finding FINDING_ID` | एक finding और इसके evidence दिखाएं। | — |
+| `fp audits ack FINDING_ID` | एक finding को acknowledge करें। | `--reason` |
+| `fp audits mute FINDING_ID` | एक recurring pattern को suppress करें। | `--reason`; `--yes`, `-y` |
+| `fp audits dismiss FINDING_ID` | एक pattern को not actionable के रूप में mark करें और suppress करें। | `--reason`; `--yes`, `-y` |
+| `fp audits resolve FINDING_ID` | एक finding को fixed के रूप में mark करें बिना future suppression के। | `--yes`, `-y` |
+| `fp audits reopen FINDING_ID` | एक finding को live queue में return करें और suppression को clear करें। | — |
+| `fp audits assign FINDING_ID` | Finding owner को set करें। | required `--to <email>` |
+
+#### Audit create options
+
+```bash
+fp audits create checkout-reliability \
+  --description "Find checkout failures that agents do not recover from" \
+  --scope '{"environments":["production"],"agent_ids":["checkout-agent"]}' \
+  --schedule-interval-secs 86400 \
+  --window-mode since_last \
+  --sensitivity medium \
+  --text-file ./checkout-audit-brief.txt \
+  --url https://runbooks.example.com/checkout
+```
+
+| Option | Description |
+| --- | --- |
+| `--file <path>` | Definition को JSON के आधार पर set करें, या stdin के लिए `-` का उपयोग करें। Explicit flags file values को override करते हैं। |
+| `--description <text>` | Failure question या purpose को state करें। |
+| `--enabled` / `--disabled` | Scheduling को on या off से start करें। डिफ़ॉल्ट: enabled। |
+| `--schedule-interval-secs <n>` | `3600`–`604800`। डिफ़ॉल्ट: `86400`। |
+| `--schedule-anchor <timestamp>` | ISO 8601 form में fixed UTC phase। डिफ़ॉल्ट: next 09:00 UTC। |
+| `--window-mode since_last\|fixed` | Last fully analyzed window के बाद continue करें या repeatedly एक rolling window को inspect करें। डिफ़ॉल्ट: `since_last`। |
+| `--lookback-window-secs <n>` | `3600`–`7776000`। डिफ़ॉल्ट: `604800`। |
+| `--scope '<json>'` | `environments`, `agent_ids`, या अन्य supported scope fields द्वारा filter करें। |
+| `--ignore-error-type <type>` | Error types को exclude करें; repeat या comma-separate करें। |
+| `--llm` / `--no-llm` | Agentic analysis को enable या disable करें। डिफ़ॉल्ट: enabled। |
+| `--top-k <n>` | `1`–`500` findings को retain करें। डिफ़ॉल्ट: `50`। |
+| `--sensitivity low\|medium\|high` | Reporting sensitivity को set करें। डिफ़ॉल्ट: `medium`। |
+| `--channels '<json>'` | Notification channel array। |
+| `--text <brief>` | Inline brief, अधिकतम 8,192 characters। |
+| `--text-file <path>` | एक file से brief को read करें; `--text` के साथ mutually exclusive। |
+| `--url <https-url>` | एक public HTTPS reference को add करें; पांच बार तक repeat करें। |
+
+जब first run को इसकी आवश्यकता हो तो creation के दौरान context को include करें। Creation definition और context को एक साथ commit करता है queued run शुरू होने से पहले।
+
+<Note>
+  `fp audits run` asynchronous है। Latest run के succeed या fail होने तक `fp audits runs NAME` को poll करें इससे पहले कि आप इसके findings को read करें।
+</Note>
+
+### Issues
+
+| Command | Purpose | Options |
+| --- | --- | --- |
+| `fp issues list` | Issues को list करें। | `--state`; `--alert-id`; `--limit`, `-n`; `--show-id` |
+| `fp issues count` | Open या selected issue states को count करें। | `--state` |
+| `fp issues show INCIDENT_ID` | Issue details, comments, subscribers, और activity दिखाएं। | — |
+| `fp issues open` | एक manual या alert-linked issue को open करें। | required `--summary`; optional `--title`, `--alert-id`, `--severity` |
+| `fp issues ack INCIDENT_ID` | एक issue को acknowledge करें। | — |
+| `fp issues assign INCIDENT_ID` | Assignees को replace करें; clear करने के लिए option को omit करें। | repeatable `--assignee` |
+| `fp issues resolve INCIDENT_ID` | एक issue को resolve करें। | `--yes`, `-y` |
+| `fp issues comment-list INCIDENT_ID` | Comments को list करें। | — |
+| `fp issues comment-add INCIDENT_ID` | एक comment को add करें। | `--body`, `--file` में से बिल्कुल एक |
+| `fp issues comment-delete INCIDENT_ID COMMENT_ID` | एक comment को delete करें। | `--yes`, `-y` |
+| `fp issues subscribers INCIDENT_ID` | Subscribers को list करें। | — |
+| `fp issues subscribe INCIDENT_ID` | अपने आप को या किसी अन्य operator को subscribe करें। | `--email` |
+| `fp issues unsubscribe INCIDENT_ID` | एक subscription को remove करें। | `--email` |
+
+Valid issue states हैं `firing`, `acknowledged`, और `resolved`। Standalone issue severities हैं `info`, `warning`, और `critical`।
+
+### Cloud assistant
+
+| Command | Purpose | Options |
+| --- | --- | --- |
+| `fp agent health` | Assistant availability और configuration को check करें। | — |
+| `fp agent models` | Available assistant models को list करें। | — |
+| `fp agent chats` | Saved chats को list करें। | — |
+| `fp agent ask [MESSAGE]` | एक chat को start या continue करें; message omitted होने पर stdin को read करें। | `--chat`; `--model`; `--page-context` |
+| `fp agent show CHAT_ID` | एक saved conversation दिखाएं। | — |
+| `fp agent rename CHAT_ID` | एक conversation को rename करें। | required `--title` |
+| `fp agent delete CHAT_ID` | एक conversation को delete करें। | `--yes`, `-y` |
+
+### Policies
+
+Cloud-managed policy versions। **Session-only** — यहां हर command एक API key के तहत exit `2` पर जाता है, किसी भी request से पहले, क्योंकि ये root-only write routes हैं जानबूझकर `/v1` से अनुपस्थित हैं।
+
+| Command | Purpose | Options |
+| --- | --- | --- |
+| `fp policies list` | Policy versions को list करें। | `--json` |
+| `fp policies show POLICY_ID` | एक policy अपने source के साथ दिखाएं। | — |
+| `fp policies publish NAME PATH` | एक local `.mjs` से एक version को mint करें। | `--description`; `--no-verify` |
+| `fp policies enable POLICY_ID` | इसे हर deployment में वापस add करें जहां से इसे remove किया गया था, हर एक पर एक नई generation को mint करते हुए। | `--yes`, `-y` |
+| `fp policies disable POLICY_ID` | इसे हर deployment से remove करें जो इसे carry कर रहा है, हर एक पर एक नई generation को mint करते हुए। | `--yes`, `-y` |
+| `fp policies delete POLICY_ID` | एक policy version को delete करें। | `--yes`, `-y` |
+| `fp policies test PATH` | एक synthetic context के against एक policy को locally run करें। हर policy के `match` filter को apply करता है, तो एक जो given event/tool को cover नहीं करता है `skipped` के रूप में rather than run किया जाता है। | `--event`; `--tool`; `--command`; `--file`; `--expect` |
+| `fp policies compose PROMPT` | Assistant के साथ एक policy को draft करें। `policies:write` की जरूरत है। | — |
+
+### Fleet
+
+कौन से machines कौन सी policies को run करते हैं। **Session-only**, ऊपर जैसा ही कारण।
+
+| Command | Purpose | Options |
+| --- | --- | --- |
+| `fp fleet list` | Enrolled machines और उनकी deployment generation को list करें। | — |
+| `fp fleet show MACHINE_ID` | एक machine को currently run कर रहा policy set। | — |
+| `fp fleet deploy MACHINE_ID` | **Machine के पूरे policy set को replace करता है।** Plan को print करता है और एक interactive terminal बिना `--json` पर ही पूछता है। | `--add`; `--remove`; `--set`; `--create`; `--yes`, `-y` |
+| `fp fleet diff MACHINE_ID` | एक machine को दूसरी deployment के against compare करें। | — |
+| `fp fleet history MACHINE_ID` | एक machine के लिए past deployments। | — |
+| `fp fleet rollback MACHINE_ID GENERATION` | एक past generation के policy set को reinstate करें, एक नई generation के रूप में। | `--yes`, `-y` |
+| `fp fleet rename MACHINE_ID` | एक machine को एक readable name दें। | required `--name` |
+
+### Guardrails
+
+Enforcement ने वास्तव में क्या किया। **Session-only**, ऊपर जैसा ही कारण।
+
+| Command | Purpose | Options |
+| --- | --- | --- |
+| `fp guardrails summary` | Coverage, blocked/evaluated totals, एक deny sparkline, और per-policy table। | `--since` (`1h`, `6h`, `24h`, `7d`); `--machine` |
+| `fp guardrails timeline` | Window के ऊपर bucketed decisions, हर policy source के across summed। | `--since` (`1h`, `6h`, `24h`, `7d`); `--machine` |
+
+## Global flags
+
+| Flag | Description |
+| --- | --- |
+| `--json` | Machine-readable JSON को emit करें। |
+| `--base-url <url>` | एक self-hosted या development dashboard का उपयोग करें। |
+| `--org <slug>` | इस invocation के लिए एक organization को select करें। |
+| `--token <token>` | Saved user-session token को override करें। |
+| `--api-key <key>` | एक API key के साथ automation को authenticate करें; कभी save नहीं किया जाता। |
+| `--timeout <seconds>` | HTTP timeout; सकारात्मक होना चाहिए। डिफ़ॉल्ट: `30`। |
+| `--quiet`, `-q` | stderr पर status output को suppress करें। |
+| `--no-color` | Colored output को disable करें। |
+| `--insecure` / `--secure` | TLS certificate verification को disable या restore करें। |
+| `--version` | Unboxed version को print करें और exit करें। |
+| `--help`, `-h` | Help दिखाएं। |
+
+`--api-key` automation के लिए intended है। Login, organization switching, और assistant commands को एक user session की आवश्यकता है।
+
+## Environment variables
+
+| Variable | Equivalent या purpose |
+| --- | --- |
+| `FP_DASHBOARD_URL` | `--base-url` |
+| `FP_ORG` | `--org` |
+| `FP_TOKEN` | `--token` |
+| `FP_API_KEY` | `--api-key` |
+| `FP_JSON` | `--json` |
+| `FP_INSECURE` | `--insecure` |
+| `FP_HOME` | CLI configuration directory को relocate करें (डिफ़ॉल्ट `~/.failproofai/fpcli`)। |
+| `FP_ANALYTICS_DISABLED` या `DO_NOT_TRACK` | Anonymous CLI analytics को disable करें। |
+| `NO_COLOR` | Colored output को disable करें। |
+
+Explicit flags environment variables को override करते हैं, जो saved configuration को override करते हैं। API-key mode में, `--org` या `FP_ORG` के साथ tenant को explicitly select करें।
+
+<Warning>
+  इन के `AGENTEYE_*` spellings **`fp` द्वारा read नहीं किए जाते** और कभी नहीं थे — CLI `FP_*` (`fp_cli/app.py`) को declare करता है, और एक unknown variable एक error नहीं है। `AGENTEYE_DASHBOARD_URL` को set करने से CLI को retarget नहीं किया जाता; इसे ignore किया जाता है और command silently saved dashboard के against run होता है।
+
+  `AGENTEYE_HOME` और `AGENTEYE_ENVIRONMENT` अभी भी exist करते हैं, लेकिन वे **collector और telemetry SDK** को belong करते हैं, इस CLI को नहीं।
+</Warning>
+
+<Warning>
+  जो commands delete, revoke, suppress, resolve, या replace configuration करते हैं वे डिफ़ॉल्ट रूप से prompt करते हैं। `--yes` को केवल active organization और target को verify करने के बाद उपयोग करें।
+</Warning>

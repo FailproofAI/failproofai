@@ -1,0 +1,29 @@
+---
+title: "मेट्रिक्स"
+description: "लेटेंसी, लागत और टोकन उपयोग जैसी मात्रा मेट्रिक्स प्लॉट करें।"
+icon: "ruler"
+---
+
+Metrics उन मानों के लिए है जिनके पास इकाइयां हैं। Evaluations स्कोर और निर्णयों के लिए है।
+
+<Tabs>
+  <Tab title="Dashboard">
+    1. **Observe → Metrics** पर जाएं।
+    2. **add series** चुनें और एक agent, environment, metric, statistic और curve चुनें।
+    3. agents या environments की तुलना करने के लिए series जोड़ें; विभिन्न इकाइयां अलग-अलग axes प्राप्त करती हैं।
+    4. मिलान वाले evaluations और sessions खोलने के लिए एक बिंदु चुनें, या सटीक दृश्य को कॉपी करने के लिए **share** चुनें।
+
+    ![Metrics पृष्ठ दो cost-per-output-unit series, समय नियंत्रण, एकत्रीकरण चयनकर्ता, वक्र और एक share क्रिया के साथ तुलना कर रहा है।](/images/dashboard/metrics-series.png)
+  </Tab>
+  <Tab title="CLI">
+    अभी तक कोई समर्पित magnitude-metrics command नहीं है। उपलब्ध कुंजियों की खोज करें और sessions या evaluations का निरीक्षण करें:
+
+    ```bash
+    fp list score_filters
+    fp --json evals --since 24h
+    fp --json sessions --since 24h
+    ```
+
+    कस्टम मेट्रिक एकत्रीकरण के लिए `fp query` का उपयोग करें।
+  </Tab>
+</Tabs>

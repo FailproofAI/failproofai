@@ -253,12 +253,12 @@ describe("findBrokenAssetRefs", () => {
   // Fixtures resolve against the real repo so the check is exercised with the
   // same two path conventions the docs actually use.
   const REPO = join(__dirname, "..", "..");
-  const DOCS_PAGE = join(REPO, "docs", "agenteye", "alerts.mdx");
-  const I18N_PAGE = join(REPO, "docs", "i18n", "README.ja.md");
+  const DOCS_PAGE = join(REPO, "docs", "sessions", "dashboards.mdx");
+  const I18N_PAGE = join(REPO, "docs-old", "i18n", "README.ja.md");
 
   it("flags the exact regression that broke every translated README", () => {
     // The root README writes `assets/logos/claude.svg` because it sits AT the
-    // repo root. Copied verbatim into docs/i18n/ it resolves two levels too
+    // repo root. Copied verbatim into docs-old/i18n/ it resolves two levels too
     // deep and 404s — this is the bug the check exists to prevent recurring.
     const broken = findBrokenAssetRefs(
       I18N_PAGE,
@@ -266,7 +266,9 @@ describe("findBrokenAssetRefs", () => {
     );
     expect(broken).toHaveLength(1);
     expect(broken[0].ref).toBe("assets/logos/claude.svg");
-    expect(broken[0].resolved).toBe("docs/i18n/assets/logos/claude.svg");
+    expect(broken[0].resolved).toBe(
+      "docs-old/i18n/assets/logos/claude.svg",
+    );
     expect(broken[0].line).toBe(1);
   });
 
@@ -285,15 +287,17 @@ describe("findBrokenAssetRefs", () => {
     expect(
       findBrokenAssetRefs(
         DOCS_PAGE,
-        "![Alerts](/agenteye/images/alerts.png)\n",
+        "![Dashboard](/images/dashboard/dashboard-fleet.png)\n",
       ),
     ).toEqual([]);
     const broken = findBrokenAssetRefs(
       DOCS_PAGE,
-      "![Nope](/agenteye/images/does-not-exist.png)\n",
+      "![Nope](/images/dashboard/does-not-exist.png)\n",
     );
     expect(broken).toHaveLength(1);
-    expect(broken[0].resolved).toBe("docs/agenteye/images/does-not-exist.png");
+    expect(broken[0].resolved).toBe(
+      "docs/images/dashboard/does-not-exist.png",
+    );
   });
 
   it("checks srcset candidates, not just src", () => {
@@ -304,20 +308,27 @@ describe("findBrokenAssetRefs", () => {
       '<source media="(prefers-color-scheme: dark)" srcset="assets/logos/openai-dark.svg" />\n',
     );
     expect(broken).toHaveLength(1);
-    expect(broken[0].resolved).toBe("docs/i18n/assets/logos/openai-dark.svg");
+    expect(broken[0].resolved).toBe(
+      "docs-old/i18n/assets/logos/openai-dark.svg",
+    );
   });
 
   it("splits a multi-candidate srcset and strips each descriptor", () => {
     const broken = findBrokenAssetRefs(
       DOCS_PAGE,
-      '<source srcset="images/alerts.png 1x, images/missing@2x.png 2x" />\n',
+      '<source srcset="../images/dashboard/dashboard-fleet.png 1x, ../images/dashboard/missing@2x.png 2x" />\n',
     );
-    expect(broken.map((b) => b.ref)).toEqual(["images/missing@2x.png"]);
+    expect(broken.map((b) => b.ref)).toEqual([
+      "../images/dashboard/missing@2x.png",
+    ]);
   });
 
   it("accepts a page-relative path that exists", () => {
     expect(
-      findBrokenAssetRefs(DOCS_PAGE, "![Alerts](images/alerts.png)\n"),
+      findBrokenAssetRefs(
+        DOCS_PAGE,
+        "![Dashboard](../images/dashboard/dashboard-fleet.png)\n",
+      ),
     ).toEqual([]);
   });
 
@@ -345,7 +356,10 @@ describe("findBrokenAssetRefs", () => {
 
   it("strips a query or fragment before resolving", () => {
     expect(
-      findBrokenAssetRefs(DOCS_PAGE, "![Alerts](images/alerts.png?v=2)\n"),
+      findBrokenAssetRefs(
+        DOCS_PAGE,
+        "![Dashboard](../images/dashboard/dashboard-fleet.png?v=2)\n",
+      ),
     ).toEqual([]);
   });
 

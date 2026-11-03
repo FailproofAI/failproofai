@@ -1,0 +1,208 @@
+---
+title: "Pydantic AI"
+sidebarTitle: "Pydantic AI"
+description: "对类型化的 Agent、工具、模型调用和重试进行追踪。"
+icon: "/images/frameworks/pydantic-ai.svg"
+---
+
+## 安装
+
+```bash
+pip install 'failproofai-sdk[pydantic-ai]'
+```
+
+支持版本：`pydantic-ai-slim` 2.0 至 3.0。2.0 移除了 `Agent(instrument=...)` 并引入了本适配器所依赖的 capability 协议，因此 1.x 无法以此方式进行追踪。
+
+## 追踪配置
+
+```python
+import failproofai_sdk
+from pydantic_ai import Agent
+
+failproofai_sdk.configure(environment="production")
+failproofai_sdk.instrument()          # before constructing any Agent
+
+agent = Agent("openai:gpt-4o-mini", system_prompt="Be terse.")
+
+with failproofai_sdk.session():
+    result = agent.run_sync("...")
+```
+
+<Warning>
+  `instrument()` 必须在构建任何 `Agent` 之前运行。Capability 在构建时附加，因此提前创建的 Agent 不会携带任何 capability，也不会记录任何内容，且不会报错——因为并没有出错。这是使用本适配器时出现空追踪记录最常见的原因。
+</Warning>
+
+模块级别的 Agent 最容易踩这个坑：
+
+```python
+# agents.py
+agent = Agent("openai:gpt-4o-mini")   # constructed at import time
+
+# main.py
+import failproofai_sdk
+failproofai_sdk.instrument()          # run this FIRST
+import agents                         # now the agent gets the capability
+```
+
+确认配置是否生效：
+
+```python
+print([type(c).__name__ for c in agent.root_capability.capabilities])
+# ['FailproofAI', 'ToolSearch', 'PendingMessageDrainCapability']
+```
+
+Pydantic AI 会将传入的列表合并为一个 `root_capability`，因此没有 `agent.capabilities` 属性可供读取。
+
+在追踪配置生效期间构建的 Agent 会保留该 capability，因此可以先调用 `uninstrument()`，再重新配置追踪，无需重新构建 Agent。
+
+## 记录内容
+
+| Pydantic AI | Failproof 事件 |
+| --- | --- |
+| Agent 运行 | `agent_start`、`agent_end` |
+| 模型请求 | `model_request`、`model_response`，包含 token 用量 |
+| 工具调用 | `tool_use`、`tool_result`，包含模型发送的参数 |
+| 工具中的 `ModelRetry` | 携带错误信息的 `tool_result` |
+| 未处理的异常 | `error`，随后是结果为 `failed` 的 `agent_end` |
+
+此处没有钩子对和人机交互对。Pydantic AI 没有可供标记的节点或步骤边界，也没有内置的人工暂停机制，因此无从映射。如果你自行构建了上述功能，请手动发出对应事件——参见[自定义 Agent](/zh/reference/custom-agents)。
+
+`output_type` 不影响追踪记录。类型化运行与字符串运行产生相同的事件。
+
+## 示例
+
+```python
+import failproofai_sdk
+from pydantic import BaseModel
+from pydantic_ai import Agent, ModelRetry
+
+failproofai_sdk.configure(environment="production")
+failproofai_sdk.instrument()
+
+PRICE = {"widget": 42.0, "gadget": 17.5}
+STOCK = {"widget": 120, "gadget": 0}
+
+
+class Report(BaseModel):
+    headline: str
+    out_of_stock: list[str]
+
+
+agent = Agent(
+    "openai:gpt-4o-mini",
+    output_type=Report,
+    system_prompt="Use the tools for every number. If a tool fails, note it and continue.",
+)
+
+
+@agent.tool_plain
+def price_of(item: str) -> float:
+    """Unit price of an item. Valid: widget, gadget."""
+    return PRICE[item.lower().strip()]
+
+
+@agent.tool_plain
+def stock_of(item: str) -> int:
+    """Units in stock. Valid: widget, gadget."""
+    return STOCK[item.lower().strip()]
+
+
+@agent.tool_plain
+def restock_eta(item: str) -> str:
+    """Restock ETA. Not available."""
+    raise ModelRetry(f"no restock schedule for {item!r} — answer without it")
+
+
+with failproofai_sdk.session():
+    with failproofai_sdk.agent("inventory", goal="stock report"):
+        result = agent.run_sync(
+            "For widget and gadget, get price and stock. "
+            "For anything out of stock, try the restock ETA. Then produce the report."
+        )
+```
+
+在追踪记录中，`restock_eta` 以携带错误信息的 `tool_result` 形式出现，紧随其后的是另一次模型调用——Agent 在其中绕过了该错误，整个运行最终仍以 `success` 结束。两个事实均被完整保留。
+
+## 错误、重试与控制流
+
+Pydantic AI 会为三种不同情况抛出异常，适配器对其进行了区分：
+
+| 异常 | 处理方式 | 结果 |
+| --- | --- | --- |
+| `ModelRetry`、`ToolRetryError`、`ToolFailedError` | 视为真实的工具失败 | 携带错误信息的 `tool_result`；运行仍可以 `success` 结束 |
+| `SkipToolExecution`、`SkipToolValidation`、`SkipModelRequest`、`CallDeferred`、`ApprovalRequired` | 视为控制流 | 不视为错误；运行正在被引导 |
+| 其他所有异常 | 视为失败 | `error`，随后是结果为 `failed` 的 `agent_end` |
+
+`ModelRetry` 被刻意划入第一组。它意味着某次尝试确实失败了，并要求模型重试，这正是工具 span 的错误字段所要记录的内容。若将其归类为控制流，则会将真实的工具失败隐藏在绿色运行结果之后。
+
+## 为 Span 命名
+
+Pydantic AI 自身的运行 span 命名为 `agent`。在调用时包裹一层，即可赋予自定义标签：
+
+```python
+with failproofai_sdk.session():
+    with failproofai_sdk.agent("inventory", goal="stock report"):
+        agent.run_sync("...")
+```
+
+框架的 span 随即嵌套在 `inventory` 之下，模型和工具事件也挂载在此处。
+
+保持 `agent_id` 低基数。它是所有仪表盘视图的主要分面，应使用角色名称，而非 UUID 或每次运行生成的字符串。
+
+## 控制 Session
+
+按以下顺序解析，首次匹配生效：
+
+1. `instrument("pydantic_ai", session_id=...)`
+2. 外层的 `failproofai_sdk.session()` 作用域
+3. 运行的 `conversation_id`，其次是 `run_id`
+4. 生成的 `uuid4().hex`
+
+```python
+with failproofai_sdk.session(f"chat-{user_id}"):
+    agent.run_sync("...")
+```
+
+## 选项
+
+```python
+failproofai_sdk.instrument(
+    "pydantic_ai",
+    session_id=None,          # pin every run to one session id
+    capture_content=True,     # False drops prompts and completions from payloads
+)
+```
+
+## 常见问题
+
+<AccordionGroup>
+  <Accordion title="运行正常，但没有任何事件出现">
+    `Agent` 在 `instrument()` 运行之前就已构建。请参阅上方警告，并检查 `agent.root_capability.capabilities`。
+  </Accordion>
+
+  <Accordion title="工具中的普通异常导致运行终止">
+    裸 `raise` 会向上传播——这是 Pydantic AI 的设计。若希望模型能绕过该错误，请改为抛出带有可操作提示信息的 `ModelRetry`。无论哪种方式，失败都会被记录。
+  </Accordion>
+
+  <Accordion title="出现了一个我没有创建的嵌套 Agent Span">
+    该子 span 是 Pydantic AI 自己的运行 span，模型和工具事件挂载于此。若希望只有一个 span，可以去掉自定义作用域，但代价是失去自定义名称。
+  </Accordion>
+
+  <Accordion title="回溯信息以截断标记开头">
+    Pydantic AI 的异步图调用栈超出了负载字段的长度限制，而回溯的最后一行正是异常本身。该字段从头部而非尾部进行截断，因此你所需的那一行会被保留。
+  </Accordion>
+</AccordionGroup>
+
+## 下一步
+
+<Columns cols={3}>
+  <Card title="工作原理" icon="workflow" href="/zh/start/integrations/custom-agents#going-deeper">
+    事件对、ID、Session 生命周期与数据传递。
+  </Card>
+  <Card title="读取追踪记录" icon="route" href="/zh/sessions/read-a-trace">
+    在刚捕获的 Session 中追踪因果关系。
+  </Card>
+  <Card title="其他框架" icon="plug" href="/zh/start/integrations">
+    LangGraph、CrewAI、LlamaIndex 及自定义 Agent。
+  </Card>
+</Columns>

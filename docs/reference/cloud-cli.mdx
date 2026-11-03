@@ -1,0 +1,532 @@
+---
+title: "Failproof Cloud CLI"
+description: "Complete reference for querying and administering Failproof AI Cloud with fp."
+icon: "cloud-cog"
+---
+
+Use `fp` to inspect Cloud telemetry, manage cloud-managed enforcement (policies, fleet deployments, guardrail decisions), and manage audits, findings, issues, alerts, keys, users, queries, and settings. Use [`failproofai`](/reference/failproof-cli) for local hooks, policies, capture, and machine enrollment.
+
+You can also author and deploy hosted code, LLM-judge and Jev evaluators, manage
+dashboards, inspect sentiment, and use the dashboard assistant from the terminal.
+
+Install the released Cloud CLI as an isolated tool:
+
+```bash
+uv tool install fp-cloud-cli
+fp version
+```
+
+## Sign in
+
+```bash
+fp login
+fp whoami
+```
+
+## Syntax
+
+```text
+fp [GLOBAL_OPTIONS] COMMAND [SUBCOMMAND] [ARGUMENTS] [OPTIONS]
+```
+
+Global options must come before the command:
+
+```bash
+fp --json sessions --since 24h
+```
+
+Run `fp COMMAND --help` or `fp COMMAND SUBCOMMAND --help` for terminal help.
+
+## CLI commands
+
+### Author an evaluator
+
+`fp evaluators` authors definitions; `fp evals` reads results. An enabled managed
+instance is required (`fp evaluators instances`). Authoring needs
+`evaluations:trigger`; session dry-runs and schema profiling also need `events:read`.
+
+Code is one restricted Python expression. Save this as `error_free.py`:
+
+```python
+EvalResult(score=Score(1.0 if session.count("error") == 0 else 0.0), reasoning="Error-free session")
+```
+
+```bash
+fp --json evaluators create --key error_free --name "Error free" --code error_free.py --dry-run-on run-001
+fp --json evaluators dry-run --code error_free.py --session run-001
+fp --json evaluators deploy error_free --code error_free.py --version 2 --dry-run-on run-001
+fp --json evaluators list --key error_free --all
+```
+
+LLM judge:
+
+```bash
+fp --json evaluators create --key relevance --name Relevance --judge --criteria "Grade relevance to the request" --threshold 0.7
+fp --json evaluators deploy relevance --version 2 --judge --criteria "Grade relevance and completeness" --threshold 0.8
+fp --json sessions re-evaluate run-001
+fp --json sessions history run-001
+```
+
+Jev binary and graded rubric:
+
+```bash
+fp --json evaluators create --key resolution --name Resolution --jev noul --instructions "Was the request resolved?" --true "Resolved" --false "Unresolved"
+fp --json evaluators dry-run --jev noul --instructions "Was the request resolved?" --true "Resolved" --false "Unresolved" --session run-001
+fp --json evaluators deploy resolution --version 2 --jev score --instructions "Grade resolution quality" --level "Unresolved" --level "Partly resolved" --level "Fully resolved"
+```
+
+<Warning>
+Creation enables the evaluator. Deploy creates a new immutable version, then
+disables older enabled versions. A failed follow-up leaves the new version
+published: inspect `evaluators list --all` before retrying.
+Judge dry-runs are refused by Cloud. Jev dry-runs spend model budget.
+Backfill covers code, judge and Jev evaluators and accepts at most 90 days; it queues only sessions an evaluator has not scored yet. Judge and Jev backfills spend model budget, so run `fp evaluators backfill --dry-run` first.
+Human output shows per-session dry-run results before creating/deploying.
+Failed previews stop the write unless you explicitly pass `--force` after review.
+</Warning>
+
+AI drafting requires `fp login` and writes a spec accepted by create/deploy:
+
+```bash
+fp --json evaluators draft "Measure error-free sessions with code" --kind code --out evaluator.json
+# Review the draft's key, source and condition before enabling it.
+fp --json evaluators create --file evaluator.json --dry-run-on run-001
+fp --json evaluators dry-run --file evaluator.json
+```
+
+| Command | Options / behavior |
+| --- | --- |
+| `fp evaluators list` | `--key`, `--all` |
+| `fp evaluators show KEY[@VERSION]` | Full source/envelope |
+| `fp evaluators create` | `--key`, `--name`, `--version`, repeated `--label`, `--condition EXPR\|@file`, one source, repeated `--dry-run-on`, `--disabled`, explicit `--force` for failed previews |
+| `fp evaluators deploy KEY` | Same source flags; `--version`, `--backfill 7d` (any kind, 1–90 days), `--force`; numeric versions auto-increment; KEY supplies a missing spec-file `eval_key` |
+| `fp evaluators draft "intent"` | Session; `--kind code\|judge\|jev`, `--out` |
+| `fp evaluators dry-run` | Source flags or `--file`, repeated `--session` (maximum 10); none = compile only |
+| `fp evaluators enable\|disable KEY[@VERSION]` | Toggle |
+| `fp evaluators label KEY[@VERSION]` | Repeated `--add`, `--remove` |
+| `fp evaluators instances\|schema\|jobs` | Inspect managed fleet/schema/jobs |
+| `fp evaluators backfill` | `--from`, `--to`, `--key`, `--dry-run`; code, judge and Jev |
+
+Code flags are `--code FILE|-`, `--result-kind score|metric|assertion`,
+`--timeout S`. Judge flags are `--judge --criteria TEXT`, repeated `--step` and
+`--threshold`. Jev flags are `--jev noul --instructions --true --false` or
+`--jev score --instructions` with 3–5 distinct `--level` values, worst first.
+Judge/Jev require a score; thresholds are 0–1. Binary judge steps are rejected.
+
+Spec files contain exactly `eval_key`, `display_name`, `eval_version`,
+`result_kind`, `labels`, `condition_source`, `evaluator_source`, `timeout_seconds`.
+Judge/Jev `evaluator_source` is a JSON envelope string. Do not include row ids,
+enabled state, or AI reasoning metadata. `--file` and discrete spec flags are
+exclusive; deploy can override the file's version. Output files are never overwritten.
+
+### New dashboard controls
+
+All commands accept global `--json`. Unknown-route 404s exit 6 with “not available
+on this FailproofAI Cloud yet”. Missing-record 404s also exit 6 but report that the
+record was not found. Session-only commands deny key mode before HTTP (exit 2).
+
+Human commands use summaries and tables. For raw JSON exports, pass global
+`--json` or save with `--out FILE`; otherwise session and JSON query exports show
+a readable view. CSV exports remain plain CSV for piping.
+
+| Commands | Options / notes |
+| --- | --- |
+| `fp dashboards list\|show ID\|create\|update ID\|delete ID` | Create `--name`, `--description`, `--file` definition; update preserves unmentioned fields |
+| `fp dashboards tiles ID list\|add\|update TILE\|remove TILE\|layout` | Add `--query ID --chart TYPE --title`; config/geometry or layout via `--file` |
+| `fp sessions show\|export\|history\|re-evaluate ID` | Export `--out`; history is evaluation history |
+| `fp sessions import FILE...` | Claude Code transcripts, Codex rollouts or event JSONL (`.gz` ok); `--format auto\|failproofai\|claude\|codex`, `--env`, `--dry-run`; needs `events:add` |
+| `fp events latency` | `--since` |
+| `fp sentiment summary\|messages\|sessions\|session ID` | `--since`; list `--limit`; messages `--session-id` |
+| `fp query compose "question"` | Session; `--run` |
+| `fp query export [ID]` | Or `--sql`; `--format csv\|json`, `--out` |
+| `fp alerts recipients` / `fp alerts issues ID` | Issues can `--create --title --summary` or `--create --file` |
+| `fp audits contracts list\|show ID\|create\|update ID` | `--agent-id`, `--body TEXT\|@file`, `--file` JSON; update `--enabled/--disabled` |
+| `fp policies author "intent" [--kind regex\|jev\|both]` | Session; drafts a policy from your org's events, never publishes |
+| `fp policies backtest [FILE_OR_ID]` | Session; regex replays the module; `jev`/`both` (published, or `--semantic checks.json`) estimate for free, `--run [--sample N]` spends Jev allowance; `--kind`, `--hours`, `--agent-id`, `--env` |
+| `fp policies candidacy --issue ID` | Session; could a policy prevent this issue |
+| `fp issues facets` | Values the inbox filters can take, with counts |
+| `fp agent brief` | Session; `--range 24h\|7d` |
+| `fp orgs create --name N [--slug S]` | Session; derives omitted slug, does not switch org |
+| `fp roles list\|show NAME\|create\|update NAME\|delete NAME` | Permission sets; create `--name --permission`; update replace `--permission` or merge `--add/--remove`; `--description`, `--file` |
+| `fp users delete ID` / `fp users defaults` | Deletion by id |
+| `fp usage windows` / `fp plan` / `fp plan claim OFFER` | `usage windows` needs an API key; plan (offers and trial) and claim require a signed-in session |
+| `fp settings context-windows list\|set MODEL TOKENS\|delete MODEL` | 0–1000000 tokens |
+| `fp otel status\|enable\|disable` | Cloud org ingest switch, not local capture |
+| `fp slack status\|disconnect` | Session |
+
+`fp agent ask` renders artifact SQL as tables/stats through `queries:run`.
+Write approvals show the proposed change and prompt on a terminal. Scripts and
+`--json` decline unless `--approve` is explicit. Existing JSON shapes stay
+unchanged when no artifact is returned.
+
+### Authentication
+
+| Command | Purpose | Options |
+| --- | --- | --- |
+| `fp login` | Sign in with an emailed one-time code and select an organization. | `--email`, `-e`; `--org`; `--force` |
+| `fp logout` | Revoke and remove the saved user session. | — |
+| `fp whoami` | Show the current identity, authentication mode, organization, and permissions. | — |
+| `fp version` | Show the installed CLI version. | — |
+| `fp help` | Show top-level command help. | — |
+
+```bash
+fp login --email you@example.com --org reliability-team
+fp whoami
+```
+
+### Events
+
+```text
+fp events [OPTIONS]
+```
+
+Lists individual agent events. The default light feed excludes raw payloads; use `--full` only for a bounded investigation.
+
+| Option | Description |
+| --- | --- |
+| `--limit`, `-n <n>` | Maximum total rows. Default: `50`. |
+| `--since <window>` | `all`, `15m`, `1h`, `6h`, `24h`, or `7d`. |
+| `--from <timestamp>` / `--to <timestamp>` | ISO 8601 UTC range; overrides `--since`. |
+| `--env <value>` | Environment filter; repeat or comma-separate values. |
+| `--event-type <value>` | Event-type filter; repeat or comma-separate values. |
+| `--agent-id <value>` | Agent filter; repeat or comma-separate values. |
+| `--session-id <value>` | Session filter; repeat or comma-separate values. |
+| `--search <text>` | Payload text search; repeatable, with any term matching. |
+| `--order asc\|desc` | Time order. Default: newest first. |
+| `--all` | Auto-paginate up to `--limit`. |
+| `--cursor <token>` | Resume from an opaque cursor. |
+| `--page-size <n>` | Rows per request with `--all`; maximum `200`. |
+| `--full` | Include raw payloads through the heavier event endpoint. |
+| `--fields <csv>` | Return only selected fields; requesting `payload` enables full mode. |
+
+```bash
+fp events --session-id <session-id> --order asc --all --limit 10000
+fp --json events --full --session-id <session-id> --all --limit 10000
+```
+
+<Note>
+  `--all` paginates **up to `--limit`**, which defaults to **50** — so `--all` on
+  its own stops at 50 rows. When it stops early the response carries a
+  `next_cursor` to resume from; `"next_cursor": null` means the feed really was
+  exhausted.
+</Note>
+
+### Sessions
+
+```text
+fp sessions [OPTIONS]
+```
+
+| Option | Description |
+| --- | --- |
+| `--limit`, `-n <n>` | Maximum total rows. Default: `50`. |
+| `--since <window>` | `all`, `15m`, `1h`, `6h`, `24h`, or `7d`. |
+| `--from <timestamp>` / `--to <timestamp>` | ISO 8601 UTC range; overrides `--since`. |
+| `--env <value>` | Environment filter; repeat or comma-separate values. |
+| `--status <value>` | `done`, `error`, or `timeout`; repeat or comma-separate values. |
+| `--agent-id <value>` | Match sessions involving any selected agent. |
+| `--session-id <value>` | Session filter; repeat or comma-separate values. |
+| `--all` | Auto-paginate up to `--limit`. |
+| `--cursor <token>` | Resume from an opaque cursor. |
+| `--page-size <n>` | Rows per request with `--all`; maximum `200`. |
+| `--fields <csv>` | Return only selected fields. |
+| `--full-ids` | Do not shorten session IDs in terminal output. |
+| `--agents` | Expand the agent roster for multi-agent sessions. |
+
+### Evaluations
+
+```text
+fp evals [OPTIONS]
+```
+
+| Option | Description |
+| --- | --- |
+| `--aggregate` | Show totals and per-score statistics instead of individual evaluations. |
+| `--limit`, `-n <n>` | Maximum list rows. Default: `50`. |
+| `--since`, `--from`, `--to` | Select the time range. |
+| `--env`, `--status`, `--agent-id`, `--session-id` | Narrow to one exact value per filter. |
+| `--score KEY:MIN..MAX` | Score range; repeatable and all ranges must match. |
+| `--all`, `--cursor`, `--page-size` | Control list pagination. |
+| `--fields <csv>` | Return only selected fields. |
+| `--full-ids` | Show complete session IDs. |
+| `--scores-full` | Show every score in terminal output. |
+
+### Errors
+
+```text
+fp errors [OPTIONS]
+```
+
+| Option | Description |
+| --- | --- |
+| `--aggregate` | Summarize matching errors instead of listing rows. |
+| `--limit`, `-n <n>` | Maximum list rows. Default: `50`. |
+| `--since`, `--from`, `--to` | Select the time range. |
+| `--env`, `--error-type`, `--event-type`, `--agent-id`, `--session-id` | Narrow the error population. |
+| `--search <text>` | Search payload text; repeatable. |
+| `--order asc\|desc` | Time order. |
+| `--all`, `--cursor`, `--page-size` | Control list pagination. |
+| `--fields <csv>` | Return only selected fields. |
+| `--full-ids` | Show complete session IDs. |
+
+### Usage and filter values
+
+| Command | Purpose |
+| --- | --- |
+| `fp usage` | Show usage for the current metering window. |
+| `fp list envs` | List observed environments. |
+| `fp list agents` | List observed agent IDs. |
+| `fp list event_types` | List event types. |
+| `fp list score_filters` | List evaluation score keys. |
+| `fp list models` | List model names. |
+| `fp list hooks` | List hook names. |
+| `fp list tools` | List tool names. |
+| `fp list error_types` | List error types. |
+| `fp list trigger_events` | List hook trigger events. |
+| `fp list eval_envs` | List environments with evaluation results. |
+| `fp list metric_keys` | List evaluation metric keys. |
+
+### Organizations
+
+| Command | Purpose |
+| --- | --- |
+| `fp orgs list` | List accessible organizations. |
+| `fp orgs switch [SLUG]` | Save an active organization; prompts when omitted. |
+| `fp orgs current` | Show the active organization. |
+| `fp orgs perms` | Show your permissions in the active organization. |
+
+### API keys
+
+| Command | Purpose | Options |
+| --- | --- | --- |
+| `fp keys list` | List organization keys. | `--show-id`; `--fields <csv>` |
+| `fp keys show NAME` | Show one key and its grants. | — |
+| `fp keys create NAME` | Create a key and reveal its secret once. | `--permission-set`; `--add`; `--remove` |
+| `fp keys update NAME` | Replace the permission set or adjust grants. | `--permission-set`; `--add`; `--remove`; `--yes`, `-y` |
+| `fp keys regenerate NAME` | Rotate the secret and reveal the replacement once. | `--yes`, `-y` |
+| `fp keys disable NAME` | Permanently revoke a key. | `--yes`, `-y` |
+
+Permission tokens use `resource:action`, such as `events:add`. Repeat `--add`, comma-separate tokens, or use dotted actions such as `events:read.add`.
+
+### Queries
+
+| Command | Purpose | Options |
+| --- | --- | --- |
+| `fp query list` | List saved queries. | `--show-id`; `--fields <csv>` |
+| `fp query show NAME` | Show one query. | — |
+| `fp query create NAME` | Save a query. | `--sql <text\|@file>`; `--description` |
+| `fp query update NAME` | Update or rename a query. | `--name`; `--sql`; `--description`; `--yes`, `-y` |
+| `fp query delete NAME` | Delete a saved query. | `--yes`, `-y` |
+| `fp query run [NAME]` | Run a saved query or ad-hoc SQL. | `--sql`; `--limit`; `--all`; `--arg`, `--param` |
+| `fp query schema [TABLE]` | List queryable tables or inspect one table. | — |
+
+### Users
+
+| Command | Purpose | Options |
+| --- | --- | --- |
+| `fp users list` | List organization members. | `--active-only`; `--show-id` |
+| `fp users show EMAIL` | Show a member and their grants. | — |
+| `fp users create EMAIL` | Add a member. | `--permission-set`; `--add`; `--remove` |
+| `fp users update EMAIL` | Change a member's grants. | `--permission-set`; `--add`; `--remove`; `--yes`, `-y` |
+| `fp users disable EMAIL` | Disable sign-in. | `--yes`, `-y` |
+| `fp users enable EMAIL` | Re-enable sign-in. | `--yes`, `-y` |
+
+### Settings
+
+| Command | Purpose | Options |
+| --- | --- | --- |
+| `fp settings list` | List organization settings and current values. | — |
+| `fp settings schema` | Show accepted values and descriptions. | — |
+| `fp settings set KEY` | Change an existing setting. | exactly one of `--value`, `--json-value`, `--file`; optional `--yes`, `-y` |
+
+### Alerts
+
+| Command | Purpose | Options |
+| --- | --- | --- |
+| `fp alerts list` | List alert rules. | `--show-id` |
+| `fp alerts show NAME` | Show one alert. | — |
+| `fp alerts create NAME` | Create an alert. | `--file`; `--description`; `--severity`; `--trigger-kind`; `--trigger-spec`; `--channels`; `--eval-interval-secs`; `--min-breaches`; `--eval-window` |
+| `fp alerts update NAME` | Update or rename an alert. | create options plus `--name`; `--yes`, `-y` |
+| `fp alerts delete NAME` | Delete an alert. | `--yes`, `-y` |
+| `fp alerts test NAME` | Send a test notification. | `--channels`; `--yes`, `-y` |
+
+Alert severities are `info`, `warning`, and `critical`. Trigger kinds are `metric_threshold`, `custom_sql`, `evaluation_score`, `eval_compound`, and `per_event`. Evaluation intervals must be between 30 and 86,400 seconds.
+
+### Audits
+
+| Command | Purpose | Options |
+| --- | --- | --- |
+| `fp audits list` | List audits. | `--enabled-only`; `--show-id` |
+| `fp audits show NAME` | Show one audit definition and state. | — |
+| `fp audits create NAME` | Create an audit and immediately queue its first run. | See [create options](#audit-create-options). |
+| `fp audits edit NAME` | Replace audit settings while retaining unspecified values. | create definition options; `--name`; `--yes`, `-y` |
+| `fp audits delete NAME` | Delete an audit, its findings, and run history. | `--yes`, `-y` |
+| `fp audits run NAME` | Queue a manual run. | — |
+| `fp audits runs NAME` | List run history. | `--limit`, `-n`; `--show-id` |
+| `fp audits context-show NAME` | Show the brief and reference URL fetch state. | — |
+| `fp audits context-set NAME` | Change the brief or reference URLs. | `--text`; `--text-file`; `--url`; `--clear-urls` |
+| `fp audits context-refresh NAME` | Re-fetch reference URLs. | — |
+| `fp audits findings` | List findings. | `--audit`; `--run-id`; `--status`; `--limit`, `-n`; `--offset`; `--show-id` |
+| `fp audits finding FINDING_ID` | Show one finding and its evidence. | — |
+| `fp audits ack FINDING_ID` | Acknowledge a finding. | `--reason` |
+| `fp audits mute FINDING_ID` | Suppress a recurring pattern. | `--reason`; `--yes`, `-y` |
+| `fp audits dismiss FINDING_ID` | Mark a pattern not actionable and suppress it. | `--reason`; `--yes`, `-y` |
+| `fp audits resolve FINDING_ID` | Mark a finding fixed without future suppression. | `--yes`, `-y` |
+| `fp audits reopen FINDING_ID` | Return a finding to the live queue and clear suppression. | — |
+| `fp audits assign FINDING_ID` | Set the finding owner. | required `--to <email>` |
+
+#### Audit create options
+
+```bash
+fp audits create checkout-reliability \
+  --description "Find checkout failures that agents do not recover from" \
+  --scope '{"environments":["production"],"agent_ids":["checkout-agent"]}' \
+  --schedule-interval-secs 86400 \
+  --window-mode since_last \
+  --sensitivity medium \
+  --text-file ./checkout-audit-brief.txt \
+  --url https://runbooks.example.com/checkout
+```
+
+| Option | Description |
+| --- | --- |
+| `--file <path>` | Base the definition on JSON, or use `-` for stdin. Explicit flags override file values. |
+| `--description <text>` | State the failure question or purpose. |
+| `--enabled` / `--disabled` | Start scheduling on or off. Default: enabled. |
+| `--schedule-interval-secs <n>` | `3600`–`604800`. Default: `86400`. |
+| `--schedule-anchor <timestamp>` | Fixed UTC phase in ISO 8601 form. Default: next 09:00 UTC. |
+| `--window-mode since_last\|fixed` | Continue after the last fully analyzed window or repeatedly inspect a rolling window. Default: `since_last`. |
+| `--lookback-window-secs <n>` | `3600`–`7776000`. Default: `604800`. |
+| `--scope '<json>'` | Filter by `environments`, `agent_ids`, or other supported scope fields. |
+| `--ignore-error-type <type>` | Exclude error types; repeat or comma-separate. |
+| `--llm` / `--no-llm` | Enable or disable agentic analysis. Default: enabled. |
+| `--top-k <n>` | Retain `1`–`500` findings. Default: `50`. |
+| `--sensitivity low\|medium\|high` | Set reporting sensitivity. Default: `medium`. |
+| `--channels '<json>'` | Notification channel array. |
+| `--text <brief>` | Inline brief, maximum 8,192 characters. |
+| `--text-file <path>` | Read the brief from a file; mutually exclusive with `--text`. |
+| `--url <https-url>` | Add a public HTTPS reference; repeat up to five times. |
+
+Include context during creation when the first run needs it. Creation commits the definition and context together before the queued run begins.
+
+<Note>
+  `fp audits run` is asynchronous. Poll `fp audits runs NAME` until the latest run succeeds or fails before reading its findings.
+</Note>
+
+### Issues
+
+| Command | Purpose | Options |
+| --- | --- | --- |
+| `fp issues list` | List issues. Archived issues are hidden unless `--archived only` or `all`. | `--state`; `--alert-id`; `--limit`, `-n`; `--show-id`; filters `--agent-id`, `--env`, `--machine`, `--source`, `--audit-id`, `--assignee` (email, `me`, `unassigned`), `--archived`, `--search`, `--since` |
+| `fp issues count` | Count open or selected issue states. | `--state`; `--alert-id`; the same filters as `list` |
+| `fp issues show INCIDENT_ID` | Show issue details, comments, subscribers, and activity. | — |
+| `fp issues open` | Open a manual or alert-linked issue. | required `--summary`; optional `--title`, `--alert-id`, `--severity` |
+| `fp issues ack INCIDENT_ID` | Acknowledge an issue. | — |
+| `fp issues assign INCIDENT_ID` | Replace assignees; omit the option to clear them. | repeatable `--assignee` |
+| `fp issues resolve INCIDENT_ID` | Resolve an issue: the problem is fixed. A recurring audit finding reopens it. | `--yes`, `-y` |
+| `fp issues close INCIDENT_ID` | Close an issue: you are done with it, fixed or not. A recurrence does not reopen it. | `--yes`, `-y` |
+| `fp issues archive INCIDENT_ID` | Take an issue off the board without changing how it ended. | — |
+| `fp issues unarchive INCIDENT_ID` | Put an archived issue back on the board. | — |
+| `fp issues clear` | Resolve every open issue in a scope, plus the audit findings behind them. Requires exactly one scope flag. | one of `--audit`, `--all-audits`, `--everything`; `--dry-run`; `--yes`, `-y` |
+| `fp issues comment-list INCIDENT_ID` | List comments. | — |
+| `fp issues comment-add INCIDENT_ID` | Add a comment. | exactly one of `--body`, `--file` |
+| `fp issues comment-delete INCIDENT_ID COMMENT_ID` | Delete a comment. | `--yes`, `-y` |
+| `fp issues subscribers INCIDENT_ID` | List subscribers. | — |
+| `fp issues subscribe INCIDENT_ID` | Subscribe yourself or another operator. | `--email` |
+| `fp issues unsubscribe INCIDENT_ID` | Remove a subscription. | `--email` |
+
+Valid issue states are `firing`, `acknowledged`, and `resolved`. Standalone issue severities are `info`, `warning`, and `critical`.
+
+### Cloud assistant
+
+| Command | Purpose | Options |
+| --- | --- | --- |
+| `fp agent health` | Check assistant availability and configuration. | — |
+| `fp agent models` | List available assistant models. | — |
+| `fp agent chats` | List saved chats. | — |
+| `fp agent ask [MESSAGE]` | Start or continue a chat; reads stdin when the message is omitted. | `--chat`; `--model`; `--page-context` |
+| `fp agent show CHAT_ID` | Show a saved conversation. | — |
+| `fp agent rename CHAT_ID` | Rename a conversation. | required `--title` |
+| `fp agent delete CHAT_ID` | Delete a conversation. | `--yes`, `-y` |
+
+### Policies
+
+Cloud-managed policy versions. **Session-only** — every command here exits `2` under an API key, before any request, because these are root-only write routes deliberately absent from `/v1`.
+
+| Command | Purpose | Options |
+| --- | --- | --- |
+| `fp policies list` | List policy versions, with each one's kind (`regex`, `jev`, `both`) and Jev check names. | `--json` |
+| `fp policies show POLICY_ID` | Show one policy, with its source and its Jev checks. | — |
+| `fp policies publish NAME [PATH]` | Mint a version: JavaScript (`regex`, the default), Jev checks from a JSON file of declarations (`jev`), or both, where the JavaScript is reviewable by its own checks. | `--kind`; `--source`; `--semantic`; `--description`; `--no-verify` |
+| `fp policies enable POLICY_ID` | Add it back to every deployment it was removed from, minting a new generation on each. | `--yes`, `-y` |
+| `fp policies disable POLICY_ID` | Remove it from every deployment carrying it, minting a new generation on each. | `--yes`, `-y` |
+| `fp policies delete POLICY_ID` | Delete a policy version. | `--yes`, `-y` |
+| `fp policies test PATH` | Run a policy locally against a synthetic context. Applies each policy's `match` filter, so one that does not cover the given event/tool is reported `skipped` rather than run. | `--event`; `--tool`; `--command`; `--file`; `--expect` |
+| `fp policies compose PROMPT` | Draft a policy with the assistant. Needs `policies:write`. | — |
+
+### Fleet
+
+Which machines run which policies.  **Session-only**, same reason as above.
+
+| Command | Purpose | Options |
+| --- | --- | --- |
+| `fp fleet list` | List enrolled machines and their deployment generation. | — |
+| `fp fleet show MACHINE_ID` | The policy set a machine currently runs, the Jev mode FailproofAI Cloud derived from it, and the policy errors it reported. | — |
+| `fp fleet deploy MACHINE_ID` | **Replaces the machine's whole policy set.** Prints the plan and asks only on an interactive terminal without `--json`. Jev is on for a machine while a `jev` or `both` policy is deployed to it; trial one with `:observe`. | `--add`; `--remove`; `--set`; `--target POLICY=INTEGRATION[/agt_ID]` (scope one assignment to an integration or one agent; repeat to OR); `--all-agents POLICY` (clear that scope); `--create`; `--yes`, `-y` |
+| `fp fleet diff MACHINE_ID` | Compare a machine against another deployment. | — |
+| `fp fleet history MACHINE_ID` | Past deployments for a machine, with the Jev mode each one had. | — |
+| `fp fleet rollback MACHINE_ID GENERATION` | Reinstate a past generation's policy set as a new generation. | `--yes`, `-y` |
+| `fp fleet rename MACHINE_ID` | Give a machine a readable name. | required `--name` |
+
+### Guardrails
+
+What enforcement actually did. **Session-only**, same reason as above.
+
+| Command | Purpose | Options |
+| --- | --- | --- |
+| `fp guardrails summary` | Coverage, blocked/evaluated totals, a deny sparkline, and the per-policy table. | `--since` (`1h`, `6h`, `24h`, `7d`); `--machine` |
+| `fp guardrails timeline` | Decisions bucketed over the window, summed across every policy source. | `--since` (`1h`, `6h`, `24h`, `7d`); `--machine` |
+
+## Global flags
+
+| Flag | Description |
+| --- | --- |
+| `--json` | Emit machine-readable JSON. Errors include the failed request's `request_id`. |
+| `--base-url <url>` | Use a self-hosted or development dashboard. |
+| `--org <slug>` | Select an organization for this invocation. |
+| `--token <token>` | Override the saved user-session token. |
+| `--api-key <key>` | Authenticate automation with an API key; never saved. |
+| `--timeout <seconds>` | HTTP timeout; must be positive. Default: `30`. |
+| `--quiet`, `-q` | Suppress status output on stderr. |
+| `--no-color` | Disable colored output. |
+| `--insecure` / `--secure` | Disable or restore TLS certificate verification. |
+| `--version` | Print the unboxed version and exit. |
+| `--help`, `-h` | Show help. |
+
+`--api-key` is intended for automation. Login, organization switching, and assistant commands require a user session.
+
+## Environment variables
+
+| Variable | Equivalent or purpose |
+| --- | --- |
+| `FP_DASHBOARD_URL` | `--base-url` |
+| `FP_ORG` | `--org` |
+| `FP_TOKEN` | `--token` |
+| `FP_API_KEY` | `--api-key` |
+| `FP_JSON` | `--json` |
+| `FP_INSECURE` | `--insecure` |
+| `FP_HOME` | Relocate the CLI configuration directory (default `~/.failproofai/fpcli`). |
+| `FP_ANALYTICS_DISABLED` or `DO_NOT_TRACK` | Disable anonymous CLI analytics. |
+| `NO_COLOR` | Disable colored output. |
+
+Explicit flags override environment variables, which override saved configuration. In API-key mode, select the tenant explicitly with `--org` or `FP_ORG`.
+
+<Warning>
+  The `AGENTEYE_*` spellings of these are **not read by `fp`** and never were — the CLI declares `FP_*` (`fp_cli/app.py`), and an unknown variable is not an error. Setting `AGENTEYE_DASHBOARD_URL` does not retarget the CLI; it is ignored and the command silently runs against the saved dashboard instead.
+
+  `AGENTEYE_HOME` and `AGENTEYE_ENVIRONMENT` do still exist, but they belong to the **collector and the telemetry SDK**, not to this CLI.
+</Warning>
+
+<Warning>
+  Commands that delete, revoke, suppress, resolve, or replace configuration prompt by default. Use `--yes` only after verifying the active organization and target.
+</Warning>

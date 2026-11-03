@@ -307,6 +307,30 @@ pub fn handle_connection(stream: UnixStream, worker: &Worker) -> io::Result<()> 
         .map_err(|e| io::Error::other(format!("failed to write response: {e}")))
 }
 
+fn record_agent_sighting(integration: &str, settings_path: Option<&str>) {
+    let Some(settings_path) = settings_path else {
+        return;
+    };
+    let (Ok(roster), Some(home)) = (crate::agent_roster::roster_path(), std::env::var_os("HOME"))
+    else {
+        return;
+    };
+    if let Err(err) = crate::agent_roster::record_sighting(
+        &roster,
+        std::path::Path::new(&home),
+        integration,
+        std::path::Path::new(settings_path),
+    ) {
+        eprintln!("[failproofaid] could not record an agent hook sighting: {err}");
+    }
+}
+
+/// Pre-C11 callers omit the field entirely. Their profile is UNKNOWN, not
+/// whatever the daemon worker's long-lived environment happens to name.
+fn worker_agent_settings_path(settings_path: Option<&str>) -> Option<&str> {
+    Some(settings_path.unwrap_or(""))
+}
+
 fn dispatch(request: ClientMessage, worker: &Worker) -> ServerMessage {
     if request.protocol_version() != PROTOCOL_VERSION {
         return ServerMessage::Error {
@@ -327,19 +351,94 @@ fn dispatch(request: ClientMessage, worker: &Worker) -> ServerMessage {
             cli,
             stdin,
             cwd,
+            agent_settings_path,
             ..
-        } => match worker.call(&hook_event, &cli, &stdin, cwd.as_deref()) {
-            Ok(outcome) => ServerMessage::HookResult {
-                protocol_version: PROTOCOL_VERSION,
-                exit_code: outcome.exit_code,
-                stdout: outcome.stdout,
-                stderr: outcome.stderr,
-            },
-            Err(err) => ServerMessage::Error {
-                protocol_version: PROTOCOL_VERSION,
-                message: format!("worker call failed: {err}"),
-            },
-        },
+        } => {
+            record_agent_sighting(&cli, agent_settings_path.as_deref());
+            match worker.call(
+                &hook_event,
+                &cli,
+                &stdin,
+                cwd.as_deref(),
+                worker_agent_settings_path(agent_settings_path.as_deref()),
+            ) {
+                Ok(outcome) => ServerMessage::HookResult {
+                    protocol_version: PROTOCOL_VERSION,
+                    exit_code: outcome.exit_code,
+                    stdout: outcome.stdout,
+                    stderr: outcome.stderr,
+                },
+                Err(err) => ServerMessage::Error {
+                    protocol_version: PROTOCOL_VERSION,
+                    message: format!("worker call failed: {err}"),
+                },
+            }
+        }
+        ClientMessage::PolicyEvaluation {
+            integration,
+            event,
+            payload,
+            cwd,
+            agent_settings_path,
+            ..
+        } => {
+            record_agent_sighting(&integration, agent_settings_path.as_deref());
+            let stdin = match serde_json::to_string(&payload) {
+                Ok(value) => value,
+                Err(err) => {
+                    return ServerMessage::Error {
+                        protocol_version: PROTOCOL_VERSION,
+                        message: format!("could not encode policy payload: {err}"),
+                    };
+                }
+            };
+            match worker.call(
+                &event,
+                &integration,
+                &stdin,
+                cwd.as_deref(),
+                worker_agent_settings_path(agent_settings_path.as_deref()),
+            ) {
+                Ok(outcome) => match outcome.evaluation {
+                    Some(evaluation)
+                        if matches!(
+                            evaluation.decision.as_str(),
+                            "allow" | "deny" | "instruct"
+                        ) =>
+                    {
+                        let policy_names = if evaluation.policy_names.is_empty() {
+                            evaluation.policy_name.into_iter().collect()
+                        } else {
+                            evaluation.policy_names
+                        };
+                        ServerMessage::PolicyResult {
+                            protocol_version: PROTOCOL_VERSION,
+                            decision: evaluation.decision,
+                            policy_names,
+                            reason: evaluation.reason,
+                            matched_policies: evaluation.matched_policies,
+                            duration_ms: evaluation.duration_ms,
+                            tool_name: evaluation.tool_name,
+                        }
+                    }
+                    Some(evaluation) => ServerMessage::Error {
+                        protocol_version: PROTOCOL_VERSION,
+                        message: format!(
+                            "worker returned an invalid policy decision: {}",
+                            evaluation.decision
+                        ),
+                    },
+                    None => ServerMessage::Error {
+                        protocol_version: PROTOCOL_VERSION,
+                        message: "worker did not return structured policy metadata".to_string(),
+                    },
+                },
+                Err(err) => ServerMessage::Error {
+                    protocol_version: PROTOCOL_VERSION,
+                    message: format!("worker call failed: {err}"),
+                },
+            }
+        }
     }
 }
 
@@ -348,7 +447,7 @@ mod tests {
     use super::*;
     use crate::worker::WorkerCommand;
     use std::sync::atomic::AtomicBool;
-    use std::time::Duration;
+    use std::time::{Duration, Instant};
 
     fn temp_socket_path(name: &str) -> PathBuf {
         std::env::temp_dir().join(format!(
@@ -408,6 +507,7 @@ mod tests {
         let shutdown = Arc::new(AtomicBool::new(false));
         let shutdown_clone = shutdown.clone();
         let worker_socket_path = temp_socket_path("worker-internal");
+        let ready_path = socket_path.clone();
         let handle = std::thread::spawn(move || {
             let worker = Arc::new(crate::worker::Worker::new(worker_socket_path, worker_cmd));
             let server = Server::bind(&socket_path, worker).expect("bind should succeed");
@@ -415,9 +515,26 @@ mod tests {
                 .run_until(shutdown_clone)
                 .expect("run_until should not error");
         });
-        // Give the background thread a moment to actually bind before the
-        // test tries to connect.
-        std::thread::sleep(Duration::from_millis(50));
+        // Wait for the listener to exist, rather than sleeping a fixed 50ms and
+        // hoping. A fixed sleep is a race: it passes on an idle developer
+        // machine and fails on a loaded CI runner, where all eight threads of
+        // `multiple_concurrent_pings_all_get_answered` panicked on
+        // `UnixStream::connect(...).unwrap()` because the bind had not happened
+        // yet. Connecting is the exact property every caller needs, so that is
+        // what we poll for; the probe's own connection is accepted and dropped,
+        // which the server handles as an EOF like any other closed client.
+        let deadline = Instant::now() + Duration::from_secs(5);
+        loop {
+            if UnixStream::connect(&ready_path).is_ok() {
+                break;
+            }
+            assert!(
+                Instant::now() < deadline,
+                "test server did not start listening on {} within 5s",
+                ready_path.display()
+            );
+            std::thread::sleep(Duration::from_millis(2));
+        }
         TestServerGuard {
             shutdown,
             handle: Some(handle),
@@ -464,6 +581,35 @@ mod tests {
                 cli: "claude".to_string(),
                 stdin: "{}".to_string(),
                 cwd: None,
+                agent_settings_path: None,
+            },
+        )
+        .unwrap();
+        let response: ServerMessage = read_message(&mut stream).unwrap();
+        match response {
+            ServerMessage::Error { .. } => {}
+            other => panic!("expected Error, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn policy_evaluation_gets_an_error_when_the_worker_cannot_be_reached() {
+        let socket_path = temp_socket_path("policy-broken-worker");
+        let _guard = start_test_server(socket_path.clone());
+
+        let mut stream = UnixStream::connect(&socket_path).unwrap();
+        write_message(
+            &mut stream,
+            &ClientMessage::PolicyEvaluation {
+                protocol_version: PROTOCOL_VERSION,
+                integration: "hermes".to_string(),
+                event: "pre_tool_call".to_string(),
+                payload: serde_json::json!({
+                    "tool_name": "terminal",
+                    "tool_input": {"command": "echo hi"}
+                }),
+                cwd: None,
+                agent_settings_path: None,
             },
         )
         .unwrap();
@@ -481,7 +627,7 @@ mod tests {
     /// sides of the wire protocol actually agree, not just that each side's
     /// own unit tests pass in isolation.
     #[test]
-    fn relays_a_hook_request_to_the_real_typescript_worker_end_to_end() {
+    fn relays_hook_and_structured_policy_requests_to_the_real_worker() {
         let repo_root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
             .parent()
             .and_then(|p| p.parent())
@@ -533,6 +679,7 @@ mod tests {
                 cli: "claude".to_string(),
                 stdin,
                 cwd: Some(project_dir.to_string_lossy().to_string()),
+                agent_settings_path: None,
             },
         )
         .unwrap();
@@ -553,7 +700,56 @@ mod tests {
             other => panic!("expected HookResult, got {other:?}"),
         }
 
+        let mut stream = UnixStream::connect(&socket_path).unwrap();
+        stream
+            .set_read_timeout(Some(Duration::from_secs(15)))
+            .unwrap();
+        write_message(
+            &mut stream,
+            &ClientMessage::PolicyEvaluation {
+                protocol_version: PROTOCOL_VERSION,
+                integration: "hermes".to_string(),
+                event: "pre_tool_call".to_string(),
+                payload: serde_json::json!({
+                    "cwd": project_dir.to_string_lossy(),
+                    "tool_name": "terminal",
+                    "tool_input": { "command": "sudo rm -rf /" }
+                }),
+                cwd: Some(project_dir.to_string_lossy().to_string()),
+                agent_settings_path: None,
+            },
+        )
+        .unwrap();
+        let response: ServerMessage = read_message(&mut stream).unwrap();
+        match response {
+            ServerMessage::PolicyResult {
+                decision,
+                policy_names,
+                tool_name,
+                ..
+            } => {
+                assert_eq!(decision, "deny");
+                assert!(
+                    policy_names
+                        .iter()
+                        .any(|name| name.ends_with("/block-sudo"))
+                );
+                assert_eq!(tool_name.as_deref(), Some("Bash"));
+            }
+            other => panic!("expected PolicyResult, got {other:?}"),
+        }
+
         std::fs::remove_dir_all(&project_dir).ok();
+    }
+
+    #[test]
+    fn an_older_hook_without_agent_identity_must_not_borrow_the_workers_profile() {
+        assert_eq!(worker_agent_settings_path(None), Some(""));
+        assert_eq!(worker_agent_settings_path(Some("")), Some(""));
+        assert_eq!(
+            worker_agent_settings_path(Some("/opt/agent/config.yaml")),
+            Some("/opt/agent/config.yaml"),
+        );
     }
 
     #[test]
@@ -575,6 +771,37 @@ mod tests {
                 assert!(message.contains("version"));
             }
             other => panic!("expected Error, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn old_hook_protocol_cannot_evaluate_a_scoped_agent() {
+        let socket_path = temp_socket_path("old-scoped-hook");
+        let _guard = start_test_server(socket_path.clone());
+
+        let mut stream = UnixStream::connect(&socket_path).unwrap();
+        write_message(
+            &mut stream,
+            &ClientMessage::Hook {
+                protocol_version: 1,
+                hook_event: "PreToolUse".into(),
+                cli: "claude".into(),
+                stdin: "{}".into(),
+                cwd: None,
+                agent_settings_path: Some("/home/agent/claude/settings.json".into()),
+            },
+        )
+        .unwrap();
+        let response: ServerMessage = read_message(&mut stream).unwrap();
+        match response {
+            ServerMessage::Error {
+                protocol_version,
+                message,
+            } => {
+                assert_eq!(protocol_version, PROTOCOL_VERSION);
+                assert!(message.contains("protocol version mismatch"));
+            }
+            other => panic!("old protocol was evaluated: {other:?}"),
         }
     }
 

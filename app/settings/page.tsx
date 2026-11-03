@@ -4,6 +4,11 @@ import {
   getScheduledAuditAction,
   type ScheduledAuditView,
 } from "@/app/actions/get-scheduled-audit";
+import {
+  getJevSettingsAction,
+  type JevSettingsView,
+} from "@/app/actions/get-jev-config";
+import JevPanel from "./jev-panel";
 import SettingsClient from "./settings-client";
 
 export const metadata: Metadata = {
@@ -44,5 +49,19 @@ export default async function SettingsPage() {
     // here would replace a page that can explain itself with an error boundary
     // that cannot.
   }
-  return <SettingsClient initial={initial} />;
+  // Same reasoning as above, for the same reason it matters more here: this
+  // panel's headline fact is whether a second evaluator is switched on, and a
+  // client-side load would paint "off" first and correct itself after.
+  // `getJevSettingsAction` does not throw, but a failed read must not take the
+  // scheduled-audit panel down with it either.
+  let jev: JevSettingsView | null = null;
+  try {
+    jev = await getJevSettingsAction();
+  } catch {
+    // Left null; the panel reads as "reading…" until the client load lands.
+  }
+  // The panel is composed in rather than imported by `SettingsClient`, so the
+  // scheduled-audit console and the Jev console share a layout without sharing
+  // a dependency — see the `jevPanel` prop.
+  return <SettingsClient initial={initial} jevPanel={<JevPanel initial={jev} />} />;
 }

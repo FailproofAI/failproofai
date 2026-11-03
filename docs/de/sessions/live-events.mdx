@@ -1,0 +1,45 @@
+---
+title: "Live-Events"
+description: "Agent-Aktivität in Echtzeit beobachten, während eine Session läuft."
+icon: "radio"
+---
+
+Live-Events helfen dabei, die Instrumentierung zu bestätigen und einen kritischen Lauf zu verfolgen, ohne das Ende der Session abzuwarten.
+
+## Aktivität beobachten
+
+<Tabs>
+  <Tab title="Dashboard">
+    1. Gehe zu **Observe → Events**.
+    2. Starte mit dem aktuellen Zeitfenster und ohne Filter, um zu bestätigen, dass Daten ankommen.
+    3. Filtere nach Umgebung, Event-Typ, Agent oder Session. Nutze die Suche für Payload-Text.
+    4. Wähle ein Event aus, um dessen Zusammenfassung und Details einzusehen. Folge dem Session-Link für den vollständigen Trace.
+
+    ![Der Live-Events-Stream zeigt Traffic eines Hermes-Chat-Gateways zusammen mit Coding-CLI-Läufen, gefiltert nach Zeit, Umgebung, Event-Typ, Agent, Modell, Kontext und Session.](/images/dashboard/events-stream-current.png)
+  </Tab>
+  <Tab title="CLI">
+    ```bash
+    fp events --env production --event-type tool_use,error --limit 100
+    fp events --session-id <session-id> --order asc --all
+    fp --json events --full --session-id <session-id> --all
+    ```
+
+    Der Standard-Feed lässt rohe Payloads aus. Verwende `--full` nur für eine zeitlich begrenzte Session-Untersuchung.
+  </Tab>
+</Tabs>
+
+Nutze den Event-Stream, um drei unmittelbare Fragen zu beantworten:
+
+- Meldet sich der erwartete Agent bei der richtigen Umgebung?
+- Kommen Modellaufrufe, Tool-Aufrufe und Policy-Entscheidungen in der richtigen Reihenfolge an?
+- Hat die Session aufgehört, Fortschritte zu machen, oder beginnt sie, eine Aktion zu wiederholen?
+
+Event-Typen umfassen Agent-Lifecycle-Events, Modellanfragen und -antworten, Tool-Nutzung und -Ergebnisse, Hook-Ausführung, Human-Waits und -Interrupts sowie explizite Fehler. Korrelations-IDs verknüpfen zusammengehörige Events, wie z. B. einen Tool-Aufruf und sein Ergebnis.
+
+<Tip>
+  Halte die Live-Ansicht während der Überprüfung einer neuen Integration zunächst offen. Füge Filter erst hinzu, nachdem das erste Event sichtbar ist – ein falscher Filter kann wie eine fehlgeschlagene Datenaufnahme aussehen.
+</Tip>
+
+Wenn keine Events erscheinen, führe `failproofai config --status` aus und [behebe Datenaufnahme-Probleme](/de/reference/troubleshooting).
+
+Agents, die nicht in einem der 12 unterstützten [Harnesses](/de/reference/harnesses) laufen, melden dieselben Event-Typen über das [Python SDK](/de/reference/custom-agents), einschließlich der Human-in-the-Loop-Events (`human_wait`, `human_input`, `human_interrupt`), auf die Gateway- und Produktions-Agents angewiesen sind.

@@ -1,0 +1,42 @@
+---
+title: "Pydantic AI"
+description: "Yükleyin, enstrümente edin ve ilk izlemenizi görün."
+icon: "/images/frameworks/pydantic-ai.svg"
+---
+
+İlk Pydantic AI izlemenize kadar üç adım. Araçlar, yeniden denemeler, akış ve seçenekler için bkz. [tam kılavuz](/tr/start/integrations/pydantic-ai).
+
+## Yükleme
+
+```bash
+pip install 'failproofai-sdk[pydantic-ai]'
+```
+
+## Enstrümantasyon
+
+```python
+import failproofai_sdk
+from pydantic_ai import Agent
+
+failproofai_sdk.configure(environment="production")
+failproofai_sdk.instrument()          # herhangi bir Agent oluşturmadan önce
+
+agent = Agent("openai:gpt-4o-mini", system_prompt="Be terse.")
+
+with failproofai_sdk.session():
+    result = agent.run_sync("...")
+```
+
+<Warning>
+  `instrument()` bir `Agent` oluşturmadan **önce** çalışmalıdır. Yetenek yapı sırasında eklenir, bu nedenle daha önce oluşturulmuş bir agent hiçbir şey kaydetmez — hata olmadığı için hata da olmaz. Bu, bu adaptör ile boş bir izlenin en yaygın nedenidir ve modül kapsamı ajanlar bu sorunu yaşayan yerdir: `failproofai_sdk` içe aktarın ve `instrument()` öğesini onları oluşturan modülü içe aktarmadan önce çağırın.
+</Warning>
+
+## Ulaştığını kontrol edin
+
+Bir kez çalıştırın, ardından **Observe → Sessions** öğesini açın ve ortamınızı seçin. Çalışmanız yeniden yapılandırılmış bir izleme olarak görünür.
+
+Hiçbir şey gelmezse, `failproofai config --status` ile makinenin bağlı olduğunu doğrulayın.
+
+<Card title="Tam Pydantic AI kılavuzu" icon="arrow-right" href="/tr/start/integrations/pydantic-ai">
+  Kaydedilen şey, araçlar ve yeniden denemeler, akış, span adlandırması, seçenekler ve yaygın sorunlar.
+</Card>

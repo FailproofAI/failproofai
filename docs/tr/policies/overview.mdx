@@ -1,0 +1,54 @@
+---
+title: "İlkeler"
+description: "Aracı eylemlerini gözlemleyin, yönlendirin veya bilinen bir hata tekrarlanmadan önce engelleyin."
+icon: "shield-check"
+---
+
+Bir ilke, bir aracı hook olayını değerlendirir ve üç karardan birini döndürür:
+
+- `allow` eyleme devam etmesine izin verir.
+- `instruct` aracıya düzeltici rehberlik sağlar.
+- `deny` eylemi bir neden ile engeller.
+
+## İlkeler nerede yer alır
+
+| Panoda | Orada yapacağınız şey |
+| --- | --- |
+| **Gözlem → ilke** | Gerçek oturumlardan alınan kararları gözden geçirin: hangi ilke eşleşti, hangi makinede ve neden |
+| **Yönetim → ilke editörü** | Bir ilke yazın, geçmiş trafiğe karşı geri test edin, değişmez bir sürüm yayınlayın ve **kütüphanede** sürümleri karşılaştırın |
+| **Yönetim → zorlama** | Sürümleri makinelere, gözlem veya zorlama modunda yerleştirin |
+
+İlke editörü, bir hatanın kural haline geldiği yerdir. **Oluştur** kısmında hata modunu açıklayın veya ilke kaynağını yapıştırın, taslağı halihazırda sahip olduğunuz trafiğe karşı geri test edin ve bir sürüm yayınlayın:
+
+![İlke editörü oluştur görünümü - ilke kimliği, yapay zeka destekli taslak oluşturma, kaynak doğrulama ve yayınlama kontrolleri.](/images/dashboard/policy-editor.png)
+
+Bir makinede, `failproofai policies` orada uygulanan her şeyi listeler. `fp policies` ve `fp fleet` terminalden editörü ve uygulamayı kapsar — bkz. [Cloud CLI referansı](/tr/reference/cloud-cli).
+
+## Bir ilke edinin
+
+İki yolu vardır.
+
+<Columns cols={2}>
+  <Card title="Bir ilke yazın" icon="file-pen-line" href="/tr/policies/editor">
+    Failproof AI'ın bir denetim bulgusundan bir taslak oluşturmasına izin verin veya kaynağı kendiniz yazın, ardından editörde gözden geçirin ve yayınlayın.
+  </Card>
+  <Card title="İlke paketi kullanın" icon="package" href="/tr/policies/packs">
+    Kullanım durumunuz için bir Failproof AI ilke paketi ya da ilke hub'ından bir topluluk paketini tek bir komutla bağlayın.
+  </Card>
+</Columns>
+
+## Ardından gönder
+
+<Steps>
+  <Step title="Test et">
+    Taslağı halihazırda sahip olduğunuz trafiğe karşı geri test edin ve durması gereken bir eylem ile izin vermesi gereken bir eyleme karşı çalıştırın — tümü yayınlamadan önce. Bkz. [İlkeyi test et](/tr/policies/test).
+  </Step>
+  <Step title="Dağıt">
+    Sürümü makinelere **gözlem** modunda yerleştirin, kararlarını okuyun, ardından uygulayın. Bkz. [İlke dağıt](/tr/policies/deploy).
+  </Step>
+  <Step title="Sürüm ve geri al">
+    Her yayın yeni, değişmez bir sürümdür; bu nedenle geçerli çalışmayı engelleyen bir dağıtım, son iyi sürümü yeniden dağıtarak geri alınır. Bkz. [Sürümler ve geri alma](/tr/policies/rollback).
+  </Step>
+</Steps>
+
+İlkelerinizi diğer ekiplerle paylaşmak için [bunları bir paket olarak yayınlayın](/tr/policies/publish-a-pack). Bir ilke hiç değerlendirilemediğinde ne olur öğrenmek için bkz. [Başarısızlık davranışı](/tr/policies/failure-behavior).

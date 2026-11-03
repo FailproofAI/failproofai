@@ -546,13 +546,23 @@ describe("checkLayoutForCli", () => {
       writeFileSync(resolve(binDir(), `failproofaid-${ver}`), "ELF");
     }
 
+    /**
+     * The two cases below set `daemon.configured`, which is what makes
+     * `healDaemonFlag` ask systemd whether the unit is installed. On a host with
+     * no unit that call blocks for seconds, and both tests were timing out at
+     * vitest's 5 s default — a check about what this command PRINTS, failing on
+     * how long the machine takes to answer "not-installed". Stubbed, because
+     * the service manager is not what is under test here.
+     */
+    const noUnit = { daemonStatus: () => "not-installed" as const };
+
     it("warns hard when the machine REQUIRES a daemon that will not start", async () => {
       seedLayoutOne();
       installedDaemon("0.0.1-old");
       writeVersionFile({ daemon: "0.0.1-old" });
       updateConfig({ daemon: { configured: true } });
 
-      const text = (await checkLayoutForCli()).lines.join("\n");
+      const text = (await checkLayoutForCli(noUnit)).lines.join("\n");
 
       expect(text).toContain("0.0.1-old");
       // Must name the consequence, not just the mismatch: the reason to act now
@@ -581,7 +591,7 @@ describe("checkLayoutForCli", () => {
       seedLayoutOne();
       updateConfig({ daemon: { configured: true } });
 
-      const text = (await checkLayoutForCli()).lines.join("\n");
+      const text = (await checkLayoutForCli(noUnit)).lines.join("\n");
 
       expect(text).not.toContain("failproofai update");
     });
@@ -1312,5 +1322,95 @@ describe("resetHome carries the layout-1 JSON credentials", () => {
     resetHome(2);
 
     expect(readCredentials().cloud?.token).toBe("tok-one");
+  });
+});
+
+// The banners print above whatever command was typed, so each is ONE state line
+// and ONE fix line in the 2026-10 screen language: `✕` for the one that stops
+// the command, `▲` for one that needs attention, `✓` for a repair already made.
+describe("the banners printed before a command", () => {
+  const TRUECOLOR = { COLORTERM: "truecolor", TERM: "xterm-256color" };
+  const saved: Record<string, string | undefined> = {};
+  const truecolor = () => {
+    for (const [k, v] of Object.entries(TRUECOLOR)) {
+      saved[k] = process.env[k];
+      process.env[k] = v;
+    }
+  };
+  afterEach(() => {
+    for (const [k, v] of Object.entries(saved)) {
+      if (v === undefined) delete process.env[k];
+      else process.env[k] = v;
+    }
+  });
+  const noUnit = { daemonStatus: () => "not-installed" as const };
+  const installedDaemon = (ver: string) => {
+    mkdirSync(binDir(), { recursive: true });
+    writeFileSync(resolve(binDir(), `failproofaid-${ver}`), "ELF");
+  };
+  const cliVersion = (): string =>
+    (JSON.parse(readFileSync(resolve(__dirname, "../../package.json"), "utf8")) as { version: string }).version;
+
+  it("a daemon the machine requires: one ▲ line naming the consequence, one fix line naming the command", async () => {
+    installedDaemon("0.0.1-old");
+    writeVersionFile({ daemon: "0.0.1-old" });
+    updateConfig({ daemon: { configured: true } });
+
+    // Stopped, not gone: the self-heal leaves the flag alone for a stopped unit
+    // (usually a restart in progress), so the machine still requires the daemon.
+    const { lines } = await checkLayoutForCli({ daemonStatus: () => "stopped" as const });
+    const at = lines.findIndex((l) => l.startsWith("▲ failproofaid does not match this CLI"));
+    expect(lines.slice(at, at + 2)).toEqual([
+      "▲ failproofaid does not match this CLI, and a restart can stop it, which denies every tool call.",
+      `  Bring it from 0.0.1-old to ${cliVersion()}:  failproofai update`,
+    ]);
+  });
+
+  it("the self-heal: what was repaired, with the phrase on one line, then how to reinstall", async () => {
+    writeVersionFile();
+    updateConfig({ daemon: { configured: true } });
+
+    const { lines } = await checkLayoutForCli(noUnit);
+
+    expect(lines.slice(0, 2)).toEqual([
+      "▲ failproofaid is no longer installed, and requiring it denies every tool call, so policies now evaluate in-process.",
+      "  Reinstall the daemon:  failproofai config",
+    ]);
+  });
+
+  it("a newer layout: a ✕ that stops the command, and the upgrade", async () => {
+    writeFileSync(resolve(home, "VERSION"), JSON.stringify({ layout: 99, cli: "9.9.9" }));
+
+    const check = await checkLayoutForCli();
+
+    expect(check.fatal).toBe(true);
+    expect(check.lines.slice(0, 2)).toEqual([
+      `✕ This machine's failproofai directory was written by a newer version (layout 99; this build reads ${LAYOUT_VERSION}).`,
+      "  Your data is fine. Upgrade to read it:  npm install -g failproofai@latest",
+    ]);
+  });
+
+  it("the reorganisation: a ✓, then what was rebuilt and what was kept", async () => {
+    seedLayoutOne();
+
+    const { lines } = await checkLayoutForCli();
+
+    expect(lines[0]).toBe(`✓ failproofai reorganised ${home} for this version.`);
+    expect(lines[1]).toMatch(/^ {2}Removed \d+ items? that this version rebuilds: the audit cache/);
+    expect(lines[2]).toMatch(/^ {2}Kept your settings, cloud enrolment, policy selection/);
+  });
+
+  it("paints by role with colour on — warn glyph, pink command — and writes no escape with it off", async () => {
+    writeVersionFile();
+    updateConfig({ daemon: { configured: true } });
+    const plain = await checkLayoutForCli(noUnit);
+    expect(plain.lines.join("\n")).not.toMatch(/\x1B\[/);
+
+    writeVersionFile();
+    updateConfig({ daemon: { configured: true } });
+    truecolor();
+    const coloured = await checkLayoutForCli({ ...noUnit, render: { color: true } });
+    expect(coloured.lines[0]).toMatch(/^\x1B\[38;2;227;179;65m▲\x1B\[0m failproofaid is no longer installed/);
+    expect(coloured.lines[1]).toBe("  Reinstall the daemon:  \x1B[38;2;228;88;125mfailproofai config\x1B[0m");
   });
 });

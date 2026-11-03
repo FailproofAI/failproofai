@@ -1,0 +1,208 @@
+---
+title: "Pydantic AI"
+sidebarTitle: "Pydantic AI"
+description: "Trang bị cho các agent được gõ kiểu dữ liệu, công cụ, lệnh gọi mô hình và thử lại."
+icon: "/images/frameworks/pydantic-ai.svg"
+---
+
+## Cài đặt
+
+```bash
+pip install 'failproofai-sdk[pydantic-ai]'
+```
+
+Hỗ trợ: `pydantic-ai-slim` phiên bản 2.0 đến 3.0. Phiên bản 2.0 đã loại bỏ `Agent(instrument=...)` và giới thiệu giao thức khả năng mà adapter này được xây dựng dựa trên, vì vậy phiên bản 1.x không thể được trang bị theo cách này.
+
+## Trang bị
+
+```python
+import failproofai_sdk
+from pydantic_ai import Agent
+
+failproofai_sdk.configure(environment="production")
+failproofai_sdk.instrument()          # trước khi xây dựng bất kỳ Agent nào
+
+agent = Agent("openai:gpt-4o-mini", system_prompt="Be terse.")
+
+with failproofai_sdk.session():
+    result = agent.run_sync("...")
+```
+
+<Warning>
+  `instrument()` phải chạy trước khi bạn xây dựng một `Agent`. Khả năng được thêm vào tại thời điểm xây dựng, vì vậy một agent được xây dựng trước đó sẽ không có khả năng này và không ghi lại gì, mà không có lỗi vì không có gì sai. Đây là nguyên nhân phổ biến nhất gây ra trace rỗng với adapter này.
+</Warning>
+
+Các agent ở phạm vi module là nơi gặp phải vấn đề này:
+
+```python
+# agents.py
+agent = Agent("openai:gpt-4o-mini")   # được xây dựng tại thời điểm import
+
+# main.py
+import failproofai_sdk
+failproofai_sdk.instrument()          # chạy cái này TRƯỚC
+import agents                         # bây giờ agent nhận được khả năng này
+```
+
+Xác nhận rằng nó đã có hiệu lực:
+
+```python
+print([type(c).__name__ for c in agent.root_capability.capabilities])
+# ['FailproofAI', 'ToolSearch', 'PendingMessageDrainCapability']
+```
+
+Pydantic AI hợp nhất danh sách bạn truyền thành một `root_capability` duy nhất, vì vậy không có thuộc tính `agent.capabilities` để đọc.
+
+Các agent được xây dựng trong khi được trang bị sẽ giữ lại khả năng này, vì vậy bạn có thể `uninstrument()` và trang bị lại mà không cần xây dựng lại chúng.
+
+## Những gì được ghi lại
+
+| Pydantic AI | Sự kiện Failproof |
+| --- | --- |
+| Agent run | `agent_start`, `agent_end` |
+| Model request | `model_request`, `model_response`, với mức sử dụng token |
+| Tool call | `tool_use`, `tool_result`, với các đối số mà mô hình đã gửi |
+| `ModelRetry` từ một công cụ | `tool_result` mang theo lỗi |
+| Ngoại lệ không được xử lý | `error`, sau đó `agent_end` với kết quả `failed` |
+
+Không có cặp hook và không có cặp human-in-the-loop ở đây. Pydantic AI không có ranh giới node hoặc step để đặt trong dấu ngoặc và không có pause cho người dùng tích hợp, vì vậy không có gì để ánh xạ. Nếu bạn xây dựng một trong hai cái, hãy phát ra các sự kiện tự mình — xem [Custom agents](/vi/reference/custom-agents).
+
+`output_type` không tạo ra sự khác biệt đối với trace. Một lần chạy được gõ kiểu dữ liệu và một lần chạy chuỗi ký tự tạo ra các sự kiện tương tự.
+
+## Ví dụ
+
+```python
+import failproofai_sdk
+from pydantic import BaseModel
+from pydantic_ai import Agent, ModelRetry
+
+failproofai_sdk.configure(environment="production")
+failproofai_sdk.instrument()
+
+PRICE = {"widget": 42.0, "gadget": 17.5}
+STOCK = {"widget": 120, "gadget": 0}
+
+
+class Report(BaseModel):
+    headline: str
+    out_of_stock: list[str]
+
+
+agent = Agent(
+    "openai:gpt-4o-mini",
+    output_type=Report,
+    system_prompt="Use the tools for every number. If a tool fails, note it and continue.",
+)
+
+
+@agent.tool_plain
+def price_of(item: str) -> float:
+    """Unit price of an item. Valid: widget, gadget."""
+    return PRICE[item.lower().strip()]
+
+
+@agent.tool_plain
+def stock_of(item: str) -> int:
+    """Units in stock. Valid: widget, gadget."""
+    return STOCK[item.lower().strip()]
+
+
+@agent.tool_plain
+def restock_eta(item: str) -> str:
+    """Restock ETA. Not available."""
+    raise ModelRetry(f"no restock schedule for {item!r} — answer without it")
+
+
+with failproofai_sdk.session():
+    with failproofai_sdk.agent("inventory", goal="stock report"):
+        result = agent.run_sync(
+            "For widget and gadget, get price and stock. "
+            "For anything out of stock, try the restock ETA. Then produce the report."
+        )
+```
+
+Trong trace, `restock_eta` xuất hiện như một `tool_result` mang theo lỗi, tiếp theo là một lệnh gọi mô hình khác nơi agent giải quyết vấn đề đó, và lần chạy vẫn kết thúc với `success`. Cả hai sự kiện đều được ghi lại.
+
+## Lỗi, thử lại và luồng điều khiển
+
+Pydantic AI nâng cao ngoại lệ cho ba điều khác nhau, và adapter tách chúng:
+
+| Ngoại lệ | Được coi là | Kết quả |
+| --- | --- | --- |
+| `ModelRetry`, `ToolRetryError`, `ToolFailedError` | Một thất bại công cụ thực sự | `tool_result` với lỗi; lần chạy vẫn có thể kết thúc `success` |
+| `SkipToolExecution`, `SkipToolValidation`, `SkipModelRequest`, `CallDeferred`, `ApprovalRequired` | Luồng điều khiển | Không phải lỗi; lần chạy đang được điều hướng |
+| Bất cứ điều gì khác | Một thất bại | `error`, sau đó `agent_end` với kết quả `failed` |
+
+`ModelRetry` nằm trong nhóm đầu tiên một cách cố ý. Điều này có nghĩa là một nỗ lực thực sự đã thất bại và mô hình được yêu cầu thử lại, đó là những gì trường lỗi của span công cụ dành cho. Phân loại nó như luồng điều khiển sẽ che giấu các thất bại công cụ thực sự đằng sau một lần chạy thành công.
+
+## Đặt tên cho span của bạn
+
+Span chạy của Pydantic AI được đặt tên là `agent`. Bao quanh lệnh gọi để đặt cho nó một tên bạn chọn:
+
+```python
+with failproofai_sdk.session():
+    with failproofai_sdk.agent("inventory", goal="stock report"):
+        agent.run_sync("...")
+```
+
+Span của framework sau đó lồng trong `inventory`, và đó là nơi các sự kiện mô hình và công cụ được ghi lại.
+
+Giữ `agent_id` có thẻ lực thấp. Nó là khía cạnh chính trên mọi bề mặt bảng điều khiển, vì vậy hãy sử dụng tên vai trò, không bao giờ sử dụng UUID hoặc chuỗi mỗi lần chạy.
+
+## Kiểm soát phiên
+
+Được giải quyết theo thứ tự này, kết quả phù hợp đầu tiên thắng:
+
+1. `instrument("pydantic_ai", session_id=...)`
+2. Phạm vi `failproofai_sdk.session()` bao quanh
+3. `conversation_id` của lần chạy, sau đó là `run_id` của nó
+4. Một `uuid4().hex` được tạo
+
+```python
+with failproofai_sdk.session(f"chat-{user_id}"):
+    agent.run_sync("...")
+```
+
+## Các tùy chọn
+
+```python
+failproofai_sdk.instrument(
+    "pydantic_ai",
+    session_id=None,          # ghim mọi lần chạy vào một id phiên
+    capture_content=True,     # False loại bỏ lời nhắc và hoàn thành từ payload
+)
+```
+
+## Các vấn đề phổ biến
+
+<AccordionGroup>
+  <Accordion title="Lần chạy hoạt động nhưng không có sự kiện nào xuất hiện">
+    `Agent` được xây dựng trước khi `instrument()` chạy. Xem cảnh báo ở trên và kiểm tra `agent.root_capability.capabilities`.
+  </Accordion>
+
+  <Accordion title="Một ngoại lệ thuần túy trong công cụ làm hỏng lần chạy">
+    Một `raise` trần trụi sẽ lan truyền; đó là thiết kế của Pydantic AI. Để cho phép mô hình giải quyết vấn đề đó, hãy nâng cao `ModelRetry` với một thông báo mà nó có thể hành động. Thất bại được ghi lại dù bằng cách nào.
+  </Accordion>
+
+  <Accordion title="Có một span agent lồng nhau mà tôi không tạo ra">
+    Đó là span chạy của Pydantic AI, và đó là nơi các sự kiện mô hình và công cụ được ghi lại. Thả phạm vi của riêng bạn nếu bạn muốn một span duy nhất, với chi phí là tên tùy chỉnh.
+  </Accordion>
+
+  <Accordion title="Traceback bắt đầu với dấu cắt ngắn">
+    Ngăn xếp đồ thị không đồng bộ của Pydantic AI dài hơn giới hạn trường payload, và dòng cuối cùng của traceback là ngoại lệ tự nó. Trường này được cắt ngắn từ phía trước chứ không phải từ phía sau, vì vậy dòng bạn cần sẽ được giữ lại.
+  </Accordion>
+</AccordionGroup>
+
+## Tiếp theo
+
+<Columns cols={3}>
+  <Card title="Cách hoạt động" icon="workflow" href="/vi/start/integrations/custom-agents#going-deeper">
+    Các cặp, ID, vòng đời phiên và giao hàng.
+  </Card>
+  <Card title="Đọc trace" icon="route" href="/vi/sessions/read-a-trace">
+    Theo dõi nhân quả thông qua phiên bạn vừa chụp.
+  </Card>
+  <Card title="Các framework khác" icon="plug" href="/vi/start/integrations">
+    LangGraph, CrewAI, LlamaIndex và các agent tùy chỉnh.
+  </Card>
+</Columns>

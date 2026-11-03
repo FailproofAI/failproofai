@@ -89,6 +89,63 @@ describe("listHermesProfiles", () => {
     expect(names.filter((n) => n === "default")).toHaveLength(1);
     expect(listHermesProfiles()[0].home).toBe(root); // the root wins
   });
+
+  it("discovers config-bearing sibling homes and ignores unrelated backups", async () => {
+    const parent = mkdtempSync(join(tmpdir(), "hermes-homes-"));
+    dirs.push(parent);
+    const root = join(parent, ".hermes");
+    mkdirSync(join(root, "profiles", "nested"), { recursive: true });
+    writeFileSync(join(root, "config.yaml"), "model: default\n");
+    mkdirSync(join(parent, ".hermes-work"), { recursive: true });
+    writeFileSync(join(parent, ".hermes-work", "config.yaml"), "model: work\n");
+    mkdirSync(join(parent, ".hermes-backup"), { recursive: true });
+    process.env.HERMES_HOME = root;
+
+    const { listHermesProfiles } = await import("@/lib/hermes-profiles");
+    expect(listHermesProfiles()).toEqual([
+      { name: "default", home: root },
+      { name: "nested", home: join(root, "profiles", "nested") },
+      { name: "work", home: join(parent, ".hermes-work") },
+    ]);
+  });
+
+  it("normalizes HERMES_HOME at a sibling installation and still finds the default", async () => {
+    const parent = mkdtempSync(join(tmpdir(), "hermes-homes-"));
+    dirs.push(parent);
+    const root = join(parent, ".hermes");
+    const work = join(parent, ".hermes-work");
+    mkdirSync(root, { recursive: true });
+    mkdirSync(work, { recursive: true });
+    writeFileSync(join(root, "config.yaml"), "model: default\n");
+    writeFileSync(join(work, "config.yaml"), "model: work\n");
+    process.env.HERMES_HOME = work;
+
+    const { hermesRoot, listHermesProfiles } = await import("@/lib/hermes-profiles");
+    expect(hermesRoot()).toBe(root);
+    expect(listHermesProfiles()).toEqual([
+      { name: "default", home: root },
+      { name: "work", home: work },
+    ]);
+  });
+
+  it("keeps both homes when nested and sibling profiles share a name", async () => {
+    const parent = mkdtempSync(join(tmpdir(), "hermes-homes-"));
+    dirs.push(parent);
+    const root = join(parent, ".hermes");
+    const sibling = join(parent, ".hermes-work");
+    mkdirSync(join(root, "profiles", "work"), { recursive: true });
+    mkdirSync(sibling, { recursive: true });
+    writeFileSync(join(root, "config.yaml"), "model: default\n");
+    writeFileSync(join(sibling, "config.yaml"), "model: sibling\n");
+    process.env.HERMES_HOME = root;
+
+    const { listHermesProfiles } = await import("@/lib/hermes-profiles");
+    expect(listHermesProfiles()).toEqual([
+      { name: "default", home: root },
+      { name: "work", home: join(root, "profiles", "work") },
+      { name: "work-home", home: sibling },
+    ]);
+  });
 });
 
 describe("hermesDbPaths", () => {

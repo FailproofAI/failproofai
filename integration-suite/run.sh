@@ -130,8 +130,12 @@ for cli in "${CLIS[@]}"; do
     # secret, so GitHub masks it on the way out.
     case "$vj" in
       *FAIL*|*INCONCLUSIVE*|*ERROR*|"")
+        # 20 lines was exactly the verdict block probe-cli.sh prints, so this
+        # echoed the verdict back instead of the cause. probe-cli.sh now appends
+        # up to 25 lines of each failing probe's agent output after that block;
+        # the window has to clear both or the fix lands outside it.
         echo "── $cli probe output (tail) ──" >&2
-        tail -20 "$out_file" >&2
+        tail -80 "$out_file" >&2
         echo "── end $cli ──" >&2 ;;
     esac
     rm -f "$out_file"

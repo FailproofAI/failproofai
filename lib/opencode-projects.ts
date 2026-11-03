@@ -3,10 +3,15 @@
  *
  * Unlike the other agent CLIs that store sessions as filesystem JSONL trees,
  * OpenCode stores everything in a single SQLite database (managed by
- * Drizzle ORM) at `~/.local/share/opencode/opencode.db`. Rather than read
- * the DB directly with `bun:sqlite` (which would couple us to opencode's
- * internal schema), we shell out to `opencode db --format json "<sql>"` —
- * the same surface opencode itself documents as read-only safe.
+ * Drizzle ORM) at `~/.local/share/opencode/opencode.db`, read directly
+ * through `lib/opencode-db.ts`.
+ *
+ * This used to shell out to `opencode db --format json "<sql>"`, to avoid
+ * coupling to opencode's internal schema. That reasoning did not survive
+ * contact with the SQL: the queries name opencode's own tables and columns
+ * either way, so the coupling was identical and the subprocess bought only
+ * its own cost — see `lib/opencode-db.ts` for what that cost turned out to
+ * be.
  *
  * Verified live against opencode v1.14.31:
  *   • `session` columns: id, project_id, parent_id, slug, directory, title,
@@ -21,7 +26,7 @@
  * Refs: https://opencode.ai/docs/   (CLI reference)
  *       https://opencode.ai/docs/plugins/  (plugin model context)
  */
-import { execFileSync } from "node:child_process";
+import { queryOpenCodeDb, withOpenCodeDb } from "./opencode-db";
 import { encodeFolderName } from "./paths";
 import type { ProjectFolder, SessionFile } from "./projects";
 import { runtimeCache } from "./runtime-cache";
@@ -51,41 +56,34 @@ interface OpenCodeProjectRow {
 }
 
 /**
- * Run `opencode db --format json "<sql>"` and parse the result. Returns
- * `null` (not an empty array) when the binary is missing or the query fails
- * — callers can decide whether absent vs. empty is meaningful.
+ * Session rows the dashboard needs, newest first.
+ *
+ * One caller needs sessions alone; the other two need sessions and projects
+ * together and take `readBothRows`, which serves both from a single open
+ * rather than two.
  */
-function runOpenCodeDb<T>(sql: string): T[] | null {
-  try {
-    const stdout = execFileSync("opencode", ["db", "--format", "json", sql], {
-      encoding: "utf8",
-      timeout: 5_000,
-      stdio: ["ignore", "pipe", "pipe"],
-    });
-    if (!stdout.trim()) return [];
-    const parsed = JSON.parse(stdout) as unknown;
-    if (!Array.isArray(parsed)) return null;
-    return parsed as T[];
-  } catch {
-    // Binary missing, db locked, malformed JSON, or SQL error — fail open.
-    return null;
-  }
-}
-
-/**
- * Pull session rows directly from opencode's SQLite. Selects the columns the
- * dashboard needs and orders newest-first.
- */
-function readSessionRows(): OpenCodeSessionRow[] | null {
-  return runOpenCodeDb<OpenCodeSessionRow>(
-    `SELECT id, project_id, slug, directory, title, time_created, time_updated FROM session ORDER BY time_updated DESC LIMIT ${SESSION_LIMIT}`,
+async function readSessionRows(): Promise<OpenCodeSessionRow[] | null> {
+  return queryOpenCodeDb<OpenCodeSessionRow>(
+    "SELECT id, project_id, slug, directory, title, time_created, time_updated FROM session ORDER BY time_updated DESC LIMIT ?",
+    [SESSION_LIMIT],
   );
 }
 
-function readProjectRows(): OpenCodeProjectRow[] | null {
-  return runOpenCodeDb<OpenCodeProjectRow>(
-    `SELECT id, worktree, vcs, name, time_created, time_updated FROM project`,
-  );
+/** Both tables from one open, for the callers that use them together. */
+async function readBothRows(): Promise<{
+  sessions: OpenCodeSessionRow[] | null;
+  projects: OpenCodeProjectRow[] | null;
+}> {
+  const rows = await withOpenCodeDb((db) => ({
+    sessions: db.query<OpenCodeSessionRow>(
+      "SELECT id, project_id, slug, directory, title, time_created, time_updated FROM session ORDER BY time_updated DESC LIMIT ?",
+      [SESSION_LIMIT],
+    ),
+    projects: db.query<OpenCodeProjectRow>(
+      "SELECT id, worktree, vcs, name, time_created, time_updated FROM project",
+    ),
+  }));
+  return { sessions: rows?.sessions ?? null, projects: rows?.projects ?? null };
 }
 
 /**
@@ -97,8 +95,7 @@ function readProjectRows(): OpenCodeProjectRow[] | null {
  * if no sessions exist yet).
  */
 export async function getOpenCodeProjects(): Promise<ProjectFolder[]> {
-  const sessions = readSessionRows();
-  const projects = readProjectRows();
+  const { sessions, projects } = await readBothRows();
   if (sessions === null && projects === null) {
     // Binary missing or query failed — silent degrade (no log spam).
     return [];
@@ -163,7 +160,7 @@ export async function getOpenCodeProjects(): Promise<ProjectFolder[]> {
 
 /** Sessions under a given absolute cwd. Used by the project detail page. */
 export async function getOpenCodeSessionsForCwd(cwd: string): Promise<SessionFile[]> {
-  const sessions = readSessionRows();
+  const sessions = await readSessionRows();
   if (!sessions) return [];
   const matches = sessions.filter((s) => s.directory === cwd);
   return matches.map((s) => {
@@ -193,8 +190,7 @@ export async function getOpenCodeSessionsByEncodedName(name: string): Promise<Op
   let projects: OpenCodeProjectRow[] | null;
   let sessions: OpenCodeSessionRow[] | null;
   try {
-    projects = readProjectRows();
-    sessions = readSessionRows();
+    ({ projects, sessions } = await readBothRows());
   } catch (error) {
     logWarn("Failed to read OpenCode DB:", error);
     return { cwd: null, sessions: [] };

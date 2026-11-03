@@ -1,0 +1,44 @@
+---
+title: "הגדר ביקורת"
+description: "הגדר מטרת ביקורת, אוכלוסיית הפעלה, והקשר ראיות."
+icon: "sliders-horizontal"
+---
+
+איכות הביקורת מתחילה בהיקפה. בקשה רחבה כמו "מצא בעיות" מייצרת תוצאות פחות שימושיות מאשר שאלת כשל קונקרטית.
+
+## קביעת הגדרות הביקורת
+
+<Tabs>
+  <Tab title="Dashboard">
+    1. עבור אל **Analyze → Audits → New audit** והזן את השם והתיאור.
+    2. הגדר את ההתאמה, חלון הזמן, טווח סוכן/סביבה, שגיאות מתעלמות, רגישות, וממצאים מקסימליים.
+    3. ב־**agents**, הוסף או בדוק הקשר סוכן, ואז הוסף את הערת האופרטור וכל כתובות HTTPS ציבוריות.
+    4. בחר ערוצי התnotification ובחר **create audit**. ההפעלה הראשונה מתופעלת מיד.
+
+    ![הטופס ביקורת חדש עם שם, תיאור, קדנציה, חלון, טווח סביבה וסוכן, שגיאות מתעלמות, הגדרות ניתוח, הערה, עמודי התייחסות, וערוצי התnotification.](/images/dashboard/audit-new.png)
+  </Tab>
+  <Tab title="CLI">
+    ```bash
+    fp audits create checkout-reliability \
+      --description "Find checkout failures that agents do not recover from" \
+      --scope '{"environments":["production"],"agent_ids":["checkout-agent"]}' \
+      --schedule-interval-secs 86400 \
+      --window-mode since_last \
+      --sensitivity medium \
+      --text-file ./checkout-audit-brief.txt \
+      --url https://runbooks.example.com/checkout
+    ```
+
+    ההפעלה הראשונה מתופעלת מיד. כלול את ההערה וכתובות ההתייחסות במהלך היצירה כדי שהפעלה זו תקבל אותן.
+
+    ראה את ההתייחסות המלאה של [`fp audits create`](/he/reference/cloud-cli#audits).
+  </Tab>
+</Tabs>
+
+<Tip>
+  התחל עם הפעלה כושלת ידועה וכמה הפעלות נורמליות. זה נותן לביקורת גם דוגמה חיובית וגם קבוצת השוואה.
+</Tip>
+
+<Info>
+  הקשר הביקורת מאוחסן כמשאב משלו כך שעריכת ביקורת אינה מסירה בטעות את החומר ההתייחסות.
+</Info>

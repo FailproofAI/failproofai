@@ -9,7 +9,7 @@ use std::path::{Path, PathBuf};
 use std::sync::atomic::Ordering;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
-use fpai_collect::Uploader;
+use fpai_collect::{Redact, UploadError, Uploader};
 use wiremock::matchers::{header, method, path};
 use wiremock::{Mock, MockServer, ResponseTemplate};
 
@@ -60,6 +60,72 @@ fn parked(dir: &Path) -> Vec<String> {
 }
 
 #[tokio::test]
+async fn a_later_chunk_credential_refusal_preserves_all_bytes_and_can_be_resent() {
+    use fpai_collect::uploader::OnCredentialRefusal;
+    use wiremock::matchers::body_string;
+
+    for status in [401, 403] {
+        for policy in [OnCredentialRefusal::Park, OnCredentialRefusal::Drop] {
+            let server = MockServer::start().await;
+            Mock::given(method("POST"))
+                .and(body_string("{ \"n\": 2 }\n"))
+                .respond_with(ResponseTemplate::new(status))
+                .mount(&server)
+                .await;
+            Mock::given(method("POST"))
+                .respond_with(
+                    ResponseTemplate::new(200)
+                        .set_body_json(serde_json::json!({"accepted": 1, "skipped": 0})),
+                )
+                .mount(&server)
+                .await;
+            let failed = tmpdir("later-credential");
+            let batch = failed.join("original.a1.c401.jsonl");
+            let original = b"{ \"n\": 1 }\n{ \"n\": 2 }\n{ \"n\": 3 }\n";
+            fs::write(&batch, original).unwrap();
+            let up = uploader(&server, &failed).with_max_upload_bytes(11);
+
+            let result = up.upload_file_with(&batch, policy).await;
+            assert!(matches!(result, Err(UploadError::Client { status: s }) if s == status));
+            let requests = server.received_requests().await.unwrap();
+            assert_eq!(requests.len(), 2, "the third chunk was never sent");
+            assert_eq!(requests[0].body, b"{ \"n\": 1 }\n");
+            assert_eq!(requests[1].body, b"{ \"n\": 2 }\n");
+            let names = parked(&failed);
+            assert_eq!(names, [format!("original.a2.c{status}.jsonl")]);
+            let retained = failed.join(&names[0]);
+            assert_eq!(
+                fs::read(&retained).unwrap(),
+                original,
+                "{policy:?}/{status}"
+            );
+
+            server.reset().await;
+            Mock::given(method("POST"))
+                .respond_with(
+                    ResponseTemplate::new(200)
+                        .set_body_json(serde_json::json!({"accepted": 1, "skipped": 0})),
+                )
+                .expect(3)
+                .mount(&server)
+                .await;
+            up.upload_file_with(&retained, policy).await.unwrap();
+            assert!(parked(&failed).is_empty());
+            let resent: Vec<u8> = server
+                .received_requests()
+                .await
+                .unwrap()
+                .into_iter()
+                .flat_map(|request| request.body)
+                .collect();
+            assert_eq!(resent, original, "accepted and unsent chunks all survive");
+            server.verify().await;
+            fs::remove_dir_all(failed).unwrap();
+        }
+    }
+}
+
+#[tokio::test]
 async fn a_2xx_with_an_accepting_ack_deletes_the_batch() {
     let server = MockServer::start().await;
     Mock::given(method("POST"))
@@ -89,6 +155,113 @@ async fn a_2xx_with_an_accepting_ack_deletes_the_batch() {
 }
 
 #[tokio::test]
+async fn sdk_batches_are_redacted_before_upload() {
+    let server = MockServer::start().await;
+    Mock::given(method("POST"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+            "accepted": 1, "skipped": 0
+        })))
+        .mount(&server)
+        .await;
+
+    let spool = tmpdir("redact-spool");
+    let failed = tmpdir("redact-failed");
+    let batch = spool.join("event-s-1-0.jsonl");
+    fs::write(
+        &batch,
+        r#"{"type":"tool_use","input":{"command":"API_KEY=abcdefghijklmnop","password":"qrstuvwxyzabcdef","API_KEY=secretvalue123456":true}}
+"#,
+    )
+    .unwrap();
+
+    uploader(&server, &failed)
+        .upload_file(&batch)
+        .await
+        .unwrap();
+
+    let requests = server.received_requests().await.unwrap();
+    let body = String::from_utf8(requests[0].body.clone()).unwrap();
+    assert!(
+        !body.contains("abcdefghijklmnop"),
+        "credential reached the wire"
+    );
+    assert!(!body.contains("qrstuvwxyzabcdef"));
+    assert!(!body.contains("API_KEY=secretvalue123456"));
+    assert!(body.contains("[redacted:secret-assignment]"));
+
+    fs::remove_dir_all(&spool).ok();
+    fs::remove_dir_all(&failed).ok();
+}
+
+/// A batch from an SDK that predates its own redaction gets exactly one pass —
+/// this one — so it has to reach credentials held in secret-named arrays too.
+#[tokio::test]
+async fn secret_named_arrays_in_sdk_batches_are_redacted_before_upload() {
+    let server = MockServer::start().await;
+    Mock::given(method("POST"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+            "accepted": 1, "skipped": 0
+        })))
+        .mount(&server)
+        .await;
+
+    let spool = tmpdir("redact-array-spool");
+    let failed = tmpdir("redact-array-failed");
+    let batch = spool.join("event-s-1-0.jsonl");
+    fs::write(
+        &batch,
+        r#"{"type":"tool_use","input":{"password":["ordinarysecretvalue1"],"client_secret":["ordinarysecretvalue2"],"api_key":["ordinarysecretvalue3"],"access_token":[["ordinarysecretvalue4"]]}}
+"#,
+    )
+    .unwrap();
+
+    uploader(&server, &failed)
+        .upload_file(&batch)
+        .await
+        .unwrap();
+
+    let requests = server.received_requests().await.unwrap();
+    let body = String::from_utf8(requests[0].body.clone()).unwrap();
+    assert!(
+        !body.contains("ordinarysecretvalue"),
+        "credential reached the wire"
+    );
+    assert_eq!(body.matches("[redacted:secret-assignment]").count(), 4);
+
+    fs::remove_dir_all(&spool).ok();
+    fs::remove_dir_all(&failed).ok();
+}
+
+#[tokio::test]
+async fn uploader_redaction_can_be_disabled() {
+    let server = MockServer::start().await;
+    Mock::given(method("POST"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+            "accepted": 1, "skipped": 0
+        })))
+        .mount(&server)
+        .await;
+
+    let spool = tmpdir("redact-off-spool");
+    let failed = tmpdir("redact-off-failed");
+    let batch = spool.join("event-s-1-0.jsonl");
+    fs::write(&batch, "{\"output\":\"API_KEY=abcdefghijklmnop\"}\n").unwrap();
+
+    uploader(&server, &failed)
+        .with_redact(Redact::Off)
+        .upload_file(&batch)
+        .await
+        .unwrap();
+
+    let requests = server.received_requests().await.unwrap();
+    let body = String::from_utf8(requests[0].body.clone()).unwrap();
+    assert!(body.contains("abcdefghijklmnop"));
+
+    fs::remove_dir_all(&spool).ok();
+    fs::remove_dir_all(&failed).ok();
+}
+
+#[tokio::test]
 async fn a_200_that_stored_nothing_is_counted_as_fully_skipped() {
     // The failure this exists for: a systematically malformed transform gets
     // HTTP 200 for every batch while the server stores none of it. Without
@@ -106,12 +279,41 @@ async fn a_200_that_stored_nothing_is_counted_as_fully_skipped() {
     let batch = write_batch(&spool, "claude-s-1-0.jsonl", 5);
 
     let up = uploader(&server, &failed);
-    up.upload_file(&batch).await.unwrap();
+    // It used to return Ok here, so `upload_file` deleted the batch: the events
+    // were not on the server, this file was their last copy, and it went in the
+    // bin behind one ERROR line in the daemon's own log. That contradicted this
+    // module's stated invariant — `failed/` is a retry queue and such a batch is
+    // "never deleted" — and it is the whole reason the ack body is read at all.
+    let err = up.upload_file(&batch).await.unwrap_err();
+    assert!(
+        matches!(err, UploadError::StoredNothing { skipped: 5 }),
+        "expected StoredNothing, got {err:?}"
+    );
 
     let m = up.metrics();
     assert_eq!(m.batches_fully_skipped.load(Ordering::Relaxed), 1);
     assert_eq!(m.skipped_total.load(Ordering::Relaxed), 5);
     assert_eq!(m.accepted_total.load(Ordering::Relaxed), 0);
+    // `last_ok_ts` is documented as "the last upload the server ACCEPTED …  the
+    // loudest thing in this file", and it was stored unconditionally on every
+    // parsed 200 — including this one, which stored nothing. On a machine whose
+    // events are systematically malformed (the case this whole feature exists
+    // for) it advanced on every upload and every retry, so the one field an
+    // operator or an alert keys on to answer "is anything landing" reported a
+    // successful delivery seconds ago while nothing had ever been stored.
+    assert_eq!(
+        m.last_ok_ts.load(Ordering::Relaxed),
+        0,
+        "a batch the server stored nothing of must not count as a successful upload"
+    );
+
+    // The data survives, in failed/, rather than being deleted.
+    assert!(
+        !batch.exists(),
+        "the batch should have moved out of the spool"
+    );
+    let parked: Vec<_> = fs::read_dir(&failed).unwrap().flatten().collect();
+    assert_eq!(parked.len(), 1, "the batch should be parked, not deleted");
 
     fs::remove_dir_all(&spool).ok();
     fs::remove_dir_all(&failed).ok();
@@ -500,6 +702,227 @@ async fn a_200_whose_json_lacks_accepted_is_parked() {
     assert!(up.upload_file(&batch).await.is_err());
     assert_eq!(parked(&failed).len(), 1, "must be parked");
     assert!(!batch.exists());
+
+    fs::remove_dir_all(&spool).ok();
+    fs::remove_dir_all(&failed).ok();
+}
+
+#[tokio::test]
+async fn a_retried_fully_skipped_batch_is_not_counted_twice() {
+    // A fully-skipped batch is PARKED now rather than deleted, and `retry_parked`
+    // feeds it back through `upload_file` — which runs `record_ack` again. Both
+    // counters are published to operators as counts of EVENTS and BATCHES
+    // (`DeliveryHealth.skipped`, `.batches_fully_skipped`), so re-counting on
+    // every retry inflated them by however many retry passes had happened: one
+    // 5-event batch reported 15 skipped across 3 batches. An operator sizing the
+    // incident from `health.json` tripled it.
+    let server = MockServer::start().await;
+    Mock::given(method("POST"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+            "accepted": 0,
+            "skipped": 5
+        })))
+        .mount(&server)
+        .await;
+
+    let spool = tmpdir("skip-retry-spool");
+    let failed = tmpdir("skip-retry-failed");
+    let up = uploader(&server, &failed);
+
+    // First attempt: the batch is counted once and parked.
+    let batch = write_batch(&spool, "claude-s-1-0.jsonl", 5);
+    up.upload_file(&batch).await.unwrap_err();
+
+    let m = up.metrics();
+    assert_eq!(m.skipped_total.load(Ordering::Relaxed), 5);
+    assert_eq!(m.batches_fully_skipped.load(Ordering::Relaxed), 1);
+
+    // Two retry passes over the parked file, exactly as `retry_parked` drives it.
+    for _ in 0..2 {
+        let parked: Vec<_> = fs::read_dir(&failed).unwrap().flatten().collect();
+        let path = parked
+            .into_iter()
+            .map(|e| e.path())
+            .find(|p| {
+                p.file_name()
+                    .and_then(|n| n.to_str())
+                    .is_some_and(|n| !n.ends_with(".poison"))
+            })
+            .expect("a retryable parked batch");
+        up.upload_file(&path).await.unwrap_err();
+    }
+
+    assert_eq!(
+        m.skipped_total.load(Ordering::Relaxed),
+        5,
+        "5 events were skipped once; retrying the same batch must not re-count them"
+    );
+    assert_eq!(
+        m.batches_fully_skipped.load(Ordering::Relaxed),
+        1,
+        "one batch was fully skipped; retrying it must not report three"
+    );
+
+    fs::remove_dir_all(&spool).ok();
+    fs::remove_dir_all(&failed).ok();
+}
+
+#[tokio::test]
+async fn a_partially_skipped_batch_is_parked_not_deleted() {
+    // `{"accepted":3,"skipped":1}` was treated as a plain success, so the spool
+    // file was DELETED and the one refused event was destroyed: this file was
+    // its last local copy, the server never had it, and nothing recorded which
+    // event it was. Same permanent silent loss the fully-skipped branch closed,
+    // reached through an ack that merely looks healthier.
+    //
+    // Safe to park and retry: `upload_file` already relies on the server
+    // deduping a byte-identical resend, so the 3 it accepted are not
+    // double-counted when the batch goes again.
+    let server = MockServer::start().await;
+    Mock::given(method("POST"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+            "accepted": 3,
+            "skipped": 1
+        })))
+        .mount(&server)
+        .await;
+
+    let spool = tmpdir("partial-spool");
+    let failed = tmpdir("partial-failed");
+    let batch = write_batch(&spool, "claude-s-1-0.jsonl", 4);
+
+    let up = uploader(&server, &failed);
+    let err = up.upload_file(&batch).await.unwrap_err();
+    assert!(
+        matches!(
+            err,
+            UploadError::PartiallySkipped {
+                accepted: 3,
+                skipped: 1
+            }
+        ),
+        "expected PartiallySkipped, got {err:?}"
+    );
+
+    assert!(
+        !batch.exists(),
+        "the batch should have moved out of the spool"
+    );
+    let parked: Vec<_> = fs::read_dir(&failed).unwrap().flatten().collect();
+    assert_eq!(parked.len(), 1, "the refused event's last copy was deleted");
+
+    let m = up.metrics();
+    assert_eq!(m.accepted_total.load(Ordering::Relaxed), 3);
+    assert_eq!(m.skipped_total.load(Ordering::Relaxed), 1);
+    // Not a FULLY skipped batch, so that counter must stay clear — an operator
+    // reads it as "a systematic problem", which this is not.
+    assert_eq!(m.batches_fully_skipped.load(Ordering::Relaxed), 0);
+    // Something WAS stored, so this genuinely was a successful delivery in part.
+    assert!(m.last_ok_ts.load(Ordering::Relaxed) > 0);
+
+    fs::remove_dir_all(&spool).ok();
+    fs::remove_dir_all(&failed).ok();
+}
+
+/// Every attempt carries the three identity headers: a request id that is new
+/// per attempt, and a batch id that is the same across the retries of one batch
+/// AND across the `failed/` re-drive, which renames the file. Without the
+/// second property "this batch was tried N times" is not one server-log query.
+#[tokio::test]
+async fn every_attempt_carries_request_batch_and_machine_ids() {
+    let server = MockServer::start().await;
+    // Two 503s, then success: three attempts of one batch.
+    Mock::given(method("POST"))
+        .and(path("/events"))
+        .respond_with(ResponseTemplate::new(503))
+        .up_to_n_times(2)
+        .mount(&server)
+        .await;
+    Mock::given(method("POST"))
+        .and(path("/events"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+            "accepted": 1, "skipped": 0
+        })))
+        .mount(&server)
+        .await;
+
+    let spool = tmpdir("ids-spool");
+    let failed = tmpdir("ids-failed");
+    let batch = write_batch(&spool, "hooks-s-1-0.jsonl", 1);
+    let up = uploader(&server, &failed).with_machine_id(Some("m-123"));
+    up.upload_file(&batch).await.unwrap();
+
+    let requests = server.received_requests().await.unwrap();
+    assert_eq!(requests.len(), 3);
+    let get = |r: &wiremock::Request, h: &str| {
+        r.headers
+            .get(h)
+            .unwrap_or_else(|| panic!("{h} missing"))
+            .to_str()
+            .unwrap()
+            .to_string()
+    };
+    let request_ids: Vec<String> = requests.iter().map(|r| get(r, "x-request-id")).collect();
+    let batch_ids: Vec<String> = requests
+        .iter()
+        .map(|r| get(r, "x-failproofai-batch-id"))
+        .collect();
+
+    for id in &request_ids {
+        assert_eq!(id.len(), 32, "{id}");
+        assert!(
+            id.bytes().all(|c| matches!(c, b'0'..=b'9' | b'a'..=b'f')),
+            "{id}"
+        );
+    }
+    let mut distinct = request_ids.clone();
+    distinct.sort();
+    distinct.dedup();
+    assert_eq!(
+        distinct.len(),
+        3,
+        "each attempt needs its own request id: {request_ids:?}"
+    );
+    assert!(
+        batch_ids.iter().all(|b| b == &batch_ids[0]),
+        "{batch_ids:?}"
+    );
+    assert!(
+        requests
+            .iter()
+            .all(|r| get(r, "x-failproofai-machine-id") == "m-123")
+    );
+
+    // The same batch re-driven from `failed/` under its parked name keeps its id.
+    assert_eq!(
+        fpai_collect::uploader::batch_id(Path::new("/failed/hooks-s-1-0.a1.jsonl")),
+        batch_ids[0]
+    );
+
+    fs::remove_dir_all(&spool).ok();
+    fs::remove_dir_all(&failed).ok();
+}
+
+#[tokio::test]
+async fn an_unset_machine_id_is_sent_as_unknown() {
+    let server = MockServer::start().await;
+    Mock::given(method("POST"))
+        .and(path("/events"))
+        .and(header("x-failproofai-machine-id", "unknown"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+            "accepted": 1, "skipped": 0
+        })))
+        .expect(1)
+        .mount(&server)
+        .await;
+
+    let spool = tmpdir("mid-spool");
+    let failed = tmpdir("mid-failed");
+    let batch = write_batch(&spool, "hooks-s-1-0.jsonl", 1);
+    uploader(&server, &failed)
+        .upload_file(&batch)
+        .await
+        .unwrap();
 
     fs::remove_dir_all(&spool).ok();
     fs::remove_dir_all(&failed).ok();

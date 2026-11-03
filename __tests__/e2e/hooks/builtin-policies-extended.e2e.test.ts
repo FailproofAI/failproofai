@@ -5,7 +5,7 @@
  * sanitize-connection-strings fixtures that trigger the PostToolUse hook.
  */
 import { describe, it } from "vitest";
-import { runHook, assertAllow, assertInstruct } from "../helpers/hook-runner";
+import { runHook, assertAllow, assertInstruct, assertPreToolUseDeny } from "../helpers/hook-runner";
 import { createFixtureEnv } from "../helpers/fixture-env";
 import { Payloads } from "../helpers/payloads";
 
@@ -36,19 +36,25 @@ describe("warn-package-publish extended", () => {
 
 // ── block-failproofai-commands — npx/bunx invocations ───────────────────────────
 
+// Both cases below asserted `allow` until `block-self-pause` was merged in and
+// its tokenizer replaced the anchored regex. The old test NAMES stated the hole
+// as the expectation — "regex requires failproofai at cmd start, not after npx"
+// — so a package runner in front of the binary walked through a default-on
+// self-protection policy. The merged matcher walks runner prefixes off before
+// it looks for the binary, so these deny now.
 describe("block-failproofai-commands extended", () => {
-  it("allows npx failproofai (regex requires failproofai at cmd start, not after npx)", () => {
+  it("blocks npx failproofai — a runner prefix no longer hides the binary", () => {
     const env = createFixtureEnv();
     env.writeConfig({ enabledPolicies: ["block-failproofai-commands"] });
     const result = runHook("PreToolUse", Payloads.preToolUse.bash("npx failproofai --list-policies", env.cwd), { homeDir: env.home });
-    assertAllow(result);
+    assertPreToolUseDeny(result);
   });
 
-  it("allows bunx failproofai (regex requires failproofai at cmd start, not after bunx)", () => {
+  it("blocks bunx failproofai — same, through the other runner", () => {
     const env = createFixtureEnv();
     env.writeConfig({ enabledPolicies: ["block-failproofai-commands"] });
     const result = runHook("PreToolUse", Payloads.preToolUse.bash("bunx failproofai --hook PreToolUse", env.cwd), { homeDir: env.home });
-    assertAllow(result);
+    assertPreToolUseDeny(result);
   });
 });
 

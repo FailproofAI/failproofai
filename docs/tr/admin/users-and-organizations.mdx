@@ -1,0 +1,44 @@
+---
+title: "Kullanıcılar ve kuruluşlar"
+description: "Üyelik kontrolü ve her kuruluşun verilerini ve işlemlerini kapsamlı tutun."
+icon: "users"
+---
+
+Kuruluşlar oturumları, değerlendirmeleri, denetimleri, sorunları, uyarıları, sorguları, panoları, kullanıcıları ve anahtarları izole eder. Yönetim kaynaklarını değiştirmeden önce etkin kuruluşu onaylayın.
+
+## Üyeleri ve kuruluşları yönetin
+
+<Tabs>
+  <Tab title="Dashboard">
+    1. Kuruluşlar arasında geçiş yapmak için Cloud kenar çubuğunun üstündeki kuruluş değiştiriciyi kullanın.
+    2. Üyeleri aramak veya etkin durum ve rol ile filtrelemek için **Administration → Users** bölümüne gidin.
+    3. **new user** seçeneğini seçin, e-posta adresini girin, bir izin kümesi seçin ve gerekirse geçersiz kılmaları ayarlayın.
+    4. Daha sonra bir kullanıcıyı açarak yetkilendirmeleri güncelleyin, oturum açmayı devre dışı bırakın veya hesabı yeniden etkinleştirin.
+
+    ![Üye e-posta adreslerini, izin kümelerini ve düzenleme ile devre dışı bırakma denetimlerini gösteren Kullanıcılar sayfası.](/images/dashboard/users.png)
+  </Tab>
+  <Tab title="CLI">
+    ```bash
+    fp orgs list
+    fp orgs switch reliability-team
+    fp orgs current
+    fp orgs perms
+
+    fp users create engineer@example.com --permission-set standard
+    fp users show engineer@example.com
+    fp users update engineer@example.com --add audits:write
+    fp users disable engineer@example.com
+    fp users enable engineer@example.com
+    ```
+  </Tab>
+</Tabs>
+
+Yöneticiler kullanıcı oluşturabilir, güncelleyebilir, devre dışı bırakabilir ve yeniden etkinleştirebilir, ardından rollerine uygun izin kümesini atayabilir. API, devre dışı bırakmak için bir silme işlemi kullanır, ancak hesabı veya üyelik kaydını kaldırmaz.
+
+<Warning>
+  Bir kullanıcıyı devre dışı bırakmak bu kimliği yalnızca seçili olan kuruluşta değil, her kuruluşta oturum açmaktan engeller. Yeniden etkinleştirme, bu kuruluştaki genel oturum açma ve üyenin izinlerini geri yükler.
+</Warning>
+
+<Tip>
+  Hizmet hesaplarına bir iş yüküne ve sahibine bağlı tanımlayıcı adlar verin. Kuruluşlar arasında veya insanlar ile makineler arasında anahtarları paylaşmaktan kaçının.
+</Tip>

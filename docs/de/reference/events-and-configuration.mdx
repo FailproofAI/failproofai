@@ -1,0 +1,84 @@
+---
+title: "Events und Konfiguration"
+description: "Referenz für das Event-Modell, Umgebungen, lokalen Speicher und Konfigurationsgrenzen."
+icon: "list-tree"
+---
+
+## Event-Familien
+
+- Agent-Start, -Ende, -Pause und -Wiederaufnahme
+- Modellanfrage und -antwort
+- Tool-Nutzung und Ergebnis
+- Hook ausgelöst und abgeschlossen
+- Menschliches Warten, Eingabe, Pause und Unterbrechung
+- Explizite Fehler
+
+Jedes Event enthält einen Zeitstempel, eine Session-ID, eine Agent-ID, einen Event-Typ und eine Umgebung. Event-spezifische Felder enthalten Modell-, Tool-, Korrelations-, Ergebnis-, Inhalts-, Dauer- oder Fehlerdaten.
+
+## Einen Event-Vertrag untersuchen
+
+<Tabs>
+  <Tab title="Dashboard">
+    1. Öffne **Observe → Events**.
+    2. Lege ein kurzes Zeitfenster fest und filtere nach Umgebung, Agent und Event-Typ.
+    3. Wähle ein Event aus, um dessen normalisierte Felder und den Rohinhalt zu inspizieren, und öffne anschließend die zugehörige Session, um den Ausführungskontext einzusehen.
+    4. Falls eine zugehörige Dauer fehlt, überprüfe, ob Start- und Abschluss-Event dieselbe Korrelations-ID verwenden.
+
+    Nutze den Events-Stream, um die Daten auf einen einzelnen Agent-Lauf einzugrenzen und die normalisierten Event-Felder zu untersuchen.
+
+    ![Der Live-Events-Stream mit Filtern für Umgebung, Agent, Session und Event-Typ.](/images/dashboard/events-stream.png)
+
+    Folge anschließend dem Event in seine Session. Der Trace zeigt, was unmittelbar davor und danach geschah – das ist notwendig, wenn der Inhalt allein mehrdeutig ist.
+
+    ![Der verknüpfte Session-Trace zur Untersuchung des Events im Ausführungskontext.](/images/dashboard/session-detail.png)
+
+    Vergleiche Korrelations-IDs und Zeitstempel in beiden Ansichten, wenn ein zugehöriges Event oder eine Dauer fehlt.
+  </Tab>
+  <Tab title="CLI">
+    Ermittle gültige Filterwerte und rufe dann vollständige Event-Inhalte für eine Session ab:
+
+    ```bash
+    fp list event_types
+    fp list envs
+    fp events --since 1h \
+      --env production \
+      --event-type tool_use,tool_result \
+      --session-id <session-id> \
+      --full
+    ```
+
+    Verwende `fp --json events ... --fields ts,event_type,session_id,payload` für maschinenlesbare Untersuchungen.
+  </Tab>
+</Tabs>
+
+## Reservierte SDK-Felder
+
+Verwende `timestamp`, `session_id`, `agent_id`, `type` oder `environment` nicht als benutzerdefinierte Python-SDK-Felder. Paarweise Event-Dauern wie die Tool-Ergebnis-Dauer werden vom SDK berechnet und können nicht manuell angegeben werden.
+
+## Lokale Grenzen
+
+- Der Failproof AI-Zustand liegt unter `~/.failproofai`, sofern nicht explizit anders konfiguriert.
+- `failproofai-sdk` schreibt stets unter `~/.failproofai/custom-agents`. `FAILPROOFAI_HOME` verschiebt dieses Verzeichnis; das Segment `custom-agents` wird immer angehängt, sodass der Spool-Bereich nicht außerhalb davon platziert werden kann. Nur das SDK-eigene `configure(base_dir=...)` schreibt an einen anderen Ort. `AGENTEYE_HOME` wird vom älteren `agenteye-collector` ausgelesen, um zu bestimmen, was überwacht wird, und hat keinen Einfluss mehr darauf, wohin das SDK schreibt.
+- Umgebungsbezeichnungen können über die SDK-Konfiguration oder `AGENTEYE_ENVIRONMENT` gesetzt werden.
+- Daemon-Anmeldedaten werden getrennt von nicht-geheimen Einstellungen gespeichert.
+
+Verwende stabile, wenig variierende Umgebungsnamen. Kommas werden in Daemon-Umgebungsbezeichnungen nicht unterstützt.
+
+## Eine Umgebungsbezeichnung ändern
+
+<Tabs>
+  <Tab title="Dashboard">
+    Umgebungsbezeichnungen werden vom sendenden SDK oder Failproof-Daemon vergeben. Nachdem du eine geändert hast, öffne **Observe → Sessions** und verwende den Umgebungsfilter, um zu bestätigen, dass neue Sessions den neuen Wert tragen. Bestehende Sessions behalten ihre ursprüngliche Umgebung.
+
+  </Tab>
+  <Tab title="CLI">
+    Für `failproofai-sdk` konfiguriere die Umgebung im Code oder mit der veralteten Umgebungsvariable. Führe die Daemon-Konfiguration erneut aus, wenn du Einstellungen auf Maschinenebene änderst.
+
+    ```bash
+    export AGENTEYE_ENVIRONMENT=production-us-east
+    failproofai config
+    failproofai config --status
+    fp sessions --since 1h --env production-us-east
+    ```
+  </Tab>
+</Tabs>

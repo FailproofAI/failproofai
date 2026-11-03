@@ -63,7 +63,7 @@ describe("replay registry snapshot/restore", () => {
     clearPolicies();
   });
 
-  it("restoreReplay puts back the pre-init registry", () => {
+  it("restoreReplay puts back the pre-init registry", async () => {
     registerPolicy(
       "test/custom-marker",
       "test policy",
@@ -73,7 +73,7 @@ describe("replay registry snapshot/restore", () => {
     const before = getAllPolicies().map((p) => p.name).sort();
     expect(before).toContain("test/custom-marker");
 
-    initReplay();
+    await initReplay();
     const duringInit = getAllPolicies().map((p) => p.name);
     expect(duringInit).not.toContain("test/custom-marker");
     expect(duringInit.length).toBeGreaterThan(10); // builtins are loaded
@@ -83,14 +83,14 @@ describe("replay registry snapshot/restore", () => {
     expect(after).toEqual(before);
   });
 
-  it("restoreReplay is idempotent when called twice", () => {
+  it("restoreReplay is idempotent when called twice", async () => {
     registerPolicy(
       "test/another-marker",
       "test policy",
       async () => allow(),
       { events: ["PreToolUse"] },
     );
-    initReplay();
+    await initReplay();
     restoreReplay();
     restoreReplay(); // second call should be a no-op
     expect(getAllPolicies().map((p) => p.name)).toContain("test/another-marker");

@@ -1,0 +1,69 @@
+---
+title: "Hành vi khi gặp sự cố"
+description: "Hiểu điều gì xảy ra khi đánh giá chính sách hoặc daemon cục bộ không khả dụng."
+icon: "shield-alert"
+---
+
+Failproof AI được thiết kế để sự cố trong thực thi là có thể nhìn thấy được thay vì âm thầm cho phép công việc rủi ro.
+
+## Chẩn đoán một khối failure-closed
+
+<Tabs>
+  <Tab title="Dashboard">
+    1. Đi tới **Admin → enforcement** và mở máy.
+    2. Kiểm tra lần check-in cuối cùng, deployment được gán và deployment được báo cáo.
+    3. Đi tới **Observe → policy** và mở phiên làm việc của quyết định bị từ chối.
+    4. Xác nhận xem lý do có báo cáo về khả năng tiếp cận daemon, version skew hoặc chính sách đó không.
+
+  </Tab>
+  <Tab title="CLI">
+    ```bash
+    failproofai config --status
+    npm install -g failproofai@latest
+    failproofai config
+    ```
+
+    Chạy lại `failproofai config` sẽ cập nhật và khởi động lại daemon sau khi nâng cấp gói.
+  </Tab>
+</Tabs>
+
+Trên một máy được cấu hình để sử dụng `failproofaid`, daemon là bộ đánh giá duy nhất. Nếu nó không thể tiếp cận được hoặc phiên bản giao thức của nó không khớp với CLI, đánh giá hook sẽ thất bại ở chế độ đóng. Hành động bị từ chối với lý do hướng dẫn nhà điều hành kiểm tra hoặc cập nhật daemon.
+
+Trước khi cấu hình daemon, hook đánh giá các chính sách trong quá trình. Khi bản ghi cấu hình daemon được lưu, Failproof AI không âm thầm quay trở lại bộ đánh giá thứ hai khi daemon gặp sự cố.
+
+## Đáp ứng với quyết định failure-closed
+
+1. Chạy `failproofai config --status`.
+2. Nếu phiên bản khác nhau, hãy chạy lại `failproofai config` sau khi cập nhật gói.
+3. Nếu daemon không thể tiếp cận được, hãy kiểm tra trạng thái dịch vụ và nhật ký cục bộ.
+4. Chỉ tiếp tục công việc agent sau khi một đường dẫn đánh giá chính sách đã biết là lành mạnh.
+
+<Warning>
+  Không lặp đi lặp lại hành động bị khóa. Phản hồi failure-closed có nghĩa là hệ thống không thể xác định được rằng hành động đó là an toàn.
+</Warning>
+
+## Một pack sẽ không tải
+
+Một máy được yêu cầu thực thi một pack và không thể chạy nó, sẽ từ chối thay vì tiếp tục âm thầm. Kích hoạt là một **recorded expectation**, không bao giờ là một cái trống: một máy không có pack nào được cài đặt là im lặng, trong khi một pack được khai báo và sẽ không giải quyết được — hoặc đăng ký ít hơn những gì manifest khai báo — sẽ từ chối.
+
+Sự từ chối là **narrow**, không giống như một daemon không thể tiếp cận được. Một daemon không thể tiếp cận được có nghĩa là không xảy ra đánh giá nào cả, vì vậy không có gì có thể được biết là an toàn. Một pack sẽ không tải có một tập hợp các guard bị thiếu có thể liệt kê, vì mỗi chính sách được khai báo đều mang theo `match` của riêng nó — vì vậy nó chỉ từ chối các sự kiện và công cụ mà các chính sách đó bao phủ, và mọi thứ khác sẽ tiếp tục.
+
+Nó không kích hoạt cho:
+
+- một pack `observe`, được đánh giá và loại bỏ theo cấu trúc
+- các chính sách bạn không bao giờ áp dụng hoặc rõ ràng tắt
+- một pack mà trình tải không bao giờ nhận được, nơi "no registrations" không thể phân biệt được với một bỏ qua cố ý
+- một tạm dừng phiên làm việc hoạt động
+- một timeout tải, đó là geçici — một thời điểm đĩa chậm không phải từ chối cho đến khi con người can thiệp
+
+`UserPromptSubmit` **hướng dẫn** thay vì từ chối, bất kể chính sách bị thiếu khai báo gì. Một sự từ chối toàn diện sẽ thực hiện nó cùng nhau và khóa bạn khỏi agent có thể sửa chữa vấn đề.
+
+### Phải làm gì
+
+```bash
+failproofai policies
+```
+
+Danh sách này đánh dấu một pack được cài đặt có bản ghi cài đặt hoặc digest không còn kiểm tra được nữa, và nói rõ lý do. Nó không nhập pack, vì vậy một pack chỉ thất bại khi nó tải — đăng ký ít hơn những gì manifest khai báo — liệt kê như bình thường; sự từ chối dưới đây là cái đặt tên cho cái đó. Dù bằng cách nào, hãy cài đặt lại nó (`failproofai policies add <source>`) hoặc loại bỏ nó (`failproofai policies remove <publisher/name>`) — loại bỏ nó sẽ rút lại kỳ vọng, và sự từ chối sẽ dừng lại cùng với nó.
+
+Sự từ chối chính nó được gán cho `pack/failproofai-pack-unavailable`, vượt qua các chính sách đã tải, vì vậy một cuộc gọi công cụ bị khóa sẽ đặt tên cho pack bị thiếu thay vì bất kỳ guard nào còn sống mà tình cờ kích hoạt đầu tiên.

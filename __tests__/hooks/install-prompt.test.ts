@@ -13,43 +13,6 @@ describe("hooks/install-prompt", () => {
     vi.restoreAllMocks();
   });
 
-  it("returns default-enabled policies when stdin is not a TTY", async () => {
-    Object.defineProperty(process.stdin, "isTTY", {
-      value: false,
-      writable: true,
-      configurable: true,
-    });
-
-    const { promptPolicySelection } = await import("../../src/hooks/install-prompt");
-    const selected = await promptPolicySelection();
-
-    expect(selected).toContain("sanitize-jwt");
-    expect(selected).toContain("protect-env-vars");
-    expect(selected).toContain("block-env-files");
-    expect(selected).toContain("block-sudo");
-    expect(selected).toContain("block-curl-pipe-sh");
-    expect(selected).toContain("block-push-master");
-    expect(selected).toContain("block-failproofai-commands");
-    expect(selected).toContain("block-self-pause");
-    expect(selected).not.toContain("block-rm-rf");
-    expect(selected).not.toContain("block-force-push");
-    expect(selected).not.toContain("block-secrets-write");
-    expect(selected).toHaveLength(12);
-  });
-
-  it("returns preSelected when stdin is not a TTY and preSelected is provided", async () => {
-    Object.defineProperty(process.stdin, "isTTY", {
-      value: false,
-      writable: true,
-      configurable: true,
-    });
-
-    const { promptPolicySelection } = await import("../../src/hooks/install-prompt");
-    const selected = await promptPolicySelection(["block-sudo", "block-rm-rf"]);
-
-    expect(selected).toEqual(["block-sudo", "block-rm-rf"]);
-  });
-
   describe("resolveTargetClis", () => {
     it("returns explicit cli list as-is regardless of action", async () => {
       const { resolveTargetClis } = await import("../../src/hooks/install-prompt");
@@ -147,7 +110,7 @@ describe("hooks/install-prompt", () => {
       expect(undetected).toEqual(["copilot", "cursor", "opencode", "pi", "hermes", "openclaw", "factory", "devin", "antigravity", "goose"]);
 
       expect(options[0]).toMatchObject({ isAll: true, detected: true, value: ["claude", "codex"] });
-      expect(options[0].label).toBe("Install for all 2 detected");
+      expect(options[0].label).toBe("All 2 agents");
 
       // Detected rows preserve order and carry detected=true
       expect(options.slice(1, 3)).toEqual([
@@ -172,7 +135,7 @@ describe("hooks/install-prompt", () => {
       ]);
     });
 
-    it("uninstall action: only detected rows, no undetected (and verb is 'Remove from')", async () => {
+    it("uninstall action: only detected rows, no undetected", async () => {
       const { buildCliMenuOptions } = await import("../../src/hooks/install-prompt");
       const { options, undetected } = buildCliMenuOptions(
         ["claude", "codex", "copilot"],
@@ -181,7 +144,7 @@ describe("hooks/install-prompt", () => {
 
       expect(undetected).toEqual([]);
       expect(options).toHaveLength(4); // 1 aggregate + 3 detected
-      expect(options[0].label).toBe("Remove from all 3 detected");
+      expect(options[0].label).toBe("All 3 agents");
       expect(options.every((o) => o.detected)).toBe(true);
     });
 
@@ -194,7 +157,7 @@ describe("hooks/install-prompt", () => {
 
       expect(undetected).toEqual([]);
       expect(options).toHaveLength(13); // aggregate + 12 detected
-      expect(options[0].label).toBe("Install for all 12 detected");
+      expect(options[0].label).toBe("All 12 agents");
     });
 
     it("install with 1 detected + many undetected: skips aggregate row (1 ≯ 1)", async () => {

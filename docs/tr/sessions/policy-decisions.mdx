@@ -1,0 +1,27 @@
+---
+title: "İlke kararları"
+description: "Hangi ilkelerin değerlendirildiğini, engellediğini, yönlendirdiğini veya izin verdiğini görün."
+icon: "shield-check"
+---
+
+İlke kararları, zorlama işleminin ne yaptığını açıklar. Bunu, bir dağıtımı doğrulamak, engelleme oranını ölçmek ve korumasız etkinlikleri bulmak için kullanın.
+
+<Tabs>
+  <Tab title="Dashboard">
+    1. **Observe → policy** sayfasına gidin ve zaman aralığını ve isteğe bağlı olarak bir makineyi seçin.
+    2. Değerlendirilen işlemleri, engelleri, engelleme oranını, Bulut kararlarını, korumasız işlemleri ve duraklatılan sırada etkinlikleri gözden geçirin.
+    3. İlke eşleme tablosunu filtreleyin ve dağıtılmış atamaları inceleyin.
+    4. Kararları ve oturumlarını açmak için bir grafik noktası seçin.
+
+    ![İlke kararı toplamlarını, makine filtresini, zaman içindeki zorlama etkinliğini ve ilke eşleme tablosunu gösteren İlke sayfası.](/images/dashboard/policy-observe.png)
+  </Tab>
+  <Tab title="CLI">
+    ```bash
+    fp events --event-type hook_completed --env production --since 24h
+    fp events --search "deny" --since 24h
+    failproofai config --status
+    ```
+
+    Makinenin yerel zorlama durumu için `failproofai` kullanın ve Bulut olay araştırması için `fp` kullanın.
+  </Tab>
+</Tabs>

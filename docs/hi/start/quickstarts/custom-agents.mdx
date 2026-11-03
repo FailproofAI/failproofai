@@ -1,0 +1,50 @@
+---
+title: "Custom agents"
+description: "अपने agent को तीन `with` ब्लॉकों में wrap करें और यह recording शुरू कर देता है।"
+icon: "code"
+---
+
+एक agent के लिए जो आपने स्वयं लिखा है, या एक framework जिसके लिए Failproof AI के पास adapter नहीं है।
+
+आप जो काम पहले से करते हैं उसे `with` ब्लॉकों में wrap करते हैं। प्रत्येक ब्लॉक यह record करता है कि यह कब शुरू हुआ, कब समाप्त हुआ, और कितना समय लगा — आप कुछ और नहीं कहते।
+
+## Install
+
+```bash
+pip install failproofai-sdk
+```
+
+कोई अतिरिक्त packages नहीं, और कोई dependencies नहीं।
+
+## Instrument
+
+```python
+import failproofai_sdk
+
+failproofai_sdk.configure(environment="production")
+
+with failproofai_sdk.session():                 # one run
+    with failproofai_sdk.agent("planner"):      # one unit of work
+        with failproofai_sdk.tool_call("search", input={"q": q}) as t:
+            t.output = search(q)                # one tool call
+```
+
+इसे ऊपर से नीचे तक पढ़ें और यह बताता है कि इसका क्या मतलब है:
+
+| इसे wrap करें | यह कहने के लिए |
+| --- | --- |
+| `session()` | ये सभी events एक ही run से संबंधित हैं |
+| `agent()` | कुछ काम कर रहा है — इसे एक ऐसा नाम दें जिसे आप किसी list में पहचान सकें |
+| `tool_call()` | यह एक tool है, और यहाँ इसने क्या return किया |
+
+उन्हें जैसे भी आपका code nest करता है nest करें। आप कभी भी ids के चारों ओर pass नहीं करते: प्रत्येक ब्लॉक याद रखता है कि यह किसके अंदर है, इसलिए कोई भी चीज़ जो आप record करते हैं वह खुद ही सही run और सही agent को pick करती है। `async with` बिल्कुल उसी तरह काम करता है।
+
+## जांचें कि यह पहुँचा या नहीं
+
+इसे एक बार चलाएं, फिर **Observe → Sessions** खोलें और अपना environment चुनें। आपका run एक reconstructed trace के रूप में दिखाई देता है।
+
+अगर कुछ नहीं पहुँचता, तो `failproofai config --status` के साथ confirm करें कि machine connected है।
+
+<Card title="Custom agents के लिए पूर्ण guide" icon="arrow-right" href="/hi/start/integrations/custom-agents">
+  हर event method, जब आपका code raise करता है तब क्या होता है, एक worked example, threads और async, और एक framework को instrument करना जिसके पास adapter नहीं है।
+</Card>

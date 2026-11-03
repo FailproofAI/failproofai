@@ -1,0 +1,224 @@
+---
+title: "CrewAI"
+sidebarTitle: "CrewAI"
+description: "对 crew、flow、agent（按角色）、工具、内存和人工反馈进行埋点追踪。"
+icon: "/images/frameworks/crewai.svg"
+---
+
+## 安装
+
+```bash
+pip install 'failproofai-sdk[crewai]'
+```
+
+支持版本：`crewai` 1.13 至 2.0。1.13 是引入 `started_event_id` 并规范化 token 用量的版本，适配器依赖这两项特性来配对事件和上报 token 数据。
+
+## 埋点
+
+```python
+import failproofai_sdk
+
+failproofai_sdk.configure(environment="production")
+failproofai_sdk.instrument()
+
+with failproofai_sdk.session():
+    Crew(agents=[analyst, writer], tasks=[gather, summarise]).kickoff()
+```
+
+`instrument()` 会在 CrewAI 的模块级事件总线上注册一个监听器，并为每个事件类订阅对应的处理器。你的 crew、agent、task 和工具均不会受到任何影响。
+
+## 记录内容
+
+| CrewAI | Failproof 事件 |
+| --- | --- |
+| Crew kickoff | `agent_start`、`agent_end` |
+| `Agent.kickoff()`（轻量 agent，无 crew） | `agent_start`、`agent_end`，`agent_id` 取自角色名 |
+| Flow 启动与结束 | `agent_start`、`agent_end`；在 flow 方法内启动的 crew 会嵌套在其下 |
+| Agent 执行 | 嵌套的 `agent_start`、`agent_end`，`agent_id` 取自角色名。在层级流程中，被委派的协作者嵌套在管理者下，而非与其并列 |
+| Task | 不记录；以链接形式存储，使子节点可追溯至 crew |
+| Flow 方法、guardrail | `hook_triggered`、`hook_completed` |
+| 工具调用 | `tool_use`、`tool_result` |
+| 内存与知识操作 | `tool_use`、`tool_result`，以命中的层名称命名 |
+| LLM 调用 | `model_request`、`model_response`，包含 token 用量 |
+| 流式块 | 折叠进响应中，以 chunk 数量和首 token 时间表示 |
+| 请求人工反馈 | `human_wait`、`agent_pause` |
+| 收到人工反馈 | `agent_resume`、`human_input` |
+| Agent 执行错误 | `error`，随后 `agent_end` 结果为 `failed` |
+
+Task 不发出事件是有意为之。CrewAI 的 task 是运行它的 agent 执行过程的子集，若同时发出两者事件，每行数据都会翻倍并呈兄弟关系。因此 task 的 id 和名称会附在 agent 自身的事件上。
+
+内存与知识操作以工具形式记录，并以命中的层命名，因此它们会与真实工具并列显示，方便对比延迟数据。
+
+在层级 crew 中，嵌套结构使追踪记录清晰可读：
+
+```text
+crew
+└─ manager
+   ├─ researcher      delegated
+   └─ writer          delegated
+```
+
+CrewAI 将委派执行的父节点挂在 `delegate_work_to_coworker` **工具事件**上，而非直接挂在 manager 上，适配器也遵循这一链路。否则每个 agent 都会变成其他 agent 的兄弟节点，委派结构将完全丢失。
+
+## 示例
+
+```python
+import failproofai_sdk
+from crewai import Agent, Crew, Process, Task
+from crewai.tools import tool
+
+failproofai_sdk.configure(environment="production")
+failproofai_sdk.instrument()
+
+MODEL = "openai/gpt-4o-mini"
+METRICS = {"revenue": "$4.2M ARR, up 12% QoQ", "churn": "3.1% monthly, up from 2.4%"}
+
+
+@tool("lookup_metric")
+def lookup_metric(name: str) -> str:
+    """Look up a business metric by name. Valid: revenue, churn."""
+    return METRICS.get(name.lower().strip(), "unknown metric")
+
+
+analyst = Agent(
+    role="analyst",                     # becomes agent_id
+    goal="pull the numbers that matter and state them plainly",
+    backstory="You read dashboards for a living.",
+    tools=[lookup_metric],
+    llm=MODEL,
+)
+writer = Agent(
+    role="writer",
+    goal="turn numbers into three lines an exec will read",
+    backstory="You write board updates. You never pad.",
+    llm=MODEL,
+)
+
+gather = Task(
+    description="Look up 'revenue' and 'churn' with the tool.",
+    expected_output="Two lines, one metric each.",
+    agent=analyst,
+)
+summarise = Task(
+    description="Using the metrics above, write a three-line exec summary.",
+    expected_output="Exactly three lines.",
+    agent=writer,
+    context=[gather],
+)
+
+with failproofai_sdk.session():
+    result = Crew(
+        agents=[analyst, writer],
+        tasks=[gather, summarise],
+        process=Process.sequential,
+    ).kickoff()
+```
+
+交接过程在追踪记录中清晰可见：`analyst` span 关闭，`writer` span 开启，两者均位于同一个 `crew` span 内。
+
+## 为 span 命名
+
+`agent_id` 来自 `Agent(role=...)`，这使其成为仪表盘中易读的筛选维度。
+
+```python
+Agent(role="analyst", ...)          # agent_id = "analyst"
+Agent(role="analyst-7f3a2b", ...)   # 每次运行产生一个独立的维度条目
+```
+
+`agent_id` 是低基数列。若角色名包含运行 id 或时间戳，会使每次查询的数据质量下降。如果角色名看起来像一个 id，适配器会拒绝使用它，并将真实值存入 payload 字段。
+
+## 控制 session
+
+按以下顺序解析，第一个匹配项生效：
+
+1. `instrument("crewai", session_id=...)`
+2. 外层的 `failproofai_sdk.session()` 作用域
+3. 自动生成的 `uuid4().hex`，每个 crew 或 flow 生成一次
+
+通过包裹 kickoff 来按运行控制 session：
+
+```python
+with failproofai_sdk.session(f"support-{ticket_id}"):
+    Crew(agents=[...], tasks=[...]).kickoff()
+```
+
+## 选项
+
+```python
+failproofai_sdk.instrument(
+    "crewai",
+    session_id=None,          # 将所有运行固定到同一个 session id
+)
+```
+
+`session_id` 是此适配器读取的唯一选项。Prompt 和补全内容始终会被记录，并截断至 payload 预算上限。
+
+## 人工介入
+
+CrewAI 有**两种**人工介入方式，两者均记录为相同的四个事件。
+
+flow 方法上的 `@human_feedback` 通过 CrewAI 的事件总线处理：运行时在阻塞等待人工输入前后各发出一个事件。
+
+`Task(human_input=True)` 则不经过事件总线。它在 CrewAI 自身的 input provider 内部调用 `input()`，不发出任何事件，因此适配器直接包装该 provider——否则整个人工等待过程将不可见，并被计入活跃 agent 时间。
+
+无论哪种方式，你都会得到：
+
+```text
+human_wait      提示内容及其选项
+agent_pause     开始计时暂停时长
+agent_resume    停止计时
+human_input     答复内容，包含等待时长
+```
+
+`agent_pause` 到 `agent_resume` 是唯一用于统计暂停时间的配对。若缺少此配对，十分钟的人工等待将被计为十分钟的活跃 agent 时间。
+
+<Note>
+  CrewAI 在两个人工反馈事件上均未设置关联 id，因此适配器通过 flow 名和方法名进行配对，若失败则回退到最近打开的暂停记录。由于控制台 prompt 会阻塞执行，此方式是可靠的。如果你构建了并发反馈 provider，请在两个事件上设置 `request_id`。
+</Note>
+
+<Note>
+  由于 `Task(human_input=True)` 路径是对 CrewAI input provider 的包装而非事件订阅，它会在 `uninstrument()` 时还原，并原样重新抛出 `input()` 的任何异常，包括 `KeyboardInterrupt`。
+</Note>
+
+## 常见问题
+
+<AccordionGroup>
+  <Accordion title="agent 过滤器有数千条条目">
+    某个 `role` 包含了 UUID、时间戳或每次运行的后缀。请使用稳定的人类可读角色名，将运行专属 id 放在 task 描述中。
+  </Accordion>
+
+  <Accordion title="测试读取到零个事件，但仪表盘显示有数据">
+    事件总线是异步的，`kickoff()` 会在最后一个处理器执行完毕前返回。请先排空队列：
+
+    ```python
+    from crewai.events.event_bus import crewai_event_bus
+
+    crew.kickoff()
+    crewai_event_bus.flush(timeout=30)
+    ```
+
+    这是 CrewAI 本身的特性，与 SDK 无关。
+  </Accordion>
+
+  <Accordion title="某个 session 永远显示为进行中">
+    `agent_end` 会强制关闭未结束的暂停，但不会关闭工具或模型的 span，因此在工具调用过程中崩溃的运行会留下未关闭的 span。正常的清理流程会关闭所有仍处于打开状态的 span 并标记为未完成。只有 `SIGKILL` 会导致 span 挂起，因为此时没有任何代码可以运行。
+  </Accordion>
+
+  <Accordion title="没有任何内容被记录">
+    按以下顺序排查：`instrument()` 是否在 `kickoff()` 之前执行；是否有 `with failproofai_sdk.session():` 包裹；`crewai` 是否为 1.13 或更新版本；是否设置了 `FAILPROOFAI_SDK_STRICT=1`，以便降级的 hook 抛出异常而非被静默吞掉。
+  </Accordion>
+</AccordionGroup>
+
+## 下一步
+
+<Columns cols={3}>
+  <Card title="工作原理" icon="workflow" href="/zh/start/integrations/custom-agents#going-deeper">
+    配对机制、id、session 生命周期与数据传输。
+  </Card>
+  <Card title="读取追踪记录" icon="route" href="/zh/sessions/read-a-trace">
+    沿因果链路浏览刚刚捕获的 session。
+  </Card>
+  <Card title="其他框架" icon="plug" href="/zh/start/integrations">
+    LangGraph、LlamaIndex、Pydantic AI 及自定义 agent。
+  </Card>
+</Columns>

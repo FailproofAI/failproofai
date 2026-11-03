@@ -19,9 +19,9 @@
  * before returning success. A CLI that prints "requested" while the daemon is
  * stopped has told the user the opposite of what happened.
  */
-import { existsSync, mkdirSync, writeFileSync, readdirSync } from "node:fs";
+import { existsSync, mkdirSync, writeFileSync, readdirSync, statSync } from "node:fs";
 import { dirname, join } from "node:path";
-import { failproofaiHome, spoolDir } from "./fp-home";
+import { customAgentsEventsDir, failedDir, failproofaiHome, spoolDir } from "./fp-home";
 import { readConfig } from "./fp-config";
 import { readIngestCredential } from "./collector-config";
 import { daemonServiceStatus, isDaemonSupportedPlatform } from "./daemon-service";
@@ -49,30 +49,76 @@ export function flushRequestPath(home?: string): string {
   return join(failproofaiHome(home), "state", "flush-request.json");
 }
 
-/** Every directory the collector spools batches into. */
+/** Every directory the collector spools batches into. The daemon writes its
+ *  own batches FLAT into state/spool and the SDKs into custom-agents/events
+ *  (`spool_dirs` in crates/fpai-collect/src/config.rs). Counting only
+ *  subdirectories of state/spool, as this once did, found nothing on every
+ *  machine, so flush always answered "everything already delivered". */
 function spoolDirs(home?: string): string[] {
   const root = spoolDir(home);
-  if (!existsSync(root)) return [];
+  const dirs = [root, customAgentsEventsDir(home)];
+  if (!existsSync(root)) return dirs;
   try {
-    return readdirSync(root, { withFileTypes: true })
-      .filter((e) => e.isDirectory() && e.name !== "failed")
-      .map((e) => join(root, e.name));
+    return dirs.concat(
+      readdirSync(root, { withFileTypes: true })
+        .filter((e) => e.isDirectory() && e.name !== "failed")
+        .map((e) => join(root, e.name)),
+    );
   } catch {
-    return [];
+    return dirs;
   }
+}
+
+/** Batches parked in state/failed after failed uploads, `.poison` excluded.
+ *  Flush does not resend these: the daemon retries them about hourly and
+ *  when it starts, so all this can do is not call them delivered. */
+function parkedBatches(home?: string): number {
+  try {
+    return readdirSync(failedDir(home)).filter((f) => f.endsWith(".jsonl")).length;
+  } catch {
+    return 0;
+  }
+}
+
+function parkedLine(n: number, home?: string): string {
+  return `${n} batch${n === 1 ? "" : "es"} parked in ${failedDir(home)} after failed uploads; the daemon retries them about hourly and when it restarts.`;
 }
 
 /** Batches awaiting delivery. `.tmp` files are half-written and not counted. */
 export function pendingBatches(home?: string): number {
-  let n = 0;
+  return spoolBacklog(home).count;
+}
+
+/**
+ * {@link pendingBatches}, plus how long the oldest of them has waited.
+ *
+ * The age is what tells a backlog that is draining from one that is stuck: the
+ * collector sweeps a batch only once it is two minutes old, so a few young
+ * batches are normal, while one that has sat for a quarter of an hour has not
+ * been delivered by several passes. `config --status` reads it for that.
+ */
+export function spoolBacklog(home?: string, now: number = Date.now()): { count: number; oldestAgeMs?: number } {
+  let count = 0;
+  let oldest: number | undefined;
   for (const dir of spoolDirs(home)) {
+    let names: string[];
     try {
-      n += readdirSync(dir).filter((f) => f.endsWith(".jsonl")).length;
+      names = readdirSync(dir).filter((f) => f.endsWith(".jsonl"));
     } catch {
       // A directory that vanished mid-scan is one the collector just drained.
+      continue;
+    }
+    count += names.length;
+    for (const name of names) {
+      try {
+        const mtime = statSync(join(dir, name)).mtimeMs;
+        if (oldest === undefined || mtime < oldest) oldest = mtime;
+      } catch {
+        // Delivered between the listing and the stat.
+      }
     }
   }
-  return n;
+  return oldest === undefined ? { count } : { count, oldestAgeMs: Math.max(0, now - oldest) };
 }
 
 export async function runFlushCommand(opts: FlushOptions = {}): Promise<FlushResult> {
@@ -138,8 +184,12 @@ export async function runFlushCommand(opts: FlushOptions = {}): Promise<FlushRes
   }
 
   const before = pendingBatches(home);
+  const parked = parkedBatches(home);
   if (before === 0) {
-    return { exitCode: 0, pending: 0, lines: ["Nothing spooled — everything already delivered."] };
+    const nothing = parked
+      ? ["Nothing spooled.", parkedLine(parked, home)]
+      : ["Nothing spooled — everything already delivered."];
+    return { exitCode: 0, pending: 0, lines: nothing };
   }
 
   const path = flushRequestPath(home);
@@ -149,6 +199,7 @@ export async function runFlushCommand(opts: FlushOptions = {}): Promise<FlushRes
   });
 
   lines.push(`${before} batch${before === 1 ? "" : "es"} spooled. Requested delivery.`);
+  if (parked) lines.push(parkedLine(parked, home));
 
   if (!wait) {
     lines.push("The daemon picks this up within a few seconds.");
@@ -171,10 +222,12 @@ export async function runFlushCommand(opts: FlushOptions = {}): Promise<FlushRes
 
   // A timeout is not necessarily a failure — a large backlog legitimately takes
   // longer than the budget — so say what is still outstanding rather than
-  // calling it broken.
+  // calling it broken. Marked ▲ on its own line: the report opens on the
+  // "Requested delivery." line, and an unmarked failed report puts its ✕ on
+  // whichever line comes first.
   lines.push(
-    `Still ${pending} batch${pending === 1 ? "" : "es"} spooled after ${timeoutSecs}s.`,
-    "Delivery continues in the background; re-run with a longer --timeout to keep watching.",
+    `▲ Still ${pending} batch${pending === 1 ? "" : "es"} spooled after ${timeoutSecs}s.`,
+    "  Delivery continues in the background; re-run with a longer --timeout to keep watching.",
   );
   return { exitCode: 1, pending, lines };
 }

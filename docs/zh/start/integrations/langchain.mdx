@@ -1,0 +1,244 @@
+---
+title: "LangChain 和 LangGraph"
+sidebarTitle: "LangChain 和 LangGraph"
+description: "通过一次调用为图、节点、工具、检索器和模型调用添加追踪。"
+icon: "/images/frameworks/langchain.svg"
+---
+
+一个适配器同时支持两者。LangGraph 运行在 `langchain-core` 的回调管理器之上，因此为其中一个添加追踪即可覆盖另一个。
+
+## 安装
+
+```bash
+pip install 'failproofai-sdk[langgraph]'
+```
+
+如果只使用 LangChain 而不使用 LangGraph，请使用 `failproofai-sdk[langchain]`。
+
+支持范围：`langchain-core` 1.4.7 至 2.0，`langgraph` 1.2 至 2.0。超出该范围时，适配器仍可安装，但会发出一次警告。
+
+## 添加追踪
+
+```python
+import failproofai_sdk
+
+failproofai_sdk.configure(environment="production")
+failproofai_sdk.instrument()
+
+with failproofai_sdk.session():
+    graph.invoke({"messages": [HumanMessage("...")]})
+```
+
+`instrument()` 通过 `langchain_core.tracers.context.register_configure_hook` 注册一个追踪器。LangChain 会将其注入到所构建的每个回调管理器中，因此图、工具和模型都能被自动捕获，无需修改任何调用点——包括你没有编写的库内部的调用。
+
+## 记录内容
+
+| LangChain 或 LangGraph | Failproof 事件 |
+| --- | --- |
+| 根运行 | `agent_start`、`agent_end` |
+| LangGraph 节点 | `hook_triggered`、`hook_completed` |
+| 已编译子图 | 嵌套的 `agent_start`、`agent_end` |
+| 工具运行 | `tool_use`、`tool_result` |
+| 检索器运行 | `tool_use`、`tool_result`，输出经过摘要处理 |
+| Chat 模型或 LLM 运行 | `model_request`、`model_response`，含 token 用量 |
+| 流式 token | 折叠进响应中，以 chunk 数量和首个 token 到达时间表示。Token 计数需要 `ChatOpenAI(stream_usage=True)`——详见下文 |
+| `interrupt()` | `human_wait`、`agent_pause` |
+| `Command(resume=...)` | `agent_resume`、`human_input`，通过 `Interrupt.id` 关联——包括在不同进程中针对同一个 checkpointer 发生恢复的情况 |
+| 未处理异常 | `error`，然后是结果为 `failed` 的 `agent_end` |
+
+**节点成为 hook，而非嵌套 agent。** `agent_id` 是所有仪表板视图中的主要维度——将 `retrieve`、`grade_documents` 和 `should_continue` 提升为 agent 会使其淹没其中，并以恰好最先运行的节点来标记会话。
+
+Hook span 的渲染方式相同，仍然提供逐节点的延迟视图。
+
+<Note>
+  **节点可以随意命名。** 节点的运行通过其*形态*来识别——携带 LangGraph 自身步骤标签的非叶子运行——而非通过名称。
+</Note>
+
+| 你的代码 | 记录内容 |
+| --- | --- |
+| `add_node("lookup_population", ToolNode([...]))` | 工具 |
+| `add_node("ChatOpenAI", ...)` | 模型调用 |
+
+以节点运行的内容命名节点，过去会导致该内容的事件消失，现在不会了。
+
+### 流式传输
+
+`.stream()` 和 `.astream()` 不会产生逐 token 的事件，它们会折叠进关闭时的 `model_response` 中：
+
+| 字段 | 内容 |
+| --- | --- |
+| `fw_chunks` | 收到的 chunk 数量 |
+| `fw_ttft_ms` | 首个 token 到达时间 |
+
+### 流式响应中的 Token 计数
+
+这是一个独立的问题，容易被忽略：OpenAI 只在**被明确要求**时才在流式响应中发送用量信息。
+
+```python
+ChatOpenAI(model="gpt-4o-mini", stream_usage=True)   # 不加此参数则无 token 计数
+```
+
+适配器只记录框架传递给它的内容。没有该标志则无内容可记录，`model_response` 中将不包含 token 计数。
+
+## 示例
+
+```python
+import failproofai_sdk
+from langchain_core.messages import HumanMessage
+from langchain_core.tools import tool
+from langchain_openai import ChatOpenAI
+from langgraph.prebuilt import ToolNode, create_react_agent
+
+failproofai_sdk.configure(environment="production")
+failproofai_sdk.instrument()
+
+
+@tool
+def price_of(item: str) -> float:
+    """Return the unit price of an item in USD."""
+    return {"widget": 42.0, "gadget": 17.5}[item.lower().strip()]
+
+
+@tool
+def stock_of(item: str) -> int:
+    """Return the units of an item currently in stock."""
+    return {"widget": 120, "gadget": 0}[item.lower().strip()]
+
+
+tools = ToolNode([price_of, stock_of], handle_tool_errors=True)
+graph = create_react_agent(ChatOpenAI(model="gpt-4o-mini"), tools)
+
+with failproofai_sdk.session():
+    with failproofai_sdk.agent("analyst", goal="price and stock report"):
+        result = graph.invoke({
+            "messages": [HumanMessage("Price and stock for widget and gadget?")]
+        })
+```
+
+## 为 span 命名
+
+默认情况下，根 span 使用图本身的名称。可以包裹一层来使用自定义标签：
+
+```python
+with failproofai_sdk.session():
+    with failproofai_sdk.agent("analyst", goal="price and stock report"):
+        graph.invoke(...)
+```
+
+对于多 agent 场景，嵌套各作用域。每个 worker 成为携带 `parent_id` 的子 span：
+
+```python
+with failproofai_sdk.session():
+    with failproofai_sdk.agent("supervisor"):
+        with failproofai_sdk.agent("researcher"):
+            research_graph.invoke(...)
+        with failproofai_sdk.agent("writer"):
+            writer_graph.invoke(...)
+```
+
+保持 `agent_id` 低基数。使用角色或节点名称，不要使用 UUID 或每次运行时生成的字符串。
+
+## 控制会话
+
+会话 id 按以下顺序解析，第一个匹配项生效：
+
+1. `instrument("langchain", session_id=...)`
+2. `config={"metadata": {"failproofai_sdk_session_id": ...}}`
+3. 外层的 `failproofai_sdk.session()` 作用域
+4. `metadata["session_id"]`、`metadata["conversation_id"]` 或 `metadata["thread_id"]`
+5. 根运行 id
+
+永远不会从头生成，因为合成的 id 会将一次运行拆分到多个会话中。
+
+```python
+graph.invoke(
+    {"messages": [...]},
+    config={"metadata": {"failproofai_sdk_session_id": f"chat-{user_id}"}},
+)
+```
+
+## 选项
+
+```python
+failproofai_sdk.instrument(
+    "langchain",
+    session_id=None,          # 将所有运行固定到同一个会话 id
+    include_chains=set(),     # 将中间链加入白名单以作为 hook 对
+    capture_content=True,     # False 则从载荷中去除提示和补全内容
+    graph_callbacks=True,     # 原生 interrupt 和 resume，需要 langgraph 1.2+
+)
+```
+
+对于受监管的数据，设置 `capture_content=False`。结构、时序、token 计数、工具名称和结果仍会被记录；消息正文不会被记录。
+
+`include_chains` 仅适用于**嵌套**运行。在顶层调用的 runnable 是会话的根节点，因此它会成为 agent span 而非 hook 对，在此处命名它没有效果。
+
+## 人工介入循环
+
+`interrupt()` 产生四个事件，两对都不冗余：
+
+```python
+from langgraph.types import Command, interrupt
+
+def approve(state):
+    decision = interrupt({"prompt": "Ship it?", "options": ["yes", "no"]})
+    return {"approved": decision == "yes"}
+
+with failproofai_sdk.session():
+    graph.invoke(state, config)                    # human_wait, agent_pause
+    graph.invoke(Command(resume="yes"), config)    # agent_resume, human_input
+```
+
+`human_wait` 到 `human_input` 携带提示和答案（在 `capture_content=False` 下均会被去除，连同检索文档来源一并去除——文档数量仍会保留）。`agent_pause` 到 `agent_resume` 是唯一能记录暂停时间的一对，如果缺少它，十分钟的人工等待会被计为活跃 agent 时间。根 span 在间隔期间保持打开状态，将两次调用保持在同一个会话中。
+
+## 常见问题
+
+<AccordionGroup>
+  <Accordion title="抛出异常的工具会中止整个图">
+    `create_react_agent` 会传播该异常。若要让模型看到失败并继续执行，请显式构建工具节点：
+
+    ```python
+    from langgraph.prebuilt import ToolNode, create_react_agent
+
+    tools = ToolNode([price_of, stock_of], handle_tool_errors=True)
+    graph = create_react_agent(model, tools)
+    ```
+
+    无论如何，失败都会以携带错误的 `tool_result` 形式被记录。这里只决定运行是否能在失败后继续。
+  </Accordion>
+
+  <Accordion title="追踪中出现了以模型类命名的 agent">
+    在任何图之外直接调用 `llm.invoke()` 时没有父运行，因此它会打开一个根 span 并在其中发出模型事件对。仪表板会将叶子节点挂到一个已打开的 agent 下，所以这个 span 是有意为之的。可以为其命名：
+
+    ```python
+    with failproofai_sdk.agent("summariser"):
+        summary = ChatOpenAI(model="gpt-4o-mini").invoke([HumanMessage(text)])
+    ```
+  </Accordion>
+
+  <Accordion title="每个事件出现了两次">
+    你在 `config={"callbacks": [...]}` 中传入了 Failproof 处理器，同时又调用了 `instrument()`。请移除前者。configure hook 已经覆盖了进程中的每个回调管理器。
+  </Accordion>
+
+  <Accordion title="人工审批显示为错误">
+    并非如此。LangGraph 通过与真实异常相同的路径抛出 `GraphInterrupt`，因此每次暂停都会作为错误回调到达追踪器。任何 `GraphBubbleUp` 子类都被视为控制流，因此审批操作不会标记为红色错误。
+  </Accordion>
+
+  <Accordion title="没有任何内容被记录">
+    按以下顺序检查：`instrument()` 在图执行前已运行；调用周围有 `with failproofai_sdk.session():`；是否设置了 `FAILPROOFAI_SDK_STRICT=1`，该设置会使降级的 hook 抛出异常而非被吞掉。
+  </Accordion>
+</AccordionGroup>
+
+## 下一步
+
+<Columns cols={3}>
+  <Card title="工作原理" icon="workflow" href="/zh/start/integrations/custom-agents#going-deeper">
+    事件对、id、会话生命周期和数据投递。
+  </Card>
+  <Card title="读取追踪" icon="route" href="/zh/sessions/read-a-trace">
+    跟踪刚捕获的会话中的因果链路。
+  </Card>
+  <Card title="其他框架" icon="plug" href="/zh/start/integrations">
+    CrewAI、LlamaIndex、Pydantic AI 以及自定义 agent。
+  </Card>
+</Columns>

@@ -1,0 +1,37 @@
+---
+title: "CrewAI"
+description: "インストール、計測設定、最初のトレースの確認。"
+icon: "/images/frameworks/crewai.svg"
+---
+
+最初の CrewAI トレースまで3ステップです。各イベントの内容、フロー、トラブルシューティングについては[完全ガイド](/ja/start/integrations/crewai)をご覧ください。
+
+## インストール
+
+```bash
+pip install 'failproofai-sdk[crewai]'
+```
+
+## 計測設定
+
+```python
+import failproofai_sdk
+
+failproofai_sdk.configure(environment="production")
+failproofai_sdk.instrument()
+
+with failproofai_sdk.session():
+    Crew(agents=[analyst, writer], tasks=[gather, summarise]).kickoff()
+```
+
+クルー、エージェント、タスク、ツールの設定は何も変更する必要はありません。`instrument()` は CrewAI のモジュールレベルのイベントバスにサブスクライブします。
+
+## 到着を確認する
+
+一度実行したら、**Observe → Sessions** を開いて環境を選択してください。実行結果が再構築されたトレースとして表示されます。
+
+何も表示されない場合は、`failproofai config --status` でマシンが接続されているか確認してください。
+
+<Card title="CrewAI 完全ガイド" icon="arrow-right" href="/ja/start/integrations/crewai">
+  記録される内容、フロー、トークン使用量、スパン名、オプション、よくある問題について説明します。
+</Card>

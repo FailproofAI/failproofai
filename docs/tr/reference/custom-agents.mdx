@@ -1,0 +1,222 @@
+---
+title: "Özel aracılar"
+description: "Konfigürasyon, olay kataloğu, korelasyon kuralları ve failproofai-sdk için teslimat."
+icon: "python"
+---
+
+Her ayarın, metodun ve alanın ne işe yaradığı. İlk kez enstrümantasyon yapıyorsanız, rehberi okuyarak başlayın — bu sayfa referans amaçlıdır.
+
+<Columns cols={2}>
+  <Card title="Özel aracılar rehberi" icon="code" href="/tr/start/integrations/custom-agents">
+    Kurulum, enstrümantasyon, olay metodları, pratik örnek ve yaygın sorunlar.
+  </Card>
+  <Card title="Framework kullanıyor musunuz?" icon="plug" href="/tr/start/integrations">
+    LangChain, CrewAI, LlamaIndex ve Pydantic AI kendilerini tek çağrı ile enstrümante ederler.
+  </Card>
+</Columns>
+
+Python 3.11 veya daha yeni. Runtime bağımlılığı yok.
+
+## Kurulum
+
+```bash
+pip install failproofai-sdk
+```
+
+Paket `failproofai-sdk` olarak yüklenir ve Python'da `failproofai_sdk` olarak içe aktarılır. `failproofai-sdk[langgraph]` gibi framework ek paketleri framework'ü kendisini yükler; adaptörler her zaman temel wheel'de bulunur.
+
+## Failproof daemon'ını bağlayın
+
+<Tabs>
+  <Tab title="Gösterge Paneli">
+    1. **Admin → Keys** bölümüne gidin ve `events:add` ile bir anahtar oluşturun.
+    2. [Failproof daemon'ını Cloud'a bağlayın](/tr/start/setup#bir-makineyi-buluta-bağlayın) ajan makinesinde.
+    3. Bir enstrümante edilmiş oturum çalıştırın, sonra **Observe → Events** altında tam ID'sini bulun.
+    4. **Observe → Sessions** bölümüne gidin, aynı ortamı seçin ve yeniden oluşturulan iz'i açın.
+
+    ![Bir özel Python ajan oturumu yürütme grafiği ve sıralı olay izi olarak yeniden oluşturulmuş.](/images/dashboard/session-detail.png)
+  </Tab>
+  <Tab title="CLI">
+    `events:add` anahtarını shell'e okuyun. `read -s` bunu yankılanmayan bir istemiçinde alır, bu nedenle hiçbir komutta veya shell geçmişinde görünmez:
+
+    ```bash
+    read -rs FAILPROOFAI_CLOUD_TOKEN && export FAILPROOFAI_CLOUD_TOKEN
+    ```
+
+    Ardından makineyi ayarlayın ve bağlandığını kontrol edin:
+
+    ```bash
+    failproofai config
+    failproofai config --status
+    ```
+  </Tab>
+</Tabs>
+
+## Konfigürasyon
+
+```python
+import failproofai_sdk
+
+failproofai_sdk.configure(
+    base_dir=None,
+    flush_interval=0.5,
+    environment="production",
+)
+```
+
+| Bağımsız Değişken | Ne işe yarar |
+| --- | --- |
+| `environment` | Her olaydaki etiket — `production`, `staging`, `prod-eu`. Varsayılan `dev`'dir. |
+| `flush_interval` | Arka plan iş parçacığının diske ne sıklıkta yazacağı, saniye cinsinden. Varsayılan `0.5`'tir. |
+| `base_dir` | Yazılanacak yer. Varsayılan olarak daemon'ın spool'u olup, aksi takdirde bilmiyorsanız istediğiniz yerdir. |
+
+Bunun yerine ortam değişkeni tarafından ayarlayın:
+
+| Değişken | Ne işe yarar |
+| --- | --- |
+| `AGENTEYE_ENVIRONMENT` | Kod değişikliği olmadan `environment`'ı ayarlar, etiket dağıtıma ait olduğunda. Bir `configure()` bağımsız değişkeni bunu geçersiz kılar. |
+| `FAILPROOFAI_HOME` | Spool'u tutan Failproof AI kökünü taşır. |
+| `FAILPROOFAI_SDK_STRICT` | `1` enstrümantasyon hatalarının kaydedilmek yerine yükseltilmesini sağlar. |
+| `FAILPROOFAI_SDK_STRICT_INTEGRATIONS` | `1` framework uyumluluğu sorununda uyarı verip devam etmek yerine yükseltmeyi sağlar. |
+
+<Warning>
+  **`environment`'da virgül yok.** Ingest bu alanı virgülle bölmesi için filtreler oluşturur ve virgül içeren herhangi bir olayı atlar — böylece tüm bir çalıştırma sessizce kaybolur. `prod,eu` değil `prod-eu` yazın.
+
+  `configure(environment="prod,eu")` yükseltir böylece hemen fark edersiniz. `AGENTEYE_ENVIRONMENT` yükseltemez — hiç sizi aramıyor — bu nedenle bir kez uyarır ve `dev`'e geri döner.
+</Warning>
+
+Olaylar bellekte sıraya alınır ve arka planda her `flush_interval` saniyede diske yazılır; yorumlayıcı çıkışında son bir flush yapılır. Doğrudan öldürülen bir işlem henüz yazılmış olmayan her şeyi kaybeder.
+
+## Kimlik
+
+Her olay bir oturum ve bir ajanına aittir. **Kapsamlar her ikisini de doldurur**, bu nedenle nadiren bunları geçersiniz:
+
+```python
+with failproofai_sdk.session():
+    with failproofai_sdk.agent("planner"):
+        failproofai_sdk.event.tool_use(tool_name="search", tool_call_id="c1")
+```
+
+`session_id` veya `agent_id`'yi açıkça geçmek hala çalışır ve kazanır. Bağlı ne de geçilmiş olmadan, çağrı Cloud'un sessizce atılacağı bir olayı yayınlamak yerine `TypeError` yükseltir.
+
+<Note>
+  Kimlik bağlam değişkenlerinde durur. `asyncio` görevlerini otomatik olarak takip eder, ancak **yeni iş parçacıklarını değil** — bir işçiyi `failproofai_sdk.propagate()` içine sarın veya olayları bağlantısız kalırlar.
+</Note>
+
+## Olay kataloğu
+
+On beş metod. Çoğu **çiftler halinde** gelir — açanı çağırırısınız, sonra kapatıcısını, ve SDK açıklığı ölçer.
+
+| | Açar | Kapar |
+| --- | --- | --- |
+| **Aracılar** | `agent_start` | `agent_end` |
+| | `agent_pause` | `agent_resume` |
+| **Modeller** | `model_request` | `model_response` |
+| **Araçlar** | `tool_use` | `tool_result` |
+| **Kancalar** | `hook_triggered` | `hook_completed` |
+| **İnsanlar** | `human_wait` | `human_input` |
+
+Üçü bağımsız: `error`, `human_pause`, `human_interrupt`.
+
+<Accordion title="Her alan, her metod başına" icon="table">
+
+Her metod ayrıca `session_id` ve `agent_id` alır, kapsamlar bunları sizin için doldurur. `None` olarak bırakılan her şey JSON `null` olarak gönderilmek yerine atılır ve her metod `None` döndürür.
+
+| Metod | Gerekli | İsteğe Bağlı |
+| --- | --- | --- |
+| `agent_start` | — | `goal`, `parent_id` |
+| `agent_end` | — | `outcome`, `summary` |
+| `agent_pause` | `pause_id` | `reason`, `user_id` |
+| `agent_resume` | `pause_id` | `reason`, `user_id` |
+| `model_request` | — | `model`, `messages`, `system`, `tools`, `request_id` |
+| `model_response` | — | `model`, `stop_reason`, `input_tokens`, `output_tokens`, `content`, `role`, `request_id`, `duration_ms` |
+| `tool_use` | `tool_name`, `tool_call_id` | `input` |
+| `tool_result` | `tool_name`, `tool_call_id` | `output`, `error` |
+| `hook_triggered` | `hook_name`, `hook_id` | `trigger_event`, `input` |
+| `hook_completed` | `hook_name`, `hook_id` | `outcome`, `output`, `error` |
+| `error` | `error_type`, `message` | `traceback` |
+| `human_wait` | `input_id` | `prompt`, `options`, `reason` |
+| `human_input` | `input_id` | `response` |
+| `human_pause` | — | `reason`, `user_id` |
+| `human_interrupt` | — | `reason`, `user_id`, `at_step` |
+
+</Accordion>
+
+<Warning>
+  Bir çalıştırmayı başarısız olarak işaretlemek için, `outcome` şunlardan biri olmalıdır: `failed`, `error`, `timeout` veya `rejected`. Başka bir şey — yakın kaçış `"failure"` dahil — başarı olarak sayılır.
+</Warning>
+
+## Eşleştirme ve süre
+
+**Bir kural: kapatıcı olayına açıcısı ile aynı id'yi verin.** Bunun ne eşleştirdikleri ne de SDK'nın boşluğu zamanlamasını sağlayan şeydir.
+
+| Çift | Eşleştirilen |
+| --- | --- |
+| `tool_use` → `tool_result` | `tool_call_id` |
+| `hook_triggered` → `hook_completed` | `hook_id` |
+| `agent_pause` → `agent_resume` | `pause_id` |
+| `human_wait` → `human_input` | `input_id` |
+| `model_request` → `model_response` | `request_id` |
+
+**Kendiniz `duration_ms` geçmeyin.** SDK onu ölçer ve geçmesi `ValueError` yükseltir.
+
+Tek istisna `model_response`'tir, burada yalnızca siz gerçek sağlayıcı gecikmesini bilirsiniz. Tam bir milisaniye sayısı geçin — kayan sayı yükseltir, çünkü sütun 32-bit bir tamsayıdır ve aksi takdirde boş kalırdı.
+
+<Accordion title="Kenar durumları" icon="circle-help">
+
+- **ID'ler yalnızca tür başına, oturum başına benzersiz olması gerekir.** Bir araç çağrısı ve bir kanca bir taneyi paylaşabilir; aynı anda çalışan iki oturum çarpışma olmadan aynı ID'leri yeniden kullanabilir.
+- **Onlar bir ajanın kapsamında değildir.** Bir çift bir ajan altında açılıp başka bir ajan altında kapatılırsa yine eşleşir — bu, çok ajanın kodunda normal durumdur.
+- **`request_id` isteğe bağlıdır ancak önerilir.** Olmadan, model olayları gelişte sıraya alınırlar, bu nedenle aynı ajan içindeki iki eşzamanlı çağrı hatalı eşleşebilir.
+- **İşlemler arasında bölünmüş bir çift** Cloud'da yine eşleşir, ancak SDK onu zamanlamaz — hiçbir işlem her iki yarıyı da görmedi.
+- **En fazla 10.000 açıcı aynı anda kapatıcıyı bekler.** Bunun ötesinde en eski atılır, böylece bir sızıntı sınırsızca büyüyemez.
+
+</Accordion>
+
+## Kendi alanlarınız
+
+Geçtiğiniz herhangi bir ekstra anahtar sözcük olayda depolanır:
+
+```python
+failproofai_sdk.event.tool_use(
+    tool_name="search", tool_call_id="c1",
+    fw_tenant="acme", fw_region="eu-west-1",     # sizin
+)
+```
+
+Daha sonra sorgulamak istiyorsanız JSON türlerini tercih edin. Başka bir şey — bir UUID, tarih/saat, bir `Decimal`, küme, bayt, bir model nesnesi — bir dizi olarak depolanır.
+
+<Warning>
+  **Alan adlarınızı önek yapın.** Ekstralar son olarak uygulanır, bu nedenle `model`, `tool_name` veya `outcome` adlı bir alan sessizce gerçek olanın yerini alır. Framework adaptörleri `fw_` kullanır; aynısını yapın ve hiçbir şey çarpışamaz.
+
+  Bu aynı zamanda yanlış yazılmış isteğe bağlı bir alanın neden hiçbir zaman hata vermediğinin nedenidir — sadece yeni bir özel alan olur. Standart bir alan Cloud'da eksikse, ilk olarak yazımı kontrol edin.
+</Warning>
+
+Bu beş ad ayrılmıştır ve tamamen reddedilir: `timestamp`, `session_id`, `agent_id`, `type`, `environment`.
+
+## Teslimat ve doğrulama
+
+<Tabs>
+  <Tab title="Gösterge Paneli">
+    **Observe → Events** bölümünde önce `agent_start` var mı kontrol edin ve `agent_end` sonunda var mı. Sonra **Observe → Sessions** bölümünü açın ve model, araç, insan, kanca ve hata olaylarının amaçlanan sırada göründüğünü doğrulayın. Oturum ID'sini birincil sorun giderme anahtarı olarak kullanın.
+  </Tab>
+  <Tab title="CLI">
+    ```bash
+    failproofai flush --wait --timeout 60
+    failproofai config --status
+    fp sessions --since 1h --env production --session-id <session-id>
+    fp events --since 1h --session-id <session-id> --full
+    ```
+  </Tab>
+</Tabs>
+
+Cloud boşsa, `$FAILPROOFAI_HOME/custom-agents/events` bölümünü inceleyin, aksi takdirde `~/.failproofai/custom-agents/events` bölümünü inceleyin. JSONL dosyaları SDK yayınını kanıtlar; büyüyen bir spool daemon konfigürasyonunu veya teslimatı gösterirken boş bir spool enstrümantasyonu veya süreç ömrünü gösterir.
+
+<Note>
+  Spool'u yalnızca daemon durdurulmuş durumdayken inceleyin. Çalışırken, her topluyu milisaniye cinsinden toplar ve siler, bu nedenle bir dizin listesi toplayıcıyla yarışır ve yayınlanan etkinliklerden çok daha azını gösterir.
+</Note>
+
+## Özel runtime'da başarısızlıkları önleyin
+
+Güvensiz eylemi, gerekli kanıtı ve amaçlanan yanıtı tanımlamak için denetim bulgularını ve bağlı izleri kullanın. Özel bir uygulama entegrasyonu, yürütülmeden önce eylemi ortaya çıkarmalı, yapılandırılmış girdisini ilke motoruna geçirmeli ve ortaya çıkan allow, instruct veya deny kararını uygulamalıdır.
+
+[Failproof AI ile iletişime geçin](mailto:support@befailproof.ai) ve runtime'ınızın model, araç ve yaşam döngüsü sınırlarını ilke kancalarına eşlemesine yardımcı olacak, ardından entegrasyonu sizle doğrulayacağız.

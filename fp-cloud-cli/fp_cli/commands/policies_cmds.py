@@ -1,0 +1,710 @@
+"""Cloud-managed policies: policies list / show / publish / enable / disable / delete.
+
+Where a policy VERSION is written. Deploying one to a machine is `fp fleet`, and
+seeing what it actually did is `fp guardrails` — three commands because they are
+three jobs, done by different people at different times, exactly as the
+dashboard splits them across three pages.
+
+Publishing mints a new version and changes nothing on any machine. That is the
+single most surprising thing here, so every success path says so.
+"""
+from __future__ import annotations
+
+import json
+from typing import Optional
+
+import typer
+
+from .. import client as api
+from .. import output, theme
+from .._context import GLOBALS_EPILOG, AppState, deny_in_key_mode, require_auth
+from .. import _click_compat as click  # the Click Typer is running; see _click_compat
+from ..enforcement import RefError, RefUsageError, parse_semantic, read_source, resolve_kind
+from ..policy_check import SyntaxResult, check_syntax, run_policy
+from ..errors import ApiError, NotFoundError
+from . import _cloud, _write
+
+#: Every command here is session-only. These endpoints are ROOT-ONLY on the
+#: server — deliberately absent from `/v1`, because `/v1` is internet-facing and
+#: publish/deploy/rollback are operator writes. Failing here beats translating a
+#: path that would 404 with no explanation.
+_KEY_MODE_REASON = (
+    "cloud-managed policies are an operator surface and are not exposed on the "
+    "versioned API that an API key authenticates against"
+)
+
+
+def policies_list(ctx: typer.Context) -> None:
+    """List every published policy version, newest of each policy first.
+
+    Shows `policy · version · kind · state · description`, one row per VERSION —
+    versions are immutable and every one stays addressable, so a policy
+    published three times is three rows. The title counts distinct policies and
+    captions the version total, the way the dashboard's library does.
+
+    `kind` is `regex` (JavaScript), `jev` (Jev checks only) or `both`
+    (JavaScript its own Jev checks may clear); a `jev`/`both` row names its
+    checks and the characters they take of a machine's Jev question budget.
+
+    `state` is active, disabled (kept but not enforced) or archived (deleted;
+    machines already carrying it keep it until redeployed). Needs
+    `policies:read`. With `--json`: the server's policy list verbatim — also
+    every version, so deduplicate on `id` if you want one row per policy.
+
+    Example:
+
+    * `fp policies list`
+    """
+    state: AppState = ctx.obj
+    deny_in_key_mode(state, "policies", _KEY_MODE_REASON)
+    cctx = require_auth(state)
+    items = api.list_policies(cctx)
+    if output.is_json():
+        output.emit_json({"policies": [p.to_dict() for p in items]})
+        return
+    output.render_policies(items)
+
+
+def policies_show(
+    ctx: typer.Context,
+    policy_id: str = typer.Argument(..., help="Policy id."),
+) -> None:
+    """Show one policy, including its full source and its Jev checks.
+
+    Needs `policies:read`. With `--json`: the policy object with `source`,
+    `kind`, and for `jev`/`both` its `semantic` declarations, `semanticSha256`
+    and the server-derived `authority`/`reviewedBy`.
+
+    Example:
+
+    * `fp policies show no-force-push`
+    """
+    state: AppState = ctx.obj
+    deny_in_key_mode(state, "policies show", _KEY_MODE_REASON)
+    cctx = require_auth(state)
+    # Explicitly the newest version, not the first one the server happened to
+    # list. `next(...)` returned whichever came back first, so the source shown
+    # was correct only for as long as the endpoint kept returning descending
+    # versions — and a stale source rendered identically to a current one.
+    versions = [p for p in api.list_policies(cctx) if p.id == policy_id]
+    if not versions:
+        raise NotFoundError(f"no policy named {policy_id}")
+    match = max(versions, key=lambda p: p.version)
+    if output.is_json():
+        output.emit_json(match.to_dict())
+        return
+    carriers = {
+        d.machine_id: ref.version
+        for d in api.list_deployments(cctx)
+        for ref in d.policies
+        if ref.id == policy_id
+    }
+    output.render_policy_published(match, carriers=carriers,
+                                   source_bytes=len((match.source or "").encode("utf-8")))
+    if match.source:
+        output.info(match.source)
+    if match.semantic:
+        output.info(json.dumps(match.semantic, indent=2))
+
+
+def policies_publish(
+    ctx: typer.Context,
+    policy_id: str = typer.Argument(..., help="Policy id (letters, numbers, '.', '_', '-')."),
+    source: Optional[str] = typer.Argument(
+        None,
+        help="Path to the JavaScript source, @path, or - for stdin. Omit to paste it. Same as --source.",
+    ),
+    kind: Optional[str] = typer.Option(
+        None, "--kind",
+        help="regex (JavaScript), jev (Jev checks only) or both (JavaScript its own Jev checks may "
+             "clear). Default: follows from what you give — --semantic alone is jev, with source both.",
+    ),
+    source_opt: Optional[str] = typer.Option(
+        None, "--source", help="The JavaScript source: a path, @path, or - for stdin.",
+    ),
+    semantic_path: Optional[str] = typer.Option(
+        None, "--semantic",
+        help="A JSON file holding the Jev declarations (a JSON array): a path, @path, or - for stdin.",
+    ),
+    description: str = typer.Option("", "--description", help="One-line description."),
+    no_verify: bool = typer.Option(
+        False, "--no-verify", help="Skip the JavaScript syntax check before publishing."
+    ),
+) -> None:
+    """Publish a policy — mints a NEW VERSION; it never edits one in place.
+
+    A policy has a **kind**:
+
+    * `regex` — JavaScript (`--source`, or the positional source): what publish
+      has always done, and the default.
+    * `jev` — Jev checks only (`--semantic checks.json`): a JSON array of Jev
+      declarations, each `{name, title, appliesTo, mode, userCanOverride,
+      probes:[{id, instructions, criteria:{true,false}}], guidance, ...}` —
+      exactly a failproofai pack manifest's semantic entry. No JavaScript.
+    * `both` — the two together. FailproofAI Cloud makes the JavaScript's
+      verdict reviewable by exactly its own checks, and deploys them as one.
+
+    Jev checks run on FailproofAI Cloud; nothing is installed on the machine.
+    A machine gets a `both` policy's JavaScript, and asks FailproofAI Cloud
+    about each checked tool call while its Jev mode is `observe` or `enforce`.
+
+    The JavaScript is parse-checked with node before it is sent. Nothing
+    downstream does this: the server validates the id and a size ceiling, and a
+    broken policy otherwise fails on the machine at enforcement time.
+    `--no-verify` skips it; a host without node publishes with a warning rather
+    than a block. Jev fields in the JavaScript (`semanticPolicies.add`,
+    `authority: "reviewable"`) are refused regardless — put Jev checks in
+    `--semantic`. The server checks each declaration (limits, reserved
+    FailproofAI names, names unique in the org) and says which one it refused.
+
+    Source can come from a path, `@path`, a pipe, `-`, or an interactive paste
+    when you give none and stdin is a terminal.
+
+    **Publishing deploys nothing.** A new version sits unused until
+    `fp fleet deploy` puts it on a machine. Needs `policies:write`.
+    With `--json`: the created version plus `carriers` — a map of machine id to
+    the version of this policy it currently runs, so a harness can tell what a
+    publish left behind without a second call.
+
+    Examples:
+
+    * `fp policies publish no-force-push ./rule.mjs`
+    * `cat rule.mjs | fp policies publish no-force-push`
+    * `fp policies publish no-force-push -` — read stdin explicitly
+    * `fp policies publish prod-db-intent --kind jev --semantic ./checks.json`
+    * `fp policies publish no-prod-db --kind both --source ./rule.mjs --semantic ./checks.json`
+    """
+    state: AppState = ctx.obj
+    deny_in_key_mode(state, "policies publish", _KEY_MODE_REASON)
+    cctx = require_auth(state)
+
+    if source is not None and source_opt is not None:
+        raise click.UsageError("give the JavaScript source once — positionally or with --source, not both")
+    source = source if source is not None else source_opt
+    if source == "-" and semantic_path == "-":
+        raise click.UsageError("only one of the JavaScript source and --semantic can come from stdin")
+
+    # Whether JavaScript is coming is decided WITHOUT reading stdin: a Jev-only
+    # publish must not sit waiting for a paste nobody is going to give.
+    wants_source = source is not None or kind in ("regex", "both") or (kind is None and semantic_path is None)
+    try:
+        resolved_kind = resolve_kind(kind, has_source=wants_source, has_semantic=semantic_path is not None)
+    except RefUsageError as exc:
+        raise click.UsageError(str(exc))
+
+    def _paste_prompt() -> None:
+        output.hint("paste the policy source, then press Ctrl-D")
+
+    text: Optional[str] = None
+    semantic = None
+    try:
+        if semantic_path is not None:
+            semantic = parse_semantic(read_source(semantic_path, isatty=False))
+        if wants_source:
+            text = read_source(source, prompt=_paste_prompt)
+    except RefUsageError as exc:
+        raise click.UsageError(str(exc))
+    except RefError as exc:
+        raise ApiError(str(exc))
+    if wants_source and not (text or "").strip():
+        raise ApiError("policy source is empty — nothing to publish")
+
+    # Nothing downstream parses this. The server checks the id and a size
+    # ceiling; the machines find out at enforcement time, which is the worst
+    # place for a syntax error to surface. `--no-verify` exists because a
+    # machine without node should still be able to publish, not because
+    # skipping is ever a good idea.
+    syn = SyntaxResult(ok=True, checked=False,
+                       message="not checked" if text else "no JavaScript source")
+    if text and not no_verify:
+        syn = check_syntax(text)
+        if not syn.ok:
+            raise ApiError(
+                f"{policy_id} is not parseable JavaScript — refusing to publish it:\n"
+                f"{syn.message}",
+                hint="fix the syntax, or pass --no-verify to publish it anyway",
+            )
+        if not syn.checked and not output.is_json():
+            output.warn(syn.message)
+
+    created = api.publish_policy(
+        cctx, policy_id, text, description,
+        # Sent only when it says something the server's default does not, so a
+        # plain JavaScript publish is the same request it has always been.
+        kind=None if resolved_kind == "regex" and kind is None else resolved_kind,
+        semantic=semantic,
+    )
+
+    # Which machines already carry this policy, and at which version. Publishing
+    # deploys nothing, so this is the one thing the card must not guess at: it
+    # used to state "not deployed anywhere" unconditionally, which was wrong for
+    # every policy that already had a version in the field.
+    carriers = {
+        d.machine_id: ref.version
+        for d in api.list_deployments(cctx)
+        for ref in d.policies
+        if ref.id == policy_id
+    }
+    if output.is_json():
+        # `syntax` included, exactly as `policies test` does. `SyntaxResult.checked`
+        # exists so that "we did not look" can never render as "we looked and it
+        # passed" — and the only report of it was gated on `not output.is_json()`,
+        # so on the automated path an UNCHECKED publish was byte-identical to a
+        # verified one. A CI container without node published unparsed source,
+        # the harness read success, and the syntax error surfaced at enforcement
+        # time on the machines — the one place `policy_check`'s docstring exists
+        # to move it away from.
+        output.emit_json({**created.to_dict(), "carriers": carriers, "syntax": syn.to_dict()})
+        return
+    output.render_policy_published(created, carriers=carriers,
+                                   source_bytes=len((text or "").encode("utf-8")))
+
+
+def policies_enable(
+    ctx: typer.Context,
+    policy_id: str = typer.Argument(..., help="Policy id."),
+    yes: bool = typer.Option(False, "--yes", "-y", help="Skip the confirmation prompt. The prompt only appears on an interactive terminal: under --json, or with stdin redirected, this command proceeds without asking."),
+) -> None:
+    """Re-enable a disabled policy, restoring it to the machines that lost it.
+
+    The exact inverse of `disable`: the server puts the policy back into every
+    deployment it was removed from, advancing each machine's generation again.
+    Nothing needs redeploying by hand.
+
+    Needs `policies:write`. With `--json`: `{id, disabled, archived,
+    machinesUpdated}` — `machinesUpdated` counts the deployments rewritten, and
+    matches the count the preceding `disable` reported.
+
+    Example:
+
+    * `fp policies enable no-force-push --yes`
+    """
+    state: AppState = ctx.obj
+    deny_in_key_mode(state, "policies enable", _KEY_MODE_REASON)
+    cctx = require_auth(state)
+    # Confirmed, like its exact inverse. `disable` took `--yes` and prompted;
+    # this fired the moment it was typed, with no prompt and no way to withhold
+    # one — on a fleet-wide mutation with the same blast radius in the opposite
+    # direction: re-arming a policy can start denying tool calls on every machine
+    # at its next poll. It was the only deployment-mutating command in the CLI
+    # with neither (`fleet deploy`, `fleet rollback`, `policies disable` and
+    # `policies delete` all confirm), and a mistyped id reached the server
+    # unchecked. Calm glyph rather than the destructive ⚠, matching `users
+    # enable`: this is restorative, not dangerous — but it is not a read.
+    if not _write.confirm_action(
+        state, "enable policy", policy_id,
+        consequence=("it is added back to every deployment it was removed from, "
+                     "minting a new generation on each"),
+        assume_yes=yes, glyph="↑", color=theme.ACCENT,
+    ):
+        if output.is_json():
+            output.emit_json({"cancelled": True})
+        else:
+            output.print_cancelled()
+        return
+    res = api.set_policy_enabled(cctx, policy_id, True)
+    if output.is_json():
+        output.emit_json(res)
+        return
+    output.policy_lifecycle_changed(policy_id, "enabled")
+
+
+def policies_disable(
+    ctx: typer.Context,
+    policy_id: str = typer.Argument(..., help="Policy id."),
+    yes: bool = typer.Option(False, "--yes", "-y", help="Skip the confirmation prompt. The prompt only appears on an interactive terminal: under --json, or with stdin redirected, this command proceeds without asking."),
+) -> None:
+    """Disable a policy. It is removed from every deployment carrying it.
+
+    Not just "machines stop enforcing it": the server reissues each affected
+    machine's deployment WITHOUT this policy, advancing that machine's
+    generation. `fp fleet history` shows the reissue as an ordinary entry.
+
+    `policies enable` is the exact inverse: it puts the policy back into every
+    deployment it was removed from, so nothing needs redeploying by hand.
+
+    Needs `policies:write`. With `--json`: `{id, disabled, archived,
+    machinesUpdated}` — `machinesUpdated` is how many deployments were rewritten
+    to drop it, and is the number to check if you expected this to be a no-op.
+
+    Example:
+
+    * `fp policies disable no-force-push --yes`
+    """
+    state: AppState = ctx.obj
+    deny_in_key_mode(state, "policies disable", _KEY_MODE_REASON)
+    cctx = require_auth(state)
+    if not _write.confirm_destructive(
+        state, "disable policy", policy_id,
+        consequence=("it is REMOVED from every deployment carrying it, minting a new "
+                     "generation on each; `policies enable` puts it back the same way"),
+        assume_yes=yes,
+    ):
+        if output.is_json():
+            output.emit_json({"cancelled": True})
+        else:
+            output.print_cancelled()
+        return
+    res = api.set_policy_enabled(cctx, policy_id, False)
+    if output.is_json():
+        output.emit_json(res)
+        return
+    output.policy_lifecycle_changed(policy_id, "disabled")
+
+
+def policies_delete(
+    ctx: typer.Context,
+    policy_id: str = typer.Argument(..., help="Policy id."),
+    yes: bool = typer.Option(False, "--yes", "-y", help="Skip the confirmation prompt. The prompt only appears on an interactive terminal: under --json, or with stdin redirected, this command proceeds without asking."),
+) -> None:
+    """Archive a policy. This cannot be undone from the CLI.
+
+    Archiving hides it from `policies list` and from future deployments. A
+    machine already carrying it keeps enforcing it until something redeploys —
+    deleting is not a way to stop enforcement everywhere, and `disable` is.
+
+    Needs `policies:write`. With `--json`: `{id, disabled, archived,
+    machinesUpdated}`, or `{"cancelled": true}` if you decline.
+
+    Example:
+
+    * `fp policies delete old-rule --yes`
+    """
+    state: AppState = ctx.obj
+    deny_in_key_mode(state, "policies delete", _KEY_MODE_REASON)
+    cctx = require_auth(state)
+    if not _write.confirm_destructive(
+        state, "archive policy", policy_id,
+        consequence=("machines already carrying it keep enforcing until redeployed — "
+                     "`policies disable` is what stops enforcement"),
+        assume_yes=yes,
+    ):
+        if output.is_json():
+            output.emit_json({"cancelled": True})
+        else:
+            output.print_cancelled()
+        return
+    res = api.delete_policy(cctx, policy_id)
+    if output.is_json():
+        output.emit_json(res)
+        return
+    output.policy_lifecycle_changed(policy_id, "archived")
+
+
+def policies_test(
+    ctx: typer.Context,
+    source: Optional[str] = typer.Argument(
+        None, help="Policy file, @path, or - for stdin. Omit to paste it."
+    ),
+    tool: str = typer.Option("Bash", "--tool", help="Tool name the hook fired for."),
+    command: Optional[str] = typer.Option(None, "--command", help="Bash command to test against."),
+    file_path: Optional[str] = typer.Option(None, "--file", help="File path to test against."),
+    event: str = typer.Option("PreToolUse", "--event", help="Hook event type."),
+    expect: Optional[str] = typer.Option(
+        None, "--expect",
+        help="Assert the decision is allow/deny/instruct; exit 1 if it is not.",
+    ),
+) -> None:
+    """Run a policy locally and print what it would decide. No server, no fleet.
+
+    Executes the real file — bare `import { deny } from "failproofai"` and all —
+    against a context you describe, and prints allow / deny / instruct per
+    registered policy. Nothing is published and nothing is installed.
+
+    Needs `node` on PATH. This is a dry run, not the enforcement path: it proves
+    the policy parses, registers and decides for the input given. It cannot
+    prove the daemon feeds it the same context.
+
+    With `--json`: `{ok, decision, policies:[{name, decision, reason}]}` — the
+    overall `decision` is the strictest any policy returned.
+
+    Examples:
+
+    * `fp policies test ./rule.mjs --command "git push --force"`
+    * `fp policies test ./rule.mjs --tool Write --file .env`
+    """
+    # No `require_auth` and no `deny_in_key_mode`: this command talks to node,
+    # not to the dashboard, so it works logged out and under an API key alike.
+
+    def _paste_prompt() -> None:
+        output.hint("paste the policy source, then press Ctrl-D")
+
+    try:
+        text = read_source(source, prompt=_paste_prompt)
+    except RefUsageError as exc:
+        raise click.UsageError(str(exc))
+    except RefError as exc:
+        raise ApiError(str(exc))
+    if not text.strip():
+        raise ApiError("policy source is empty — nothing to test")
+
+    # Checked before the syntax check runs, so a bad --expect reports itself
+    # rather than being masked by whatever node says about the file. A usage
+    # error should never depend on the content of an argument.
+    if expect is not None and expect not in ("allow", "deny", "instruct"):
+        raise typer.BadParameter(
+            f"invalid --expect value {expect!r}; choose one of allow, deny, instruct"
+        )
+
+    syn = check_syntax(text)
+    if not syn.ok:
+        if output.is_json():
+            output.emit_json({"ok": False, "syntax": syn.to_dict(), "policies": []})
+            raise typer.Exit(1)
+        raise ApiError(f"the policy is not parseable JavaScript:\n{syn.message}")
+
+    run = run_policy(text, tool=tool, command=command, file_path=file_path, event=event)
+
+    # A policy that correctly denies is a SUCCESSFUL test, so the decision does
+    # not set the exit code on its own — otherwise `policies test` would fail
+    # whenever the policy worked. `--expect` is how CI asserts instead: it turns
+    # "what did it decide" into "did it decide what I meant".
+    met = expect is None or run.decision == expect
+    if output.is_json():
+        output.emit_json({**run.to_dict(), "syntax": syn.to_dict(),
+                          "expected": expect, "met": met})
+        raise typer.Exit(0 if (run.ok and met) else 1)
+    if not run.ok:
+        raise ApiError(run.error)
+    output.render_policy_test(run, tool=tool, command=command, file_path=file_path,
+                              expected=expect)
+    if not met:
+        raise typer.Exit(1)
+
+
+def policies_compose(
+    ctx: typer.Context,
+    prompt: str = typer.Argument(..., help="What the policy should do, in plain English."),
+    out: Optional[str] = typer.Option(None, "--out", help="Write the draft to this file."),
+    publish_as: Optional[str] = typer.Option(
+        None, "--publish", help="Publish the draft immediately under this policy id."
+    ),
+) -> None:
+    """Draft a policy from a description, using the Cloud assistant.
+
+    The assistant writes the source; **you** decide whether it ships. By default
+    the draft is printed and nothing else happens — a generated policy that
+    deploys itself is a generated policy nobody read.
+
+    `--out` saves it; `--publish <id>` publishes it, still syntax-checked first.
+    Needs `policies:write` — for the draft as well as the publish. The route is
+    `POST /api/agent/compose-policy`, which the dashboard exports as
+    `withAuth("policies:write", …)`; `agent:use` gates the assistant's other
+    routes (chat, answer, conversations) and is NOT checked on this one. So a
+    role holding only `agent:use` is refused here, and one holding
+    `policies:write` without it works. Session-only.
+
+    With `--json`: `{prompt, source, syntax, published}`.
+
+    Examples:
+
+    * `fp policies compose "block force pushes to main"`
+    * `fp policies compose "deny reading .env" --out env.mjs`
+    """
+    state: AppState = ctx.obj
+    deny_in_key_mode(state, "policies compose", _KEY_MODE_REASON)
+    cctx = require_auth(state)
+
+    with output.thinking("drafting…", enabled=not output.is_json()):
+        res = api.compose_policy(cctx, prompt)
+    source = (res or {}).get("source") or (res or {}).get("policy") or ""
+    if not source.strip():
+        raise ApiError(
+            "the assistant returned no policy source",
+            hint="check `fp agent health` — the assistant may not be configured here",
+        )
+
+    syn = check_syntax(source)
+
+    # Saved BEFORE anything that can fail. `--out` used to run after the
+    # publish, so a publish that was refused — bad syntax, no `policies:write`,
+    # a network blip — threw away the draft the user had just paid an assistant
+    # to write, with no way to get that same text back.
+    if out:
+        try:
+            with open(out, "w", encoding="utf-8") as fh:
+                fh.write(source)
+        except OSError as exc:
+            raise ApiError(f"cannot write {out}: {exc.strerror or exc}")
+
+    published = None
+    if publish_as:
+        if not syn.ok:
+            raise ApiError(
+                f"the drafted policy is not parseable JavaScript — refusing to publish:\n"
+                f"{syn.message}",
+                hint=("fix it and publish it with `fp policies publish`"
+                      if out else "save it with --out, fix it, then publish"),
+            )
+        published = api.publish_policy(cctx, publish_as, source, f"drafted: {prompt}"[:500])
+
+    if output.is_json():
+        output.emit_json({
+            "prompt": prompt, "source": source, "syntax": syn.to_dict(),
+            "published": published.to_dict() if published else None,
+            "savedTo": out,
+        })
+        return
+    output.render_composed_policy(prompt, source, syn, saved_to=out)
+    if published:
+        output.policy_published_brief(published)
+
+
+def register(app: typer.Typer) -> None:
+    policies_app = typer.Typer(
+        no_args_is_help=True,
+        rich_markup_mode="markdown",
+        context_settings={"help_option_names": ["-h", "--help"]},
+        help="Write and manage cloud-managed policies (list / show / publish / enable / disable / delete).",
+    )
+    policies_app.command("list", epilog=GLOBALS_EPILOG)(policies_list)
+    policies_app.command("show", epilog=GLOBALS_EPILOG)(policies_show)
+    policies_app.command("publish", epilog=GLOBALS_EPILOG)(policies_publish)
+    policies_app.command("enable", epilog=GLOBALS_EPILOG)(policies_enable)
+    policies_app.command("disable", epilog=GLOBALS_EPILOG)(policies_disable)
+    policies_app.command("delete", epilog=GLOBALS_EPILOG)(policies_delete)
+    policies_app.command("test", epilog=GLOBALS_EPILOG)(policies_test)
+    policies_app.command("compose", epilog=GLOBALS_EPILOG)(policies_compose)
+    policies_app.command("author", epilog=GLOBALS_EPILOG)(policies_author)
+    policies_app.command("backtest", epilog=GLOBALS_EPILOG)(policies_backtest)
+    policies_app.command("candidacy", epilog=GLOBALS_EPILOG)(policies_candidacy)
+    app.add_typer(policies_app, name="policies")
+
+
+def policies_author(
+    ctx: typer.Context,
+    intent: str = typer.Argument(...),
+    kind: Optional[str] = typer.Option(
+        None, "--kind",
+        help="regex | jev | both. Default: the assistant writes a regex (JavaScript) policy.",
+    ),
+) -> None:
+    """Author a vetted policy from an intent (session; does not publish).
+
+    `--kind jev` asks for Jev checks only, `--kind both` for JavaScript plus the
+    Jev checks that may clear it. Publish the result with `fp policies publish`.
+    """
+    _cloud.session_only(ctx.obj, "policies author")
+    if kind is not None and kind not in ("regex", "jev", "both"):
+        raise click.UsageError("--kind must be regex, jev or both")
+    body = {"issue": {"title": intent, "source": "manual"}}
+    if kind in ("jev", "both"):
+        # The dashboard proxy treats anything else as regex, exactly as before kinds.
+        body["kind"] = kind
+    events = list(api.cloud_stream(require_auth(ctx.obj), "/api/agent/policy-author", body))
+    for event in events:
+        if event.get("type") == "error":
+            raise ApiError(str(event.get("message") or event.get("error") or event.get("reason") or "Policy author failed"))
+    result = next((e.get("result", e) for e in reversed(events) if e.get("type") in ("result", "done")), None)
+    if result is None:
+        raise ApiError("Policy author returned no result; nothing was published")
+    _cloud.emit(ctx.obj, result, "Policy draft")
+
+
+def policies_backtest(
+    ctx: typer.Context,
+    file_or_id: Optional[str] = typer.Argument(None, metavar="FILE_OR_ID"),
+    kind: Optional[str] = typer.Option(
+        None, "--kind",
+        help="regex | jev | both. Default: a published policy's own kind; for a file, "
+             "regex, or jev/both when --semantic is given.",
+    ),
+    semantic_path: Optional[str] = typer.Option(
+        None, "--semantic", help="Jev checks JSON (the same file `policies publish --semantic` takes).",
+    ),
+    hours: Optional[float] = typer.Option(None, "--hours", help="How far back to replay (default 168 for jev/both)."),
+    agent_id: Optional[str] = typer.Option(None, "--agent-id", help="Replay only this agent's calls."),
+    env: Optional[str] = typer.Option(None, "--env", help="Replay only this environment's calls."),
+    run: bool = typer.Option(
+        False, "--run",
+        help="jev/both: actually ask Jev (spends the org's Jev allowance). Default is a free estimate.",
+    ),
+    sample: Optional[int] = typer.Option(None, "--sample", help="jev/both with --run: calls to ask Jev about (max 50)."),
+) -> None:
+    """Replay local or published policy source against stored events (session).
+
+    A regex policy (a .mjs file or a published regex id) is replayed module-only,
+    as before. A jev/both policy — a published one, or `--semantic checks.json`
+    with or without a source file — runs the every-kind backtest: an estimate
+    by default, `--run` to spend Jev allowance on up to `--sample` calls.
+    Needs policies:write and events:read.
+    """
+    from pathlib import Path
+    _cloud.session_only(ctx.obj, "policies backtest")
+    if kind is not None and kind not in ("regex", "jev", "both"):
+        raise click.UsageError("--kind must be regex, jev or both")
+    if file_or_id is None and semantic_path is None:
+        raise click.UsageError("give a policy file or published id, or --semantic checks.json")
+    if hours is not None and not hours > 0:
+        raise click.UsageError("--hours must be a positive number")
+    if sample is not None and not 1 <= sample <= 50:
+        raise click.UsageError("--sample must be between 1 and 50")
+    if file_or_id == "-" and semantic_path == "-":
+        raise click.UsageError("only one of the source and --semantic can come from stdin")
+    cctx = require_auth(ctx.obj)
+    source: Optional[str] = None
+    semantic = None
+    published_kind = None
+    if file_or_id is not None:
+        if file_or_id == "-" or file_or_id.startswith("@") or Path(file_or_id).is_file():
+            source = _write.read_text_arg(file_or_id.removeprefix("@"))
+        else:
+            data = api.cloud_request(cctx, "GET", "/api/enforcement/policies")
+            versions = [p for p in _cloud.rows(data, "policies") if p.get("id") == file_or_id]
+            if not versions:
+                raise NotFoundError(f"no policy named {file_or_id}")
+            newest = max(versions, key=lambda p: p.get("version", 0))
+            published_kind = newest.get("kind") or "regex"
+            source = newest.get("source") or None
+            if semantic_path is None and isinstance(newest.get("semantic"), list):
+                semantic = newest["semantic"]
+    if semantic_path is not None:
+        try:
+            semantic = parse_semantic(read_source(semantic_path, isatty=False))
+        except RefUsageError as exc:
+            raise click.UsageError(str(exc))
+        except RefError as exc:
+            raise ApiError(str(exc))
+    resolved = kind or published_kind or ("regex" if not semantic else ("both" if source else "jev"))
+    if resolved == "regex":
+        if semantic_path is not None:
+            raise click.UsageError("--semantic needs --kind jev or both")
+        if not isinstance(source, str) or not source.strip():
+            raise click.UsageError("Policy source is empty")
+        body = {"source": source}
+        if agent_id:
+            body["agentId"] = agent_id
+        if env:
+            body["environment"] = env
+        if hours is not None:
+            body["hours"] = hours
+        _cloud.emit(ctx.obj, api.cloud_request(cctx, "POST", "/api/agent/policy-backtest",
+            body=body), "Policy backtest")
+        return
+    if resolved == "both" and not (source or "").strip():
+        raise click.UsageError("a both backtest needs the JavaScript source too")
+    if not semantic:
+        raise click.UsageError(f"a {resolved} backtest needs Jev checks: pass --semantic checks.json")
+    body = {"kind": resolved, "semantic": semantic, "hours": hours if hours is not None else 168,
+            "mode": "run" if run else "estimate"}
+    if resolved == "both":
+        body["source"] = source
+    if agent_id:
+        body["agentId"] = agent_id
+    if env:
+        body["environment"] = env
+    if sample is not None:
+        body["sample"] = sample
+    if run and not ctx.obj.json:
+        output.warn("--run asks Jev about stored calls and spends the org's Jev allowance.")
+    _cloud.emit(ctx.obj, api.cloud_request(cctx, "POST", "/api/agent/policy-backtest-all",
+        body=body), "Policy backtest")
+
+
+def policies_candidacy(ctx: typer.Context, issue: str = typer.Option(..., "--issue")) -> None:
+    """Ask whether a policy could address an issue (session; read-only)."""
+    _cloud.session_only(ctx.obj, "policies candidacy")
+    cctx = require_auth(ctx.obj)
+    row = api.cloud_request(cctx, "GET", f"/api/issues/{issue}")
+    _cloud.emit(ctx.obj, api.cloud_request(cctx, "POST", "/api/agent/policy-candidacy",
+        body={"issue": row}), "Policy candidacy")

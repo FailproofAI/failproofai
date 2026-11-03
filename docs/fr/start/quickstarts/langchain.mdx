@@ -1,0 +1,39 @@
+---
+title: "LangChain et LangGraph"
+description: "Installez, instrumentez et visualisez votre première trace."
+icon: "/images/frameworks/langchain.svg"
+---
+
+Trois étapes pour obtenir votre première trace LangChain ou LangGraph. Pour le streaming, le human-in-the-loop, le nommage des spans et les options, consultez [le guide complet](/fr/start/integrations/langchain).
+
+## Installer
+
+```bash
+pip install 'failproofai-sdk[langgraph]'
+```
+
+Pour LangChain sans LangGraph, utilisez `failproofai-sdk[langchain]`.
+
+## Instrumenter
+
+```python
+import failproofai_sdk
+
+failproofai_sdk.configure(environment="production")
+failproofai_sdk.instrument()
+
+with failproofai_sdk.session():
+    graph.invoke({"messages": [HumanMessage("...")]})
+```
+
+Aucune modification aux sites d'appel. `instrument()` enregistre un traceur que LangChain injecte dans chaque gestionnaire de callbacks qu'il instancie, de sorte que les graphes, les outils et les modèles sont capturés — y compris ceux présents dans des bibliothèques que vous n'avez pas écrites.
+
+## Vérifier que les données sont bien arrivées
+
+Exécutez-le une fois, puis ouvrez **Observe → Sessions** et sélectionnez votre environnement. Votre exécution apparaît sous forme de trace reconstruite.
+
+Si rien n'arrive, vérifiez que la machine est connectée avec `failproofai config --status`.
+
+<Card title="Guide complet LangChain" icon="arrow-right" href="/fr/start/integrations/langchain">
+  Ce qui est enregistré, le streaming, le comptage de tokens, le nommage des spans, le contrôle de session, les options et le human-in-the-loop.
+</Card>

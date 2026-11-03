@@ -1,0 +1,249 @@
+---
+title: "LlamaIndex"
+sidebarTitle: "LlamaIndex"
+description: "Instrument workflows, steps, function agents, and retrievers."
+icon: "/images/frameworks/llamaindex.svg"
+---
+
+## Cài đặt
+
+```bash
+pip install 'failproofai-sdk[llamaindex]'
+```
+
+Hỗ trợ: `llama-index-core` 0.14.23 đến 0.15. Phiên bản 0.14.23 là phiên bản nơi workflow stream bắt đầu mang theo các sự kiện agent được gõ mà adapter này đọc. Bên dưới nó, tên mô hình và cấu trúc agent đều bị mất.
+
+## Instrument
+
+```python
+import asyncio
+
+import failproofai_sdk
+
+failproofai_sdk.configure(environment="production")
+failproofai_sdk.instrument()
+
+
+async def main():
+    async with failproofai_sdk.session():
+        await agent.run("...")
+
+
+asyncio.run(main())
+```
+
+API agent của LlamaIndex là async. Mỗi phạm vi hoạt động dưới cả `async with` và `with` và tạo ra các sự kiện giống hệt nhau.
+
+`instrument()` gắn một event handler và một span handler vào global dispatcher của LlamaIndex. Cùng nhau, chúng làm cho vòng lặp agent có thể nhìn thấy được, không chỉ các model call của nó.
+
+<Warning>
+  Nếu không có một đối số bổ sung trên LLM của bạn, mọi token count trong trace của bạn sẽ là null. Xem [Token counts](#token-counts) bên dưới.
+</Warning>
+
+## Token counts
+
+`FunctionAgent` gọi `astream_chat`, và `llama-index-llms-openai` không gửi `stream_options={"include_usage": True}` khi nó streaming. Do đó, nhà cung cấp không bao giờ gửi usage chunk, và không có gì để bất kỳ instrumentation nào đọc.
+
+Đây là hành vi upstream của LlamaIndex. Opt in trên LLM của bạn:
+
+```python
+from llama_index.llms.openai import OpenAI
+
+llm = OpenAI(
+    model="gpt-4o-mini",
+    additional_kwargs={"stream_options": {"include_usage": True}},
+)
+```
+
+Được đo lường trên cùng một run và mô hình:
+
+| | Input tokens | Output tokens |
+| --- | --- | --- |
+| Không có | `null` | `null` |
+| Có | 148 | 17 |
+
+Các lệnh gọi không streaming (`llm.chat`, `llm.achat`) báo cáo usage mà không cần cấu hình. Chỉ đường dẫn streaming, là đường dẫn agent mặc định, cần điều này.
+
+## Những gì được ghi lại
+
+| LlamaIndex | Failproof event |
+| --- | --- |
+| `Workflow.run` root span | Session, `agent_start`, `agent_end` |
+| Nested `Workflow.run` span | Nested `agent_start`, `agent_end` |
+| Workflow step span | `hook_triggered`, `hook_completed` |
+| LLM chat start and end | `model_request`, `model_response` |
+| `FunctionTool.call` span | `tool_use`, `tool_result` |
+| Retrieval start and end | `tool_use`, `tool_result`, output summarized |
+| Embeddings | Không có, trừ khi `embeddings=True` |
+| Một tool đang đợi một người | `human_wait`, `agent_pause`, sau đó `agent_resume`, `human_input` |
+| `AgentWorkflow` handoff | Một nested `agent_start`, `agent_end` cho mỗi agent, parented đến workflow |
+| Exception | `error`, sau đó `agent_end` với outcome `failed`, và `agent_end.summary` đặt tên cho nó |
+| `handler.cancel_run()` | `agent_end` với outcome `cancelled` và không có `error` — một nút dừng không phải là thất bại |
+
+`agent_id` là `FunctionAgent.name` khi bạn đặt một, còn không thì là tên lớp workflow. Dưới một `AgentWorkflow`, mỗi agent nhận được lượt lần lượt có span nested riêng của nó dưới workflow, vì vậy handoff được đọc thành hai agent chứ không phải một.
+
+Output retrieval được tóm tắt thay vì được dump. Một retriever trả về các tài liệu, và lưu trữ chúng trong payload sẽ đặt corpus của bạn vào event store một lần cho mỗi truy vấn. Thay vào đó, số lượng, phạm vi điểm số và các đoạn trích bị cắt ngắn được giữ lại.
+
+## Ví dụ
+
+```python
+import asyncio
+
+import failproofai_sdk
+from llama_index.core.agent.workflow import FunctionAgent
+from llama_index.core.tools import FunctionTool
+from llama_index.llms.openai import OpenAI
+
+failproofai_sdk.configure(environment="production")
+failproofai_sdk.instrument()
+
+POP = {"tokyo": "37M", "delhi": "33M"}
+AREA = {"tokyo": "2,194 km2", "delhi": "1,484 km2"}
+
+
+def population(city: str) -> str:
+    """Population of a city. Valid: tokyo, delhi."""
+    return POP.get(city.lower().strip(), "unknown")
+
+
+def area(city: str) -> str:
+    """Land area of a city. Valid: tokyo, delhi."""
+    return AREA.get(city.lower().strip(), "unknown")
+
+
+async def main():
+    agent = FunctionAgent(
+        name="city_analyst",
+        tools=[
+            FunctionTool.from_defaults(fn=population),
+            FunctionTool.from_defaults(fn=area),
+        ],
+        llm=OpenAI(
+            model="gpt-4o-mini",
+            additional_kwargs={"stream_options": {"include_usage": True}},
+        ),
+        system_prompt="Use the tools. Be terse.",
+    )
+
+    async with failproofai_sdk.session():
+        async with failproofai_sdk.agent("city_analyst", goal="compare two cities"):
+            print(await agent.run("Compare Tokyo and Delhi on population and area."))
+
+
+asyncio.run(main())
+```
+
+Vòng lặp agent xuất hiện trong trace dưới dạng các cặp hook: `init_run`, `setup_agent`, `run_agent_step`, `parse_agent_output`, `call_tool`, và `aggregate_tool_results`. Đây là vòng lặp của chính framework, vì vậy chúng là hooks chứ không phải agents, điều này giữ `agent_id` có ý nghĩa.
+
+## Đặt tên cho spans của bạn
+
+`agent_id` là `FunctionAgent.name` khi bạn đặt một, còn không thì là tên lớp workflow.
+
+```python
+FunctionAgent(name="city_analyst", tools=[...], llm=llm)   # agent_id = "city_analyst"
+```
+
+Trong một `AgentWorkflow`, tên đó cũng là tên mà mỗi handoff được ghi lại dưới:
+
+```text
+AgentWorkflow            parent span
+├─ city_analyst          turn 1
+├─ cost_analyst          turn 2
+└─ city_analyst          turn 3  — a new turn, not a reopened one
+```
+
+Vì vậy, `agent_id` cho bạn biết **agent nào** đã làm công việc và `parent_id` cho bạn biết **workflow nào** nó thuộc về. Một agent trao lại quyền kiểm soát sau này sẽ mở một lượt thứ hai chứ không phải mở lại lượt đầu tiên của nó.
+
+Bọc lệnh run để ghi đè nó, hoặc để nhóm nhiều agent dưới một parent:
+
+```python
+async with failproofai_sdk.agent("research", goal="compare two cities"):
+    await agent.run(...)
+```
+
+Giữ `agent_id` là low cardinality. Đây là facet chính trên mọi bề mặt dashboard, vì vậy hãy sử dụng tên vai trò hoặc workflow, không bao giờ UUID hoặc chuỗi per-run.
+
+## Kiểm soát session
+
+Adapter này **không có tùy chọn `session_id`**. Session được lấy từ phạm vi bao quanh, hoặc là `uuid4().hex` được tạo cho mỗi workflow run:
+
+```python
+async with failproofai_sdk.session(f"chat-{user_id}"):
+    await agent.run(...)
+```
+
+## Tùy chọn
+
+```python
+failproofai_sdk.instrument(
+    "llama_index",
+    embeddings=False,         # True records embedding calls as tool pairs
+    steps=True,               # False drops workflow-step hook pairs
+    capture_messages=True,    # False drops EVERY payload: prompts, completions,
+                              # tool arguments and output, step I/O, retrieval
+                              # queries, the goal and the final answer
+    capture_limit=8192,       # characters kept per captured value
+    stale_after=600.0,        # seconds before an abandoned LEAF is force-closed
+    reaper_interval=30.0,     # how often the reaper sweeps; 0 disables it
+)
+```
+
+| Tùy chọn | Lý do bạn muốn thay đổi nó |
+| --- | --- |
+| `embeddings` | Bật khi debug embedding latency hoặc cost. Một bulk index build là hàng ngàn lệnh gọi và sẽ che phủ timeline. |
+| `steps` | Tắt nếu bạn chỉ muốn model và tool events và thấy agent loop tạo nhiều tiếng ồn. |
+| `capture_messages` | Tắt cho regulated data. Mọi payload dừng được ghi lại — prompts, model completion, tool arguments và return values, workflow-step input và output, retrieval queries, agent goal và final answer. Cấu trúc, timings, tokens, và outcomes vẫn được ghi lại. |
+| `capture_limit` | Ký tự được giữ lại cho mỗi captured value trước khi truncation. Nâng lên khi RAG prompt hoặc retrieved context đang tới bị cắt. |
+| `stale_after` | Giây trước khi một abandoned **leaf** — một streaming response không ai tiêu thụ, một model hoặc tool span mà close không bao giờ tới — bị force-closed, để session settle thay vì đọc `ongoing` mãi mãi. Nó **không** đóng một abandoned run chính nó: một workflow có tác vụ bị hủy mà không có dispatcher thấy exit giữ `agent_start` mở cho đến `uninstrument()`. |
+| `reaper_interval` | Sweep frequency. Đặt thành `0` để vô hiệu hóa reaper hoàn toàn. |
+
+## Human in the loop
+
+Được ghi lại khi wait xảy ra bên trong một tool:
+
+```python
+async def ask_human(question: str) -> str:
+    """Ask a person and wait for their answer."""
+    response = await ctx.wait_for_event(HumanResponseEvent)
+    return response.answer
+```
+
+`ctx.wait_for_event` trong một plain workflow step không được ghi lại. Runtime bắt drop trước khi nó tới dispatcher, vì vậy step exits và re-runs sau này mà không có signal để key một pause. FunctionAgent pattern, mà LlamaIndex documents, waits bên trong một tool và được ghi lại đầy đủ.
+
+## Vấn đề thường gặp
+
+<AccordionGroup>
+  <Accordion title="Mọi token count đều là null">
+    Thêm `additional_kwargs={"stream_options": {"include_usage": True}}` vào LLM của bạn. Xem [Token counts](#token-counts).
+  </Accordion>
+
+  <Accordion title="Usage được điền nhưng các token columns trống">
+    LlamaIndex không có usage field tiêu chuẩn. Adapter cố gắng sử dụng nhiều hình dạng đã biết, và một integration đặt tên các bộ đếm của nó thành cái gì mới sẽ không khớp với bất kỳ cái nào trong số chúng.
+
+    Raw dict luôn ship, vì vậy hãy kiểm tra `usage` trong payload để xem nhà cung cấp của bạn gọi chúng là gì.
+
+    Một `usage` được điền kèm theo các token columns trống là cố ý — nó tốt hơn một số sai lệch tự tin.
+  </Accordion>
+
+  <Accordion title="Timeline full của setup_agent và parse_agent_output">
+    Đó là FunctionAgent loop, một set cho mỗi iteration. Filter by hook name trên dashboard. Step timings này thường là lý do để sử dụng adapter này thay vì một model-only.
+  </Accordion>
+
+  <Accordion title="Không có gì được ghi lại">
+    Kiểm tra theo thứ tự này: `instrument()` chạy trước run; có một `async with failproofai_sdk.session():` xung quanh `await`; `llama-index-core` là 0.14.23 hoặc mới hơn; `FAILPROOFAI_SDK_STRICT=1` set, vì vậy một degraded hook raises thay vì bị swallowed.
+  </Accordion>
+</AccordionGroup>
+
+## Tiếp theo
+
+<Columns cols={3}>
+  <Card title="Cách nó hoạt động" icon="workflow" href="/vi/start/integrations/custom-agents#going-deeper">
+    Pairs, ids, session lifecycle, và delivery.
+  </Card>
+  <Card title="Đọc một trace" icon="route" href="/vi/sessions/read-a-trace">
+    Theo causality qua session bạn vừa capture.
+  </Card>
+  <Card title="Các framework khác" icon="plug" href="/vi/start/integrations">
+    LangGraph, CrewAI, Pydantic AI, và custom agents.
+  </Card>
+</Columns>

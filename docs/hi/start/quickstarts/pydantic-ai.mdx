@@ -1,0 +1,42 @@
+---
+title: "Pydantic AI"
+description: "इंस्टॉल करें, इंस्ट्रूमेंट करें, और अपना पहला trace देखें।"
+icon: "/images/frameworks/pydantic-ai.svg"
+---
+
+आपके पहले Pydantic AI trace के लिए तीन चरण। टूल्स, रिट्राइज, स्ट्रीमिंग और विकल्पों के लिए, [पूर्ण गाइड](/hi/start/integrations/pydantic-ai) देखें।
+
+## इंस्टॉल करें
+
+```bash
+pip install 'failproofai-sdk[pydantic-ai]'
+```
+
+## इंस्ट्रूमेंट करें
+
+```python
+import failproofai_sdk
+from pydantic_ai import Agent
+
+failproofai_sdk.configure(environment="production")
+failproofai_sdk.instrument()          # किसी भी Agent को बनाने से पहले
+
+agent = Agent("openai:gpt-4o-mini", system_prompt="Be terse.")
+
+with failproofai_sdk.session():
+    result = agent.run_sync("...")
+```
+
+<Warning>
+  `instrument()` को आपके द्वारा `Agent` बनाने से **पहले** चलना चाहिए। यह क्षमता निर्माण के समय जोड़ी जाती है, इसलिए पहले बनाया गया एक agent कुछ भी रिकॉर्ड नहीं करता — कोई त्रुटि के बिना, क्योंकि कोई समस्या नहीं हुई। यह इस एडेप्टर के साथ खाली trace का सबसे आम कारण है, और मॉड्यूल-स्कोप agents वह जगह है जहां यह काटता है: `failproofai_sdk` को इंपोर्ट करें और उन्हें बनाने वाले मॉड्यूल को इंपोर्ट करने से पहले `instrument()` को कॉल करें।
+</Warning>
+
+## जांचें कि यह पहुंचा
+
+इसे एक बार चलाएं, फिर **Observe → Sessions** खोलें और अपना environment चुनें। आपका रन एक पुनर्निर्मित trace के रूप में दिखाई देता है।
+
+यदि कुछ नहीं पहुंचता है, तो `failproofai config --status` के साथ मशीन के कनेक्ट होने की पुष्टि करें।
+
+<Card title="पूर्ण Pydantic AI गाइड" icon="arrow-right" href="/hi/start/integrations/pydantic-ai">
+  क्या रिकॉर्ड किया जाता है, tools और retries, streaming, span नामकरण, विकल्प, और सामान्य समस्याएं।
+</Card>

@@ -1,0 +1,25 @@
+---
+title: "Tools"
+description: "Find slow, failing, or overused tools across agent sessions."
+icon: "wrench"
+---
+
+Tools groups tool calls across sessions so you can compare latency and call distribution.
+
+<Tabs>
+  <Tab title="Dashboard">
+    1. Go to **Observe → Tools**.
+    2. Filter by environment, tool name, agent, or session ID.
+    3. Review latency and tool distribution.
+    4. Select a chart point or tool segment to open matching events and sessions.
+
+    ![The Tools page showing latency, success and failure breakdowns, and tool-call distribution.](/images/dashboard/tools.png)
+  </Tab>
+  <Tab title="CLI">
+    ```bash
+    fp list tools
+    fp events --event-type tool_use,tool_result --env production --since 24h
+    fp --json events --full --session-id <session-id> --all
+    ```
+  </Tab>
+</Tabs>

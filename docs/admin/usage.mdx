@@ -1,0 +1,37 @@
+---
+title: "Usage"
+description: "Inspect organization consumption and the active billing window."
+icon: "chart-no-axes-combined"
+---
+
+Usage shows consumption for the current organization and its billing windows. Use it to understand how production rollout, transcript volume, evaluations, and audit cadence affect your plan.
+
+## Review usage
+
+<Tabs>
+  <Tab title="Dashboard">
+    1. Go to **Administration → Usage**.
+    2. Confirm the organization and metering window.
+    3. Review ingest, sessions, evaluations, metrics, audits, findings, alerts, users, and keys.
+    4. Compare started and completed audit work when audit usage looks unexpected.
+
+    ![The Usage page showing the metering window, captured events, evaluation and audit pipelines, workspace resources, members, and API keys.](/images/dashboard/usage-overview.png)
+  </Tab>
+  <Tab title="CLI">
+    ```bash
+    fp usage
+    fp --json usage
+    fp --org reliability-team --json usage
+    ```
+  </Tab>
+</Tabs>
+
+## Investigate a change
+
+1. Confirm the active organization and window.
+2. Compare the increase with session volume by environment.
+3. Check whether a new integration started sending transcripts.
+4. Review evaluator and audit cadence changes.
+5. Compare against the limits on the current pricing plan.
+
+The CLI returns the same summary for scripts.

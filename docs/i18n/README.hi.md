@@ -8,18 +8,21 @@
 
 <img src="https://d2wq11aau0arks.cloudfront.net/failproof/fa_updated_full.svg" alt="failproof ai" width="220" />
 
+<a href="https://trendshift.io/repositories/69722?utm_source=trendshift-badge&amp;utm_medium=badge&amp;utm_campaign=badge-trendshift-69722" target="_blank" rel="noopener noreferrer"><img src="https://trendshift.io/api/badge/trendshift/repositories/69722/daily?language=TypeScript" alt="FailproofAI%2Ffailproofai | Trendshift" width="250" height="55"/></a>
+<a href="https://trendshift.io/repositories/69722?utm_source=trendshift-badge&amp;utm_medium=badge&amp;utm_campaign=badge-trendshift-69722" target="_blank" rel="noopener noreferrer"><img src="https://trendshift.io/api/badge/trendshift/repositories/69722/daily" alt="FailproofAI%2Ffailproofai | Trendshift" width="250" height="55"/></a>
+
 [![npm](https://img.shields.io/npm/v/failproofai?style=flat-square&color=CB3837)](https://www.npmjs.com/package/failproofai)
 [![CI](https://img.shields.io/github/actions/workflow/status/failproofai/failproofai/ci.yml?branch=main&style=flat-square&label=CI)](https://github.com/failproofai/failproofai/actions)
 [![Supply Chain](https://img.shields.io/badge/supply%20chain-secure-brightgreen?style=flat-square)](https://github.com/failproofai/failproofai/actions/workflows/osv-scanner.yml)
 [![Discord](https://img.shields.io/badge/Discord-join%20us-5865F2?style=flat-square&logo=discord)](https://discord.befailproof.ai/)
-[![Docs](https://img.shields.io/badge/docs-befailproof.ai-002CA7?style=flat-square)](https://docs.befailproof.ai/introduction)
+[![Reddit](https://img.shields.io/badge/Reddit-r%2Ffailproofai-FF4500?style=flat-square&logo=reddit)](https://www.reddit.com/r/failproofai/)
+[![Docs](https://img.shields.io/badge/docs-befailproof.ai-002CA7?style=flat-square)](https://docs.befailproof.ai/)
 [![License](https://img.shields.io/badge/license-MIT%20%2B%20Commons%20Clause-blue?style=flat-square)](../../LICENSE)
 
 **अनुवाद:** [简体中文](../../docs/i18n/README.zh.md) · [日本語](../../docs/i18n/README.ja.md) · [한국어](../../docs/i18n/README.ko.md) · [Español](../../docs/i18n/README.es.md) · [Português](../../docs/i18n/README.pt-br.md) · [Deutsch](../../docs/i18n/README.de.md) · [Français](../../docs/i18n/README.fr.md) · [Русский](../../docs/i18n/README.ru.md) · [हिन्दी](../../docs/i18n/README.hi.md) · [Türkçe](../../docs/i18n/README.tr.md) · [Tiếng Việt](../../docs/i18n/README.vi.md) · [Italiano](../../docs/i18n/README.it.md) · [العربية](../../docs/i18n/README.ar.md) · [עברית](../../docs/i18n/README.he.md)
 
-**कोडिंग एजेंट्स के लिए रनटाइम विफलता समाधान।**
-Claude Code और Codex में हुक करता है। लूप्स, खतरनाक कार्यों और गोपनीय रिसाव को
-घटनाओं में बदलने से पहले पकड़ता है। शून्य विलंबता। स्थानीय रूप से चलता है।
+**हर harness के लिए अवलोकन और प्रवर्तन जो आपके agents चलाते हैं।**
+जहां भी आपके agents चलते हैं, हम इसे देखते हैं — और हम नहीं कह सकते। Failproof 12 agent harnesses को हुक करता है — Claude Code और Codex जैसे कोडिंग CLIs, Hermes जैसे chat gateways, OpenClaw जैसे self-hosted assistants — हर run को कैप्चर करता है और execution से पहले खतरनाक tool calls को block करता है। 39 built-in policies। शून्य latency। स्थानीय रूप से चलता है।
 
 </div>
 
@@ -29,7 +32,11 @@ Claude Code और Codex में हुक करता है। लूप्
 
 ---
 
-## समर्थित एजेंट CLIs
+## समर्थित harnesses
+
+दो वर्गों में बारह harnesses — दस कोडिंग CLIs, और दो chat और assistant gateways (Hermes, OpenClaw)। सभी के लिए एक policy API और एक session history। एक policy क्या *block* कर सकती है यह per-harness है: tool call को चलने से पहले रोकना सभी बारह पर सत्यापित है, turn-end gates आठ पर हैं। [per-harness matrix](https://docs.befailproof.ai/reference/harnesses#enforcement-capability) प्रत्येक द्वारा honored events की सूची देता है।
+
+जो Agents किसी में भी नहीं चलते हैं वे [Python SDK](https://docs.befailproof.ai/reference/custom-agents) के माध्यम से रिपोर्ट करते हैं, जो आपको tracing, sessions और audits देता है। वहां enforcement के लिए आपके स्वयं के runtime में एक hook की आवश्यकता होती है — [हमसे बात करें](mailto:support@befailproof.ai) और हम इसे map करेंगे।
 
 {/* A 6-column table instead of inline <img> runs: table columns never re-wrap,
      so the grid stays 2×6 at any window width (scrolling on very narrow screens
@@ -125,36 +132,43 @@ Claude Code और Codex में हुक करता है। लूप्
   </tr>
 </table>
 
-## स्थापना
+## स्थापित करें
 
 ```sh
 npm install -g failproofai
-failproofai policies --install   # या बस `failproofai` चलाएँ और पहली बार के संकेत को स्वीकार करें
-failproofai
+failproofai config                             # अपने agents और daemon को wire करें
+failproofai policies add FailproofAI/policies  # प्रवर्तन करने के लिए क्या चुनें
+failproofai                                    # localhost:8020 पर dashboard
 ```
 
-30 अंतर्निर्मित नीतियाँ तुरंत सक्रिय हो जाती हैं। डैशबोर्ड `localhost:8020` पर है। `FAILPROOFAI_NO_FIRST_RUN=1` के साथ पहली बार के संकेत को अक्षम करें।
+Setup hooks को wire करता है और **कोई नहीं** policies चुनता है — वह दूसरी कमांड है जो मशीन पर guardrails रखती है, और कोई भी pack एक ही तरह से typed है (`failproofai policies add <owner>/<repo>`; `policies show <owner>/<repo>` पहले एक को पढ़ता है)। बिना terminal के `failproofai config` चलाएं — CI, container, agent इसे चलाते हुए — और यह पूछने के बजाय लागू करता है। एक मशीन पर जो कभी setup नहीं हुई है, कोई भी अन्य कमांड पहले एक ही wizard चलाती है; इसे `FAILPROOFAI_NO_FIRST_RUN=1` से disable करें।
+
+जब तक pack नहीं आता, एकमात्र चीज़ जो प्रवर्तन करती है वह `block-failproofai-commands` है, जो हमेशा चालू रहती है और switch off या paused नहीं हो सकती: एक agent जो enforcement को pause कर सकता है अन्य सभी policies को switch off कर सकता है।
 
 ---
 
 ## यह क्या रोकता है
 
-| नीति | यह क्या ब्लॉक करता है |
+| Policy | यह क्या blocks करता है |
 |---|---|
-| `block-push-master` | `main` / `master` के लिए प्रत्यक्ष पुश |
-| `block-force-push` | `git push --force` |
-| `block-work-on-main` | `main` / `master` पर कमिट्स, मर्ज, रीबेसेस |
-| `block-rm-rf` | पुनरावर्ती फ़ाइल विलोपन |
-| `sanitize-api-keys` | एजेंट संदर्भ में API कुंजी रिसाव |
+| `block-env-files` | `.env` और अन्य secret files की reads |
+| `warn-repeated-tool-calls` | Agent एक ही call पर looping कर रहा है |
+| `block-sudo` | Privilege escalation |
+| `warn-destructive-sql` | `DROP`, `TRUNCATE`, unbounded `DELETE` |
+| `block-terraform` / `block-kubectl` | Unreviewed changes to live infrastructure |
+| `block-rm-rf` | Recursive file deletion |
+| `block-force-push` / `block-push-master` | `git push --force`, direct pushes to `main` |
 
-→ [सभी 30 अंतर्निर्मित नीतियाँ](https://docs.befailproof.ai/built-in-policies)
+इनमें से हर एक call को चलने से *पहले* gate करता है, इसलिए वे सभी बारह harnesses पर काम करते हैं। पहले चार किसी भी agent पर लागू होते हैं जो tool call कर सकता है; अंतिम तीन developer पसंद हैं — कोडिंग CLIs harness class हैं जिन्हें हम सबसे गहराई से कवर करते हैं। `sanitize-*` family अलग है: यह tool return के बाद चलता है, इसलिए यह context में secret को रखने के बजाय tool output में रिपोर्ट करता है।
+
+→ [सभी 39 built-in policies](https://docs.befailproof.ai/policies/packs)
 
 ---
 
-## आपकी अपनी नीतियाँ
+## आपकी स्वयं की policies
 
-`.failproofai/policies/` में एक फ़ाइल छोड़ें — यह स्वचालित रूप से लोड होती है, कोई फ़्लैग की आवश्यकता नहीं है।
-इसे कमिट करें और पूरी टीम को अगली पुल पर मिलेगी।
+`.failproofai/policies/` में एक फाइल छोड़ें — यह स्वचालित रूप से लोड होता है, कोई flags की आवश्यकता नहीं।
+इसे commit करें और पूरी team को अगली pull पर यह मिल जाएगा।
 
 ```js
 import { customPolicies, deny, allow } from "failproofai";
@@ -170,53 +184,74 @@ customPolicies.add({
 });
 ```
 
-प्रत्येक नीति के लिए तीन निर्णय उपलब्ध हैं:
+हर policy के लिए उपलब्ध तीन निर्णय:
 
 | निर्णय | प्रभाव |
 |---|---|
-| `allow()` | ऑपरेशन की अनुमति दें |
-| `deny(message)` | इसे ब्लॉक करें — संदेश एजेंट को वापस जाता है |
-| `instruct(message)` | इसे आगे बढ़ने दें, लेकिन एजेंट के अगले प्रॉम्प्ट में संदर्भ जोड़ें |
+| `allow()` | Operation की अनुमति दें |
+| `deny(message)` | इसे block करें — message agent को वापस जाता है |
+| `instruct(message)` | इसे through होने दें, लेकिन agent के अगले prompt में context जोड़ें |
 
-→ [कस्टम नीतियाँ गाइड](https://docs.befailproof.ai/custom-policies)
-
----
-
-## सेशन दृश्यता
-
-आपका एजेंट जो भी टूल कॉल करता है वह स्थानीय रूप से लॉग किया जाता है। डैशबोर्ड दिखाता है कि क्या चला,
-क्या ब्लॉक किया गया, और नीति ने एजेंट को क्या बताया — इसलिए आप अनुमान नहीं लगा रहे हैं
-जब कुछ गलत हो जाता है। → [डैशबोर्ड गाइड](https://docs.befailproof.ai/dashboard)
+→ [एक policy लिखें](https://docs.befailproof.ai/policies/editor)
 
 ---
 
-## दस्तावेज़
+## अवलोकन
 
-| | |
+Enforcement एक आधा है। दूसरा आधा यह देखना है कि agent ने वास्तव में क्या किया।
+
+`failproofai` को कोई arguments के साथ चलाएं और यह `localhost:8020` पर एक dashboard serve करता है जो आपकी मशीन पर पहले से मौजूद run history को पढ़ता है — कोई account नहीं, कोई signup नहीं, कुछ भी box से बाहर नहीं जाता। आप session list, हर run के अंदर model calls, tool calls और hook decisions का sequence, क्या block हुआ और policy ने agent को क्या बताया, और एक offline audit (`failproofai audit`) प्राप्त करते हैं जो आपके history को risky patterns के लिए scan करता है और policies suggest करता है उन्हें रोकने के लिए।
+
+→ [Local dashboard](https://docs.befailproof.ai/reference/local-dashboard) ·
+[एक trace पढ़ें](https://docs.befailproof.ai/sessions/read-a-trace) ·
+[Local audit](https://docs.befailproof.ai/audits/local-audit)
+
+**Failproof AI Observability** उसी data model का hosted side है, teams के लिए जो fleet में agents चलाते हैं: हर harness से हर run एक जगह पर, एक execution graph जिसमें parallel sub-agents अपनी lanes पर हैं, models, tools और hooks के लिए p50/p95/p99 latency, per-model cost और context-window tracking, error tracking, आपके स्वयं के traces पर SQL के साथ shareable dashboards, आपकी स्वयं की service द्वारा scored evaluations, और scheduled audits जो recurring failures को evidence-backed findings में बदलते हैं, और alerts Slack, email या एक signed webhook को route करते हैं। Enterprise plan पर आपके स्वयं के cluster में self-hosting उपलब्ध है।
+
+→ [Sessions](https://docs.befailproof.ai/sessions/overview) ·
+[Audits](https://docs.befailproof.ai/audits/overview) ·
+[एक demo बुक करें](https://befailproof.ai/get-a-demo)
+
+---
+
+## Documentation
+
+| शुरुआत करें | |
 |---|---|
-| [शुरुआत करें](https://docs.befailproof.ai/getting-started) | स्थापना और पहले कदम |
-| [अंतर्निर्मित नीतियाँ](https://docs.befailproof.ai/built-in-policies) | सभी 30 नीतियाँ पैरामीटर के साथ |
-| [कस्टम नीतियाँ](https://docs.befailproof.ai/custom-policies) | अपने स्वयं के लिखें |
-| [कॉन्फ़िगरेशन](https://docs.befailproof.ai/configuration) | कॉन्फ़िग स्कोप और मर्ज नियम |
-| [डैशबोर्ड](https://docs.befailproof.ai/dashboard) | सेशन मॉनिटर और नीति गतिविधि |
-| [आर्किटेक्चर](https://docs.befailproof.ai/architecture) | हुक सिस्टम कैसे काम करता है |
+| [Quickstart](https://docs.befailproof.ai/start/quickstart) | Install करें, एक harness connect करें, पहला run देखें |
+| [Concepts](https://docs.befailproof.ai/start/concepts) | Hook system कैसे काम करता है |
+| [समर्थित harnesses](https://docs.befailproof.ai/reference/harnesses) | सभी 12, और हर एक क्या enforce कर सकता है |
+
+| देखभाल करें | |
+|---|---|
+| [Sessions](https://docs.befailproof.ai/sessions/overview) | एक run को follow करें: models, tools, errors, latency |
+| [एक trace पढ़ें](https://docs.befailproof.ai/sessions/read-a-trace) | Execution graph आपको क्या बता रहा है |
+| [Audits](https://docs.befailproof.ai/audits/overview) | कई sessions में failure patterns खोजें |
+| [Local dashboard](https://docs.befailproof.ai/reference/local-dashboard) | `localhost:8020`, कोई account की आवश्यकता नहीं |
+
+| प्रवर्तन करें | |
+|---|---|
+| [Policy packs](https://docs.befailproof.ai/policies/packs) | Failproof AI policies, और policy hub से packs |
+| [एक policy लिखें](https://docs.befailproof.ai/policies/editor) | एक audit से, या code में |
+| [Configuration](https://docs.befailproof.ai/policies/local-configuration) | Config scopes, merge rules और policy parameters |
+
+| अपने स्वयं के agent को instrument करें | |
+|---|---|
+| [Python SDK](https://docs.befailproof.ai/reference/custom-agents) | किसी भी harness के बिना एक agent से runs रिपोर्ट करें |
+| [Policy SDK](https://docs.befailproof.ai/reference/policy-sdk) | `allow` / `deny` / `instruct` reference |
 
 ---
 
-## लाइसेंस
+## License
 
-MIT with [Commons Clause](https://commonsclause.com/) — आंतरिक और व्यक्तिगत उपयोग के लिए निःशुल्क; failproofai का वाणिज्यिक पुनर्विक्रय एक अलग समझौते की आवश्यकता है। पूर्ण पाठ के लिए [LICENSE](../../LICENSE) देखें।
+MIT with [Commons Clause](https://commonsclause.com/) — आंतरिक और व्यक्तिगत उपयोग के लिए मुक्त; failproofai का स्वयं का commercial resale एक अलग समझौते की आवश्यकता है। पूर्ण text के लिए [LICENSE](../../LICENSE) देखें।
 
 ---
 
 ## योगदान
 
-[CONTRIBUTING.md](../../CONTRIBUTING.md) देखें। नई नीतियाँ, सीमांत मामले और अनुवाद सभी स्वागत हैं।
-
-> **बिल्ड करने से पहले शुरुआत करें।** पहले `bun install && bun run build` चलाएँ। यह रिपो स्वयं पर failproofai के हुक चलाता है, और वे संकलित `dist/` बंडल के विरुद्ध `failproofai` आयात को हल करते हैं — बिल्ड के बिना आपको `Cannot find package 'failproofai'` हुक त्रुटियों मिलेंगी। `src/` को बदलने के बाद फिर से बिल्ड करें। देखें
-> [इन-रिपो डेव हुक काम करने से पहले बिल्ड करें](../../CONTRIBUTING.md#build-before-the-in-repo-dev-hooks-will-work)।
+[CONTRIBUTING.md](../../CONTRIBUTING.md) देखें। नई policies, edge cases, और अनुवाद सभी स्वागत हैं।
 
 ---
 
-[Nivedit Jain](https://github.com/NiveditJain) और [Nikita Agarwal](https://github.com/nk-ag) द्वारा निर्मित।
-[befailproof.ai](https://befailproof.ai)
+❤️ के साथ [befailproof.ai](https://befailproof.ai) द्वारा SF और Bengaluru में निर्मित।

@@ -1,11 +1,9 @@
 /**
  * OpenClaw (openclaw gateway) session transcript loader + parser.
  *
- * AUDIT-ONLY (Pillar 2). OpenClaw writes one JSONL transcript per session at
- * `~/.openclaw/agents/<agentId>/sessions/<sessionId>.jsonl` (sessionId is a
- * UUID), alongside a much larger `<sessionId>.trajectory.jsonl` OTel trace we
- * IGNORE, and a `sessions.json` index keyed by sessionKey. Verified live
- * against openclaw v2026.7.1.
+ * Legacy OpenClaw writes one JSONL transcript per session under `sessions/`;
+ * 2026.9.2+ stores the same logical records as `event_json` rows in each
+ * agent's `agent/openclaw-agent.sqlite`. SQLite is preferred when both exist.
  *
  * The transcript is type-discriminated JSONL:
  *   {type:"session", cwd, …}              — header (carries cwd)
@@ -18,8 +16,8 @@
  * `toolResult` by `toolCallId` (mirrors lib/hermes-sessions.ts) and is PURE, so
  * it is unit-testable with plain line objects.
  *
- * Home override: set `OPENCLAW_HOME` (used by tests / to point at a copied
- * gateway config dir).
+ * Home override: `OPENCLAW_STATE_DIR`, then `OPENCLAW_HOME` (used by tests /
+ * to point at a copied gateway config dir).
  */
 import { readFile } from "node:fs/promises";
 import { readdirSync, statSync } from "node:fs";
@@ -39,13 +37,18 @@ import {
   type LogSource,
 } from "./log-entries";
 import { formatDuration } from "./format-duration";
+import { readOpenClawSqliteTranscript } from "./openclaw-db";
 
 /** OpenClaw sessions are stored under UUID filenames. */
 export const OPENCLAW_SESSION_ID_RE = /^[0-9a-fA-F-]{36}$/;
 
-/** Absolute path to OpenClaw's config home (override with OPENCLAW_HOME). */
+/** Absolute path to OpenClaw's state home. */
 export function openclawHome(): string {
-  return process.env.OPENCLAW_HOME || join(homedir(), ".openclaw");
+  return (
+    process.env.OPENCLAW_STATE_DIR ||
+    process.env.OPENCLAW_HOME ||
+    join(homedir(), ".openclaw")
+  );
 }
 
 // ── Parsing helpers ──
@@ -60,7 +63,11 @@ function extractText(content: unknown): string {
   if (typeof content === "string") return content;
   if (Array.isArray(content)) {
     return content
-      .map((c) => (isPlainObject(c) && typeof c.text === "string" ? (c.text as string) : ""))
+      .map((c) =>
+        isPlainObject(c) && typeof c.text === "string"
+          ? (c.text as string)
+          : "",
+      )
       .filter(Boolean)
       .join("\n");
   }
@@ -134,7 +141,10 @@ export function openclawLinesToLogEntries(
           if (b.type === "text" && typeof b.text === "string") {
             blocks.push({ type: "text", text: b.text });
           } else if (b.type === "toolCall") {
-            const id = typeof b.id === "string" ? b.id : `${String(b.name ?? "tool")}-${blocks.length}`;
+            const id =
+              typeof b.id === "string"
+                ? b.id
+                : `${String(b.name ?? "tool")}-${blocks.length}`;
             const name = typeof b.name === "string" ? b.name : "tool";
             const input = isPlainObject(b.arguments) ? b.arguments : {};
             const block: ToolUseBlock = { type: "tool_use", id, name, input };
@@ -151,17 +161,23 @@ export function openclawLinesToLogEntries(
       entries.push({
         type: "assistant",
         ...base,
-        message: { role: "assistant", content: blocks, model: typeof m.model === "string" ? m.model : undefined },
+        message: {
+          role: "assistant",
+          content: blocks,
+          model: typeof m.model === "string" ? m.model : undefined,
+        },
       } satisfies AssistantEntry);
       continue;
     }
 
     if (role === "toolResult") {
-      const callId = typeof m.toolCallId === "string" ? m.toolCallId : undefined;
+      const callId =
+        typeof m.toolCallId === "string" ? m.toolCallId : undefined;
       const block = callId ? toolUseById.get(callId) : undefined;
       if (block) {
         const details = isPlainObject(m.details) ? m.details : undefined;
-        const startMs = (callId && toolUseStartMs.get(callId)) || date.getTime();
+        const startMs =
+          (callId && toolUseStartMs.get(callId)) || date.getTime();
         const durationMs =
           details && typeof details.durationMs === "number"
             ? details.durationMs
@@ -238,13 +254,20 @@ export function listOpenClawTranscripts(): OpenClawTranscriptFile[] {
     }
     for (const file of files) {
       // Only `<uuid>.jsonl` — not `<uuid>.trajectory.jsonl` / `.trajectory-path.json`.
-      if (!file.endsWith(".jsonl") || file.endsWith(".trajectory.jsonl")) continue;
+      if (!file.endsWith(".jsonl") || file.endsWith(".trajectory.jsonl"))
+        continue;
       const sessionId = file.slice(0, -".jsonl".length);
       if (!OPENCLAW_SESSION_ID_RE.test(sessionId)) continue;
       const transcriptPath = join(sessionsDir, file);
       try {
         const st = statSync(transcriptPath);
-        out.push({ agentId, sessionId, transcriptPath, mtimeMs: st.mtimeMs, sizeBytes: st.size });
+        out.push({
+          agentId,
+          sessionId,
+          transcriptPath,
+          mtimeMs: st.mtimeMs,
+          sizeBytes: st.size,
+        });
       } catch {
         // skip unreadable
       }
@@ -276,6 +299,36 @@ export interface OpenClawSessionLogData {
 export async function getOpenClawSessionLog(
   sessionId: string,
 ): Promise<OpenClawSessionLogData | null> {
+  if (!OPENCLAW_SESSION_ID_RE.test(sessionId)) return null;
+
+  // New OpenClaw versions keep live transcripts in SQLite. Prefer that copy
+  // when an archived JSONL with the same UUID also exists.
+  const sqlite = await readOpenClawSqliteTranscript(
+    openclawHome(),
+    listOpenClawAgents(),
+    sessionId,
+  );
+  if (sqlite) {
+    const entries = openclawLinesToLogEntries(sqlite.rawLines, "session");
+    let cwd: string | undefined;
+    for (const line of sqlite.rawLines) {
+      if (
+        line.type === "session" &&
+        typeof line.cwd === "string" &&
+        line.cwd.length > 0
+      ) {
+        cwd = line.cwd;
+        break;
+      }
+    }
+    return {
+      entries,
+      rawLines: sqlite.rawLines,
+      cwd,
+      filePath: sqlite.filePath,
+    };
+  }
+
   const filePath = findOpenClawTranscript(sessionId);
   if (!filePath) return null;
   let content: string;
@@ -289,7 +342,12 @@ export async function getOpenClawSessionLog(
   // cwd lives on the `type:"session"` header line.
   let cwd: string | undefined;
   for (const line of rawLines) {
-    if (isPlainObject(line) && line.type === "session" && typeof line.cwd === "string" && line.cwd.length > 0) {
+    if (
+      isPlainObject(line) &&
+      line.type === "session" &&
+      typeof line.cwd === "string" &&
+      line.cwd.length > 0
+    ) {
       cwd = line.cwd;
       break;
     }

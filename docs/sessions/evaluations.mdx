@@ -1,0 +1,56 @@
+---
+title: "Read evaluation results"
+description: "Chart evaluation scores over time, compare agents and environments, see why a session scored low, and ask the assistant."
+icon: "gauge"
+---
+
+Results from every evaluation, hosted or from your own worker, land in the same places.
+
+## Compare scores over time
+
+<Tabs>
+  <Tab title="Dashboard">
+    Go to **Observe → evaluations**.
+
+    - **Recent runs** lists each evaluation as it lands: whether it came from a hosted (**managed**) or your own (**customer**) evaluator, the agent and session, the evaluation and its version, its status, and its score or metrics.
+    - **Score over time** plots what you ask for. Select **add series** and choose an agent, an environment, an evaluation, and a statistic: avg, min, max, p50, p75, p90, p95, p99, stddev, or mode. Each series is one line; give it its own **curve** to draw it on a separate chart.
+
+    ![The evaluations page: recent runs tagged customer, a score over time chart with reference lines at 0.5 and 0.8, and one series averaging finished_clean across all agents and environments.](/images/dashboard/evaluations-chart.png)
+
+    One time range and one bin size apply to every series. A fine bin finds an incident; a coarse one shows a trend, and can hide the spikes you are looking for. A bucket where nothing was scored is a gap in the line, never a zero, and reference lines mark 0.5 and 0.8.
+
+    Every part of the view lives in the URL: **share** copies it, and whoever opens it sees exactly the comparison you built.
+  </Tab>
+  <Tab title="CLI">
+    ```bash
+    fp evals --agent-id checkout-agent --aggregate
+    fp evals --aggregate --env production --status error
+    fp evals --score helpfulness:0.8.. --since 7d
+    ```
+
+    Add global `--json` before `evals` for automation, for example `fp --json evals --aggregate --env production`.
+  </Tab>
+</Tabs>
+
+Plot **avg** and **p90** for the same evaluation to see whether a good average is hiding a bad tail, or the same evaluation for two agents, or for production and staging, to compare them on one axis. Costs, latencies, and token counts, which carry units, chart under **Observe → metrics**, one chart per unit.
+
+## See why a session scored low
+
+Open a session from **Observe → sessions**; the grid carries each session's scores and filters by score range. The session's right rail leads with the evaluation summary, then a bar per score with the evaluator's reasoning under it.
+
+![A session detail view showing evaluation scores and reasoning beside the complete trace.](/images/dashboard/session-detail.png)
+
+## Ask the assistant
+
+Ask about evaluation data in plain English: "tell me about some of the recent evaluations", or which agents' scores are slipping. The [assistant](/sessions/assistant) reads and analyzes the results and answers with tables you can follow up on, and a question worth keeping can become a [query](/sessions/queries) or a [dashboard](/sessions/dashboards).
+
+![The evaluations page beside the assistant, which answers "tell me about some of the recent evaluations" with a summary of totals, statuses, and scores.](/images/dashboard/evaluations-assistant.png)
+
+## Watch and act
+
+- **Dashboards**, under **Analyze → dashboards**, trend the scores you feature, per agent and environment, for the whole organization.
+
+  ![A quality dashboard showing average evaluation scores and trends over time.](/images/dashboard/dashboard-quality.png)
+
+- **Alerts** notify you when a score crosses a threshold. See [alerts](/audits/alerts).
+- When a score declines across many sessions, [run an audit](/audits/run) to find out why; when the cause is a repeatable action, [write a policy](/policies/editor).

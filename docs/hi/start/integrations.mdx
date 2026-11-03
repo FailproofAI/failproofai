@@ -1,0 +1,120 @@
+---
+title: "अपने एजेंट को इंस्ट्रूमेंट करें"
+sidebarTitle: "Frameworks"
+description: "किसी भी समर्थित एजेंट फ्रेमवर्क को Failproof AI से एक कॉल के साथ कनेक्ट करें।"
+icon: "plug"
+---
+
+आपका एजेंट पहले से ही सब कुछ प्रदान करता है जो रिकॉर्ड करने योग्य है — मॉडल कॉल, टूल कॉल, नोड बाउंड्री, मानव प्रतीक्षा, विफलताएं। फ्रेमवर्क इसे फेंक देता है। SDK इसे सरक्षित रखता है।
+
+<Columns cols={3}>
+  <Card title="Custom agents" icon="wrench" href="/hi/start/quickstarts/custom-agents">
+    एक एजेंट जो आपने स्वयं लिखा है, या जो यहां सूचीबद्ध नहीं है।
+  </Card>
+  <Card title="LangChain and LangGraph" icon="share-2" href="/hi/start/quickstarts/langchain">
+    ग्राफ, नोड्स, टूल्स, रिट्रीवर्स, मॉडल्स।
+  </Card>
+  <Card title="CrewAI" icon="users" href="/hi/start/quickstarts/crewai">
+    Crews, flows, भूमिका के अनुसार एजेंट, टूल्स।
+  </Card>
+  <Card title="LlamaIndex" icon="database" href="/hi/start/quickstarts/llamaindex">
+    Workflows, steps, फ़ंक्शन एजेंट, रिट्रीवर्स।
+  </Card>
+  <Card title="Pydantic AI" icon="badge-check" href="/hi/start/quickstarts/pydantic-ai">
+    टाइप किए गए एजेंट, क्षमताएं, टूल्स, रीट्राइज़।
+  </Card>
+</Columns>
+
+## तीन लाइनें, कोई भी फ्रेमवर्क हो
+
+<CodeGroup>
+```bash LangGraph
+pip install 'failproofai-sdk[langgraph]'
+```
+
+```bash CrewAI
+pip install 'failproofai-sdk[crewai]'
+```
+
+```bash LlamaIndex
+pip install 'failproofai-sdk[llamaindex]'
+```
+
+```bash Pydantic AI
+pip install 'failproofai-sdk[pydantic-ai]'
+```
+
+```bash Custom agents
+pip install failproofai-sdk
+```
+</CodeGroup>
+
+```python
+import failproofai_sdk
+
+failproofai_sdk.configure(environment="production")
+failproofai_sdk.instrument()          # आपके द्वारा इंपोर्ट किए गए फ्रेमवर्क का पता लगाता है
+
+with failproofai_sdk.session():
+    ...                               # आपकी मौजूदा एजेंट कॉल, अपरिवर्तित
+```
+
+आपके फ़ंक्शन पर कोई डेकोरेटर नहीं, आपकी कॉल पर कोई कॉलबैक नहीं, आपके कोड के माध्यम से कोई आईडी नहीं। केवल सेशन के अंदर की कॉल अलग है:
+
+<Tabs>
+  <Tab title="LangGraph">
+    ```python
+    graph.invoke({"messages": [HumanMessage("...")]})
+    ```
+  </Tab>
+  <Tab title="CrewAI">
+    ```python
+    Crew(agents=[analyst, writer], tasks=[gather, summarise]).kickoff()
+    ```
+  </Tab>
+  <Tab title="LlamaIndex">
+    ```python
+    await agent.run("...")        # `async with failproofai_sdk.session():` के तहत
+    ```
+  </Tab>
+  <Tab title="Pydantic AI">
+    ```python
+    agent.run_sync("...")
+    ```
+  </Tab>
+  <Tab title="Custom agents">
+    ```python
+    with failproofai_sdk.agent("planner"):
+        with failproofai_sdk.tool_call("search", input={"q": q}) as t:
+            t.output = search(q)
+    ```
+  </Tab>
+</Tabs>
+
+अतिरिक्त इंस्टॉल **फ्रेमवर्क** को स्थापित करता है। हर एडेप्टर बेस व्हील में शामिल होता है, इसलिए एक परियोजना जिसके पास पहले से ही अपना फ्रेमवर्क है, को कुछ भी अतिरिक्त की आवश्यकता नहीं है।
+
+## यह जांचें कि यह पहुंचा है या नहीं
+
+एक इंस्ट्रूमेंटेड सेशन चलाएं, फिर **Observe → Sessions** खोलें और अपना पर्यावरण चुनें। रन एक पुनर्निर्मित ट्रेस के रूप में दिखाई देता है।
+
+यदि कुछ भी नहीं आता है, तो `failproofai config --status` के साथ पुष्टि करें कि मशीन जुड़ी हुई है। [कैप्चर सेट अप करें](/hi/start/setup) देखें।
+
+<Warning>
+  डिलीवरी की पुष्टि करने के लिए स्पूल डायरेक्टरी को न देखें। Failproof डेमन प्रत्येक बैच को मिलीसेकंड के भीतर एकत्र करता है और हटाता है, इसलिए इसे पढ़ना कलेक्टर के साथ दौड़ता है और उत्सर्जित इवेंट्स की तुलना में बहुत कम इवेंट दिखाता है।
+</Warning>
+
+## अगला
+
+ऊपर प्रत्येक क्विकस्टार्ट अपनी पूरी गाइड से लिंक करता है — क्या रिकॉर्ड किया जाता है, विकल्प, स्ट्रीमिंग, स्पैन नामकरण, और असली समस्याएं जो लोगों को होती हैं। वे **Trace Agents → Plug in your agent** के तहत रहते हैं।
+
+<Columns cols={3}>
+  <Card title="यह कैसे काम करता है" icon="workflow" href="/hi/start/integrations/custom-agents#going-deeper">
+    डेटा मॉडल, आईडी, इवेंट प्रकार, और इवेंट्स कैसे क्लाउड तक पहुंचते हैं।
+  </Card>
+  <Card title="एक ट्रेस पढ़ें" icon="route" href="/hi/sessions/read-a-trace">
+    डिस्कनेक्ट किए गए लॉग्स की बजाय एक सेशन के माध्यम से कार्य-कारण का पालन करें।
+  </Card>
+  <Card title="अपनी पहली विफलता खोजें" icon="scan-search" href="/hi/start/first-audit">
+    आपके द्वारा अभी कैप्चर किए गए सेशन्स का ऑडिट करें।
+  </Card>
+</Columns>

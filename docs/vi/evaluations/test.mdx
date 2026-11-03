@@ -1,0 +1,29 @@
+---
+title: "Kiểm tra một đánh giá"
+description: "Chạy một đánh giá dựa trên các phiên làm việc thực tế của bạn trước khi triển khai. Không có dữ liệu nào được lưu trữ."
+icon: "flask-conical"
+---
+
+**kiểm tra đánh giá này**, trên trang tác giả, chạy mã dựa trên các phiên làm việc thực tế của bạn trên fleet đánh giá mà không triển khai nó. Không có dữ liệu nào được lưu trữ: một lỗi ở đây chỉ là xem trước, và triển khai luôn được phép.
+
+<Steps>
+  <Step title="Kiểm tra xem nó có được biên dịch không">
+    Chọn **check** để biên dịch mã và điều kiện dựa trên quy tắc của sandbox mà không chạy chúng trên bất kỳ phiên nào.
+  </Step>
+  <Step title="Chọn phiên">
+    Thu hẹp các phiên phù hợp theo agent, môi trường, thời gian hoặc id phiên, và chọn tối đa 10. Bao gồm các phiên mà đánh giá này nên thất bại cũng như những phiên nó nên thành công.
+  </Step>
+  <Step title="Chạy nó">
+    Chọn **run against N sessions**, và đọc từng hàng.
+  </Step>
+</Steps>
+
+| Hàng | Ý nghĩa |
+| --- | --- |
+| **ok** | Nó đã chạy. Hàng liệt kê mọi điểm, metric và assertion nó trả về, và thời gian thực hiện. |
+| **skipped** | Điều kiện trả về `False`, vì vậy đánh giá không chạy. Đó là bỏ qua, không phải lỗi. |
+| Failed | Nó đã đưa ra ngoại lệ, hết thời gian chờ, hoặc sử dụng thứ gì đó mà sandbox từ chối. Hàng sẽ cho biết điều đó, và **Fix it** chuyển lỗi cho trợ lý khi nó có thể giúp đỡ. |
+
+![Panel kiểm tra đánh giá này: ba phiên được chọn theo agent, hai phiên ok và một phiên bị bỏ qua vì điều kiện của nó trả về False.](/images/dashboard/eval-test.png)
+
+Một kết quả không còn hiện tại ngay khi bạn chỉnh sửa mã; nó sẽ bị làm mờ thay vì được tái sử dụng.

@@ -1,0 +1,74 @@
+---
+title: "Audit della cronologia dell'agente locale"
+description: "Scansiona le cronologie CLI dell'agente supportate offline e verifica il comportamento rischioso o inefficiente localmente."
+icon: "laptop-minimal-check"
+---
+
+Usa un audit locale per una revisione immediata e privata prima di connettere una macchina a Failproof AI Cloud. Scansiona le cronologie dell'agente già archiviate sulla tua macchina, riproduce l'attività degli strumenti attraverso i criteri integrati e apre un dashboard dei risultati locale.
+
+## Eseguire un audit interattivo
+
+<Tabs>
+  <Tab title="Dashboard">
+    L'audit locale inizia dalla CLI perché deve scoprire le cronologie sulla macchina attuale. Esegui `failproofai audit`; dopo la scansione, Failproof AI avvia il dashboard integrato e apre **http://localhost:8020/audit**.
+
+    Nella vista di audit, verifica il numero di sessioni, chiamate di strumenti, progetti e risultati dei criteri. Inizia con i risultati più frequenti, quindi ispeziona il progetto interessato e la cronologia dell'agente prima di abilitare l'applicazione.
+
+    <Info>Il dashboard di audit locale è separato da **Analyze → Audits** in Failproof AI Cloud. Gli audit locali rimangono sulla macchina e non richiedono account o connessione di rete.</Info>
+  </Tab>
+  <Tab title="CLI">
+    ```bash
+    npm install -g failproofai
+    failproofai audit
+    ```
+
+    Il comando esegue una scansione completa di ogni cronologia supportata che trova. Il comando attuale non accetta filtri come `--since`, `--cli`, `--project`, `--port` o `--no-open`.
+
+    Mantieni il processo in esecuzione mentre usi il dashboard locale. Premi <kbd>Ctrl</kbd>+<kbd>C</kbd> al termine.
+  </Tab>
+</Tabs>
+
+Gli attuali adattatori di audit possono leggere cronologie da Claude Code, Codex, GitHub Copilot CLI, Cursor, OpenCode, Pi, Hermes, OpenClaw, Factory, Devin, Antigravity e Goose. Vengono scansionate solo le cronologie disponibili localmente.
+
+## Pianificare audit locali ricorrenti
+
+<Tabs>
+  <Tab title="Dashboard">
+    Apri **Settings** nel dashboard locale, abilita gli audit pianificati, scegli l'intervallo e imposta l'indirizzo email che dovrebbe ricevere i risultati. Il dashboard e la CLI aggiornano la stessa configurazione della macchina.
+  </Tab>
+  <Tab title="CLI">
+    Abilita un audit settimanale e invia i risultati all'indirizzo specificato:
+
+    ```bash
+    failproofai audit --schedule 7 --email reliability@example.com
+    failproofai audit --status
+    ```
+
+    L'intervallo accetta 1-90 giorni e predefinito a 7 se omesso. La prima configurazione ti accede quando necessario; `--email` fornisce l'indirizzo del report senza chiedere conferma.
+
+    Interrompi la pianificazione senza eliminare la cronologia di audit locale:
+
+    ```bash
+    failproofai audit --no-schedule
+    ```
+  </Tab>
+</Tabs>
+
+Il daemon esegue scansioni pianificate in background, aggiorna il risultato memorizzato nella cache utilizzato dal dashboard locale e invia il report configurato via email. Usa `failproofai audit` quando vuoi eseguire una scansione interattiva immediatamente.
+
+## Passare dalle evidenze locali alle operazioni Cloud
+
+Un audit locale è una baseline veloce. Connetti la macchina a Failproof AI Cloud quando hai bisogno di tracce condivise, audit di popolazione ricorrenti, risultati e problemi, avvisi, distribuzione dei criteri a livello di organizzazione o salute della flotta.
+
+<CardGroup cols={2}>
+  <Card title="Creare un audit Cloud" icon="scan-search" href="/it/audits/setup">
+    Definisci un obiettivo ricorrente, una popolazione, una finestra di evidenza e canali di risposta.
+  </Card>
+  <Card title="Abilitare un criterio" icon="shield-check" href="/it/start/first-policy">
+    Convalida localmente, pubblica deliberatamente e distribuisci prima a un gruppo di macchine ristretto.
+  </Card>
+</CardGroup>
+
+<Warning>
+  L'output di audit è evidenza per la revisione, non prova che ogni azione segnalata sia non sicura. Conferma il contesto prima di trasformare un risultato in un'applicazione di blocco.
+</Warning>

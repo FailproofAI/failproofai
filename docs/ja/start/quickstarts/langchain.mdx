@@ -1,0 +1,39 @@
+---
+title: "LangChain と LangGraph"
+description: "インストール、計装、そして最初のトレースを確認する。"
+icon: "/images/frameworks/langchain.svg"
+---
+
+LangChain または LangGraph の最初のトレースまで3ステップです。ストリーミング、human-in-the-loop、スパン命名、オプションについては[完全ガイド](/ja/start/integrations/langchain)をご覧ください。
+
+## インストール
+
+```bash
+pip install 'failproofai-sdk[langgraph]'
+```
+
+LangGraph なしで LangChain のみを使用する場合は `failproofai-sdk[langchain]` を使用してください。
+
+## 計装
+
+```python
+import failproofai_sdk
+
+failproofai_sdk.configure(environment="production")
+failproofai_sdk.instrument()
+
+with failproofai_sdk.session():
+    graph.invoke({"messages": [HumanMessage("...")]})
+```
+
+呼び出し箇所の変更は不要です。`instrument()` はトレーサーを登録し、LangChain がビルドするすべてのコールバックマネージャーにそれを注入します。これにより、グラフ、ツール、モデルはすべて自動でキャプチャされます — 自分で書いていないライブラリ内のものも含めて。
+
+## 到達を確認する
+
+一度実行したら、**Observe → Sessions** を開いて環境を選択してください。実行結果が再構成されたトレースとして表示されます。
+
+何も届かない場合は、`failproofai config --status` でマシンが接続されているか確認してください。
+
+<Card title="LangChain 完全ガイド" icon="arrow-right" href="/ja/start/integrations/langchain">
+  記録される内容、ストリーミング、トークン数、スパン命名、セッション制御、オプション、human in the loop について。
+</Card>

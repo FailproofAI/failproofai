@@ -1,0 +1,28 @@
+{
+  "name": "failproofai-it-mastra-0",
+  "private": true,
+  "type": "module",
+  "description": "Integration fixture: Mastra 0.x (@mastra/core, last 0.x release) against the packed @failproofai/sdk.",
+  "dependencies": {
+    "@mastra/core": "0.24.9",
+    "@mastra/mcp": "0.14.5",
+    "@mastra/memory": "0.15.13",
+    "zod": "4.6.7"
+  },
+  "devDependencies": {
+    "@types/node": "22.20.4"
+  },
+  "overrides": {
+    "jsondiffpatch": "0.7.6",
+    "uuid": "11.1.1",
+    "@opentelemetry/core": "2.11.0",
+    "@opentelemetry/propagator-jaeger": "2.11.0",
+    "@opentelemetry/sdk-node": "0.222.0",
+    "@opentelemetry/exporter-prometheus": "0.222.0",
+    "@opentelemetry/auto-instrumentations-node": "0.80.0",
+    "@ai-sdk/provider-utils@3": "3.0.28",
+    "@ai-sdk/provider-utils-v5": "npm:@ai-sdk/provider-utils@3.0.28",
+    "gaxios": "7.3.1",
+    "zod": "$zod"
+  }
+}

@@ -33,6 +33,8 @@
  * second.
  */
 
+import { displayText } from "./cloud-login";
+
 /** The path introspect is served on, appended to the cloud origin. */
 export const INTROSPECT_PATH = "/v1/auth/introspect";
 
@@ -44,6 +46,8 @@ export interface KeyIdentity {
   /** The EFFECTIVE permission set — what the server enforces. */
   permissions: string[];
   expiresAt?: string | null;
+  /** Missing on older Cloud versions; absence is unknown, never an error. */
+  otelIngest?: boolean;
 }
 
 export type IntrospectResult =
@@ -124,10 +128,12 @@ export async function introspectKey(
     identity: {
       keyId: typeof b.key_id === "string" ? b.key_id : undefined,
       orgId: typeof b.org_id === "string" ? b.org_id : undefined,
-      orgSlug: typeof b.org_slug === "string" ? b.org_slug : undefined,
-      orgName: typeof b.org_name === "string" ? b.org_name : undefined,
+      // Printed in "Connected as …": text only, never terminal controls.
+      orgSlug: displayText(b.org_slug),
+      orgName: displayText(b.org_name),
       permissions: b.permissions.filter((p): p is string => typeof p === "string"),
       expiresAt: typeof b.expires_at === "string" ? b.expires_at : null,
+      otelIngest: typeof b.otel_ingest === "boolean" ? b.otel_ingest : undefined,
     },
   };
 }
@@ -135,6 +141,12 @@ export async function introspectKey(
 /** The permission each capability needs. Named so the messages can quote them. */
 export const PERMISSION_EVENTS = "events:add";
 export const PERMISSION_POLICIES = "policies:pull";
+/**
+ * Jev through FailproofAI Cloud, charged to the key's org. The server refuses a
+ * key that carries it without both of the above, so a key with it always
+ * connects for policy and reporting too — there is no Jev-only connection.
+ */
+export const PERMISSION_JEV = "jev:evaluate";
 
 export function hasPermission(identity: KeyIdentity, permission: string): boolean {
   return identity.permissions.includes(permission);

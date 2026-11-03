@@ -1,0 +1,21 @@
+# The sdist ships `tests/`, and setuptools' default heuristic picks up only
+# top-level `test*.py` — so the suite went out WITHOUT `tests/conftest.py`,
+# `tests/__init__.py` or `tests/integrations/`.
+#
+# That is not a cosmetic omission. `conftest.py` IS the isolation layer: it
+# redirects the spool at IMPORT, straight into `os.environ`, because the
+# `atexit` flush fires long after the last fixture is torn down. Without it,
+# running the shipped suite (a distro packager, a conda-forge recipe, anyone
+# doing `pip download --no-binary :all:` then `pytest tests/`) writes tens of
+# thousands of synthetic events into the user's REAL
+# `~/.failproofai/custom-agents/events` — measured at 20,001 in one run of
+# `test_durability.py` alone — where a running daemon uploads them to a real
+# dashboard as genuine agent activity.
+#
+# So the suite ships whole or not at all. `graft` takes the whole tree,
+# including the subpackage and the conftest.
+graft tests
+include LICENSE
+include README.md
+include py.typed
+recursive-include failproofai_sdk py.typed

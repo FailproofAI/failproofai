@@ -1,0 +1,48 @@
+---
+title: "LlamaIndex"
+description: "ثبّت وأدرج وشاهد أول تتبع لك."
+icon: "/images/frameworks/llamaindex.svg"
+---
+
+ثلاث خطوات للوصول إلى أول تتبع LlamaIndex لديك. للاطلاع على خطوات سير العمل والاسترجاع والخيارات، راجع [الدليل الكامل](/ar/start/integrations/llamaindex).
+
+## التثبيت
+
+```bash
+pip install 'failproofai-sdk[llamaindex]'
+```
+
+## الإدراج
+
+واجهة برمجة تطبيقات عامل LlamaIndex غير متزامنة. كل نطاق يعمل تحت `async with` وكذلك `with`.
+
+```python
+import asyncio
+
+import failproofai_sdk
+
+failproofai_sdk.configure(environment="production")
+failproofai_sdk.instrument()
+
+
+async def main():
+    async with failproofai_sdk.session():
+        await agent.run("...")
+
+
+asyncio.run(main())
+```
+
+<Warning>
+  بدون حجة إضافية واحدة على نموذجك اللغوي، كل عدد رموز في تتبعك يكون فارغًا — `llama-index-llms-openai` لا يطلب الاستخدام عند البث. انظر [عدد الرموز](/ar/start/integrations/llamaindex#token-counts).
+</Warning>
+
+## تحقق من وصوله
+
+قم بتشغيله مرة واحدة، ثم افتح **Observe → Sessions** واختر بيئتك. يظهر تشغيلك كتتبع معاد بناؤه.
+
+إذا لم يصل شيء، أكد أن الآلة متصلة باستخدام `failproofai config --status`.
+
+<Card title="دليل LlamaIndex الكامل" icon="arrow-right" href="/ar/start/integrations/llamaindex">
+  عدد الرموز وما يتم تسجيله وخطوات سير العمل والاسترجاع والخيارات والمشاكل الشائعة.
+</Card>

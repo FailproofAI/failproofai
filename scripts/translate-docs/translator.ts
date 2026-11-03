@@ -44,6 +44,24 @@ const MAX_ATTEMPTS =
     ? parsedMaxAttempts
     : 3;
 
+// How far past the source an output may run before a max_tokens stop reads as a
+// repetition loop rather than a large page. Translations of the verbose targets
+// (hi, vi, ja) sit near 2x the source's token estimate; 6x is far outside that
+// band and was ~16x in the observed failure.
+// Validated the same way MAX_TOKENS and MAX_ATTEMPTS above are, and for a
+// sharper reason: `parseInt(...) || 6` accepts a NEGATIVE, and a negative ratio
+// makes `output > source * ratio` true for every response — so a genuinely
+// oversized page would be classified as a runaway and burn all three attempts
+// to arrive exactly where it started.
+const parsedRunawayRatio = Number.parseInt(
+  process.env.TRANSLATE_RUNAWAY_RATIO ?? "",
+  10,
+);
+const RUNAWAY_RATIO =
+  Number.isInteger(parsedRunawayRatio) && parsedRunawayRatio > 0
+    ? parsedRunawayRatio
+    : 6;
+
 function getClient(): Anthropic {
   if (!client) {
     // Default 5 retries (up from SDK default of 2) so transient
@@ -151,10 +169,32 @@ export async function translateContent(
   // consolidate publish step. If a page ever legitimately needs more than
   // MAX_TOKENS, raise TRANSLATE_MAX_TOKENS or split the source.
   if (response.stop_reason === "max_tokens") {
-    throw new Error(
+    // TWO different failures wear this stop_reason, and only one of them is
+    // "the page is too big". A 16 KB source whose Vietnamese translation
+    // emitted 64 000 output tokens — observed on the box, 2026-08-18,
+    // reference/cloud-cli.mdx [vi] — is a DEGENERATE SAMPLE: the model fell
+    // into a repetition loop. Resampling fixes that; splitting the source does
+    // not, and treating it as a size problem sent one page's hiccup on to fail
+    // the whole nightly run.
+    //
+    // The tell is the ratio. Source bytes / 4 is a rough token count, and a
+    // faithful translation lands within a small multiple of it — even for the
+    // verbose target languages. Far beyond that is the model talking to
+    // itself, so the error is marked RETRYABLE and translateValidated spends
+    // an attempt on it. A source that genuinely approaches the ceiling keeps
+    // the old fail-loud behaviour, because retrying it would burn the budget
+    // three times to reach the same place.
+    const sourceTokensApprox = Math.max(1, Math.ceil(content.length / 4));
+    const runaway = response.usage.output_tokens > sourceTokensApprox * RUNAWAY_RATIO;
+    const err = new Error(
       `translation truncated at max_tokens=${MAX_TOKENS} ` +
-        `(output ${response.usage.output_tokens} tokens) — source too large to translate in one request`,
+        `(output ${response.usage.output_tokens} tokens, source ~${sourceTokensApprox}) — ` +
+        (runaway
+          ? "output dwarfs the source, which is a runaway sample rather than an oversized page"
+          : "source too large to translate in one request"),
     );
+    (err as Error & { retryable?: boolean }).retryable = runaway;
+    throw err;
   }
 
   const translated =
@@ -211,15 +251,30 @@ export async function translateValidated(opts: {
         ? { attempt, maxAttempts: MAX_ATTEMPTS, error: lastError }
         : undefined;
 
-    // No try/catch: a transport/auth/max_tokens throw is not a validity
-    // failure — let it propagate so it is never silently retried as one.
-    const result = await translateContent(
-      opts.source,
-      opts.lang,
-      opts.langName,
-      opts.model,
-      feedback,
-    );
+    // Transport/auth throws still propagate untouched — they are not validity
+    // failures and must never be silently retried as one. The ONE exception is
+    // a truncation flagged `retryable` (a runaway sample, see translateContent):
+    // that is a bad draw, and a bad draw is exactly what this loop is for.
+    let result: Awaited<ReturnType<typeof translateContent>>;
+    try {
+      result = await translateContent(
+        opts.source,
+        opts.lang,
+        opts.langName,
+        opts.model,
+        feedback,
+      );
+    } catch (e) {
+      const err = e as Error & { retryable?: boolean };
+      if (!err.retryable || attempt === MAX_ATTEMPTS) throw err;
+      lastError =
+        "The previous attempt ran past the output limit by repeating itself. " +
+        "Translate the document once, completely, and stop.";
+      console.warn(
+        `  ${opts.label} -> attempt ${attempt}/${MAX_ATTEMPTS} overran the output limit; retrying`,
+      );
+      continue;
+    }
     inputTokens += result.inputTokens;
     outputTokens += result.outputTokens;
 

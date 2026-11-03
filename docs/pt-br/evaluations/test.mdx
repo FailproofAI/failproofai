@@ -1,0 +1,29 @@
+---
+title: "Testar uma avaliação"
+description: "Execute uma avaliação contra suas sessões reais antes de implantá-la. Nada é armazenado."
+icon: "flask-conical"
+---
+
+**Testar esta avaliação**, na página de criação, executa o código contra suas sessões reais na frota de avaliadores sem implantá-la. Nada é armazenado: uma falha aqui é apenas uma prévia, e a implantação sempre é permitida.
+
+<Steps>
+  <Step title="Verificar se compila">
+    Selecione **verificar** para compilar o código e a condição conforme as regras do sandbox sem executá-los em nenhuma sessão.
+  </Step>
+  <Step title="Selecionar sessões">
+    Filtre as sessões correspondentes por agente, ambiente, período ou ID de sessão, e marque até 10. Inclua sessões em que a avaliação deve falhar, bem como as que devem passar.
+  </Step>
+  <Step title="Executar">
+    Selecione **executar contra N sessões** e leia cada linha.
+  </Step>
+</Steps>
+
+| Linha | O que significa |
+| --- | --- |
+| **ok** | Foi executada. A linha lista cada pontuação, métrica e asserção retornada, além do tempo que levou. |
+| **ignorada** | A condição retornou `False`, portanto a avaliação não foi executada. Isso é um salto, não uma falha. |
+| Falhou | Lançou uma exceção, atingiu o tempo limite ou usou algo que o sandbox recusa. A linha indica qual foi o problema, e **Corrigir** repassa o erro ao assistente quando ele pode ajudar. |
+
+![O painel de testar esta avaliação: três sessões selecionadas por agente, duas ok e uma ignorada porque sua condição retornou False.](/images/dashboard/eval-test.png)
+
+Um resultado deixa de ser atual no momento em que você edita o código; ele fica esmaecido em vez de ser reutilizado.

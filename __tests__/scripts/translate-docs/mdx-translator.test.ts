@@ -60,10 +60,10 @@ function emptyCache(): TranslationCache {
 }
 
 describe("getEnglishMdxPages", () => {
-  it("includes AgentEye pages in automatic translation", () => {
+  it("includes canonical docs pages in automatic translation", () => {
     const pages = getEnglishMdxPages();
     expect(pages.length).toBeGreaterThan(0);
-    expect(pages.some((page) => page.includes("/agenteye/"))).toBe(true);
+    expect(pages.some((page) => page.includes("/sessions/"))).toBe(true);
   });
 });
 

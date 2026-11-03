@@ -1,0 +1,69 @@
+---
+title: "Comportamiento ante fallos"
+description: "Comprende qué ocurre cuando la evaluación de políticas o el daemon local no están disponibles."
+icon: "shield-alert"
+---
+
+Failproof AI está diseñado para que un fallo de aplicación sea visible en lugar de permitir silenciosamente trabajo arriesgado.
+
+## Diagnosticar un bloqueo por fallo cerrado
+
+<Tabs>
+  <Tab title="Panel de control">
+    1. Ve a **Admin → enforcement** y abre la máquina.
+    2. Comprueba su último check-in, el despliegue asignado y el despliegue reportado.
+    3. Ve a **Observe → policy** y abre la sesión de la decisión denegada.
+    4. Confirma si la razón reporta inaccesibilidad del daemon, desfase de versión o la propia política.
+
+  </Tab>
+  <Tab title="CLI">
+    ```bash
+    failproofai config --status
+    npm install -g failproofai@latest
+    failproofai config
+    ```
+
+    Volver a ejecutar `failproofai config` actualiza y reinicia el daemon tras una actualización del paquete.
+  </Tab>
+</Tabs>
+
+En una máquina configurada para usar `failproofaid`, el daemon es el único evaluador. Si no es accesible o su versión de protocolo no coincide con la del CLI, la evaluación del hook falla de forma cerrada. La acción se deniega con un motivo que indica al operador que compruebe o actualice el daemon.
+
+Antes de la configuración del daemon, los hooks evalúan las políticas en proceso. Una vez que la configuración del daemon queda registrada, Failproof AI no recurre silenciosamente a un segundo evaluador cuando el daemon falla.
+
+## Responder a una decisión por fallo cerrado
+
+1. Ejecuta `failproofai config --status`.
+2. Si las versiones difieren, vuelve a ejecutar `failproofai config` después de actualizar el paquete.
+3. Si el daemon no es accesible, inspecciona su estado de servicio y los registros locales.
+4. Reanuda el trabajo del agente solo cuando se haya verificado que la ruta de evaluación de políticas está operativa.
+
+<Warning>
+  No reintentes repetidamente la acción bloqueada. Una respuesta por fallo cerrado significa que el sistema no pudo determinar que la acción era segura.
+</Warning>
+
+## Un pack no carga
+
+Una máquina a la que se le indicó que aplicara un pack y no puede ejecutarlo deniega la operación en lugar de continuar silenciosamente. El desencadenante es una **expectativa registrada**, nunca una vacía: una máquina sin packs instalados permanece silenciosa, mientras que un pack declarado que no puede resolverse —o que registra menos de lo que declara su manifiesto— deniega.
+
+La denegación es **acotada**, a diferencia de un daemon inaccesible. Un daemon que no puede alcanzarse significa que no se realizó ninguna evaluación, por lo que nada puede considerarse seguro. Un pack que no carga tiene un conjunto enumerable de guardas ausentes, porque cada política declarada lleva su propio `match`; por tanto, solo deniega los eventos y herramientas que esas políticas cubrían, y todo lo demás continúa.
+
+No se activa en los siguientes casos:
+
+- un pack `observe`, que evalúa y descarta por construcción
+- políticas que nunca adoptaste o desactivaste explícitamente
+- un pack que el cargador nunca recibió, donde no es posible distinguir entre «sin registros» y un salto deliberado
+- una pausa de sesión activa
+- un timeout de carga, que es transitorio — un momento de disco lento no debe denegar hasta que intervenga un humano
+
+`UserPromptSubmit` **instruye** en lugar de denegar, independientemente de lo que declarara la política ausente. Una denegación general también lo afectaría y te bloquearía el acceso al agente que podría resolver el problema.
+
+### Qué hacer
+
+```bash
+failproofai policies
+```
+
+El listado marca un pack instalado cuyo registro de instalación o digest ya no es válido, e indica el motivo. No importa el pack, por lo que uno que falla solo al cargarse —registrando menos de lo que declara su manifiesto— aparece como normal; la denegación descrita a continuación es la que identifica ese caso. En cualquier caso, reinstálalo (`failproofai policies add <source>`) o elimínalo (`failproofai policies remove <publisher/name>`) — eliminarlo retira la expectativa y la denegación cesa con ello.
+
+La propia denegación se atribuye a `pack/failproofai-pack-unavailable`, que tiene prioridad sobre las políticas que sí cargaron, de modo que una llamada a herramienta bloqueada nombra el pack ausente en lugar de la guarda superviviente que haya disparado primero.

@@ -14,14 +14,18 @@ import {
   cloudCredentialPath,
 } from "./cloud-enrollment";
 import {
-  daemonRestartCommand,
   daemonServiceStatus,
   daemonStatusCommand,
   daemonVersionSkew,
 } from "./daemon-service";
 import { clearActiveCloudManagedPolicies } from "./cloud-managed-policies";
+import { optsFor, rows as kitRows, stack, warning } from "./tui";
 import { deliveryHealth, deliveryHealthLine } from "./delivery-health";
-import { readVersionFile, readCredentials } from "./fp-config";
+import { clearJevCloudCredential, readVersionFile, readCredentials } from "./fp-config";
+// A CLI command's import, never the hook path's: `jev-cloud-connection` reaches
+// `semantic/jev-config`, which a machine without jev.json must not load while
+// evaluating a tool call. `config --disconnect` is not that.
+import { removeCloudJevConfig } from "./jev-cloud-connection";
 import { version as cliVersion } from "../../package.json";
 import { daemonSocketPresent } from "./daemon-client";
 import {
@@ -92,9 +96,8 @@ export interface CommandResult {
  * the one reader who cannot use them, and it made the id look like the machine's
  * name. The id still has to appear: labels default to the hostname and are free to
  * collide, so the label alone cannot identify a machine. Eight hex characters
- * distinguish any realistic fleet while staying readable.
- *
- * `failproofai config --status --verbose` prints the full id for support.
+ * distinguish any realistic fleet while staying readable. `full` gives the whole
+ * id; no command prints it today.
  */
 export function describeMachine(
   machineId: string,
@@ -173,16 +176,28 @@ function daemonWarning(status: ReturnType<typeof daemonServiceStatus>): string[]
   ];
 }
 
+/**
+ * What `config --token` (and `config --connect … --token`) ends with, connected
+ * or not: every Jev remedy sends people to that spelling, and the key is in
+ * history either way. A `▲` notice: the state, then the fix, with the command
+ * in backticks so the printer paints it (`screenKit().notice`). `jev setup
+ * --token` says the same thing in `TOKEN_ON_ARGV`'s words.
+ */
+export const CONFIG_TOKEN_HISTORY_WARNING = [
+  "--token put the key in your shell history and, while this ran, the process list. Rotate it if that matters.",
+  "Next time, set FAILPROOFAI_CLOUD_TOKEN instead:  `read -rs FAILPROOFAI_CLOUD_TOKEN && export FAILPROOFAI_CLOUD_TOKEN`",
+];
+
 export async function runConnectCommand(opts: ConnectOptions): Promise<CommandResult> {
   if (!opts.url) return { exitCode: 1, lines: ["--connect needs a URL, e.g. --connect https://be.failproof.ai"] };
   if (!opts.token) {
     return {
       exitCode: 1,
       lines: [
-        "--connect needs a machine token: --token <key>",
+        "--connect needs this machine's key: set FAILPROOFAI_CLOUD_TOKEN (preferred), or pass --token <key>.",
         "",
-        "Create an API key carrying only the `policies:pull` permission for this",
-        "machine. Do not use an admin key.",
+        "Create it with the \"machine\" preset on the dashboard's Keys page",
+        "(events:add, policies:pull, jev:evaluate). Do not use an admin key.",
       ],
     };
   }
@@ -283,7 +298,9 @@ export async function runRenameCommand(
       exitCode: 1,
       lines: [
         "This machine is not connected to FailproofAI Cloud, so it has no name to change.",
-        "Connect it first: failproofai config --connect <url> --token <key>",
+        // `failproofai config`, not `--connect <url> --token <key>`: a key on
+        // the command line lands in shell history and the process list.
+        "Connect it first: `failproofai config`",
       ],
     };
   }
@@ -315,6 +332,62 @@ export async function runRenameCommand(
   return { exitCode: 0, lines };
 }
 
+/**
+ * Why `config --oss|--agents --machine-label <name>` cannot apply the name, or
+ * null when it can. Asked BEFORE setup, so a refusal changes nothing.
+ *
+ * Alongside a setup option the label is the name to connect under, and setup
+ * only connects when it is given a key. With no key and no saved connection
+ * there is nothing to name — unless somebody is at the prompt, where a key can
+ * still be pasted. --oss never connects. Before this check the label was
+ * dropped without a word and the run exited 0.
+ */
+export function machineLabelRefusal(opts: { oss: boolean; keyGiven: boolean; interactive: boolean }): string | null {
+  if (readCloudCredentials()) return null;
+  if (opts.oss) {
+    return (
+      "--machine-label names a machine connected to FailproofAI Cloud, and --oss leaves this one unconnected.\n" +
+      "Drop --machine-label, or set FAILPROOFAI_CLOUD_TOKEN and run  `failproofai config --machine-label <name>`."
+    );
+  }
+  if (opts.keyGiven || opts.interactive) return null;
+  return (
+    "--machine-label names a machine connected to FailproofAI Cloud, and this one is not connected.\n" +
+    "Set FAILPROOFAI_CLOUD_TOKEN to connect under that name, or drop --machine-label."
+  );
+}
+
+/**
+ * The name `config --oss|--agents --machine-label <name>` asked for, applied
+ * after setup ran. Null when there is nothing to report: no label, or setup
+ * already connected under it.
+ *
+ * Setup applies the label only when it connects. On a machine it left
+ * connected as it was — `--oss`, `--agents` with no new key, Enter on the saved
+ * key — this is the rename the flag asked for.
+ */
+export async function applyMachineLabelAfterSetup(
+  label: string | undefined,
+  deps: { verify?: typeof verifyCloudCredentials } = {},
+): Promise<CommandResult | null> {
+  const trimmed = label?.trim();
+  if (!trimmed) return null;
+  const creds = readCloudCredentials();
+  if (creds?.machineLabel === trimmed) return null;
+  if (!creds) {
+    // Reached only from the prompt (see machineLabelRefusal): a key could have
+    // been pasted, and open source was chosen instead.
+    return {
+      exitCode: 0,
+      lines: [
+        `▲ ${trimmed} was not applied: this machine is not connected to FailproofAI Cloud.`,
+        "  Name it as it connects:  `failproofai config --machine-label <name>`",
+      ],
+    };
+  }
+  return runRenameCommand(trimmed, deps);
+}
+
 export function runDisconnectCommand(): CommandResult {
   const existing = readCloudCredentials();
   const hadIngest = hasIngestCredential();
@@ -323,41 +396,78 @@ export function runDisconnectCommand(): CommandResult {
   // leave the machine still shipping activity to a cloud the user believes
   // they have left — the one outcome nobody expects from this command.
   const removedIngest = clearIngestCredential();
+  // And spending: the Jev key goes with the rest, so no tool call after this
+  // one is charged to an org this machine has left. The Cloud's own jev.json
+  // goes too — it names a route that now has no key — unless it is switched
+  // off, the owner's opt-out that must outlive a reconnect; a BYOK one stays,
+  // because it never depended on the Cloud and is not the Cloud's to delete.
+  const removedJevKey = clearJevCloudCredential();
+  const jevConfig = removeCloudJevConfig();
   // Stop ENFORCING them too, not merely refreshing them. Clearing the
   // credential ends the daemon's polling; every artifact already on disk stayed
   // referenced by `active.json` and kept being loaded on every tool call — so a
   // machine that had deliberately left its organisation went on being governed
   // by whatever deployment was current when it left, indefinitely, while
   // `--status` reported it as unconnected.
-  const stoppedManaged = clearActiveCloudManagedPolicies();
   // Back to OSS. Leaving mode = "cloud" with no credentials would describe a
   // machine that does not exist, and every cloud code path keys off this flag
   // rather than off "is a token lying around" precisely so that a disconnected
   // machine is provably silent instead of silent-by-happenstance.
   updateConfig({ mode: "oss" });
+  const sharedPolicyRoot = process.env.FAILPROOFAI_CLOUD_POLICY_DIR !== undefined;
+  const stoppedManaged = clearActiveCloudManagedPolicies();
 
-  if (!removed && !existing && !hadIngest && !stoppedManaged) {
-    return { exitCode: 0, lines: ["This machine is not connected to FailproofAI Cloud."] };
+  const jevLines =
+    jevConfig.status === "removed"
+      ? [`  Jev through FailproofAI Cloud is off: removed ${jevConfig.path}. Hooks run the regex policies.`]
+      : jevConfig.status === "error"
+        ? [
+            removedJevKey
+              ? `  ! The FailproofAI Cloud key for Jev is gone, so Jev is off — but ${jevConfig.problem}.`
+              : `  ! ${jevConfig.problem}.`,
+            ...(jevConfig.setAside ? [`    To put it back: mv ${jevConfig.setAside} ${jevConfig.path}`] : []),
+          ]
+        : jevConfig.status === "kept-off"
+          ? [`  Jev stays switched off: ${jevConfig.path} (mode off) was kept, so connecting again leaves it off.`]
+        : jevConfig.status === "kept" && jevConfig.provider !== null
+          ? [`  ${jevConfig.path} (provider ${jevConfig.provider}) is your own Jev setup and was left in place.`]
+          : jevConfig.status === "set-aside"
+            ? [
+                `  ! ${jevConfig.path} was being checked when another jev.json was written in its place. Nothing was deleted: the new one is at ${jevConfig.path},`,
+                `    and the one that was there (provider ${jevConfig.provider ?? "unreadable"}, not FailproofAI Cloud's) is kept at ${jevConfig.setAside}.`,
+              ]
+            : removedJevKey
+            ? ["  Jev through FailproofAI Cloud is off: its key was removed."]
+            : [];
+
+  if (!removed && !existing && !hadIngest && !stoppedManaged && !removedJevKey && jevConfig.status !== "removed") {
+    // Nothing was connected — but the jev.json check ran all the same, and a
+    // file it could not put back where it was (a bring-your-own-key setup,
+    // moved aside) is not nothing: left unsaid, that Jev is simply gone.
+    const unsettled = jevConfig.status === "error" || jevConfig.status === "set-aside";
+    return { exitCode: 0, lines: ["This machine is not connected to FailproofAI Cloud.", ...(unsettled ? jevLines : [])] };
   }
 
   const lines = [
     "Disconnected from FailproofAI Cloud.",
     "",
-    stoppedManaged
-      ? "  Cloud-managed policies stop being enforced and stop being refreshed.\n" +
+    stoppedManaged || (sharedPolicyRoot && !!existing)
+      ? "  Cloud-managed policies stop being enforced and stop being refreshed, and any Jev mode\n" +
+        "  FailproofAI Cloud set goes with them (its Jev checks never ran on this machine).\n" +
         "  Local builtin, custom and convention policies are unaffected."
       : "  Local builtin, custom and convention policies are unaffected.",
+    ...(sharedPolicyRoot ? ["  An overridden Cloud policy directory was left untouched; OSS mode ignores its old deployment."] : []),
+    ...jevLines,
   ];
   if (removedIngest) {
-    // Named honestly. The collector manager starts once for the daemon's
-    // lifetime (`main.rs`) and the uploader caches its bearer key at
-    // construction, so nothing already running notices this file disappear —
-    // "stop being sent" was true only of the NEXT daemon start. Telling the
-    // user the step that makes it true beats a claim that quietly is not.
+    // A running failproofaid notices on its own: its collector manager polls
+    // the collector config, which includes this credential, and stops the
+    // collector within one interval once it is gone (`spawn_collector_manager`
+    // in main.rs). This line used to say to restart the daemon, written when
+    // the manager started once per daemon lifetime and cached the key.
     lines.push(
-      "  No new hook activity or transcripts will be queued. A running failproofaid",
-      "  keeps the key it started with, so restart it to stop the current process",
-      `  sending: ${daemonRestartCommand() ?? "restart failproofaid"}`,
+      "  No new hook activity or transcripts will be queued, and a running failproofaid",
+      "  stops sending within a few seconds: it notices the key is gone.",
     );
   }
   return { exitCode: 0, lines };
@@ -376,22 +486,37 @@ export function versionStatusLines(): string[] {
   const daemon = recorded?.daemon ?? "not installed";
   return [
     `CLI ${cliVersion} · daemon ${daemon}${skew ? " (STALE)" : ""} · layout ${recorded?.layout ?? "-"}`,
-    ...(skew ? ["  Run `failproofai config` to update the daemon."] : []),
+    ...(skew ? ["  Run `failproofai update` to update the daemon."] : []),
   ];
 }
 
-export function connectionStatusLines(
-  daemonStatus = daemonServiceStatus,
-  /** Print the full machine id rather than a short prefix. */
-  verbose = false,
-): string[] {
+export interface ConnectionStatusReport {
+  /** Label/value pairs, unrendered, so a caller printing several blocks in one
+   *  window can align them all to ONE column instead of each block to its own. */
+  rows: Array<[string, string]>;
+  /** Lines for the one warning shape, already stripped of their own gutter. */
+  warnings: string[];
+}
+
+/**
+ * The connection half of `--status`, as data.
+ *
+ * Separate from the rendering because `config --status` prints this block and
+ * the pause block together: rendered independently they computed two different
+ * label columns and the window read as two commands' output stacked up.
+ */
+export function connectionStatusReport(daemonStatus = daemonServiceStatus): ConnectionStatusReport {
   const envUrl = process.env.FAILPROOFAI_CLOUD_URL;
   if (envUrl) {
     // Env wins over the file in the daemon, so reporting the file here would
     // describe a configuration that is not in effect.
-    return [
-      `Cloud: configured by environment (${envUrl}), which takes precedence over ${cloudCredentialPath()}.`,
-    ];
+    return {
+      rows: [
+        ["cloud", `configured by environment (${envUrl})`],
+        ["", `takes precedence over ${cloudCredentialPath()}`],
+      ],
+      warnings: [],
+    };
   }
   const creds = readCloudCredentials();
   const ingest = readIngestCredential();
@@ -400,13 +525,13 @@ export function connectionStatusLines(
   // activity but pulling no policy, or the reverse, is a state worth seeing at
   // a glance — it is exactly the half-configured case this command exists to
   // catch, and two unrelated lines made it easy to miss.
-  if (!creds && !ingest) return ["Cloud: not connected."];
+  if (!creds && !ingest) return { rows: [["cloud", "not connected"]], warnings: [] };
 
   // Recorded at connect time from the server's own answer, never guessed from
   // the URL: one deployment hosts many orgs, so the host says nothing about
   // which one this machine's data lands in. Absent against a server with no
   // introspect endpoint, and on credentials written before this was recorded —
-  // in both cases the line is simply omitted rather than guessed at.
+  // in both cases the row is simply omitted rather than guessed at.
   const org = readCredentials().org;
   const orgLine = org
     ? org.name && org.slug
@@ -414,22 +539,25 @@ export function connectionStatusLines(
       : (org.name ?? org.slug ?? org.id)
     : undefined;
 
-  const lines: string[] = [];
+  // Rows, not a prose lead. The URL, the machine label and the masked token used
+  // to be crammed into one sentence — three separate facts, none of them
+  // scannable, and the two that follow were already a hand-padded column that
+  // agreed with nothing else the CLI prints.
+  const detail: Array<[string, string]> = [];
   if (creds) {
-    // Label first, with a short id to disambiguate; the bare id is the fallback
-    // for credentials written before labels existed.
-    const shownAs = describeMachine(creds.machineId, creds.machineLabel, verbose);
-    lines.push(`Cloud: connected to ${creds.url} as ${shownAs} (token ${maskToken(creds.token)}).`);
-    lines.push(`  Policy    pulling centrally-managed policies.`);
+    detail.push(["cloud", `connected to ${creds.url}`]);
+    detail.push(["machine", describeMachine(creds.machineId, creds.machineLabel)]);
+    detail.push(["token", maskToken(creds.token)]);
+    detail.push(["policy", "pulling centrally-managed policies"]);
   } else {
-    lines.push(`Cloud: connected to ${cloudBaseFor(ingest!.url)} for reporting only.`);
-    lines.push(`  Policy    NOT pulling — this machine enforces only its local policies.`);
+    detail.push(["cloud", `connected to ${cloudBaseFor(ingest!.url)} for reporting only`]);
+    detail.push(["policy", "NOT pulling — this machine enforces only its local policies"]);
   }
 
-  if (orgLine) lines.push(`  Org       ${orgLine}`);
+  if (orgLine) detail.push(["org", orgLine]);
 
   if (ingest) {
-    // Everything above this line is read from the credential FILE, which
+    // Everything above this row is read from the credential FILE, which
     // records what was true at `--connect` time and is never revisited. A key
     // that has since been revoked, expired, or had its org disabled leaves that
     // file byte-for-byte correct while nothing arrives — which is how a machine
@@ -439,16 +567,29 @@ export function connectionStatusLines(
     // so it overrides the cheerful line rather than being appended after it.
     const health = deliveryHealth();
     const rejection = deliveryHealthLine(health);
-    if (rejection) {
-      lines.push(`  Dashboard ${rejection}`);
-    } else {
-      lines.push(`  Dashboard sending hook activity to ${ingest.url}.`);
-    }
+    detail.push(["dashboard", rejection ?? `sending hook activity to ${ingest.url}`]);
   } else {
-    lines.push(`  Dashboard NOT sending — nothing from this machine appears in the dashboard.`);
-    lines.push(`            Re-run: failproofai config --connect ${creds!.url} --token <key>`);
+    detail.push([
+      "dashboard",
+      "NOT sending — nothing from this machine appears in the dashboard",
+    ]);
+    detail.push(["", `re-run: failproofai config --connect ${creds!.url} --token <key>`]);
   }
 
-  lines.push(...daemonWarning(daemonStatus()).map((l) => (l === "" ? "" : `  ${l.trim()}`)));
-  return lines;
+  // The daemon block is a warning, so it takes the one warning shape rather than
+  // its own indented prose.
+  const daemonLines = daemonWarning(daemonStatus())
+    .map((l) => l.replace(/^[!\s]+/, "").trim())
+    .filter((l) => l.length > 0);
+  return { rows: detail, warnings: daemonLines };
+}
+
+/** The same report, rendered on its own — for any caller printing only this. */
+export function connectionStatusLines(daemonStatus = daemonServiceStatus): string[] {
+  const opts = optsFor(process.stdout);
+  const report = connectionStatusReport(daemonStatus);
+  return stack(
+    kitRows(report.rows, opts),
+    report.warnings.length > 0 ? warning(report.warnings, opts) : null,
+  );
 }

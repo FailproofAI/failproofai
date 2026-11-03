@@ -1,0 +1,167 @@
+---
+title: "समस्या निवारण"
+description: "लापता सेशन, लापता नीतियों, विफल डिलीवरी और अवरुद्ध एजेंट कार्यों का निदान करें।"
+icon: "wrench"
+---
+
+<AccordionGroup>
+  <Accordion title="Cloud में कोई सेशन दिखाई नहीं देता">
+    <Tabs>
+      <Tab title="Dashboard">
+        **Administration → Keys** खोलें और सुनिश्चित करें कि मशीन की कुंजी सक्रिय है और `events:add` की अनुमति है। फिर **Observe → Events** खोलें, समय सीमा को विस्तृत करें, और environment और agent फ़िल्टर को साफ़ करें। यदि events मौजूद हैं, तो सेशन ID को खोजें और फिर समूहन के लिए **Observe → Sessions** की जांच करें। यदि कोई events मौजूद नहीं हैं, तो CLI से Failproof daemon का निदान करें।
+
+        ![लाइव Events स्ट्रीम अपने प्राथमिक फ़िल्टर के साथ दिखाई दे रहा है और हाल के एजेंट events आ रहे हैं।](/images/dashboard/events-stream-current.png)
+      </Tab>
+      <Tab title="CLI">
+        ```bash
+        failproofai config --status
+        failproofai flush --wait --timeout 60
+        fp list envs
+        fp events --since 24h --limit 20
+        fp sessions --since 24h --limit 20
+        ```
+
+        सुनिश्चित करें कि कैप्चर सक्षम है, कॉन्फ़िगर की गई कुंजी के पास `events:add` है, और डैशबोर्ड फ़िल्टर उत्सर्जित environment से मेल खाता है।
+      </Tab>
+    </Tabs>
+  </Accordion>
+  <Accordion title="Python SDK events डिस्क पर रहते हैं">
+    <Tabs>
+      <Tab title="Dashboard">
+        **Observe → Events** में फ़िल्टर साफ़ करें और सटीक SDK सेशन ID को खोजें। यदि कुछ नहीं दिखाई देता है, तो स्रोत मशीन पर SDK spool और Failproof daemon का निरीक्षण करें।
+      </Tab>
+      <Tab title="CLI">
+        ```bash
+        failproofai config --status
+        failproofai flush --wait
+        ```
+
+        सुनिश्चित करें कि एक daemon चल रहा है और कनेक्ट किया गया है — SDK इससे स्वतंत्र रूप से spool करता है। Spool निर्देशिका को पहले से मौजूद होने की **आवश्यकता नहीं** है (लेखक इसे बनाता है), और कोई environment variable इसे चुनता नहीं है: `$FAILPROOFAI_HOME/custom-agents`, अन्यथा `~/.failproofai/custom-agents`, एकमात्र मूल है, और `configure(base_dir=...)` एकमात्र override है। यदि प्रक्रिया को `SIGKILL` किया गया था या OOM-killed किया गया था, तो जो भी अभी भी क्यू में था वह खो गया — `SIGTERM` को संभालने के लिए इसे सीमित करें।
+      </Tab>
+    </Tabs>
+  </Accordion>
+  <Accordion title="मशीन को नीतियां प्राप्त नहीं होती हैं">
+    <Tabs>
+      <Tab title="Dashboard">
+        **Admin → enforcement** खोलें, मशीन को चुनें, और इसके assigned, reported और previous versions की तुलना करें। सुनिश्चित करें कि deployment scope में मशीन शामिल है और इसकी कुंजी के पास `policies:pull` की अनुमति है। Ingest तब भी काम कर सकता है जब policy delivery न हो।
+
+      </Tab>
+      <Tab title="CLI">
+        ```bash
+        failproofai config --status
+        failproofai update
+        failproofai config --status
+        ```
+
+        सुनिश्चित करें कि मशीन ID और label डैशबोर्ड लक्ष्य से मेल खाते हैं। यदि मौजूदा credential केवल event ingestion की अनुमति देता है तो policy-capable key के साथ पुनः कनेक्ट करें।
+      </Tab>
+    </Tabs>
+  </Accordion>
+  <Accordion title="एक कार्य अस्वीकृत है क्योंकि daemon उपलब्ध नहीं है">
+    <Tabs>
+      <Tab title="Dashboard">
+        **Admin → enforcement** खोलें और मशीन के last-seen time और reported version का निरीक्षण करें। यदि मशीन stale है, तो इसे एक local daemon समस्या के रूप में मानें। unavailable daemon को bypass करने के लिए केवल deployed policy को कमजोर न करें।
+
+      </Tab>
+      <Tab title="CLI">
+        ```bash
+        failproofai config --status
+        failproofai update
+        failproofai config
+        failproofai config --status
+        ```
+
+        `failproofaid` को पुनः आरंभ या अपडेट करें; जब CLI और daemon protocol संस्करण भिन्न हों तो configuration को पुनः चलाएं। कॉन्फ़िगर किया गया daemon path डिज़ाइन द्वारा विफल होता है।
+      </Tab>
+    </Tabs>
+  </Accordion>
+  <Accordion title="एक custom policy लोड नहीं होती है">
+    <Tabs>
+      <Tab title="Dashboard">
+        एक Cloud-authored policy के लिए, **Admin → policy editor** खोलें, ड्राफ्ट को चुनें, और प्रकाशित करने से पहले validation errors की समीक्षा करें। एक local policy के लिए, इसे validate करने के लिए CLI का उपयोग करें, फिर एक परीक्षण कार्य के बाद **Observe → policy** खोलें यह पुष्टि करने के लिए कि निर्णय आते हैं।
+
+      </Tab>
+      <Tab title="CLI">
+        सुनिश्चित करें कि फ़ाइल नाम `policies.js`, `policies.mjs`, या `policies.ts` में समाप्त होता है, module `customPolicies.add(...)` को कॉल करता है, और imports policy फ़ाइल से resolve होता है।
+
+        ```bash
+        failproofai policies --install --custom ./checkout.policies.ts
+        failproofai policies
+        ```
+      </Tab>
+    </Tabs>
+  </Accordion>
+  <Accordion title="एक audit कोई निष्कर्ष नहीं देता है">
+    <Tabs>
+      <Tab title="Dashboard">
+        **Analyze → audits** खोलें, रन को चुनें, और जांचें कि model analysis चलाया गया या नहीं। फिर इसके scope और window की तुलना **Observe → sessions** से करें और उस population से representative traces खोलें।
+
+        एक zero result तब ही सार्थक है जब analysis सफलतापूर्वक चला हो। यदि analysis को छोड़ दिया गया या विफल हुआ, तो रन कोई निष्कर्ष नहीं देता और unanalysed window को भविष्य के सफल रन के लिए खुला रखता है। यदि model analysis अक्षम है, तो audit भी कोई निष्कर्ष नहीं देता क्योंकि deterministic credential और PII scan आंकड़े record करते हैं लेकिन अब निष्कर्ष नहीं उठाते हैं।
+
+        ![audit form जहां environment, agent, cadence, और sweep window सेशन population को define करते हैं।](/images/dashboard/audit-new.png)
+      </Tab>
+      <Tab title="CLI">
+        ```bash
+        fp audits show <audit-name>
+        fp audits runs <audit-name>
+        fp sessions --since 24h --env production
+        fp audits context-show <audit-name>
+        fp audits run <audit-name>
+        fp audits findings --audit <audit-name>
+        ```
+
+        यदि रन queued रहा, तो audit-agent capacity के लिए प्रतीक्षा करें या deployment operator को audit fleet का निरीक्षण करने के लिए कहें। एक queued audit retry करता है; इसे तुरंत छोड़ा नहीं जाता है।
+      </Tab>
+    </Tabs>
+  </Accordion>
+  <Accordion title="Online evaluations स्वचालित रूप से नहीं चलती हैं">
+    <Tabs>
+      <Tab title="Dashboard">
+        एक पूर्ण सेशन खोलें और जांचें कि manual evaluation सफल है या नहीं। Hosted Cloud के पास वर्तमान में डैशबोर्ड में कोई evaluator endpoint नियंत्रण नहीं है; server operator को इसे कॉन्फ़िगर करना होगा।
+      </Tab>
+      <Tab title="CLI">
+        Evaluator को स्वयं verify करें, फिर हाल के evaluation states का निरीक्षण करें:
+
+        ```bash
+        curl https://evaluator.example.com/health
+        fp evals --since 1h
+        ```
+
+        Self-hosted Cloud पर, सुनिश्चित करें कि `EVALUATOR_ENDPOINT` server पर मौजूद है और `EVALUATOR_TOKEN` evaluator से मेल खाता है। Automatic evaluation तब अक्षम होती है जब endpoint अनुपस्थित हो।
+      </Tab>
+    </Tabs>
+  </Accordion>
+  <Accordion title="Cloud CLI authentication गलत organization को लक्ष्य करता है">
+    <Tabs>
+      <Tab title="Dashboard">
+        Organization switcher का उपयोग करें और expected slug और permissions की पुष्टि करें फिर CLI के साथ परिणामों की तुलना करने से पहले।
+      </Tab>
+      <Tab title="CLI">
+        ```bash
+        fp whoami
+        fp orgs current
+        fp orgs perms
+        ```
+
+        API-key mode में, `fp --org <slug> --api-key <key> ...` को निर्दिष्ट करें या `AGENTEYE_ORG` सेट करें। Saved human-session organization state को API-key requests के लिए जानबूझकर ignore किया जाता है।
+      </Tab>
+    </Tabs>
+  </Accordion>
+  <Accordion title="एक policy वैध कार्य को अवरुद्ध करता है">
+    <Tabs>
+      <Tab title="Dashboard">
+        **Observe → policy** खोलें, decision और linked session को preserve करें, और false-positive condition को identify करें। फिर **Admin → enforcement** खोलें और प्रभावित मशीनों को prior version पर rollback करें। **Policy editor** में एक narrower version बनाएं, इसे एक छोटे scope पर test करें, और केवल तभी expand करें जब valid work सफल हो।
+
+      </Tab>
+      <Tab title="CLI">
+        Cloud deployment rollback केवल dashboard पर है। एक local session pause Cloud-managed policies को disable नहीं करता है। यदि dashboard unavailable है, तो मशीन और deployment state को capture करें और dashboard access को restore करने के बजाय repeatedly blocked action को retry न करें।
+
+        ```bash
+        failproofai config --status
+        ```
+      </Tab>
+    </Tabs>
+  </Accordion>
+</AccordionGroup>
+
+Support से संपर्क करते समय, CLI version, harness, environment, relevant session या deployment ID, और `failproofai config --status` के आउटपुट को शामिल करें (secrets को हटाए गए)।

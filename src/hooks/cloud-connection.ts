@@ -29,27 +29,42 @@
  * exact confusion this module removes.
  */
 import {
+  clearCloudCredentials,
   cloudCredentialPath,
   validateCloudUrl,
   verifyCloudCredentials,
+  maskToken,
+  readCloudCredentials,
   writeCloudCredentials,
   type CloudCredentials,
 } from "./cloud-enrollment";
-import { updateConfig, readCredentials, writeCredentials } from "./fp-config";
+import { credentialsFile } from "./fp-home";
+import {
+  clearJevCloudCredential,
+  updateConfig,
+  readCredentials,
+  writeCredentials,
+  writeJevCloudCredential,
+} from "./fp-config";
 import {
   introspectKey,
   hasPermission,
   describeOrg,
   PERMISSION_EVENTS,
+  PERMISSION_JEV,
   PERMISSION_POLICIES,
 } from "./cloud-introspect";
+import type { CloudJevConfigWrite } from "./jev-cloud-connection";
 import {
   ingestPath,
   validateIngestKey,
   writeCollectorSettings,
-  writeIngestCredential,
   type CollectorSettings,
 } from "./collector-config";
+import { recoverCredentialRefusals } from "./credential-recovery";
+import { clearActiveCloudManagedPolicies, readCloudJevState } from "./cloud-managed-policies";
+import { rmSync } from "node:fs";
+import { backfillRequestPath } from "./backfill-request";
 
 /**
  * The path ingest is served on, appended to the cloud base URL.
@@ -125,6 +140,10 @@ export interface ConnectInput {
    */
   sessions?: boolean;
   environment?: string;
+  /** The org the key is already known to report into — a browser login's
+   *  claim names it. Used only when introspect gives no answer (unreachable
+   *  just then, or an older server), so the saved org is not left stale. */
+  org?: { id?: string; slug?: string; name?: string };
   /** Injected by tests so nothing reaches the network. */
   verifyPolicy?: typeof verifyCloudCredentials;
   verifyIngest?: typeof validateIngestKey;
@@ -137,12 +156,60 @@ export interface CapabilityOutcome {
 }
 
 export interface ConnectOutcome {
+  /** Reconciliation changes, already masked and safe to print. */
+  changes?: string[];
   policy: CapabilityOutcome & { policyCount?: number; deployment?: number };
   ingest: CapabilityOutcome;
-  /** Which organisation the key belongs to. Absent on a pre-introspect server. */
+  /**
+   * Jev through FailproofAI Cloud. Absent when nothing connected, and when the
+   * server has no introspect endpoint to say whether the key carries it.
+   */
+  jev?: JevConnectOutcome;
+  /** Which organisation the key belongs to. Absent when neither introspect nor
+   *  the caller (`ConnectInput.org`) named one. */
   org?: { id?: string; slug?: string; name?: string };
   /** True when at least one capability was configured. */
   anyConfigured: boolean;
+}
+
+export interface JevConnectOutcome {
+  /** The key carries `jev:evaluate`, and it was stored for Jev. */
+  ok: boolean;
+  reason?: string;
+  /** What became of `jev.json`. Present when `ok`, unless `optIn`. */
+  config?: CloudJevConfigWrite;
+  /**
+   * `ok`, but Jev was deliberately NOT switched on: the connection opted out
+   * of transcripts (`sessions !== true`), and there is no `jev.json`. The key
+   * is stored; `jev setup --provider failproofai` switches Jev on.
+   */
+  optIn?: true;
+  /**
+   * A `--no-transcripts` connection removed this `jev.json`: it named the
+   * FailproofAI Cloud provider and was not switched off (the rule `config
+   * --disconnect` uses), so Jev through FailproofAI Cloud stays off here.
+   * Set with `optIn`.
+   */
+  removedCloudConfig?: string;
+  /**
+   * A `--no-transcripts` connection found a `jev.json` already in place that
+   * keeps Jev running through FailproofAI Cloud, in this mode, and could not
+   * remove it (see `removedCloudConfig`). A connection that asked for
+   * decisions only is told that Jev still sends more than that.
+   */
+  stillOn?: "observe" | "enforce";
+  /**
+   * Introspect gave no answer about this key's permissions — the server could
+   * not be asked (`unreachable`) or predates the endpoint (`unsupported`) — so
+   * whether it carries `jev:evaluate` is unknown, and the Jev slot was:
+   *
+   *   - `kept`: it already held THIS key for THIS origin, and was left as it
+   *     was — the machine's connection is the same one it belongs to;
+   *   - `cleared`: it held another key or origin — the previous connection's,
+   *     possibly another org's budget — and was removed;
+   *   - `none`: there was no slot, and there still is none.
+   */
+  unconfirmed?: "kept" | "cleared" | "none";
 }
 
 /**
@@ -153,6 +220,8 @@ export interface ConnectOutcome {
  * connection the machine does not have.
  */
 export async function connectToCloud(input: ConnectInput): Promise<ConnectOutcome> {
+  const prev = readCredentials();
+  const previousPolicy = readCloudCredentials();
   // Checked HERE, not only at the call sites. `ConnectInput.url` is documented
   // as "already validated by `validateCloudUrl`", and that was true of exactly
   // one of the two callers: `--connect` validated, and the interactive wizard —
@@ -206,6 +275,7 @@ export async function connectToCloud(input: ConnectInput): Promise<ConnectOutcom
   // CLI ships independently of whatever server a customer runs, so a good key
   // on an older deployment must still connect.
   const known = identity.kind === "ok" ? identity.identity : null;
+  const org = known ? { id: known.orgId, slug: known.orgSlug, name: known.orgName } : input.org;
 
   // Skip a probe the key provably cannot pass. This is not an optimisation: a
   // permission failure surfaces from `/events` as a 403 whose message reads
@@ -236,15 +306,97 @@ export async function connectToCloud(input: ConnectInput): Promise<ConnectOutcom
       : { ok: false, reason: policyResult.reason },
     ingest: ingestResult.ok ? { ok: true } : { ok: false, reason: ingestResult.reason },
     anyConfigured: false,
-    org: known
-      ? { id: known.orgId, slug: known.orgSlug, name: known.orgName }
-      : undefined,
+    org,
   };
 
-  if (policyResult.ok) {
-writeCloudCredentials(creds);
-    outcome.anyConfigured = true;
+  outcome.anyConfigured = policyResult.ok || ingestResult.ok;
+  if (!outcome.anyConfigured) return outcome;
+
+  const origin = new URL(input.url).origin;
+  const sameOrigin = (url: string) => {
+    try { return new URL(url).origin === origin; } catch { return false; }
+  };
+  const unknown = (result: { ok: true } | { ok: false; status?: number }) =>
+    !result.ok && (result.status === undefined || result.status >= 500);
+  const next = { ...prev, connectedAt: Date.now() };
+  const changes: string[] = [];
+  const hadConnection = Boolean(previousPolicy || prev.ingest || prev.jev || prev.org);
+  const keyChanged = [
+    previousPolicy ? { token: previousPolicy.token, url: previousPolicy.url } : undefined,
+    prev.ingest ? { token: prev.ingest.key, url: prev.ingest.url } : undefined,
+    prev.jev ? { token: prev.jev.key, url: prev.jev.url } : undefined,
+  ].some((slot) => slot && (slot.token !== input.token || !sameOrigin(slot.url)));
+  // Both sides name their organisation: that alone decides. The same org on
+  // a new URL (http → https, a new host for the same Cloud) is a reconnect,
+  // not a switch — clearing its deployment would drop enforcement until the
+  // next poll, and "Switched from X to X" says nothing true.
+  const sameKnownOrg = Boolean(prev.org?.id && org?.id && prev.org.id === org.id);
+  const orgSwitch = hadConnection && !sameKnownOrg && (
+    (prev.org?.id && org?.id && prev.org.id !== org.id) ||
+    ((!prev.org?.id || !org?.id) && keyChanged) ||
+    (previousPolicy && !sameOrigin(previousPolicy.url)) ||
+    (prev.ingest && !sameOrigin(prev.ingest.url))
+  );
+  // Only a switch draws a line. A first connect, or a machine upgrading from a
+  // version that kept no boundary, has nothing to keep apart: it backfills its
+  // window and sends what is queued, as before.
+  const boundary = orgSwitch ? next.connectedAt : prev.org?.since;
+  if (orgSwitch) {
+    rmSync(backfillRequestPath(), { force: true });
+    const oldOrg = prev.org?.name ?? prev.org?.slug ?? prev.org?.id ?? "the previous org";
+    const newOrg = org?.name ?? org?.slug ?? org?.id ?? "the new org";
+    changes.push(`Switched from ${oldOrg} to ${newOrg}. Nothing recorded before now will be sent to ${newOrg}; ${oldOrg}'s cloud policies stop within ~30 s.`);
+    // Remove local references, not the daemon's policy-floor state (#899).
+    clearActiveCloudManagedPolicies();
   }
+  if (policyResult.ok) {
+    next.cloud = creds;
+  } else if (
+    !canPolicy || !unknown(policyResult) ||
+    previousPolicy?.token !== input.token || !sameOrigin(previousPolicy.url)
+  ) {
+    delete next.cloud;
+    if (previousPolicy) {
+      changes.push(`Removed the previous policy key ${maskToken(previousPolicy.token)}: this key can't pull policies (${PERMISSION_POLICIES}).`);
+      clearActiveCloudManagedPolicies();
+    }
+  }
+  if (ingestResult.ok) {
+    next.ingest = { url: ingestUrl, key: input.token };
+  } else if (
+    !canIngest || !unknown(ingestResult) ||
+    prev.ingest?.key !== input.token || !sameOrigin(prev.ingest.url)
+  ) {
+    delete next.ingest;
+    if (prev.ingest) changes.push(`Removed the previous ingest key ${maskToken(prev.ingest.key)}: this key can't send events (${PERMISSION_EVENTS}).`);
+  }
+  if (known && hasPermission(known, PERMISSION_JEV)) {
+    next.jev = { url: origin, key: input.token };
+  } else if (known || prev.jev?.key !== input.token || !sameOrigin(prev.jev.url)) {
+    delete next.jev;
+    if (prev.jev) changes.push(`Removed the previous Jev key ${maskToken(prev.jev.key)}: this key's ${PERMISSION_JEV} permission was not verified.`);
+  }
+  const since = boundary === undefined ? {} : { since: boundary };
+  if (org) {
+    next.org = { ...org, ...since };
+  } else {
+    const { since: _drop, ...kept } = orgSwitch ? {} : (prev.org ?? {});
+    next.org = { ...kept, ...since };
+  }
+  writeCredentials(next);
+  // Only after the replacement key is on disk. Recovery requests a flush, and
+  // a flush served before the daemon sees the new key retries these batches
+  // with the key that was refused, re-parking them as definitive refusals.
+  if (ingestResult.ok && prev.ingest && prev.ingest.key !== input.token) {
+    recoverCredentialRefusals(Boolean(prev.org?.id && prev.org.id === org?.id && sameOrigin(prev.ingest.url)), prev.org?.id);
+  }
+  // Legacy JSON override remains supported; the consolidated file above is
+  // published once, never as a mixture of previous and replacement slots.
+  if (process.env.FAILPROOFAI_CLOUD_CREDENTIALS) {
+    if (policyResult.ok) writeCloudCredentials(creds);
+    else if (!next.cloud) clearCloudCredentials();
+  }
+  outcome.changes = changes;
 
   // Mode is the hard gate, set only once a capability actually verified.
   // "cloud" is never inferred from a token merely being present: a machine
@@ -254,7 +406,6 @@ writeCloudCredentials(creds);
   }
 
   if (ingestResult.ok) {
-    writeIngestCredential({ url: ingestUrl, key: input.token });
     const settings: CollectorSettings = {
       // Hook activity is what makes the dashboard show anything at all, and it
       // carries decisions and tool names — never file contents.
@@ -271,18 +422,180 @@ writeCloudCredentials(creds);
     outcome.anyConfigured = true;
   }
 
-  // Last, and only once something actually configured: recording an org for a
-  // machine that connected to nothing would be a claim about where data goes
-  // from a machine that sends none. Merged into whatever the two writers above
-  // just wrote, so it cannot race them.
-  if (outcome.anyConfigured && known && (known.orgId || known.orgSlug || known.orgName)) {
-    writeCredentials({
-      ...readCredentials(),
-      org: { id: known.orgId, slug: known.orgSlug, name: known.orgName },
-    });
+  // ── Jev, last ─────────────────────────────────────────────────────────────
+  //
+  // Only from introspect's answer. `jev:evaluate` spends the org's budget on
+  // every gated tool call, so it is never inferred from a probe succeeding the
+  // way the other two capabilities are on a server without introspect — and a
+  // machine that connected to nothing gets nothing.
+  //
+  // There is no Jev-only path: the server refuses a key that carries
+  // `jev:evaluate` without `events:add` and `policies:pull`, so a key that gets
+  // here with Jev has already configured the other two.
+  if (outcome.anyConfigured) {
+    if (known && hasPermission(known, PERMISSION_JEV)) {
+      // The ORIGIN the key was verified against. `jev-config.ts` sends the key
+      // only to a base URL on this origin, so a jev.json pointing anywhere else
+      // cannot borrow it.
+      writeJevCloudCredential({ url: new URL(input.url).origin, key: input.token });
+      // Loaded here and nowhere earlier: a connect whose key does not carry Jev
+      // pulls in none of the Jev modules.
+      const { cloudJevRunningMode, existingJevConfig, removeCloudJevConfig, writeCloudJevConfig } = await import(
+        "./jev-cloud-connection"
+      );
+      if (input.sessions === true) {
+        outcome.jev = { ok: true, config: writeCloudJevConfig(input.url) };
+      } else {
+        // `--no-transcripts` never switches Jev on (the user's decision). Jev
+        // sends each checked tool call and the recent prompt to FailproofAI
+        // Cloud, and someone who just asked for decisions only has not asked
+        // for that. The key is stored all the same, so opting in later is one
+        // command with no key to paste; jev.json is not written.
+        //
+        // And a jev.json naming the FailproofAI Cloud provider — left by an
+        // earlier connect with transcripts on — is removed, by exactly the rule
+        // `config --disconnect` uses (`removeCloudJevConfig`: the Cloud's file,
+        // not switched off). Kept, it went on sending this machine's tool calls
+        // to FailproofAI Cloud with no Cloud mode set (e2e-c10 O2, user
+        // decision). A BYOK file is its owner's and stays, reported as ever; so
+        // does a Cloud file switched off, the owner's opt-out.
+        const removal = removeCloudJevConfig();
+        if (removal.status === "removed") {
+          outcome.jev = { ok: true, optIn: true, removedCloudConfig: removal.path };
+        } else {
+          const existing = existingJevConfig(input.url);
+          // Still sending (the removal failed): said, or "Decisions only."
+          // would be the last word while Jev keeps sending.
+          const stillOn = existing ? cloudJevRunningMode() : null;
+          outcome.jev = existing
+            ? { ok: true, config: existing, ...(stillOn ? { stillOn } : {}) }
+            : { ok: true, optIn: true };
+        }
+      }
+    } else if (known) {
+      // Introspect ANSWERED, and the key does not carry Jev. This connection
+      // replaces the last one, and the last key's Jev slot describes a
+      // connection this machine no longer has — possibly another org's budget.
+      // Dropped, so Jev never spends on a key it was not just handed. (A Cloud
+      // jev.json then reads `key-lacks-jev`: off, and said.)
+      clearJevCloudCredential();
+      outcome.jev = { ok: false, reason: missing(PERMISSION_JEV) };
+    } else {
+      // No answer about this key: a 502 or a network blip on introspect
+      // (`unreachable`), or a server with no introspect at all (`unsupported`).
+      // Neither says the key LACKS Jev, so neither is a reason to switch Jev
+      // off — a reconnect during a transient outage used to do exactly that,
+      // silently.
+      //
+      // But neither says it HAS Jev, and the slot is only ever spent against.
+      // So it is kept only when it already holds this very key for this very
+      // origin: then the connection just verified IS the one it belongs to,
+      // and keeping it changes nothing about whose budget Jev spends. A slot
+      // holding any other key or origin is the previous connection's, and the
+      // machine is not connected with that key any more — the rule above,
+      // which wins whenever the answer is not "yes".
+      //
+      // `unsupported` is decided the same way, and conservatively: a server
+      // that predates introspect predates the Jev route too, so a kept slot
+      // there can only fall back with `http-404` — never spend — and clearing
+      // it would turn Jev off on no evidence. It gets no line when there was
+      // no slot, because on such a server there is nothing to say about Jev.
+      const previous = prev.jev;
+      if (!previous) {
+        if (identity.kind === "unreachable") outcome.jev = { ok: false, unconfirmed: "none" };
+      } else if (previous.key === input.token && previous.url === new URL(input.url).origin) {
+        outcome.jev = { ok: false, unconfirmed: "kept" };
+      } else {
+        clearJevCloudCredential();
+        outcome.jev = { ok: false, unconfirmed: "cleared" };
+      }
+    }
   }
 
   return outcome;
+}
+
+/**
+ * The Jev line(s) for `describeOutcome`: whether FailproofAI Cloud runs Jev for
+ * this machine now, and — the one case worth a second line — why an existing
+ * `jev.json` was not touched.
+ */
+function safeCloudJev(): ReturnType<typeof readCloudJevState> {
+  try {
+    return readCloudJevState();
+  } catch {
+    return { jevMode: null, deployment: null, errors: [] };
+  }
+}
+
+export function jevLines(outcome: ConnectOutcome): string[] {
+  const jev = outcome.jev;
+  if (!jev) return [];
+  if (jev.unconfirmed === "cleared") {
+    return [
+      "  Jev       could not confirm this key's Jev permission, and the Jev key stored before was a different one, so it was removed: Jev through FailproofAI Cloud is off. Run `failproofai config --token <key>` again to retry.",
+    ];
+  }
+  if (jev.unconfirmed) return ["  Jev       could not confirm the key's Jev permission; left as it was."];
+  if (!jev.ok) {
+    return [`  Jev       not through FailproofAI Cloud: ${jev.reason ?? `that key does not carry \`${PERMISSION_JEV}\``}.`];
+  }
+  if (jev.optIn && jev.removedCloudConfig) {
+    return [
+      `  Jev       removed ${jev.removedCloudConfig}, which sent each checked tool call and the recent prompt to FailproofAI Cloud: Jev via FailproofAI Cloud stays off on this machine (--no-transcripts). To switch it on: \`failproofai jev setup --provider failproofai\`.`,
+    ];
+  }
+  if (jev.optIn) {
+    // One line, and nothing that reads as "on": this connection asked for
+    // decisions only, and Jev would send more than that.
+    return [
+      "  Jev       available on this key, not switched on (--no-transcripts): it sends each checked tool call and the recent prompt to FailproofAI Cloud for evaluation. To switch it on: `failproofai jev setup --provider failproofai`.",
+    ];
+  }
+  const config = jev.config;
+  if (!config || config.status === "written" || config.status === "repointed") {
+    // What happened to jev.json, said first on a re-point; the mode lines
+    // below are the same for both (N1).
+    const lead =
+      config?.status === "repointed" ? [`  Jev       ${config.path} now points here instead of ${config.from}.`] : [];
+    const indent = lead.length > 0 ? "            " : "  Jev       ";
+    // FailproofAI Cloud already set this machine's Jev mode (a reconnect, or a
+    // deployment that arrived first): that mode and Cloud's own checks decide,
+    // not the local jev.json or the packs installed here.
+    const cloudJev = safeCloudJev();
+    // One line: FailproofAI Cloud decides the mode, whatever jev.json says, so
+    // the local fallback and the packs installed here are not worth a line.
+    const state =
+      cloudJev.jevMode === null
+        ? "waiting for its first deployment"
+        : cloudJev.jevMode === "off"
+          ? "off — no Jev policy deployed"
+          : cloudJev.jevMode;
+    return [...lead, `${indent}managed by FailproofAI Cloud · ${state}`];
+  }
+  if (config.status === "kept") {
+    const lines = [`  Jev       key stored; ${config.path} already exists and was left as configured.`];
+    if (config.otherOrigin) {
+      lines.push(
+        config.jevOff?.why === "off"
+          ? `            It points at ${config.otherOrigin} and has Jev switched off (mode off), so Jev is off. To point it here: \`failproofai jev setup --provider failproofai\`.`
+          : `            It points at ${config.otherOrigin}, so Jev stays off until you run \`failproofai jev setup --provider failproofai\`.`,
+      );
+    } else if (config.jevOff?.why === "refused") {
+      lines.push(
+        `            It was refused (${config.jevOff.problem}), so Jev is off. ${config.jevOff.fix ? `Fix: \`${config.jevOff.fix}\`.` : "Write a valid one: `failproofai jev setup --provider failproofai`."}`,
+      );
+    } else if (config.jevOff?.why === "off") {
+      lines.push("            It has Jev switched off (mode off) until FailproofAI Cloud's Jev mode arrives with this machine's first deployment; from then on FailproofAI Cloud decides.");
+    }
+    if (jev.stillOn) {
+      lines.push(
+        `            Jev is still on through FailproofAI Cloud (${jev.stillOn} mode): it sends each checked tool call and the recent prompt to FailproofAI Cloud. FailproofAI Cloud sets its mode: off when no Jev policy is deployed here.`,
+      );
+    }
+    return lines;
+  }
+  return [`  Jev       key stored, but Jev was not turned on: ${config.problem}.`];
 }
 
 /**
@@ -293,7 +606,7 @@ writeCloudCredentials(creds);
  * without a cause is the message that sends people to support.
  */
 export function describeOutcome(outcome: ConnectOutcome, machineId: string, url: string): string[] {
-  const lines: string[] = [];
+  const lines: string[] = [...(outcome.changes ?? [])];
 
   // Named on every branch that connected, including the partial ones. A key
   // pasted from the wrong organisation authenticates perfectly and reports into
@@ -311,6 +624,7 @@ export function describeOutcome(outcome: ConnectOutcome, machineId: string, url:
     const n = outcome.policy.policyCount ?? 0;
     lines.push(`  Policy    ${n} polic${n === 1 ? "y" : "ies"} assigned (deployment ${outcome.policy.deployment ?? 0}).`);
     lines.push(`  Dashboard hook activity will be sent to ${ingestUrlFor(url)}.`);
+    lines.push(...jevLines(outcome));
     return lines;
   }
 
@@ -322,6 +636,7 @@ export function describeOutcome(outcome: ConnectOutcome, machineId: string, url:
     lines.push("");
     lines.push("  Enforcement works. Nothing will appear in the dashboard until this");
     lines.push("  key also carries `events:add`, or you re-run --connect with one that does.");
+    lines.push(...jevLines(outcome));
     return lines;
   }
 
@@ -332,6 +647,7 @@ export function describeOutcome(outcome: ConnectOutcome, machineId: string, url:
     lines.push("");
     lines.push("  This machine keeps enforcing its LOCAL policies and will report what");
     lines.push("  they decide, but will not receive centrally-managed ones.");
+    lines.push(...jevLines(outcome));
     return lines;
   }
 
@@ -346,6 +662,8 @@ export function configuredPaths(outcome: ConnectOutcome): string[] {
   const paths: string[] = [];
   if (outcome.policy.ok) paths.push(cloudCredentialPath());
   if (outcome.ingest.ok) paths.push(ingestPath());
+  // The Jev slot is always in credentials.json, never behind the JSON override.
+  if (outcome.jev?.ok) paths.push(credentialsFile());
   // Deduplicated because layout 2 consolidated both credentials into
   // `credentials.toml`, so the two capabilities now name the SAME file and the
   // closing note read "stored in <path> and <path>" — the same path, twice.

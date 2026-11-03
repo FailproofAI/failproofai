@@ -1,0 +1,211 @@
+name: Sync fp-cloud-cli skill
+
+# One-directional mirror — MUST be run from `main`:
+#   FailproofAI/failproofai  fp-cloud-cli/skill/   ──▶   FailproofAI/skills  skills/fp-cloud-cli/
+#
+# This replaces `sync-skill.yml` in the private FailproofAI/agenteye repo, which
+# mirrored the same skill from `cli/skill/` to `skills/agenteye-cli/` before the CLI
+# moved here. That workflow was deleted with the CLI.
+#
+# The skills repo is pull-only — never hand-edit skills/fp-cloud-cli/ there; edit
+# fp-cloud-cli/skill/ here and let this run. It force-pushes ONE stable branch and reuses
+# ONE PR (no pileup, no merge conflicts: every run rebuilds off latest main).
+#
+# One-time setup on FailproofAI/skills (admin):
+#   • create the label this workflow applies:
+#       gh label create skill-sync-fp-cloud-cli --repo FailproofAI/skills \
+#         --color 8A63D2 --description "Automated fp-cloud-cli skill mirror PRs from FailproofAI/failproofai"
+#   • eventually delete the orphaned skills/agenteye-cli/ folder, which teaches the
+#     retired `agenteye` command and is no longer synced by anything.
+#
+#     ⚠ NOT YET. `docs/agenteye/cli-skill.mdx:68` still tells readers to run
+#     `npx skills add FailproofAI/skills --skill agenteye-cli`, and that page is live
+#     on the public docs site. Deleting the folder first turns a documented install
+#     command into a not-found error. Order: land the docs rewrite that repoints it at
+#     `fp-cloud-cli` (it rides with the /cloud/* docs move), THEN delete the folder.
+# One-time setup on THIS repo (admin):
+#   • add Actions secret SKILLS_SYNC_PAT — a fine-grained PAT scoped to
+#     FailproofAI/skills, Contents: Read and write + Pull requests: Read and write.
+#     The agenteye repo has a secret of the same name; this repo needs its own.
+#     Until it exists this workflow fails at the clone step.
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'fp-cloud-cli/skill/**'
+  workflow_dispatch:
+
+concurrency:
+  group: sync-fp-cloud-cli-skill
+  cancel-in-progress: false
+
+permissions:
+  contents: read          # GITHUB_TOKEN only reads this repo; all writes use the PAT
+
+env:
+  SRC: fp-cloud-cli/skill                    # source of truth (this repo)
+  DEST_REPO: FailproofAI/skills        # mirror target
+  DEST_SUBDIR: skills/fp-cloud-cli           # folder overwritten in the mirror
+  BRANCH: sync/fp-cloud-cli                  # stable bot branch (force-pushed each run)
+  LABEL: skill-sync-fp-cloud-cli
+  REVIEWERS: NiveditJain,SiddarthAA
+  WORKDIR: /tmp/skills
+
+jobs:
+  prepare:
+    name: Build the mirrored tree
+    runs-on: ubuntu-latest
+    steps:
+      - name: Enforce run-from-main
+        run: |
+          if [ "$GITHUB_REF" != "refs/heads/main" ]; then
+            echo "::error::This workflow must be run from main (got $GITHUB_REF)."
+            exit 1
+          fi
+
+      - name: Checkout (source of truth)
+        uses: actions/checkout@v7.0.1
+        with:
+          # Nothing from the mirror runs in this job any more, but the token still
+          # has no business sitting in $GITHUB_WORKSPACE/.git/config for the rest
+          # of it — osv-scanner.yml sets this flag with the same reasoning.
+          persist-credentials: false
+
+      # `-c http.extraheader` before the subcommand, so the credential is NOT
+      # persisted into the new repo's config the way a credentialed clone URL is —
+      # it stays in this process only, and it comes from `env:` rather than being
+      # interpolated into the script body where it would reach the run log.
+      - name: Clone FailproofAI/skills
+        env:
+          SKILLS_SYNC_PAT: ${{ secrets.SKILLS_SYNC_PAT }}
+        run: |
+          AUTH="$(printf 'x:%s' "$SKILLS_SYNC_PAT" | base64 -w0)"
+          git -c "http.extraheader=AUTHORIZATION: basic ${AUTH}" \
+            clone --depth=1 "https://github.com/${DEST_REPO}.git" "$WORKDIR"
+
+      - name: Mirror fp-cloud-cli/skill/ → skills/fp-cloud-cli/
+        run: |
+          mkdir -p "$WORKDIR/$DEST_SUBDIR"
+          rsync -a --delete --exclude '.git' "$SRC"/ "$WORKDIR/$DEST_SUBDIR"/
+
+      # `.git` excluded: the publish job re-clones fresh, so shipping the mirror's
+      # git directory would only reintroduce the hook/config surface this split
+      # exists to remove.
+      - name: Hand the proposed tree to the validate job
+        run: rsync -a --exclude '.git' "$WORKDIR"/ "$RUNNER_TEMP/tree"/
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: mirrored-tree-fp-cloud-cli
+          path: ${{ runner.temp }}/tree
+          if-no-files-found: error
+          retention-days: 1
+
+
+  # NO secrets, and that is the entire mitigation. `permissions: {}` empties the
+  # GITHUB_TOKEN's scopes and nothing else is passed in, so whatever the mirror's
+  # validator does — write `$GITHUB_ENV`, prepend to `$GITHUB_PATH`, drop a
+  # wrapper on `PATH`, modify runner files — it does it on a runner that has
+  # nothing to steal and that is discarded when the job ends.
+  validate:
+    name: Validate (skills repo's own gate)
+    needs: prepare
+    runs-on: ubuntu-latest
+    permissions: {}
+    steps:
+      - uses: actions/download-artifact@v8
+        with:
+          name: mirrored-tree-fp-cloud-cli
+          path: tree
+
+      - name: Run the mirror's validator
+        working-directory: tree
+        run: python3 scripts/validate-skills.py
+
+  # Re-clones on a FRESH runner and runs no mirror code: rsync writes, git commits.
+  # `needs: validate` means the gate has passed before this job exists.
+  publish:
+    name: Push branch and open/refresh PR
+    needs: validate
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout (source of truth)
+        uses: actions/checkout@v7.0.1
+        with:
+          persist-credentials: false
+
+      # Re-cloned rather than carried over from `prepare`: this runner has never
+      # executed anything from the mirror, and a fresh `--depth=1` clone has no
+      # hooks, so there is nothing here for the validator to have tampered with.
+      - name: Clone FailproofAI/skills
+        env:
+          SKILLS_SYNC_PAT: ${{ secrets.SKILLS_SYNC_PAT }}
+        run: |
+          AUTH="$(printf 'x:%s' "$SKILLS_SYNC_PAT" | base64 -w0)"
+          git -c "http.extraheader=AUTHORIZATION: basic ${AUTH}" \
+            clone --depth=1 "https://github.com/${DEST_REPO}.git" "$WORKDIR"
+
+      - name: Mirror fp-cloud-cli skill into the clone
+        run: |
+          mkdir -p "$WORKDIR/$DEST_SUBDIR"
+          rsync -a --delete --exclude '.git' "$SRC"/ "$WORKDIR/$DEST_SUBDIR"/
+
+      - name: Commit, push branch, open/refresh PR
+        env:
+          GH_TOKEN: ${{ secrets.SKILLS_SYNC_PAT }}
+          SKILLS_SYNC_PAT: ${{ secrets.SKILLS_SYNC_PAT }}
+        run: |
+          cd "$WORKDIR"
+          git config user.name  "fp-cloud-cli-skill-sync"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+          # `git status --porcelain`, NOT `git diff`: on the first sync of a new skill the
+          # destination folder does not exist yet, so every mirrored file is UNTRACKED —
+          # and `git diff` only ever looks at tracked files. It would report clean here and
+          # skip the publish, passing the run green having shipped nothing. This matters
+          # immediately: skills/fp-cloud-cli/ does not exist yet.
+          if [ -z "$(git status --porcelain -- "$DEST_SUBDIR")" ]; then
+            echo "Already in sync — nothing to publish."
+            exit 0
+          fi
+
+          SHORT_SHA="${GITHUB_SHA::7}"
+          git switch -c "$BRANCH"
+          git add "$DEST_SUBDIR"
+          # --no-verify + an empty hooksPath: defence in depth against a hook
+          # planted in $WORKDIR by anything that ran before this step.
+          git -c core.hooksPath=/dev/null commit --no-verify -m "Sync fp-cloud-cli skill from failproofai@${SHORT_SHA}" \
+                     -m "Automated mirror of fp-cloud-cli/skill/. Source of truth: FailproofAI/failproofai — do not hand-edit."
+          # The clone left no credentials on disk (see the clone step), so the push
+          # carries the same in-process header.
+          AUTH="$(printf 'x:%s' "$SKILLS_SYNC_PAT" | base64 -w0)"
+          git -c "http.extraheader=AUTHORIZATION: basic ${AUTH}" \
+            push --force origin "$BRANCH"
+
+          BODY="Automated mirror — **do not hand-edit this folder**.
+
+          | | |
+          |---|---|
+          | Source of truth | [\`FailproofAI/failproofai\`](https://github.com/${GITHUB_REPOSITORY}) → \`${SRC}/\` |
+          | Target | \`${DEST_SUBDIR}/\` |
+          | Triggered from | \`main\` @ [\`${SHORT_SHA}\`](https://github.com/${GITHUB_REPOSITORY}/commit/${GITHUB_SHA}) |
+
+          This replaces \`skills/agenteye-cli/\`, which mirrored the same skill from the private agenteye repo before the CLI moved here and was renamed to \`fp\`. **That folder is now orphaned and should be deleted** — nothing syncs it, and it teaches the retired \`agenteye\` command.
+
+          The skills repo's \`validate-skills.py\` passed. To change the skill, edit \`${SRC}/\` and re-run the **Sync fp-cloud-cli skill** workflow — this same PR refreshes."
+
+          if gh pr view "$BRANCH" --repo "$DEST_REPO" --json state --jq .state 2>/dev/null | grep -q OPEN; then
+            echo "PR already open for $BRANCH — branch force-pushed, PR refreshed."
+          else
+            gh pr create --repo "$DEST_REPO" --base main --head "$BRANCH" \
+              --title "Sync fp-cloud-cli skill (failproofai@${SHORT_SHA})" \
+              --body "$BODY" \
+              --label "$LABEL"
+          fi
+
+          # Reviewers are tolerant: the PR author (PAT owner) can't review their own
+          # PR, so a failure here must not fail the sync.
+          gh pr edit "$BRANCH" --repo "$DEST_REPO" --add-reviewer "$REVIEWERS" \
+            || echo "::warning::could not request reviewers $REVIEWERS (self-review or missing access?)"

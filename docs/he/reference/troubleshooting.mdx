@@ -1,0 +1,167 @@
+---
+title: "פתרון בעיות"
+description: "אבחון של שסיונות חסרים, מדיניות חסרה, משלוח שנכשל, וזמימויות סוכן חסומות."
+icon: "wrench"
+---
+
+<AccordionGroup>
+  <Accordion title="אין שסיונות בענן">
+    <Tabs>
+      <Tab title="Dashboard">
+        פתח את **Administration → Keys** ובדוק שמפתח המכונה פעיל ויש לו `events:add`. לאחר מכן פתח את **Observe → Events**, הרחב את טווח הזמן, ומחק את המסננים של סביבה וסוכן. אם קיימים אירועים, חפש את מזהה השסיון ובדוק את **Observe → Sessions** לקבוצה. אם אין אירועים, אבחן את ה-Failproof daemon מה-CLI.
+
+        ![זרם האירועים החי עם המסננים העיקריים שלו גלויים ואירועי סוכן עדכניים מגיעים.](/images/dashboard/events-stream-current.png)
+      </Tab>
+      <Tab title="CLI">
+        ```bash
+        failproofai config --status
+        failproofai flush --wait --timeout 60
+        fp list envs
+        fp events --since 24h --limit 20
+        fp sessions --since 24h --limit 20
+        ```
+
+        בדוק שהתיעוד מופעל, שמפתח מוגדר כולל `events:add`, ומסנן הדוד תואם את הסביבה הנפלטת.
+      </Tab>
+    </Tabs>
+  </Accordion>
+  <Accordion title="אירועי Python SDK נשארים בדיסק">
+    <Tabs>
+      <Tab title="Dashboard">
+        מחק מסננים ב- **Observe → Events** וחפש את מזהה השסיון של SDK המדויק. אם כלום לא מופיע, בדוק את הספול של SDK ו-Failproof daemon במכונת המקור.
+      </Tab>
+      <Tab title="CLI">
+        ```bash
+        failproofai config --status
+        failproofai flush --wait
+        ```
+
+        בדוק שdaemon פועל ומחובר — ה-SDK מעמעם בין אם כן ובין אם לא. תיקיית הספול **לא** צריכה להיות קיימת מראש (הכותב יוצר אותה), ואף משתנה סביבה לא בוחר בה: `$FAILPROOFAI_HOME/custom-agents`, אחרת `~/.failproofai/custom-agents`, היא השורש היחיד, ו-`configure(base_dir=...)` היא הדרך היחידה לחזור עליה. אם התהליך הוקטל ב-`SIGKILL` או נהרג על ידי OOM, כל מה שעדיין היה בתור אבד — טיפל ב-`SIGTERM` כדי להגביל זאת.
+      </Tab>
+    </Tabs>
+  </Accordion>
+  <Accordion title="המכונה לא מקבלת מדיניות">
+    <Tabs>
+      <Tab title="Dashboard">
+        פתח את **Admin → enforcement**, בחר את המכונה, והשווה בין הגרסאות שלה שהוקצו, דווח עליהן, וגרסאות קודמות. בדוק שהיקף הפריסה כולל את המכונה וולמפתח שלה יש `policies:pull`. Ingest יכול לעבוד גם כאשר משלוח מדיניות לא עובד.
+
+      </Tab>
+      <Tab title="CLI">
+        ```bash
+        failproofai config --status
+        failproofai update
+        failproofai config --status
+        ```
+
+        בדוק שמזהה המכונה והתווית תואמים את היעד של הדוד. התחבר מחדש עם מפתח המסוגל למדיניות אם בעדכון הנוכחי יש רק הנתון רק תשדור.
+      </Tab>
+    </Tabs>
+  </Accordion>
+  <Accordion title="פעולה נדחית מכיוון שה-daemon לא זמין">
+    <Tabs>
+      <Tab title="Dashboard">
+        פתח את **Admin → enforcement** ובדוק את זמן הנראות האחרון של המכונה וגרסה דווחה. אם המכונה ישנה, התייחס לזה כבעיה daemon מקומית. אל תחליש את המדיניות המופרסת רק כדי לעקוף daemon לא זמין.
+
+      </Tab>
+      <Tab title="CLI">
+        ```bash
+        failproofai config --status
+        failproofai update
+        failproofai config
+        failproofai config --status
+        ```
+
+        הפעל מחדש או עדכן את `failproofaid`; הפעל קונפיגורציה מחדש כאשר גרסאות פרוטוקול CLI ו-daemon שונות. נתיב ה-daemon המוגדר נכשל בעיצוב סגור.
+      </Tab>
+    </Tabs>
+  </Accordion>
+  <Accordion title="מדיניות מותאמת אישית לא נטענת">
+    <Tabs>
+      <Tab title="Dashboard">
+        עבור מדיניות שנכתבה בענן, פתח את **Admin → policy editor**, בחר את הטיוטה, וסקור שגיאות אימות לפני פרסום. עבור מדיניות מקומית, השתמש ב-CLI כדי לאמת אותה, לאחר מכן פתח את **Observe → policy** לאחר פעולת בדיקה כדי לאשר שהחלטות מגיעות.
+
+      </Tab>
+      <Tab title="CLI">
+        בדוק שהשם של הקובץ מסתיים ב-`policies.js`, `policies.mjs`, או `policies.ts`, המודול קורא ל-`customPolicies.add(...)`, ויבוא משקר מהקובץ מדיניות.
+
+        ```bash
+        failproofai policies --install --custom ./checkout.policies.ts
+        failproofai policies
+        ```
+      </Tab>
+    </Tabs>
+  </Accordion>
+  <Accordion title="ביקורת מחזירה אפס ממצאים">
+    <Tabs>
+      <Tab title="Dashboard">
+        פתח את **Analyze → audits**, בחר את ההרץ, ובדוק אם ניתוח מודל רץ. לאחר מכן השווה את ההיקף והחלון שלו עם **Observe → sessions** ופתח עקבות מייצגים מאותה אוכלוסייה.
+
+        תוצאה אפס משמעותית רק כאשר הניתוח רץ בהצלחה. אם ניתוח דולג או נכשל, ההרץ לא מייצר ממצאים ושומר את החלון שלא בדוק פתוח להרץ מוצלח בעתיד. אם ניתוח מודל מנוטרל, הביקורת גם לא מייצרת ממצאים כי הסריקה הדטרמיניסטית של נושא ההוכחה וזהות אישית מתעדת סטטיסטיקה אך לא עוד מעלה ממצאים.
+
+        ![טופס הביקורת בו הסביבה, סוכן, קדנציה, ויחלון ניקוז מגדירים את אוכלוסיית השסיון.](/images/dashboard/audit-new.png)
+      </Tab>
+      <Tab title="CLI">
+        ```bash
+        fp audits show <audit-name>
+        fp audits runs <audit-name>
+        fp sessions --since 24h --env production
+        fp audits context-show <audit-name>
+        fp audits run <audit-name>
+        fp audits findings --audit <audit-name>
+        ```
+
+        אם ההרץ נשאר בתור, חכה לקיבולת של audit-agent או בקש מפעיל הפריסה לבדוק את צי הביקורת. ביקורת בתור חוזרת על הניסיון; היא לא מדולגת מיד.
+      </Tab>
+    </Tabs>
+  </Accordion>
+  <Accordion title="הערכות מקוונות לא רצות באופן אוטומטי">
+    <Tabs>
+      <Tab title="Dashboard">
+        פתח שסיון שהושלם ובדוק אם הערכה ידנית מצליחה. ענן בהנחיית Cloud אין בקרה של נקודת קצה של מעריך בדוד; על המפעיל של השרת להגדיר זאת.
+      </Tab>
+      <Tab title="CLI">
+        אמת את המעריך עצמו, לאחר מכן בדוק מצבי הערכה עדכניים:
+
+        ```bash
+        curl https://evaluator.example.com/health
+        fp evals --since 1h
+        ```
+
+        על ענן Cloud בעצמי, בדוק ש-`EVALUATOR_ENDPOINT` קיים בשרת ו-`EVALUATOR_TOKEN` מתאים למעריך. הערכה אוטומטית מנוטרלת כאשר נקודת הקצה חסרה.
+      </Tab>
+    </Tabs>
+  </Accordion>
+  <Accordion title="אימות Cloud CLI של CLI תופס את הארגון ההשגוי">
+    <Tabs>
+      <Tab title="Dashboard">
+        השתמש במתג הארגון והנחה את הצלם הצפוי וההרשאות לפני השוואת תוצאות עם CLI.
+      </Tab>
+      <Tab title="CLI">
+        ```bash
+        fp whoami
+        fp orgs current
+        fp orgs perms
+        ```
+
+        במצב מפתח API, ציין `fp --org <slug> --api-key <key> ...` או הגדר `AGENTEYE_ORG`. מצב הארגון של שסיון אדם שנשמר בכוונה מתעלם לבקשות מפתח API.
+      </Tab>
+    </Tabs>
+  </Accordion>
+  <Accordion title="מדיניות חוסמת עבודה תקפה">
+    <Tabs>
+      <Tab title="Dashboard">
+        פתח את **Observe → policy**, שמור את ההחלטה והשסיון המקושר, וזהה את מצב חיובי שקר. לאחר מכן פתח את **Admin → enforcement** והחזר את המכונות המושפעות לגרסה הקודמת. צור גרסה יותר צרה ב- **Policy editor**, בדוק אותה על היקף קטן, והרחב רק לאחר שעבודה תקפה מצליחה.
+
+      </Tab>
+      <Tab title="CLI">
+        שחרור פריסה בענן הוא רק דוד. השהיית שסיון מקומית לא מנטרלת מדיניות מנוהלת בענן. אם הדוד אינו זמין, תפוס את מצב המכונה ופריסה והחזר גישה לדוד במקום לנסות שוב בשינויים הפעולה החסומה.
+
+        ```bash
+        failproofai config --status
+        ```
+      </Tab>
+    </Tabs>
+  </Accordion>
+</AccordionGroup>
+
+בעת יצירת קשר עם התמיכה, כלול את גרסת CLI, תנור הנושא, הסביבה, מזהה שסיון או פריסה רלוונטי, ו- output של `failproofai config --status` עם סודות הוסרו.

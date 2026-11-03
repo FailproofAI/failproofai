@@ -1,0 +1,56 @@
+---
+title: "Evaluierungsergebnisse lesen"
+description: "Evaluierungspunkte im Zeitverlauf darstellen, Agenten und Umgebungen vergleichen, verstehen warum eine Sitzung niedrig bewertet wurde, und den Assistenten befragen."
+icon: "gauge"
+---
+
+Ergebnisse aus jeder Evaluierung – ob gehostet oder aus deinem eigenen Worker – landen an denselben Stellen.
+
+## Punkte im Zeitverlauf vergleichen
+
+<Tabs>
+  <Tab title="Dashboard">
+    Gehe zu **Observe → evaluations**.
+
+    - **Recent runs** listet jede Evaluierung auf, sobald sie eingeht: ob sie von einem gehosteten (**managed**) oder deinem eigenen (**customer**) Evaluator stammt, den Agenten und die Sitzung, die Evaluierung und ihre Version, ihren Status sowie ihren Punktestand oder ihre Metriken.
+    - **Score over time** stellt das dar, was du auswählst. Wähle **add series** und gib einen Agenten, eine Umgebung, eine Evaluierung und eine Statistik an: avg, min, max, p50, p75, p90, p95, p99, stddev oder mode. Jede Reihe ist eine Linie; weise ihr eine eigene **curve** zu, um sie in einem separaten Diagramm darzustellen.
+
+    ![Die Evaluierungsseite: kürzliche Ausführungen mit dem Tag „customer", ein Score-over-time-Diagramm mit Referenzlinien bei 0,5 und 0,8 sowie eine Reihe, die finished_clean über alle Agenten und Umgebungen mittelt.](/images/dashboard/evaluations-chart.png)
+
+    Ein Zeitbereich und eine Bucket-Größe gelten für alle Reihen. Ein feiner Bucket findet einen Vorfall; ein grober zeigt einen Trend, kann aber die gesuchten Ausreißer verbergen. Ein Bucket ohne Bewertungen erscheint als Lücke in der Linie – niemals als Null –, und Referenzlinien markieren 0,5 und 0,8.
+
+    Jeder Teil der Ansicht ist in der URL enthalten: **share** kopiert sie, und wer sie öffnet, sieht genau den Vergleich, den du erstellt hast.
+  </Tab>
+  <Tab title="CLI">
+    ```bash
+    fp evals --agent-id checkout-agent --aggregate
+    fp evals --aggregate --env production --status error
+    fp evals --score helpfulness:0.8.. --since 7d
+    ```
+
+    Füge das globale `--json` vor `evals` hinzu, um die Ausgabe zu automatisieren, z. B. `fp --json evals --aggregate --env production`.
+  </Tab>
+</Tabs>
+
+Stelle **avg** und **p90** für dieselbe Evaluierung dar, um zu sehen, ob ein guter Durchschnitt einen schlechten Ausreißerbereich verdeckt – oder dieselbe Evaluierung für zwei Agenten oder für Produktion und Staging, um sie auf einer Achse zu vergleichen. Kosten, Latenzen und Token-Anzahlen, die Einheiten tragen, werden unter **Observe → metrics** dargestellt, ein Diagramm pro Einheit.
+
+## Verstehen, warum eine Sitzung niedrig bewertet wurde
+
+Öffne eine Sitzung unter **Observe → sessions**; das Raster zeigt die Punktestände jeder Sitzung und lässt sich nach Punktebereich filtern. Die rechte Leiste der Sitzung beginnt mit der Evaluierungszusammenfassung, gefolgt von einem Balken pro Punktestand mit der Begründung des Evaluators darunter.
+
+![Eine Sitzungsdetailansicht mit Evaluierungspunkten und Begründungen neben dem vollständigen Trace.](/images/dashboard/session-detail.png)
+
+## Den Assistenten befragen
+
+Stelle Fragen zu Evaluierungsdaten auf normalem Englisch: „tell me about some of the recent evaluations" oder welche Agenten-Punktestände nachlassen. Der [Assistent](/de/sessions/assistant) liest und analysiert die Ergebnisse und antwortet mit Tabellen, auf die du weiter eingehen kannst. Eine Frage, die sich lohnt zu behalten, kann zu einer [Abfrage](/de/sessions/queries) oder einem [Dashboard](/de/sessions/dashboards) werden.
+
+![Die Evaluierungsseite neben dem Assistenten, der auf „tell me about some of the recent evaluations" mit einer Zusammenfassung von Gesamtzahlen, Status und Punkteständen antwortet.](/images/dashboard/evaluations-assistant.png)
+
+## Beobachten und handeln
+
+- **Dashboards** unter **Analyze → dashboards** zeigen die Entwicklung der hervorgehobenen Punktestände pro Agent und Umgebung für die gesamte Organisation.
+
+  ![Ein Qualitäts-Dashboard mit durchschnittlichen Evaluierungspunkten und Trends im Zeitverlauf.](/images/dashboard/dashboard-quality.png)
+
+- **Alerts** benachrichtigen dich, wenn ein Punktestand einen Schwellenwert überschreitet. Siehe [alerts](/de/audits/alerts).
+- Wenn ein Punktestand über viele Sitzungen hinweg sinkt, [führe ein Audit durch](/de/audits/run), um die Ursache zu finden; wenn diese auf einer wiederholbaren Aktion beruht, [schreibe eine Policy](/de/policies/editor).

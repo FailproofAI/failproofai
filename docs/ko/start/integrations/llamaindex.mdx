@@ -1,0 +1,249 @@
+---
+title: "LlamaIndex"
+sidebarTitle: "LlamaIndex"
+description: "워크플로우, 스텝, 함수 에이전트, 리트리버를 계측합니다."
+icon: "/images/frameworks/llamaindex.svg"
+---
+
+## 설치
+
+```bash
+pip install 'failproofai-sdk[llamaindex]'
+```
+
+지원 버전: `llama-index-core` 0.14.23 ~ 0.15. 0.14.23은 워크플로우 스트림이 이 어댑터가 읽는 타입드 에이전트 이벤트를 포함하기 시작한 릴리즈입니다. 그 이전 버전에서는 모델 이름과 에이전트 구조가 모두 누락됩니다.
+
+## 계측
+
+```python
+import asyncio
+
+import failproofai_sdk
+
+failproofai_sdk.configure(environment="production")
+failproofai_sdk.instrument()
+
+
+async def main():
+    async with failproofai_sdk.session():
+        await agent.run("...")
+
+
+asyncio.run(main())
+```
+
+LlamaIndex의 에이전트 API는 비동기입니다. 모든 스코프는 `async with`와 `with` 모두에서 동일하게 작동하며 동일한 이벤트를 생성합니다.
+
+`instrument()`는 LlamaIndex의 전역 디스패처에 이벤트 핸들러와 스팬 핸들러를 연결합니다. 이를 통해 에이전트 루프 전체가 모델 호출뿐만 아니라 가시적으로 드러납니다.
+
+<Warning>
+  LLM에 인수 하나를 추가하지 않으면 트레이스의 모든 토큰 카운트가 null이 됩니다. 아래의 [토큰 카운트](#token-counts)를 참고하세요.
+</Warning>
+
+## 토큰 카운트
+
+`FunctionAgent`는 `astream_chat`을 호출하는데, `llama-index-llms-openai`는 스트리밍 시 `stream_options={"include_usage": True}`를 전송하지 않습니다. 따라서 프로바이더는 사용량 청크를 전송하지 않고, 어떤 계측 도구도 이를 읽을 수 없습니다.
+
+이는 업스트림 LlamaIndex의 동작입니다. LLM에서 다음과 같이 직접 활성화하세요:
+
+```python
+from llama_index.llms.openai import OpenAI
+
+llm = OpenAI(
+    model="gpt-4o-mini",
+    additional_kwargs={"stream_options": {"include_usage": True}},
+)
+```
+
+동일한 실행 및 모델 기준 측정 결과:
+
+| | 입력 토큰 | 출력 토큰 |
+| --- | --- | --- |
+| 미적용 | `null` | `null` |
+| 적용 | 148 | 17 |
+
+비스트리밍 호출(`llm.chat`, `llm.achat`)은 별도 설정 없이 사용량을 보고합니다. 기본 에이전트 경로인 스트리밍 경로에서만 이 설정이 필요합니다.
+
+## 기록되는 항목
+
+| LlamaIndex | Failproof 이벤트 |
+| --- | --- |
+| `Workflow.run` 루트 스팬 | Session, `agent_start`, `agent_end` |
+| 중첩된 `Workflow.run` 스팬 | 중첩된 `agent_start`, `agent_end` |
+| 워크플로우 스텝 스팬 | `hook_triggered`, `hook_completed` |
+| LLM 채팅 시작 및 종료 | `model_request`, `model_response` |
+| `FunctionTool.call` 스팬 | `tool_use`, `tool_result` |
+| 검색 시작 및 종료 | `tool_use`, `tool_result`, 출력 요약 |
+| 임베딩 | `embeddings=True`가 아니면 기록 없음 |
+| 사람을 기다리는 도구 | `human_wait`, `agent_pause`, 이후 `agent_resume`, `human_input` |
+| `AgentWorkflow` 핸드오프 | 워크플로우에 부모가 지정된 에이전트별 중첩 `agent_start`, `agent_end` |
+| 예외 | `error`, 이후 결과가 `failed`인 `agent_end`, 예외를 명시하는 `agent_end.summary` |
+| `handler.cancel_run()` | 결과가 `cancelled`이고 `error` 없는 `agent_end` — 중지 버튼은 실패가 아님 |
+
+`agent_id`는 설정한 경우 `FunctionAgent.name`이 되고, 그렇지 않으면 워크플로우 클래스 이름이 됩니다. `AgentWorkflow` 하에서 턴을 가지는 각 에이전트는 워크플로우 아래 별도의 중첩 스팬을 가지므로, 핸드오프는 하나가 아닌 두 에이전트로 기록됩니다.
+
+검색 출력은 전체 덤프 대신 요약됩니다. 리트리버는 문서를 반환하는데, 페이로드에 저장하면 쿼리마다 코퍼스 전체가 이벤트 스토어에 저장됩니다. 대신 문서 수, 점수 범위, 잘린 스니펫이 저장됩니다.
+
+## 예제
+
+```python
+import asyncio
+
+import failproofai_sdk
+from llama_index.core.agent.workflow import FunctionAgent
+from llama_index.core.tools import FunctionTool
+from llama_index.llms.openai import OpenAI
+
+failproofai_sdk.configure(environment="production")
+failproofai_sdk.instrument()
+
+POP = {"tokyo": "37M", "delhi": "33M"}
+AREA = {"tokyo": "2,194 km2", "delhi": "1,484 km2"}
+
+
+def population(city: str) -> str:
+    """Population of a city. Valid: tokyo, delhi."""
+    return POP.get(city.lower().strip(), "unknown")
+
+
+def area(city: str) -> str:
+    """Land area of a city. Valid: tokyo, delhi."""
+    return AREA.get(city.lower().strip(), "unknown")
+
+
+async def main():
+    agent = FunctionAgent(
+        name="city_analyst",
+        tools=[
+            FunctionTool.from_defaults(fn=population),
+            FunctionTool.from_defaults(fn=area),
+        ],
+        llm=OpenAI(
+            model="gpt-4o-mini",
+            additional_kwargs={"stream_options": {"include_usage": True}},
+        ),
+        system_prompt="Use the tools. Be terse.",
+    )
+
+    async with failproofai_sdk.session():
+        async with failproofai_sdk.agent("city_analyst", goal="compare two cities"):
+            print(await agent.run("Compare Tokyo and Delhi on population and area."))
+
+
+asyncio.run(main())
+```
+
+에이전트 루프는 트레이스에 훅 쌍으로 나타납니다: `init_run`, `setup_agent`, `run_agent_step`, `parse_agent_output`, `call_tool`, `aggregate_tool_results`. 이들은 프레임워크 자체의 루프이므로 에이전트가 아닌 훅으로 분류되어 `agent_id`가 의미 있게 유지됩니다.
+
+## 스팬 이름 지정
+
+`agent_id`는 설정한 경우 `FunctionAgent.name`이 되고, 그렇지 않으면 워크플로우 클래스 이름이 됩니다.
+
+```python
+FunctionAgent(name="city_analyst", tools=[...], llm=llm)   # agent_id = "city_analyst"
+```
+
+`AgentWorkflow`에서 이 이름은 각 핸드오프가 기록되는 이름이기도 합니다:
+
+```text
+AgentWorkflow            parent span
+├─ city_analyst          turn 1
+├─ cost_analyst          turn 2
+└─ city_analyst          turn 3  — a new turn, not a reopened one
+```
+
+따라서 `agent_id`는 **어떤 에이전트**가 작업했는지를, `parent_id`는 **어떤 워크플로우**에 속했는지를 알려줍니다. 나중에 제어권을 돌려받은 에이전트는 첫 번째 턴을 재개하는 것이 아니라 두 번째 턴을 새로 시작합니다.
+
+재정의하거나 여러 에이전트를 하나의 부모 아래 묶으려면 실행을 감싸세요:
+
+```python
+async with failproofai_sdk.agent("research", goal="compare two cities"):
+    await agent.run(...)
+```
+
+`agent_id`는 낮은 카디널리티로 유지하세요. 모든 대시보드 화면의 기본 패싯이므로 UUID나 실행별 문자열이 아닌 역할 또는 워크플로우 이름을 사용하세요.
+
+## 세션 제어
+
+이 어댑터는 **`session_id` 옵션을 받지 않습니다**. 세션은 감싸는 스코프에서 가져오며, 없을 경우 워크플로우 실행마다 생성된 `uuid4().hex`가 사용됩니다:
+
+```python
+async with failproofai_sdk.session(f"chat-{user_id}"):
+    await agent.run(...)
+```
+
+## 옵션
+
+```python
+failproofai_sdk.instrument(
+    "llama_index",
+    embeddings=False,         # True로 설정하면 임베딩 호출을 툴 쌍으로 기록
+    steps=True,               # False로 설정하면 워크플로우 스텝 훅 쌍 제거
+    capture_messages=True,    # False로 설정하면 모든 페이로드 제거: 프롬프트, 완성,
+                              # 툴 인수 및 출력, 스텝 I/O, 검색
+                              # 쿼리, 목표 및 최종 답변
+    capture_limit=8192,       # 캡처된 값당 유지되는 문자 수
+    stale_after=600.0,        # 중단된 LEAF가 강제 종료되기까지의 초
+    reaper_interval=30.0,     # 리퍼가 스윕하는 주기; 0이면 비활성화
+)
+```
+
+| 옵션 | 변경 이유 |
+| --- | --- |
+| `embeddings` | 임베딩 지연 또는 비용을 디버깅할 때만 활성화하세요. 대량 인덱스 빌드는 수천 건의 호출을 발생시켜 타임라인을 가득 채웁니다. |
+| `steps` | 모델 및 툴 이벤트만 원하고 에이전트 루프가 노이즈로 느껴질 때 비활성화하세요. |
+| `capture_messages` | 규제 데이터에 대해 비활성화하세요. 모든 페이로드 기록이 중단됩니다 — 프롬프트, 모델 완성, 툴 인수 및 반환값, 워크플로우 스텝 입출력, 검색 쿼리, 에이전트 목표 및 최종 답변. 구조, 타이밍, 토큰, 결과는 계속 기록됩니다. |
+| `capture_limit` | 잘림 전에 캡처된 값당 유지되는 문자 수입니다. RAG 프롬프트나 검색된 컨텍스트가 잘려서 도착할 때 늘리세요. |
+| `stale_after` | 중단된 **리프** — 소비되지 않은 스트리밍 응답, 종료 신호가 도착하지 않은 모델 또는 툴 스팬 — 가 강제 종료되기까지의 초입니다. 이를 통해 세션이 `ongoing`으로 영원히 읽히지 않고 종결됩니다. 중단된 실행 자체는 종료하지 않습니다: 디스패처가 종료를 감지하지 못한 채 태스크가 취소된 워크플로우는 `uninstrument()`까지 `agent_start`가 열린 상태로 유지됩니다. |
+| `reaper_interval` | 스윕 빈도입니다. `0`으로 설정하면 리퍼를 완전히 비활성화합니다. |
+
+## 휴먼 인 더 루프
+
+대기가 툴 내부에서 발생할 때 캡처됩니다:
+
+```python
+async def ask_human(question: str) -> str:
+    """Ask a person and wait for their answer."""
+    response = await ctx.wait_for_event(HumanResponseEvent)
+    return response.answer
+```
+
+일반 워크플로우 스텝에서의 `ctx.wait_for_event`는 캡처되지 않습니다. 런타임이 디스패처에 도달하기 전에 드롭을 감지하여 스텝이 종료되고 나중에 일시 정지 신호 없이 재실행됩니다. LlamaIndex가 문서화한 FunctionAgent 패턴은 툴 내부에서 대기하므로 완전히 캡처됩니다.
+
+## 일반적인 문제
+
+<AccordionGroup>
+  <Accordion title="모든 토큰 카운트가 null입니다">
+    LLM에 `additional_kwargs={"stream_options": {"include_usage": True}}`를 추가하세요. [토큰 카운트](#token-counts)를 참고하세요.
+  </Accordion>
+
+  <Accordion title="usage는 채워지지만 토큰 컬럼이 비어 있습니다">
+    LlamaIndex에는 표준 usage 필드가 없습니다. 어댑터는 알려진 여러 형태를 시도하는데, 카운터 이름이 다른 인테그레이션은 어디에도 매칭되지 않습니다.
+
+    원시 딕셔너리는 항상 전송되므로 페이로드의 `usage`를 확인하여 프로바이더가 어떤 이름을 사용했는지 확인하세요.
+
+    채워진 `usage`와 빈 토큰 컬럼이 공존하는 것은 의도된 동작입니다 — 잘못된 숫자를 자신있게 표시하는 것보다 낫습니다.
+  </Accordion>
+
+  <Accordion title="타임라인이 setup_agent와 parse_agent_output으로 가득합니다">
+    이것은 반복마다 한 세트씩 생성되는 FunctionAgent 루프입니다. 대시보드에서 훅 이름으로 필터링하세요. 이 스텝 타이밍은 보통 모델 전용 어댑터 대신 이 어댑터를 사용하는 이유가 됩니다.
+  </Accordion>
+
+  <Accordion title="아무것도 기록되지 않습니다">
+    다음 순서로 확인하세요: `instrument()`가 실행 전에 호출되었는지; `await` 주변에 `async with failproofai_sdk.session():`이 있는지; `llama-index-core`가 0.14.23 이상인지; `FAILPROOFAI_SDK_STRICT=1`이 설정된 경우 저하된 훅이 삼켜지는 대신 예외를 발생시키는지.
+  </Accordion>
+</AccordionGroup>
+
+## 다음 단계
+
+<Columns cols={3}>
+  <Card title="작동 원리" icon="workflow" href="/ko/start/integrations/custom-agents#going-deeper">
+    쌍, ID, 세션 라이프사이클, 전달 방식.
+  </Card>
+  <Card title="트레이스 읽기" icon="route" href="/ko/sessions/read-a-trace">
+    방금 캡처한 세션에서 인과 관계를 따라가 보세요.
+  </Card>
+  <Card title="다른 프레임워크" icon="plug" href="/ko/start/integrations">
+    LangGraph, CrewAI, Pydantic AI, 커스텀 에이전트.
+  </Card>
+</Columns>

@@ -1,0 +1,244 @@
+---
+title: "LangChain और LangGraph"
+sidebarTitle: "LangChain और LangGraph"
+description: "ग्राफ, नोड्स, टूल्स, रिट्रीवर्स और मॉडल कॉल को एक कॉल से इंस्ट्रूमेंट करें।"
+icon: "/images/frameworks/langchain.svg"
+---
+
+एक ऐडेप्टर दोनों को सर्व करता है। LangGraph `langchain-core` के कॉलबैक मैनेजर पर चलता है, इसलिए एक को इंस्ट्रूमेंट करने से दूसरा भी इंस्ट्रूमेंट हो जाता है।
+
+## इंस्टॉल करें
+
+```bash
+pip install 'failproofai-sdk[langgraph]'
+```
+
+LangGraph के बिना LangChain के लिए, `failproofai-sdk[langchain]` का उपयोग करें।
+
+समर्थित: `langchain-core` 1.4.7 से 2.0, `langgraph` 1.2 से 2.0। इस रेंज के बाहर ऐडेप्टर अभी भी इंस्टॉल होता है और एक बार चेतावनी देता है।
+
+## इंस्ट्रूमेंट करें
+
+```python
+import failproofai_sdk
+
+failproofai_sdk.configure(environment="production")
+failproofai_sdk.instrument()
+
+with failproofai_sdk.session():
+    graph.invoke({"messages": [HumanMessage("...")]})
+```
+
+`instrument()` `langchain_core.tracers.context.register_configure_hook` के माध्यम से एक ट्रेसर पंजीकृत करता है। LangChain इसे हर कॉलबैक मैनेजर में इंजेक्ट करता है जो वह बनाता है, इसलिए ग्राफ, टूल्स और मॉडल्स कॉल साइट को बदले बिना कैप्चर किए जाते हैं — जिनमें वे भी शामिल हैं जो आपके द्वारा न लिखे गए लाइब्रेरीज़ के अंदर हैं।
+
+## क्या रिकॉर्ड होता है
+
+| LangChain या LangGraph | Failproof इवेंट |
+| --- | --- |
+| रूट रन | `agent_start`, `agent_end` |
+| LangGraph नोड | `hook_triggered`, `hook_completed` |
+| कम्पाइल्ड सबग्राफ | नेस्टेड `agent_start`, `agent_end` |
+| टूल रन | `tool_use`, `tool_result` |
+| रिट्रीवर रन | `tool_use`, `tool_result`, आउटपुट सारांशित |
+| चैट मॉडल या LLM रन | `model_request`, `model_response`, टोकन उपयोग के साथ |
+| स्ट्रीम किए गए टोकन | रिस्पांस में चंक काउंट और टाइम टू फर्स्ट टोकन के रूप में फोल्ड किए गए। टोकन काउंट को `ChatOpenAI(stream_usage=True)` की आवश्यकता है — नीचे देखें |
+| `interrupt()` | `human_wait`, `agent_pause` |
+| `Command(resume=...)` | `agent_resume`, `human_input`, `Interrupt.id` पर सहसंबद्ध — जिसमें वह भी शामिल है जब रिज्यूम एक अलग प्रक्रिया में समान चेकपॉइंटर के विरुद्ध होता है |
+| अनहैंडल्ड एक्सेप्शन | `error`, फिर `agent_end` आउटकम `failed` के साथ |
+
+**एक नोड हुक बन जाता है, नेस्टेड एजेंट नहीं।** `agent_id` हर डैशबोर्ड सर्फेस पर प्राथमिक पहलू है — `retrieve`, `grade_documents` और `should_continue` को एजेंट्स में प्रमोट करना इसे डूब देगा, और सेशन को उस नोड के नाम पर लेबल करेगा जो पहले चलने के लिए हुआ।
+
+हुक स्पैन्स एक ही तरह से रेंडर होते हैं और अभी भी आपको प्रति-नोड लेटेंसी व्यू देते हैं।
+
+<Note>
+  **अपने नोड्स का नाम जो चाहें रखें।** एक नोड का रन इसके *आकार* से पहचाना जाता है — एक नॉन-लीफ रन जो LangGraph का खुद का स्टेप टैग ले जाता है — कभी इसके नाम से नहीं।
+</Note>
+
+| आप लिखते हैं | क्या रिकॉर्ड होता है |
+| --- | --- |
+| `add_node("lookup_population", ToolNode([...]))` | टूल |
+| `add_node("ChatOpenAI", ...)` | मॉडल कॉल |
+
+किसी नोड का नाम उस चीज़ के नाम पर रखना जो वह चलाता है, उस चीज़ के इवेंट्स को गायब करने के लिए करता था। अब नहीं करता।
+
+### स्ट्रीमिंग
+
+`.stream()` और `.astream()` कोई प्रति-टोकन इवेंट्स नहीं देते हैं। वे क्लोजिंग `model_response` में फोल्ड होते हैं:
+
+| फील्ड | ले जाता है |
+| --- | --- |
+| `fw_chunks` | कितने चंक आए |
+| `fw_ttft_ms` | पहले टोकन का समय |
+
+### स्ट्रीम किए गए रिस्पांस पर टोकन काउंट्स
+
+अलग मामला, और मिस करना आसान है: OpenAI स्ट्रीम किए गए रिस्पांस पर उपयोग तभी भेजता है **जब पूछा जाता है**।
+
+```python
+ChatOpenAI(model="gpt-4o-mini", stream_usage=True)   # इसके बिना, कोई टोकन नहीं
+```
+
+ऐडेप्टर वह रिकॉर्ड करता है जो फ्रेमवर्क इसे देता है। उस फ्लैग के बिना रिकॉर्ड करने के लिए कुछ नहीं है, और `model_response` टोकन काउंट्स के बिना आता है।
+
+## उदाहरण
+
+```python
+import failproofai_sdk
+from langchain_core.messages import HumanMessage
+from langchain_core.tools import tool
+from langchain_openai import ChatOpenAI
+from langgraph.prebuilt import ToolNode, create_react_agent
+
+failproofai_sdk.configure(environment="production")
+failproofai_sdk.instrument()
+
+
+@tool
+def price_of(item: str) -> float:
+    """Return the unit price of an item in USD."""
+    return {"widget": 42.0, "gadget": 17.5}[item.lower().strip()]
+
+
+@tool
+def stock_of(item: str) -> int:
+    """Return the units of an item currently in stock."""
+    return {"widget": 120, "gadget": 0}[item.lower().strip()]
+
+
+tools = ToolNode([price_of, stock_of], handle_tool_errors=True)
+graph = create_react_agent(ChatOpenAI(model="gpt-4o-mini"), tools)
+
+with failproofai_sdk.session():
+    with failproofai_sdk.agent("analyst", goal="price and stock report"):
+        result = graph.invoke({
+            "messages": [HumanMessage("Price and stock for widget and gadget?")]
+        })
+```
+
+## अपने स्पैन्स का नाम दें
+
+डिफ़ॉल्ट रूप से रूट स्पैन ग्राफ का अपना नाम लेता है। इसे आपके चुने हुए लेबल के लिए रैप करें:
+
+```python
+with failproofai_sdk.session():
+    with failproofai_sdk.agent("analyst", goal="price and stock report"):
+        graph.invoke(...)
+```
+
+मल्टी-एजेंट सेटअप के लिए, स्कोप्स को नेस्ट करें। प्रत्येक वर्कर एक चाइल्ड स्पैन बन जाता है जो `parent_id` ले जाता है:
+
+```python
+with failproofai_sdk.session():
+    with failproofai_sdk.agent("supervisor"):
+        with failproofai_sdk.agent("researcher"):
+            research_graph.invoke(...)
+        with failproofai_sdk.agent("writer"):
+            writer_graph.invoke(...)
+```
+
+`agent_id` को कम कार्डिनैलिटी रखें। एक भूमिका या नोड नाम का उपयोग करें, कभी UUID या प्रति-रन स्ट्रिंग नहीं।
+
+## सेशन को नियंत्रित करें
+
+सेशन आईडी इस क्रम में रिज़ॉल्व होता है, पहला मैच जीतता है:
+
+1. `instrument("langchain", session_id=...)`
+2. `config={"metadata": {"failproofai_sdk_session_id": ...}}`
+3. एनक्लोजिंग `failproofai_sdk.session()` स्कोप
+4. `metadata["session_id"]`, `metadata["conversation_id"]`, या `metadata["thread_id"]`
+5. रूट रन आईडी
+
+यह कभी स्क्रैच से जेनरेट नहीं होता है, क्योंकि एक सिंथेसाइज़्ड आईडी एक रन को कई सेशन्स में विभाजित करता है।
+
+```python
+graph.invoke(
+    {"messages": [...]},
+    config={"metadata": {"failproofai_sdk_session_id": f"chat-{user_id}"}},
+)
+```
+
+## विकल्प
+
+```python
+failproofai_sdk.instrument(
+    "langchain",
+    session_id=None,          # हर रन को एक सेशन आईडी पर पिन करें
+    include_chains=set(),     # इंटरमीडिएट चेन्स को हुक पेयर्स के रूप में अनुमति सूची में डालें
+    capture_content=True,     # False प्रॉम्प्ट्स और कम्पलीशन्स को पेलोड्स से ड्रॉप करता है
+    graph_callbacks=True,     # फर्स्ट-क्लास इंटरप्ट और रिज्यूम, langgraph 1.2+ की आवश्यकता है
+)
+```
+
+नियंत्रित डेटा के लिए `capture_content=False` सेट करें। संरचना, टाइमिंग्स, टोकन काउंट्स, टूल नाम्स, और आउटकम्स अभी भी रिकॉर्ड किए जाते हैं; मैसेज बॉडीज़ नहीं।
+
+`include_chains` **नेस्टेड** रन्स के लिए ही लागू होता है। एक रनेबल जो आप टॉप लेवल पर इनवोक करते हैं वह सेशन का रूट है, इसलिए यह एजेंट स्पैन बन जाता है न कि हुक पेयर, और इसे यहाँ नाम देने का कोई प्रभाव नहीं है।
+
+## लूप में मनुष्य
+
+`interrupt()` चार इवेंट्स प्रोड्यूस करता है, और न ही कोई पेयर रिडंडेंट है:
+
+```python
+from langgraph.types import Command, interrupt
+
+def approve(state):
+    decision = interrupt({"prompt": "Ship it?", "options": ["yes", "no"]})
+    return {"approved": decision == "yes"}
+
+with failproofai_sdk.session():
+    graph.invoke(state, config)                    # human_wait, agent_pause
+    graph.invoke(Command(resume="yes"), config)    # agent_resume, human_input
+```
+
+`human_wait` से `human_input` प्रॉम्प्ट और उत्तर दोनों ले जाता है (`capture_content=False` के तहत ड्रॉप किए जाते हैं, साथ ही रिट्रीवल डॉक्यूमेंट सोर्सेस के साथ — डॉक्यूमेंट काउंट बचा रहता है)। `agent_pause` से `agent_resume` एकमात्र पेयर है जो पॉज़्ड टाइम फीड करता है, इसलिए इसके बिना दस मिनट की मानवीय प्रतीक्षा सक्रिय एजेंट समय के रूप में बिल होती है। रूट स्पैन अंतराल भर में खुला रहता है, दोनों कॉल्स को एक सेशन में रखता है।
+
+## सामान्य समस्याएं
+
+<AccordionGroup>
+  <Accordion title="एक राइज़िंग टूल पूरे ग्राफ को रोक देता है">
+    `create_react_agent` एक्सेप्शन को प्रोपेगेट करता है। मॉडल को विफलता को देखने और जारी रखने देने के लिए, टूल नोड को स्पष्ट रूप से बनाएं:
+
+    ```python
+    from langgraph.prebuilt import ToolNode, create_react_agent
+
+    tools = ToolNode([price_of, stock_of], handle_tool_errors=True)
+    graph = create_react_agent(model, tools)
+    ```
+
+    विफलता दोनों तरीकों से `tool_result` के रूप में रिकॉर्ड की जाती है जो एक त्रुटि ले जाता है। यह केवल निर्णय लेता है कि क्या रन इससे बचता है।
+  </Accordion>
+
+  <Accordion title="मॉडल क्लास के बाद नाम दिया गया एक एजेंट ट्रेस में दिखाई देता है">
+    किसी भी ग्राफ के बाहर एक डायरेक्ट `llm.invoke()` का कोई पैरेंट रन नहीं है, इसलिए यह एक रूट स्पैन खोलता है और इसके अंदर इसके मॉडल पेयर को एमिट करता है। डैशबोर्ड पत्तियों को एक खुले एजेंट को पैरेंट करता है, इसलिए स्पैन जानबूझकर है। इसका नाम दें:
+
+    ```python
+    with failproofai_sdk.agent("summariser"):
+        summary = ChatOpenAI(model="gpt-4o-mini").invoke([HumanMessage(text)])
+    ```
+  </Accordion>
+
+  <Accordion title="हर इवेंट दो बार दिखाई देता है">
+    आपने `config={"callbacks": [...]}` में एक Failproof हैंडलर पास किया साथ ही `instrument()` को कॉल किया। इसे हटाएं। कॉन्फ़िगर हुक पहले से ही प्रक्रिया में हर कॉलबैक मैनेजर को कवर करता है।
+  </Accordion>
+
+  <Accordion title="मानवीय अनुमोदन त्रुटियों के रूप में दिखाई देते हैं">
+    वे नहीं देते हैं। LangGraph `GraphInterrupt` को एक वास्तविक एक्सेप्शन के समान पथ के माध्यम से उठाता है, इसलिए हर पॉज़ ट्रेसर तक एक एरर कॉलबैक के रूप में पहुंचता है। कोई भी `GraphBubbleUp` सबक्लास नियंत्रण प्रवाह के बजाय माना जाता है, इसलिए एक अनुमोदन लाल त्रुटि को पेंट नहीं करता है।
+  </Accordion>
+
+  <Accordion title="कुछ भी रिकॉर्ड नहीं होता है">
+    इस क्रम में जाँचें: `instrument()` ग्राफ के निष्पादन से पहले चला; `failproofai_sdk.session():` के साथ कॉल के चारों ओर एक है; `FAILPROOFAI_SDK_STRICT=1` सेट है, इसलिए एक डिग्रेडेड हुक इसके बजाय उठाया जाता है।
+  </Accordion>
+</AccordionGroup>
+
+## अगला
+
+<Columns cols={3}>
+  <Card title="यह कैसे काम करता है" icon="workflow" href="/hi/start/integrations/custom-agents#going-deeper">
+    पेयर्स, आईडी, सेशन लाइफसाइकल, और डिलीवरी।
+  </Card>
+  <Card title="ट्रेस को पढ़ें" icon="route" href="/hi/sessions/read-a-trace">
+    उस सेशन के माध्यम से कार्यकारणता का अनुसरण करें जो आपने अभी कैप्चर किया है।
+  </Card>
+  <Card title="अन्य फ्रेमवर्क" icon="plug" href="/hi/start/integrations">
+    CrewAI, LlamaIndex, Pydantic AI, और कस्टम एजेंट्स।
+  </Card>
+</Columns>

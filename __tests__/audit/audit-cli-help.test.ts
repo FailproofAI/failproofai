@@ -39,17 +39,24 @@ describe("audit --help", () => {
 
   it("lists every command a person can type", () => {
     const text = plain(render(false));
+    // The heading carries `failproofai audit`; the rows carry what you add to
+    // it. Repeating the prefix on every row cost 17 of the 80 columns and was
+    // what forced the descriptions down to four words a line.
+    expect(text).toContain("failproofai audit");
+    expect(text).toContain("Scan your agents' history and open the results");
     for (const command of [
-      "failproofai audit",
-      "failproofai audit --schedule [days]",
-      "failproofai audit --no-schedule",
-      "failproofai audit --status",
-      "failproofai audit -h, --help",
+      "--schedule [days]",
+      "--no-schedule",
+      "--status",
+      "-h, --help",
     ]) {
       expect(text).toContain(command);
     }
-    // --email modifies --schedule rather than standing alone, so it is named in
-    // that entry rather than given a row of its own.
+    // --email modifies --schedule rather than standing alone. It still gets a
+    // row: as a clause inside --schedule's description it wrapped, leaving the
+    // flag at the end of one line and `<address>` at the start of the next —
+    // which is not a spelling anybody can read off the screen or copy. Assert
+    // it is CONTIGUOUS, which is the property that broke.
     expect(text).toContain("--email <address>");
   });
 
@@ -59,8 +66,13 @@ describe("audit --help", () => {
     expect(plain(render(false))).not.toContain("--scheduled");
   });
 
-  it("keeps the local-only promise the docs also make", () => {
-    expect(plain(render(false))).toMatch(/runs on this machine/i);
+  it("is usage, options and examples, and nothing else", () => {
+    // Decision D6 of the 2026-10 redesign removed explanatory and privacy
+    // lines from help pages; the audit's local-only promise went with them.
+    const headings = plain(render(false))
+      .split("\n")
+      .filter((l) => /^[A-Z][A-Z ]+$/.test(l));
+    expect(headings).toEqual(["USAGE", "OPTIONS", "EXAMPLES"]);
   });
 
   it.each([true, false])("aligns and fits 80 columns with color=%s", (color) => {
@@ -70,23 +82,14 @@ describe("audit --help", () => {
       expect(line.length).toBeLessThanOrEqual(80);
     }
 
-    // Every command row and every continuation line shares one description
-    // column. Derive it from the first row rather than restating the constant,
-    // so this fails on drift instead of being updated to match it.
-    const first = lines.find((l) => l.includes("failproofai audit  "));
-    expect(first).toBeDefined();
-    const descCol = first!.indexOf("Scan your session history");
-    expect(descCol).toBeGreaterThan(0);
-
-    const continuations = lines.filter(
-      (l) => l.startsWith(" ".repeat(descCol)) && l.trim().length > 0,
-    );
-    // The rows carry six continuation lines between them. A floor rather than
-    // an exact count, so reworded copy does not fail this — but a regression in
-    // the padding math moves them off `descCol` entirely and drops it to zero.
-    expect(continuations.length).toBeGreaterThanOrEqual(6);
-    for (const line of continuations) {
-      expect(line[descCol]).not.toBe(" ");
-    }
+    // Every option row shares one description column. Measured per row rather
+    // than against a constant, so this fails on drift instead of being updated
+    // to match it.
+    const optionRows = lines.filter((l) => /^ {2}-/.test(l));
+    // A non-vacuity floor: the loop below must have run over the real rows.
+    expect(optionRows.length).toBeGreaterThanOrEqual(4);
+    // The first character after the name's two-space gap.
+    const columns = new Set(optionRows.map((l) => l.search(/(?<=\S {2,})\S/)));
+    expect(columns.size).toBe(1);
   });
 });

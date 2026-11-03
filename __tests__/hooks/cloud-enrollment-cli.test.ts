@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
-import { mkdirSync, mkdtempSync, rmSync, existsSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, rmSync, existsSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { resolve } from "node:path";
 
@@ -38,6 +38,7 @@ beforeEach(() => {
   realHome = process.env.HOME;
   process.env.HOME = resolve(dir, "home");
   delete process.env.FAILPROOFAI_CLOUD_URL;
+  delete process.env.FAILPROOFAI_CLOUD_POLICY_DIR;
   ok.mockClear();
   ingestOk.mockClear();
   introspectOk.mockClear();
@@ -47,6 +48,7 @@ afterEach(() => {
   delete process.env.FAILPROOFAI_CLOUD_CREDENTIALS;
   delete process.env.FAILPROOFAI_HOME;
   delete process.env.FAILPROOFAI_CLOUD_URL;
+  delete process.env.FAILPROOFAI_CLOUD_POLICY_DIR;
   if (realHome === undefined) delete process.env.HOME;
   else process.env.HOME = realHome;
   rmSync(dir, { recursive: true, force: true });
@@ -114,7 +116,11 @@ describe("--connect", () => {
   it("refuses without a token, and says which key to make", async () => {
     const r = await runConnectCommand({ url: base.url, machineId: "m", verify: ok });
     expect(r.exitCode).toBe(1);
-    expect(r.lines.join("\n")).toMatch(/policies:pull/);
+    // The machine preset (it carries jev:evaluate too) and the env var, not the
+    // pre-Jev "only policies:pull" key that the rest of the CLI contradicts.
+    expect(r.lines.join("\n")).toMatch(/"machine" preset/);
+    expect(r.lines.join("\n")).toMatch(/FAILPROOFAI_CLOUD_TOKEN/);
+    expect(r.lines.join("\n")).not.toMatch(/only the `policies:pull`/);
     expect(ok).not.toHaveBeenCalled();
   });
 
@@ -249,8 +255,9 @@ describe("status", () => {
   it("shows the endpoint and machine id, with the token masked", () => {
     writeCloudCredentials({ url: "https://be.failproof.ai", machineId: "m-9", token: "abcdefghijkl" });
     const out = connectionStatusLines(() => "running").join("\n");
-    expect(out).toMatch(/connected to https:\/\/be\.failproof\.ai as m-9/);
-    expect(out).toMatch(/\*\*\*\*ijkl/);
+    expect(out).toMatch(/cloud\s+connected to https:\/\/be\.failproof\.ai/);
+    expect(out).toMatch(/machine\s+m-9/);
+    expect(out).toMatch(/token\s+\*\*\*\*ijkl/);
     expect(out).not.toContain("abcdefghijkl");
   });
 
@@ -423,16 +430,16 @@ describe("--disconnect means disconnect", () => {
     expect(r.lines.join("\n")).toMatch(/No new hook activity or transcripts will be queued/);
   });
 
-  it("names the restart rather than claiming a running daemon already stopped", async () => {
-    // It used to print "Hook activity and transcripts stop being sent", which
-    // was not true yet: the collector manager starts once for the daemon's
-    // lifetime (`main.rs`) and the uploader caches its bearer key at
-    // construction, so a running failproofaid never notices the credential
-    // file disappear. The claim only became true at the next daemon start.
+  it("says a running daemon stops on its own, without sending anyone to restart it", async () => {
+    // It once said "restart it to stop the current process sending", true when
+    // the collector manager started once per daemon lifetime and cached the
+    // key. The manager now polls the collector config, which includes the
+    // ingest credential, and stops the collector within one interval once it
+    // is gone, so the restart advice sent people to do work that was not needed.
     await runConnectCommand({ ...base, machineId: "m-1" });
     const text = runDisconnectCommand().lines.join("\n");
-    expect(text).toMatch(/restart it to stop the current process/);
-    expect(text).not.toMatch(/transcripts stop being sent/);
+    expect(text).toMatch(/stops sending within a few seconds/);
+    expect(text).not.toMatch(/restart it/);
   });
 
   it("stops ENFORCING cloud-managed policies, not just refreshing them", async () => {
@@ -453,6 +460,31 @@ describe("--disconnect means disconnect", () => {
 
     expect(existsSync(resolve(managedRoot, "active.json"))).toBe(false);
   });
+
+  it("preserves a shared override's files while OSS mode stops loading its old deployment", async () => {
+    await runConnectCommand({ ...base, machineId: "m-1" });
+    const sharedRoot = resolve(dir, "shared-policies");
+    mkdirSync(sharedRoot);
+    process.env.FAILPROOFAI_CLOUD_POLICY_DIR = sharedRoot;
+    const names = ["desired-state.json", "errors.json", "daemon-errors.json", "jev-budget.json"];
+    for (const name of names) writeFileSync(resolve(sharedRoot, name), `unrelated ${name}`);
+    writeFileSync(resolve(sharedRoot, "active.json"), JSON.stringify({
+      schemaVersion: 2, deployment: 4, policies: [], jevMode: "enforce",
+    }));
+    const files = ["active.json", ...names];
+    const originals = files.map((name) => readFileSync(resolve(sharedRoot, name), "utf8"));
+    const { readActiveCloudManagedPolicies, readCloudJevMode } = await import("../../src/hooks/cloud-managed-policies");
+    expect(readCloudJevMode()).toBe("enforce");
+
+    const result = runDisconnectCommand();
+
+    expect(readConfig().mode).toBe("oss");
+    expect(readCloudCredentials()).toBeNull();
+    expect(files.map((name) => readFileSync(resolve(sharedRoot, name), "utf8"))).toEqual(originals);
+    expect(readActiveCloudManagedPolicies()).toEqual([]);
+    expect(readCloudJevMode()).toBeNull();
+    expect(result.lines.join("\n")).toMatch(/overridden Cloud policy directory was left untouched/);
+  });
 });
 
 describe("status shows one connection with two capabilities", () => {
@@ -460,7 +492,7 @@ describe("status shows one connection with two capabilities", () => {
     const verifyIngest = vi.fn(async () => ({ ok: false as const, reason: "403" }));
     await runConnectCommand({ ...base, verifyIngest, machineId: "m-1" });
     const out = connectionStatusLines(() => "running").join("\n");
-    expect(out).toMatch(/Dashboard NOT sending/);
+    expect(out).toMatch(/dashboard\s+NOT sending/);
     expect(out).toMatch(/--connect/);
   });
 
@@ -469,14 +501,14 @@ describe("status shows one connection with two capabilities", () => {
     await runConnectCommand({ ...base, verify, machineId: "m-1" });
     const out = connectionStatusLines(() => "running").join("\n");
     expect(out).toMatch(/reporting only/);
-    expect(out).toMatch(/Policy\s+NOT pulling/);
+    expect(out).toMatch(/policy\s+NOT pulling/);
   });
 
   it("shows both when both are configured", async () => {
     await runConnectCommand({ ...base, machineId: "m-1" });
     const out = connectionStatusLines(() => "running").join("\n");
-    expect(out).toMatch(/Policy\s+pulling/);
-    expect(out).toMatch(/Dashboard sending hook activity/);
+    expect(out).toMatch(/policy\s+pulling/);
+    expect(out).toMatch(/dashboard\s+sending hook activity/);
   });
 });
 

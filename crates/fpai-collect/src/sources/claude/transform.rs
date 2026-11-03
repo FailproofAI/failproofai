@@ -8,8 +8,9 @@
 //! Record shapes verified against real transcripts on disk (Claude Code 2.1.x):
 //!
 //! ```text
-//! user       {type:"user", timestamp, uuid, message:{role, content}}
-//!            content is a STRING for a prompt, or an ARRAY containing
+//! user       {type:"user", timestamp, uuid, origin?:{kind}, message:{role, content}}
+//!            content is a STRING for a prompt, an ARRAY of text + image
+//!            blocks for a prompt with a pasted image, or an ARRAY containing
 //!            {type:"tool_result", tool_use_id, content, is_error}
 //! assistant  {type:"assistant", timestamp, message:{model, id, content:[
 //!              {type:"text"|"tool_use"|"thinking", ...}], usage}}
@@ -314,33 +315,87 @@ fn compact_boundary(v: &Value, ctx: &Ctx, ts: &str, offset: u64, state: &TailSta
     vec![Value::Object(m)]
 }
 
-/// A `user` line is either a human prompt or the results of tool calls.
+/// Openings of the lines Claude Code writes into the `user` role itself.
+/// Consulted only for transcripts older than the `origin` field — see
+/// [`typed_by_human`].
+const MACHINE_OPENINGS: &[&str] = &[
+    "<command-",
+    "<local-command-",
+    "<bash-",
+    "<task-notification>",
+    "<system-reminder>",
+    "[Request interrupted by user",
+    "This session is being continued from a previous conversation",
+];
+
+/// `promptSource` values that mean a person put the prompt there. Claude Code
+/// also writes `sdk` — `claude -p` and the Agent SDK, i.e. a script or an app
+/// driving it — and `system` for its own reports; neither is a person.
+const HUMAN_PROMPT_SOURCES: &[&str] = &["typed", "queued", "suggestion_accepted"];
+
+/// Whether a person typed this `user` line.
+///
+/// Claude Code 2.1.26x+ says so outright: every interactive prompt carries
+/// `origin.kind == "human"`, and a background task's report `"task-notification"`
+/// (427 vs 27 on the machine this was measured on). A headless prompt carries
+/// no `origin` but a `promptSource` of `sdk` (measured on 2.1.282), so
+/// `promptSource`, when present, decides next. Older transcripts carry neither,
+/// and their machine-written lines — slash-command wrappers, local command
+/// output, compaction summaries, a bare `/compact` — are recognised by `isMeta`
+/// / `isCompactSummary` or by how they open. A sidechain line is the parent
+/// agent briefing a subagent, never a person.
+fn typed_by_human(v: &Value, text: &str) -> bool {
+    let flagged = |key: &str| v.get(key).and_then(Value::as_bool) == Some(true);
+    if flagged("isSidechain") {
+        return false;
+    }
+    if let Some(kind) = v
+        .get("origin")
+        .and_then(|o| o.get("kind"))
+        .and_then(Value::as_str)
+    {
+        return kind == "human";
+    }
+    if let Some(source) = v.get("promptSource").and_then(Value::as_str) {
+        return HUMAN_PROMPT_SOURCES.contains(&source);
+    }
+    let opening = text.trim_start();
+    let bare_slash_command =
+        opening.starts_with('/') && !opening.trim_end().contains(char::is_whitespace);
+    !flagged("isMeta")
+        && !flagged("isCompactSummary")
+        && !bare_slash_command
+        && !MACHINE_OPENINGS.iter().any(|p| opening.starts_with(p))
+}
+
+/// A prompt's text. A bare string, or — when the person pasted an image — an
+/// array of `text` and `image` blocks, of which the text is the prompt.
+fn prompt_text(content: &Value) -> Option<String> {
+    let text = match content {
+        Value::String(s) => s.clone(),
+        Value::Array(blocks) => blocks
+            .iter()
+            .filter(|b| b.get("type").and_then(|t| t.as_str()) == Some("text"))
+            .filter_map(|b| b.get("text").and_then(|t| t.as_str()))
+            .collect::<Vec<_>>()
+            .join("\n"),
+        _ => return None,
+    };
+    (!text.is_empty()).then_some(text)
+}
+
+/// A `user` line is a prompt, or the results of tool calls.
 fn user_events(v: &Value, ctx: &Ctx, ts: &str, offset: u64, state: &mut TailState) -> Vec<Value> {
     let Some(content) = v.get("message").and_then(|m| m.get("content")) else {
         return Vec::new();
     };
-
-    // A string is a real prompt.
-    if let Some(text) = content.as_str() {
-        if text.is_empty() {
-            return Vec::new();
-        }
-        let Some(mut m) = base(ctx, "model_request", ts, 0, offset) else {
-            return Vec::new();
-        };
-        // Inherited from the last assistant turn: a user line names no model,
-        // and the server builds this row's summary from the model alone.
-        if let Some(model) = &state.last_model {
-            m.insert("model".into(), json!(model));
-        }
-        m.insert(
-            "messages".into(),
-            json!([{ "role": "user", "content": text }]),
-        );
-        if let Some(c) = v.get("cwd").and_then(|c| c.as_str()) {
-            m.insert("claude_cwd".into(), json!(c));
-        }
-        return vec![Value::Object(m)];
+    let is_tool_results = content.as_array().is_some_and(|blocks| {
+        blocks
+            .iter()
+            .any(|b| b.get("type").and_then(|t| t.as_str()) == Some("tool_result"))
+    });
+    if !is_tool_results {
+        return prompt_events(v, content, ctx, ts, offset, state);
     }
 
     // An array carries tool results.
@@ -375,6 +430,58 @@ fn user_events(v: &Value, ctx: &Ctx, ts: &str, offset: u64, state: &mut TailStat
             m.insert("error_type".into(), json!("claude_tool_error"));
         }
         out.push(Value::Object(m));
+    }
+    out
+}
+
+/// A prompt line: its `model_request`, plus a `human_input` when a person
+/// typed it.
+///
+/// A STRING prompt always yields the `model_request`, human or not — that is
+/// what the model was sent, and those bytes predate `human_input`. An ARRAY
+/// prompt (text beside an image) yields it too, unless it is one of the array
+/// shapes that are not requests at all: `isMeta` injections (skill text, image
+/// placeholders) and interrupt markers, which were never shipped. A headless
+/// `claude -p` prompt with an image is a request, just not a person's.
+fn prompt_events(
+    v: &Value,
+    content: &Value,
+    ctx: &Ctx,
+    ts: &str,
+    offset: u64,
+    state: &TailState,
+) -> Vec<Value> {
+    let Some(text) = prompt_text(content) else {
+        return Vec::new();
+    };
+    let human = typed_by_human(v, &text);
+    let injected = v.get("isMeta").and_then(Value::as_bool) == Some(true)
+        || text
+            .trim_start()
+            .starts_with("[Request interrupted by user");
+    if content.is_array() && injected {
+        return Vec::new();
+    }
+    let Some(mut m) = base(ctx, "model_request", ts, 0, offset) else {
+        return Vec::new();
+    };
+    // Inherited from the last assistant turn: a user line names no model,
+    // and the server builds this row's summary from the model alone.
+    if let Some(model) = &state.last_model {
+        m.insert("model".into(), json!(model));
+    }
+    m.insert(
+        "messages".into(),
+        json!([{ "role": "user", "content": text }]),
+    );
+    if let Some(c) = v.get("cwd").and_then(|c| c.as_str()) {
+        m.insert("claude_cwd".into(), json!(c));
+    }
+    let mut out = vec![Value::Object(m)];
+    if human && let Some(envelope) = base(ctx, "human_input", ts, 1, offset) {
+        let offset_id = offset.to_string();
+        let id = v.get("uuid").and_then(|u| u.as_str()).unwrap_or(&offset_id);
+        out.push(crate::sources::human_input(envelope, id, &text));
     }
     out
 }

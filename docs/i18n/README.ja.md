@@ -8,18 +8,21 @@
 
 <img src="https://d2wq11aau0arks.cloudfront.net/failproof/fa_updated_full.svg" alt="failproof ai" width="220" />
 
+<a href="https://trendshift.io/repositories/69722?utm_source=trendshift-badge&amp;utm_medium=badge&amp;utm_campaign=badge-trendshift-69722" target="_blank" rel="noopener noreferrer"><img src="https://trendshift.io/api/badge/trendshift/repositories/69722/daily?language=TypeScript" alt="FailproofAI%2Ffailproofai | Trendshift" width="250" height="55"/></a>
+<a href="https://trendshift.io/repositories/69722?utm_source=trendshift-badge&amp;utm_medium=badge&amp;utm_campaign=badge-trendshift-69722" target="_blank" rel="noopener noreferrer"><img src="https://trendshift.io/api/badge/trendshift/repositories/69722/daily" alt="FailproofAI%2Ffailproofai | Trendshift" width="250" height="55"/></a>
+
 [![npm](https://img.shields.io/npm/v/failproofai?style=flat-square&color=CB3837)](https://www.npmjs.com/package/failproofai)
 [![CI](https://img.shields.io/github/actions/workflow/status/failproofai/failproofai/ci.yml?branch=main&style=flat-square&label=CI)](https://github.com/failproofai/failproofai/actions)
 [![Supply Chain](https://img.shields.io/badge/supply%20chain-secure-brightgreen?style=flat-square)](https://github.com/failproofai/failproofai/actions/workflows/osv-scanner.yml)
 [![Discord](https://img.shields.io/badge/Discord-join%20us-5865F2?style=flat-square&logo=discord)](https://discord.befailproof.ai/)
-[![Docs](https://img.shields.io/badge/docs-befailproof.ai-002CA7?style=flat-square)](https://docs.befailproof.ai/introduction)
+[![Reddit](https://img.shields.io/badge/Reddit-r%2Ffailproofai-FF4500?style=flat-square&logo=reddit)](https://www.reddit.com/r/failproofai/)
+[![Docs](https://img.shields.io/badge/docs-befailproof.ai-002CA7?style=flat-square)](https://docs.befailproof.ai/)
 [![License](https://img.shields.io/badge/license-MIT%20%2B%20Commons%20Clause-blue?style=flat-square)](../../LICENSE)
 
 **翻訳:** [简体中文](../../docs/i18n/README.zh.md) · [日本語](../../docs/i18n/README.ja.md) · [한국어](../../docs/i18n/README.ko.md) · [Español](../../docs/i18n/README.es.md) · [Português](../../docs/i18n/README.pt-br.md) · [Deutsch](../../docs/i18n/README.de.md) · [Français](../../docs/i18n/README.fr.md) · [Русский](../../docs/i18n/README.ru.md) · [हिन्दी](../../docs/i18n/README.hi.md) · [Türkçe](../../docs/i18n/README.tr.md) · [Tiếng Việt](../../docs/i18n/README.vi.md) · [Italiano](../../docs/i18n/README.it.md) · [العربية](../../docs/i18n/README.ar.md) · [עברית](../../docs/i18n/README.he.md)
 
-**コーディングエージェントのランタイム障害解決ツール。**
-Claude Code や Codex にフックし、ループ・危険な操作・シークレット漏洩を
-インシデントになる前に検知・阻止します。レイテンシーゼロ。ローカルで動作。
+**エージェントが動作するあらゆるハーネスに対応したオブザーバビリティと制御。**
+エージェントがどこで動いていても、私たちはすべてを把握し、必要なら止めることができます。Failproof は 12 種類のエージェントハーネスにフックし — Claude Code や Codex のようなコーディング CLI、Hermes のようなチャットゲートウェイ、OpenClaw のようなセルフホスト型アシスタント — すべての実行をキャプチャし、危険なツール呼び出しを実行前にブロックします。39 個の組み込みポリシー。ゼロレイテンシー。ローカル実行。
 
 </div>
 
@@ -29,7 +32,11 @@ Claude Code や Codex にフックし、ループ・危険な操作・シーク�
 
 ---
 
-## 対応エージェント CLI
+## 対応ハーネス
+
+12 種類のハーネスを 2 つのカテゴリに分類しています — コーディング CLI が 10 種類、チャット・アシスタントゲートウェイ（Hermes、OpenClaw）が 2 種類です。すべてのハーネスで共通のポリシー API とセッション履歴を使用します。ポリシーで*ブロック*できる内容はハーネスごとに異なります。ツール呼び出しを実行前に停止する機能は 12 種類すべてで検証済み、ターン終了ゲートは 8 種類で対応しています。[ハーネス別対応表](https://docs.befailproof.ai/reference/harnesses#enforcement-capability)には各ハーネスが処理するイベントの一覧が掲載されています。
+
+いずれのハーネスでも動作しないエージェントは [Python SDK](https://docs.befailproof.ai/reference/custom-agents) を通じてレポートでき、トレーシング、セッション管理、監査機能が利用できます。その場合の制御には独自ランタイムへのフック実装が必要です — [お問い合わせ](mailto:support@befailproof.ai)いただければ対応方法をご案内します。
 
 {/* A 6-column table instead of inline <img> runs: table columns never re-wrap,
      so the grid stays 2×6 at any window width (scrolling on very narrow screens
@@ -129,32 +136,38 @@ Claude Code や Codex にフックし、ループ・危険な操作・シーク�
 
 ```sh
 npm install -g failproofai
-failproofai policies --install   # または `failproofai` を実行して初回起動プロンプトに従う
-failproofai
+failproofai config                             # エージェントとデーモンを接続する
+failproofai policies add FailproofAI/policies  # 適用するポリシーを選択する
+failproofai                                    # localhost:8020 でダッシュボードを起動
 ```
 
-30 個の組み込みポリシーが即座に有効化されます。ダッシュボードは `localhost:8020` で確認できます。初回起動プロンプトを無効にするには `FAILPROOFAI_NO_FIRST_RUN=1` を設定してください。
+セットアップはフックを接続しますが、ポリシーは**何も**適用しません — 2 番目のコマンドがマシンにガードレールを設定します。パックはすべて同じ形式で指定できます（`failproofai policies add <owner>/<repo>`。`policies show <owner>/<repo>` で内容を先に確認できます）。ターミナルなしで `failproofai config` を実行すると — CI 環境、コンテナ、それを操作するエージェントからでも — 対話形式ではなく自動的に設定が適用されます。まだセットアップされていないマシンでは、他のコマンドを実行すると最初に同じウィザードが起動します。`FAILPROOFAI_NO_FIRST_RUN=1` で無効にできます。
+
+パックが導入されるまでの間、`block-failproofai-commands` のみが有効な制御として機能します。これは常時オンで、無効化や一時停止はできません。制御を一時停止できるエージェントは、他のすべてのポリシーも無効にできてしまうためです。
 
 ---
 
-## 防止できること
+## ブロックできること
 
 | ポリシー | ブロック対象 |
 |---|---|
-| `block-push-master` | `main` / `master` への直接プッシュ |
-| `block-force-push` | `git push --force` |
-| `block-work-on-main` | `main` / `master` へのコミット・マージ・リベース |
+| `block-env-files` | `.env` などのシークレットファイルの読み取り |
+| `warn-repeated-tool-calls` | 同じ呼び出しをループするエージェント |
+| `block-sudo` | 権限昇格 |
+| `warn-destructive-sql` | `DROP`、`TRUNCATE`、条件なし `DELETE` |
+| `block-terraform` / `block-kubectl` | レビューなしの本番インフラへの変更 |
 | `block-rm-rf` | 再帰的なファイル削除 |
-| `sanitize-api-keys` | エージェントのコンテキストへの API キー漏洩 |
+| `block-force-push` / `block-push-master` | `git push --force`、`main` への直接プッシュ |
 
-→ [組み込みポリシー全 30 件](https://docs.befailproof.ai/built-in-policies)
+これらはすべて呼び出しが実行される*前*にゲートするため、12 種類すべてのハーネスで機能します。最初の 4 つはツールを呼び出せる任意のエージェントに適用されます。残りの 3 つは開発者に特に人気のポリシーで、コーディング CLI は私たちが最も深くカバーするハーネスクラスです。`sanitize-*` ファミリーは別扱いで、ツールの戻り値の後に実行されるため、コンテキストへの混入を防ぐのではなく、ツール出力にシークレットが含まれていることを報告します。
+
+→ [39 個の組み込みポリシー一覧](https://docs.befailproof.ai/policies/packs)
 
 ---
 
-## 独自ポリシーの作成
+## カスタムポリシー
 
-`.failproofai/policies/` にファイルを配置するだけで自動的に読み込まれます。フラグは不要です。
-コミットしておけば、次回 pull 時にチーム全員に適用されます。
+`.failproofai/policies/` にファイルを置くだけで自動的に読み込まれます — フラグの指定は不要です。コミットすれば、チーム全員が次回のプルで同じポリシーを受け取ります。
 
 ```js
 import { customPolicies, deny, allow } from "failproofai";
@@ -170,34 +183,61 @@ customPolicies.add({
 });
 ```
 
-すべてのポリシーで使用できる 3 つの判定:
+各ポリシーで使用できる 3 種類の判定:
 
 | 判定 | 効果 |
 |---|---|
 | `allow()` | 操作を許可する |
-| `deny(message)` | ブロックする — メッセージはエージェントに返される |
-| `instruct(message)` | 操作を通過させつつ、エージェントの次のプロンプトにコンテキストを追加する |
+| `deny(message)` | ブロックする — メッセージがエージェントに返される |
+| `instruct(message)` | 通過させるが、エージェントの次のプロンプトにコンテキストを追加する |
 
-→ [カスタムポリシーガイド](https://docs.befailproof.ai/custom-policies)
+→ [ポリシーを書く](https://docs.befailproof.ai/policies/editor)
 
 ---
 
-## セッションの可視化
+## オブザーバビリティ
 
-エージェントが行ったすべてのツール呼び出しはローカルにログとして記録されます。ダッシュボードでは実行内容・ブロックされた操作・ポリシーがエージェントに伝えた内容を確認できるため、問題が発生しても推測で対応する必要がありません。→ [ダッシュボードガイド](https://docs.befailproof.ai/dashboard)
+制御は機能の半分に過ぎません。もう半分は、エージェントが実際に何をしたかを把握することです。
+
+引数なしで `failproofai` を実行すると、マシン上にすである実行履歴を読み込んで `localhost:8020` でダッシュボードを提供します — アカウント不要、サインアップ不要、データがマシンの外に出ることもありません。セッション一覧、モデル呼び出しのシーケンス、各実行内のツール呼び出しとフックの判定、ブロックされた内容とポリシーがエージェントに伝えた内容、そしてオフライン監査（`failproofai audit`）として履歴をスキャンしてリスクのあるパターンを検出し、対処するポリシーを提案します。
+
+→ [ローカルダッシュボード](https://docs.befailproof.ai/reference/local-dashboard) ·
+[トレースを読む](https://docs.befailproof.ai/sessions/read-a-trace) ·
+[ローカル監査](https://docs.befailproof.ai/audits/local-audit)
+
+**Failproof AI Observability** は同じデータモデルのホスト型サービスで、複数マシンでエージェントを運用するチーム向けです。すべてのハーネスからのすべての実行を一か所で管理、並列サブエージェントを個別レーンで表示する実行グラフ、モデル・ツール・フックの p50/p95/p99 レイテンシー、モデルごとのコストとコンテキストウィンドウのトラッキング、エラートラッキング、共有可能なダッシュボード付きの独自トレースへの SQL クエリ、独自サービスでスコアリングする評価機能、繰り返し発生する障害をエビデンスに基づく知見として記録するスケジュール監査、Slack・メール・署名付き Webhook へのアラート通知が利用できます。Enterprise プランでは独自クラスターへのセルフホスティングも対応しています。
+
+→ [セッション](https://docs.befailproof.ai/sessions/overview) ·
+[監査](https://docs.befailproof.ai/audits/overview) ·
+[デモを予約する](https://befailproof.ai/get-a-demo)
 
 ---
 
 ## ドキュメント
 
-| | |
+| はじめに | |
 |---|---|
-| [はじめに](https://docs.befailproof.ai/getting-started) | インストールと最初のステップ |
-| [組み込みポリシー](https://docs.befailproof.ai/built-in-policies) | パラメーター付き全 30 ポリシー |
-| [カスタムポリシー](https://docs.befailproof.ai/custom-policies) | 独自ポリシーの作成方法 |
-| [設定](https://docs.befailproof.ai/configuration) | 設定スコープとマージルール |
-| [ダッシュボード](https://docs.befailproof.ai/dashboard) | セッションモニターとポリシーアクティビティ |
-| [アーキテクチャ](https://docs.befailproof.ai/architecture) | フックシステムの仕組み |
+| [クイックスタート](https://docs.befailproof.ai/start/quickstart) | インストール、ハーネスの接続、初回実行の確認 |
+| [コンセプト](https://docs.befailproof.ai/start/concepts) | フックシステムの仕組み |
+| [対応ハーネス](https://docs.befailproof.ai/reference/harnesses) | 12 種類すべてと各ハーネスで制御できること |
+
+| 監視 | |
+|---|---|
+| [セッション](https://docs.befailproof.ai/sessions/overview) | 実行を追う：モデル、ツール、エラー、レイテンシー |
+| [トレースを読む](https://docs.befailproof.ai/sessions/read-a-trace) | 実行グラフが示していること |
+| [監査](https://docs.befailproof.ai/audits/overview) | 多くのセッションにまたがる障害パターンを見つける |
+| [ローカルダッシュボード](https://docs.befailproof.ai/reference/local-dashboard) | `localhost:8020`、アカウント不要 |
+
+| 制御 | |
+|---|---|
+| [ポリシーパック](https://docs.befailproof.ai/policies/packs) | Failproof AI のポリシーとポリシーハブのパック |
+| [ポリシーを書く](https://docs.befailproof.ai/policies/editor) | 監査結果から、またはコードで作成 |
+| [設定](https://docs.befailproof.ai/policies/local-configuration) | 設定スコープ、マージルール、ポリシーパラメーター |
+
+| 独自エージェントの計測 | |
+|---|---|
+| [Python SDK](https://docs.befailproof.ai/reference/custom-agents) | ハーネスなしのエージェントから実行をレポートする |
+| [Policy SDK](https://docs.befailproof.ai/reference/policy-sdk) | `allow` / `deny` / `instruct` リファレンス |
 
 ---
 
@@ -209,11 +249,8 @@ MIT に [Commons Clause](https://commonsclause.com/) を付加したライセン
 
 ## コントリビューション
 
-[CONTRIBUTING.md](../../CONTRIBUTING.md) をご参照ください。新しいポリシー、エッジケースの対応、翻訳など、あらゆる貢献を歓迎します。
-
-> **開始前にビルドしてください。** 最初に `bun install && bun run build` を実行してください。このリポジトリは failproofai 自身のフックを自身に適用しており、フックは `failproofai` のインポートをコンパイル済みの `dist/` バンドルに対して解決します。ビルドなしで実行すると `Cannot find package 'failproofai'` というフックエラーが発生します。`src/` を変更した後は再ビルドしてください。詳細は [リポジトリ内の開発フックを動作させるためのビルド手順](../../CONTRIBUTING.md#build-before-the-in-repo-dev-hooks-will-work) をご参照ください。
+[CONTRIBUTING.md](../../CONTRIBUTING.md) をご覧ください。新しいポリシー、エッジケースの対応、翻訳はいずれも歓迎します。
 
 ---
 
-[Nivedit Jain](https://github.com/NiveditJain) と [Nikita Agarwal](https://github.com/nk-ag) が開発。
-[befailproof.ai](https://befailproof.ai)
+SF とベンガルールの [befailproof.ai](https://befailproof.ai) チームが ❤️ を込めて開発しています。

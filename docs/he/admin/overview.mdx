@@ -1,0 +1,40 @@
+---
+title: "ניהול"
+description: "נהל גישה, שימוש, ארגונים וביטחון ללא עירוב שלהם בזרימת העבודה של אמינות."
+icon: "settings-2"
+---
+
+ניהול מכיל את הפקדים הדרושים להפעיל את Failproof AI בכל הצוות. רוב הקוראים יכולים להישאר ב-Sessions, Audits ו-Policies; מנהלי מערכת משתמשים בסעיף זה לניהול גישה וגבולות הפעלה.
+
+<Tabs>
+  <Tab title="Dashboard">
+    השתמש בסעיף **Admin** בסרגל הצד של Cloud עבור **policy editor**, **enforcement**, **usage**, **keys**, **users** ו-**settings**. פריט נעול מציין שלחשבון שלך חסרה הרשאת קריאה.
+
+    ![סעיף Admin בסרגל הצד של Cloud עם policy editor, enforcement, usage, keys, users ו-settings.](/images/dashboard/admin-navigation.png)
+  </Tab>
+  <Tab title="CLI">
+    ```bash
+    fp whoami
+    fp orgs current
+    fp orgs perms
+    fp usage
+    ```
+
+    הצב אפשרויות גלובליות לפני הפקודה, לדוגמה `fp --org reliability-team --json usage`.
+  </Tab>
+</Tabs>
+
+<Columns cols={2}>
+  <Card title="שימוש" icon="chart-no-axes-combined" href="/he/admin/usage">
+    בדוק חלונות חיוב וצריכה של הארגון.
+  </Card>
+  <Card title="מפתחות והרשאות" icon="key-round" href="/he/admin/keys-and-permissions">
+    תן למכונות ואוטומציה רק את ההרשאות הנדרשות.
+  </Card>
+  <Card title="משתמשים וארגונים" icon="users" href="/he/admin/users-and-organizations">
+    נהל חברות, ברירות מחדל וגבולות ארגוניים.
+  </Card>
+  <Card title="הגדרות וביטחון" icon="lock-keyhole" href="/he/admin/settings-and-security">
+    קבע הגדרות הפעלה, טיפול בנתונים וביטחון פריסה.
+  </Card>
+</Columns>

@@ -1,0 +1,60 @@
+---
+title: "测试策略"
+description: "在任何机器执行之前，针对已有流量对草稿进行回测，验证它能阻止应阻止的内容，并放行应允许的内容。"
+icon: "flask-conical"
+---
+
+以两种方式测试每条策略：针对 Agent 已产生的流量，以及针对必须放行的合法操作。一条只见过不安全情况的策略，称不上经过了测试。
+
+## 回测草稿
+
+<Tabs>
+  <Tab title="仪表板">
+    策略编辑器会在发布前，将草稿针对您的 Agent 群已发出的调用进行重放。
+
+    1. 在 **Admin → policy editor** 中打开草稿。编辑器会确认其能否正确解析为 JavaScript。
+    2. 在 **backtest** 中，选择要重放的 Agent 和时间窗口——默认为**所有 Agent** 和 **30d**——除非需要缩小范围，否则将最后一个过滤器保持在**全部**。
+    3. 选择 **run backtest**。
+
+    ![草稿解析为 JavaScript 后显示的回测面板，包含三个过滤器和运行回测操作，位于发布版本按钮上方。](/images/dashboard/policy-backtest.png)
+
+    结果显示该草稿对那些调用会做出何种处理——包括它会中断多少**正常运行**的调用。这些是在任何 Agent 遇到它们之前发现的误报：收紧草稿后重新运行，直到该数字降至可接受的范围。
+  </Tab>
+  <Tab title="CLI">
+    回测是仪表板功能。在终端中，请改为针对您自行描述的事件运行策略（见下文）。
+  </Tab>
+</Tabs>
+
+## 针对自定义事件运行
+
+`fp policies test` 在您的机器上针对合成事件运行策略文件并检查决策结果。不会发布任何内容，也不会到达 Cloud：
+
+```bash
+fp policies test ./checkout.policy.mjs --command "git push --force" --expect deny
+fp policies test ./checkout.policy.mjs --command "git push" --expect allow
+```
+
+使用 `--event`、`--tool`、`--command` 和 `--file` 来构造事件。策略自身的 `match` 过滤器仍然适用，因此如果策略不覆盖您描述的事件，会报告 `skipped` 而非给出决策——这通常说明其 `match` 比您预期的更窄。
+
+## 在单台机器上运行
+
+接下来，在您自己的机器上针对您自己的 Agent 进行真实执行：
+
+```bash
+failproofai policies --install --custom ./checkout.policy.mjs --scope project
+failproofai policies
+```
+
+第一条命令会验证并安装文件；第二条命令确认它已加载，以及当前正在执行的所有其他策略。让 Agent 执行策略所阻止的操作并观察其被拒绝，然后执行合法版本并观察其顺利通过。其他人不受影响。
+
+在连接到 Cloud 的机器上，在 **Observe → policy** 下检查两个决策：按策略名称过滤，然后打开每个关联的会话，确认其匹配的工具输入和返回的原因。
+
+## 测试异常情况
+
+安装命令会拒绝以下情况：文件缺失、语法错误、无法解析的导入、顶层异常，或加载时超时的模块——因此每次修改文件或其导入内容后都要重新运行。在执行时，同样的损坏文件会被记录并**跳过**，以便所有其他策略继续运行：将生产日志中的加载警告视为执行缺失。惯例文件无需安装命令即可加载，因此请在 CI 中保留显式的 `failproofai policies --install --custom <file>` 步骤——这正是在策略损坏时使构建失败的关键。
+
+然后向其提供 Agent 实际发送的内容，而不仅仅是您预期的输入：缺失字段、备用工具名称（如 `Write` 和 `Edit`）、Windows 路径、格式错误的输入。在每条路径上都返回明确的 `allow`、`instruct` 或 `deny`，保持函数确定性，并为任何外部调用设置较短的超时时间。
+
+## 然后发布并观察
+
+回测显示的是策略对已有流量会做出什么处理；它无法预测尚未见过的流量会带来什么。在编辑器中选择 **publish version**（或运行 `fp policies publish`），然后先以 **observe** 模式[部署它](/zh/policies/deploy)——此模式下只记录判决而不阻止任何内容——待其匹配结果能够区分不安全操作和有效操作后，再切换到执行模式。

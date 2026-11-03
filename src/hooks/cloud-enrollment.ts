@@ -224,7 +224,7 @@ export function clearCloudCredentials(): boolean {
 
 export type VerifyResult =
   | { ok: true; policyCount: number; deployment: number }
-  | { ok: false; reason: string };
+  | { ok: false; reason: string; status?: number };
 
 /**
  * Prove the credentials work before reporting success.
@@ -256,16 +256,17 @@ export async function verifyCloudCredentials(creds: CloudCredentials): Promise<V
   }
 
   if (response.status === 401) {
-    return { ok: false, reason: "The server rejected this token (401). Check the key was copied whole." };
+    return { ok: false, status: 401, reason: "The server rejected this token (401). Check the key was copied whole." };
   }
   if (response.status === 403) {
     return {
       ok: false,
+      status: 403,
       reason: "This key is valid but lacks the `policies:pull` permission (403). Create a machine key with that permission.",
     };
   }
   if (!response.ok) {
-    return { ok: false, reason: `The server answered ${response.status} ${response.statusText}.` };
+    return { ok: false, status: response.status, reason: `The server answered ${response.status} ${response.statusText}.` };
   }
 
   try {

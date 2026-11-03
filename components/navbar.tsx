@@ -27,40 +27,14 @@ const NAV_LINKS = [
   { href: "/audit", label: "audit" },
 ];
 
-const REMOTE_LOGO_URL =
-  "https://exospherehost.slack.com/archives/C0B6RL08SLF/p1780910285021619?thread_ts=1780910239.057609&cid=C0B6RL08SLF";
-const LOCAL_LOGO_URL = "/logo.svg";
-
-/** Resolves the brand logo: first tries the remote URL, falls back to the
- *  bundled asset (served from /public, mirrored at assets/logos/company/logo.svg)
- *  if the fetch fails for any reason. */
-const useBrandLogo = (): string => {
-  const [src, setSrc] = React.useState<string>(LOCAL_LOGO_URL);
-  React.useEffect(() => {
-    let cancelled = false;
-    (async () => {
-      try {
-        const res = await fetch(REMOTE_LOGO_URL, { method: "GET", mode: "cors" });
-        if (!res.ok) throw new Error(`status ${res.status}`);
-        const blob = await res.blob();
-        const url = URL.createObjectURL(blob);
-        if (cancelled) URL.revokeObjectURL(url);
-        else setSrc(url);
-      } catch {
-        if (!cancelled) setSrc(LOCAL_LOGO_URL);
-      }
-    })();
-    return () => { cancelled = true; };
-  }, []);
-  return src;
-};
+const LOGO_URL = "/logo.svg";
 
 export const Navbar: React.FC<{
   disabledPages?: string[];
 }> = ({ disabledPages = [] }) => {
   const pathname = usePathname();
   const { capture } = usePostHog();
-  const logoSrc = useBrandLogo();
+  const logoSrc = LOGO_URL;
 
   const sectionLabel = (() => {
     if (pathname.startsWith("/policies")) return "policies";

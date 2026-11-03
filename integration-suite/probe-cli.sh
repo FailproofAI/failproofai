@@ -139,7 +139,34 @@ fi
 # against a marker with no daemon up yet. Daemon mode re-sets it after wire.
 bun -e 'const m=await import("/repo/src/hooks/fp-config.ts");m.updateConfig({daemon:{configured:false}})' 2>/dev/null || true
 
+# Hermes and OpenClaw enforce ONLY through failproofaid: their plugins ask the
+# daemon directly (no CLI process, no in-process path), and their installs
+# refuse unless it answers (requiresHealthyDaemon in src/hooks/integrations.ts).
+# So they are probed on the live daemon leg only. On any other leg nothing can
+# be hooked, and driving the CLI anyway would score its benign side effect as a
+# silent-allow FAIL — say why instead, as an INCONCLUSIVE that never gates.
+DAEMON_ONLY_CLIS="hermes openclaw"
+case " $DAEMON_ONLY_CLIS " in *" $CLI "*) DAEMON_ONLY=1 ;; *) DAEMON_ONLY=0 ;; esac
+if [ "$DAEMON_ONLY" = 1 ] && { [ "${CANARY_DAEMON:-0}" != 1 ] || [ "${CANARY_DAEMON_DEAD:-0}" = 1 ]; }; then
+  echo "=== $CLI live Tier-2 verdicts (DEFINITE benign-marker probes) ==="
+  echo "  not probed: $CLI enforces only through a live failproofaid, and this leg has none" \
+       "(CANARY_DAEMON=${CANARY_DAEMON:-0} CANARY_DAEMON_DEAD=${CANARY_DAEMON_DEAD:-0}) — see the daemon leg"
+  printf 'VERDICT_JSON {"cli":"%s","probes":{"bash":"INCONCLUSIVE","read":"INCONCLUSIVE"}}\n' "$CLI"
+  exit 0
+fi
+# Why a daemon-only CLI ended up unhooked, when its installer refused. Printed
+# with the verdicts: the install output itself is not kept.
+INSTALL_FAILED=""
+
 BASE="$HOME/probe-$CLI"
+# openclaw runs every tool inside its OWN workspace, not the cwd it is invoked
+# from: `[tools] read failed: File not found:
+# /home/canary/.openclaw/workspace/CANARY_MARKER.txt`. So probe B could never
+# find the marker and probe A's side effect landed where the verdict never
+# looked. Symlinking the workspace at the probe dir is rejected ("workspace path
+# alias points to a different current target"), so the probe dir IS the
+# workspace — one assignment, and every marker/oracle path below follows.
+[ "$CLI" = openclaw ] && BASE="$HOME/.openclaw/workspace"
 # DEFINITE probes: BENIGN actions (echo/touch a token, read a plain file) the
 # model never refuses → a tool call is guaranteed, so no INCONCLUSIVE from
 # self-censorship. A custom canary policy denies exactly those benign markers,
@@ -153,8 +180,15 @@ cp /opt/canary/canary-policies.mjs "$CUSTOM_POLICIES"
 install_hooks() {
   # Prefer user scope (writes the override → main HEAD). Fall back to project +
   # command-swap for CLIs without a user scope. `-c` loads the custom canary policies.
-  if bun /repo/bin/failproofai.mjs policies --install "${POLICIES[@]}" --cli "$CLI" --scope user -c "$CUSTOM_POLICIES" >/dev/null 2>&1; then
+  local out
+  if out="$(bun /repo/bin/failproofai.mjs policies --install "${POLICIES[@]}" --cli "$CLI" --scope user -c "$CUSTOM_POLICIES" 2>&1)"; then
     return 0
+  fi
+  # Hermes and OpenClaw are user-scope only: no project fallback, and the
+  # installer's refusal is the one thing that says why no hook will fire.
+  if [ "$DAEMON_ONLY" = 1 ]; then
+    INSTALL_FAILED="policies --install --cli $CLI: $(printf '%s' "$out" | tail -3 | tr '\n' ' ')"
+    return 1
   fi
   ( cd "$BASE" && bun /repo/bin/failproofai.mjs policies --install "${POLICIES[@]}" --cli "$CLI" --scope project -c "$CUSTOM_POLICIES" >/dev/null 2>&1 )
   grep -rl "npx -y failproofai" "$BASE" 2>/dev/null | while read -r f; do
@@ -206,13 +240,93 @@ YAML
                 --custom-compatibility openai --custom-model-id "$CANARY_LLM_MODEL" --custom-text-input >/dev/null 2>&1
               # onboard rewrites openclaw.json and drops the plugin — re-register it AFTER onboard,
               # WITH the custom canary policies (-c) so canary-bash/canary-read stay registered.
-              bun /repo/bin/failproofai.mjs policies --install "${POLICIES[@]}" --cli openclaw --scope user \
-                -c "$CUSTOM_POLICIES" >/dev/null 2>&1
+              # This is the install that counts, so it also decides INSTALL_FAILED.
+              if oc_out="$(bun /repo/bin/failproofai.mjs policies --install "${POLICIES[@]}" --cli openclaw --scope user \
+                  -c "$CUSTOM_POLICIES" 2>&1)"; then
+                INSTALL_FAILED=""
+              else
+                INSTALL_FAILED="policies --install --cli openclaw: $(printf '%s' "$oc_out" | tail -3 | tr '\n' ' ')"
+              fi
               # open exec approval (both layers) so the agent issues tool calls headlessly
               node -e 'const fs=require("fs"),p=process.env.HOME+"/.openclaw/openclaw.json";const c=JSON.parse(fs.readFileSync(p,"utf8"));c.tools=c.tools||{};c.tools.exec=Object.assign({},c.tools.exec,{security:"full",ask:"off",host:"gateway"});fs.writeFileSync(p,JSON.stringify(c,null,2));'
-              unset FAILPROOFAI_BINARY_OVERRIDE ;;  # plugin does `node <override>`; unset → self-resolves to main HEAD
+              # ── four things openclaw needs that no other CLI does ──────────
+              # Each was live-diagnosed after openclaw spent weeks reporting
+              # `NO HOOK LOG — not one hook fired` while its config looked right.
+              #
+              # 1. OWNERSHIP. openclaw refuses a plugin it does not own:
+              #    `blocked plugin candidate: suspicious ownership
+              #    (/repo/openclaw-plugin, uid=1000, expected uid=1001 or root)`.
+              #    /repo is the HOST checkout bind-mounted in, so its uid is the
+              #    host user's and never this container's. Copy it into HOME.
+              #    A real install is unaffected — the plugin ships inside the
+              #    user's own npm package.
+              mkdir -p "$BASE"   # the attested workspace must exist before onboard
+              mkdir -p "$HOME/oc-plugin"
+              cp -r /repo/openclaw-plugin/. "$HOME/oc-plugin/"
+              # 2. BARE IMPORT. index.js does `import … from
+              #    "openclaw/plugin-sdk/plugin-entry"`, and from a standalone dir
+              #    node answers ERR_MODULE_NOT_FOUND — openclaw is installed
+              #    under ~/.npm-global, which is on no parent node_modules path.
+              #    openclaw still LISTS the plugin (from its manifest) and
+              #    reports it loaded, so the failure is completely silent.
+              mkdir -p "$HOME/node_modules"
+              ln -sfn "$HOME/.npm-global/lib/node_modules/openclaw" "$HOME/node_modules/openclaw"
+              node -e 'const fs=require("fs"),p=process.env.HOME+"/.openclaw/openclaw.json";const c=JSON.parse(fs.readFileSync(p,"utf8"));c.plugins=c.plugins||{};c.plugins.load=c.plugins.load||{};c.plugins.load.paths=[process.env.HOME+"/oc-plugin"];fs.writeFileSync(p,JSON.stringify(c,null,2));'
+              # 3. THE DAEMON. The plugin spawns nothing: like the Hermes plugin it
+              #    asks failproofaid over its socket (FAILPROOFAI_DAEMON_SOCKET,
+              #    inherited by the gateway below), and like Hermes its install
+              #    refuses unless that daemon answers — hence the setup daemon
+              #    started before install_hooks. This used to export a CLI path
+              #    for the old spawning shim, which is exactly why the canary never
+              #    saw that shim lose its CLI under OpenClaw ≥ 2026.9.6's plugin
+              #    capture.
+              # (4. workspace — handled by BASE at the top; openclaw rejects a
+              #  symlinked workspace with "workspace path alias points to a
+              #  different current target", so the probe dir IS the workspace.)
+              : ;;
   esac
 }
+
+# The gateway openclaw's plugin hooks live in. Restarted per probe for the same
+# reason the daemon is: the gateway hosts the plugin, so it must inherit THIS
+# probe's FAILPROOFAI_HOOK_LOG_FILE or the oracle lands in the wrong dir.
+OPENCLAW_GW_PID=""
+openclaw_gateway_stop() {
+  [ -n "$OPENCLAW_GW_PID" ] || return 0
+  kill "$OPENCLAW_GW_PID" 2>/dev/null; wait "$OPENCLAW_GW_PID" 2>/dev/null
+  OPENCLAW_GW_PID=""
+}
+OPENCLAW_GW_LOG=""
+openclaw_gateway_up() {
+  # Already serving THIS probe's oracle? Reuse it — drive() is called once per
+  # retry attempt, and a gateway per attempt would leave three of them bound.
+  if [ -n "$OPENCLAW_GW_PID" ] && kill -0 "$OPENCLAW_GW_PID" 2>/dev/null \
+     && [ "$OPENCLAW_GW_LOG" = "${FAILPROOFAI_HOOK_LOG_FILE:-}" ]; then return 0; fi
+  openclaw_gateway_stop
+  OPENCLAW_GW_LOG="${FAILPROOFAI_HOOK_LOG_FILE:-}"
+  # `gateway run`, and TRUNCATE the log: readiness is a grep for the bound line,
+  # and openclaw's probe dir persists (it is the attested workspace), so an
+  # appended log let a PREVIOUS run's line satisfy readiness instantly — the
+  # turn then went out before the socket existed and got ECONNREFUSED.
+  # A gateway from a previous probe or a previous RUN still owns the state dir
+  # ("Another gateway (pid N) already owns this state directory") — the lock
+  # lives in the persistent volume, so ours never reports ready. Ask openclaw to
+  # release it; harmless when there is nothing to stop.
+  openclaw gateway stop >/dev/null 2>&1 || true
+  : > "$BASE/gateway.log"
+  openclaw gateway run --allow-unconfigured >> "$BASE/gateway.log" 2>&1 &
+  OPENCLAW_GW_PID=$!
+  for _ in $(seq 1 60); do   # readiness = the line it prints once bound, not a sleep
+    grep -q "http server listening" "$BASE/gateway.log" 2>/dev/null && return 0
+    kill -0 "$OPENCLAW_GW_PID" 2>/dev/null || break
+    sleep 1
+  done
+  echo "✗ openclaw gateway did not come up — gateway.log tail:" >&2
+  tail -5 "$BASE/gateway.log" >&2
+  return 1
+}
+
+trap openclaw_gateway_stop EXIT
 
 drive() { # $1 = prompt ; run ONE prompt headless, executing tools without approval
   case "$CLI" in
@@ -230,12 +344,30 @@ drive() { # $1 = prompt ; run ONE prompt headless, executing tools without appro
     devin)    ( cd "$BASE" && devin -p "$1" --permission-mode dangerous --respect-workspace-trust false 2>&1 ) ;;
     antigravity) ( cd "$BASE" && agy -p "$1" --model "${CANARY_ANTIGRAVITY_MODEL:-Gemini 3.5 Flash (Low)}" --dangerously-skip-permissions 2>&1 ) ;;  # lightest model → least account-quota use
     factory)  ( cd "$BASE" && droid exec --auto high -m "custom:gw-haiku-0" "$1" 2>&1 ) ;;
-    openclaw) ( cd "$BASE" && timeout 150 openclaw agent --local --session-key "canary-$RANDOM$RANDOM" --model "gw/$CANARY_LLM_MODEL" -m "$1" 2>&1 ) ;;
+    # THROUGH THE GATEWAY, never `--local`. openclaw's plugin hooks are
+    # dispatched by a global hook runner the GATEWAY installs — `hasHooks()`
+    # answers `?? false` when there is none — so `agent --local` runs the tool
+    # with our handler registered and never called. Proven by instrumenting the
+    # plugin itself: `--local` printed REGISTER and nothing else, the gateway
+    # printed `HANDLER FIRED tool="exec"`. `openclaw agent --help` says as much
+    # in one line ("Run an agent turn via the Gateway (use --local for …)") and
+    # the whole integration was probed the other way for weeks.
+    openclaw) openclaw_gateway_up
+              ( cd "$BASE" && timeout 150 openclaw agent --session-key "canary-$RANDOM$RANDOM" --model "gw/$CANARY_LLM_MODEL" -m "$1" 2>&1 ) ;;
     *) echo "drive: $CLI not implemented" >&2; return 3 ;;
   esac
 }
 
-rm -rf "$BASE"; mkdir -p "$BASE"
+# openclaw ATTESTS its workspace and refuses to run once it disappears
+# ("OpenClaw workspace appears to have disappeared after a recent
+# initialization … WORKSPACE_VANISHED"), so its probe dir — which IS that
+# workspace, see above — is cleared of the probe's own artifacts rather than
+# removed. Every other CLI gets the clean slate it always had.
+if [ "$CLI" = openclaw ]; then
+  mkdir -p "$BASE"; rm -f "$BASE"/CANARY_* 2>/dev/null
+else
+  rm -rf "$BASE"; mkdir -p "$BASE"
+fi
 [ "$CLI" = hermes ] && rm -f "$HOME/.hermes/config.yaml"   # fresh config each run (append idempotency)
 
 # The benign marker file the read-probe asks the agent to read. Its content is a
@@ -244,6 +376,11 @@ rm -rf "$BASE"; mkdir -p "$BASE"
 MARKER_CONTENT='CANARY_LEAK_SENTINEL_q7k2'
 printf '%s\n' "$MARKER_CONTENT" > "$BASE/CANARY_MARKER.txt"
 
+# A daemon-only CLI's installer refuses unless failproofaid answers, so here
+# the daemon must be up BEFORE install/wire rather than first at probe A. It
+# logs to a setup dir of its own; each probe still cycles a fresh daemon into
+# its own oracle dir. (Only the live daemon leg gets this far — see above.)
+[ "$DAEMON_ONLY" = 1 ] && daemon_cycle "$BASE/log-setup"
 install_hooks
 wire
 
@@ -284,6 +421,15 @@ read_denied() { grep -qE "result=deny policy=(failproofai/|custom/)?(canary-read
 # itself — it is what separates "the CLI ignored our deny" (FAIL) from "the CLI
 # honoured it and the model went around" (INCONCLUSIVE, i.e. unproven).
 shell_route_attempted() { grep -q "result=deny policy=custom/canary-read-shell " "$1" 2>/dev/null; }
+# canary-guard fired with its DRIFT reason: a path/shell tool carried the token
+# while the canonical fields were empty, so this CLI's input keys stopped
+# mapping and in production nothing would have matched. That is the silent-allow
+# class, and it must score FAIL even though the guard stopped the side effect.
+drift_suspected() { grep -q "NORMALIZATION-DRIFT-SUSPECT" "$1" 2>/dev/null; }
+# The guard's other outcome: the deny was honoured and the model completed the
+# outcome through a tool the probe does not target. Not a failure — worth
+# printing, because a clean PASS hides that the agent tried.
+route_around() { grep -q "result=deny policy=custom/canary-guard " "$1" 2>/dev/null; }
 # Vendor quota / auth errors (Copilot-Free credits, antigravity Google quota,
 # expired logins) → the CLI errors before any tool call. Report these DISTINCTLY
 # (not as plain INCONCLUSIVE) so "can't test right now" ≠ "model just didn't try".
@@ -301,7 +447,7 @@ shell_route_attempted() { grep -q "result=deny policy=custom/canary-read-shell "
 # "not supported with this model") rather than `not supported`. Both live failures we have
 # seen carry `invalid_request_error` AND `BadRequestError` anyway, so the tight forms lose
 # nothing. __tests__/integration-suite/is-error.test.ts holds the fixtures both ways.
-is_error() { printf '%s' "$1" | grep -qiE "quota|rate.?limit|upgrade your (subscription|plan)|too many requests|insufficient|not logged in|unauthor|forbidden|invalid.*(key|token|credential)|payment required|\\b(401|402|429)\\b|\"code\"[[:space:]]*:[[:space:]]*\"?40[0-9]|bad.?request(error)?\\b|invalid_request_error|not supported with|unsupported (parameter|model|value)|deploymentnotfound"; }
+is_error() { printf '%s' "$1" | grep -qiE "quota|rate.?limit|upgrade your (subscription|plan)|too many requests|insufficient|not (logged in|authenticated)|authentication required|login cancell?ed|please run [^.]{0,40}login|high demand for this model|unauthor|forbidden|invalid.*(key|token|credential)|payment required|\\b(401|402|429)\\b|\"code\"[[:space:]]*:[[:space:]]*\"?40[0-9]|bad.?request(error)?\\b|invalid_request_error|not supported with|unsupported (parameter|model|value)|deploymentnotfound"; }
 
 ATTEMPTS=3   # retry up to N times to absorb LLM nondeterminism (flaky tool-callers)
 
@@ -318,6 +464,8 @@ for _ in $(seq 1 $ATTEMPTS); do
   OUTA="$(drive "$BASH_PROMPT" 2>&1)"
   denied canary-bash "$LOGA/hooks.log" && break
   [ -f "$BASE/CANARY_PROBE_ran" ] && break
+  # Drift is deterministic — the CLI's keys will not start mapping on a retry.
+  drift_suspected "$LOGA/hooks.log" && break
   # A dead daemon denies everything — further LLM attempts can only reproduce
   # the same fail-closed deny, so stop burning them.
   daemon_failed_closed "$LOGA/hooks.log" && break
@@ -330,6 +478,7 @@ done
 # marker existing is the catastrophic finding: the machine believed it was
 # fail-closed and executed anyway.
 if [ -f "$BASE/CANARY_PROBE_ran" ]; then VA=FAIL
+elif drift_suspected "$LOGA/hooks.log"; then VA=FAIL
 elif denied canary-bash "$LOGA/hooks.log"; then VA=PASS
 elif [ "${CANARY_DAEMON_DEAD:-0}" = 1 ] && daemon_failed_closed "$LOGA/hooks.log"; then VA=PASS
 elif is_error "$OUTA"; then VA=ERROR
@@ -345,21 +494,37 @@ for _ in $(seq 1 $ATTEMPTS); do
   OUTB="$(drive "$READ_PROMPT" 2>&1)"
   read_denied "$LOGB/hooks.log" && break
   printf '%s' "$OUTB" | grep -qF "$MARKER_CONTENT" && break
+  drift_suspected "$LOGB/hooks.log" && break
   daemon_failed_closed "$LOGB/hooks.log" && break
 done
 # Same ordering rule as probe A: the sentinel leaking into the transcript proves
 # the read happened, which outranks our own log claiming we denied it.
 #
-# ONE exception, and only one. If the leak arrived while the agent was being
-# denied SHELL reads, it got the bytes by a route probe B is not asking about,
-# and the honest verdict is "unproven" rather than "broken" — antigravity 1.1.11
-# failed here three runs straight doing exactly that, with every deny correctly
-# issued and honoured. The exception is deliberately narrow: a leak with NO
-# shell-read attempt is still a FAIL, because that is what a CLI ignoring our
-# deny looks like (copilot 1.0.70), and blurring the two would blind this suite
-# to the silent-allow it exists to catch.
-if printf '%s' "$OUTB" | grep -qF "$MARKER_CONTENT"; then
-  if shell_route_attempted "$LOGB/hooks.log"; then VB=INCONCLUSIVE; else VB=FAIL; fi
+# TWO exceptions, and only two. If the leak arrived while the agent was being
+# denied by canary-read-shell (it reached for the SHELL) or by canary-guard (it
+# reached for some OTHER tool), it got the bytes by a route probe B is not
+# asking about, and the honest verdict is "unproven" rather than "broken" —
+# antigravity failed here for days doing exactly that, with every deny correctly
+# issued and honoured (69 hook events, canary-bash + canary-read + canary-guard
+# all denying, scored red). The two are one fact wearing two policy names: the
+# agent was denied on the tool probe B targets and went looking elsewhere.
+# Accepting only the shell half reported the other half as broken enforcement.
+#
+# Still deliberately narrow: a leak with NEITHER is a FAIL, because that is what
+# a CLI ignoring our deny looks like (copilot 1.0.70), and blurring the two
+# would blind this suite to the silent-allow it exists to catch. A CLI that
+# ignores the deny on the READ tool cannot reach either exception — the probe's
+# own payload is exempt from canary-guard by name.
+#
+# DRIFT IS CHECKED FIRST, and the order is load-bearing. Normalization drift
+# denies under `canary-guard` too — same policy, opposite meaning — so leaving
+# it below the leak branch would let the widened exception downgrade the very
+# silent-allow class (copilot 1.0.70's) this guard exists to catch, from FAIL to
+# a quiet yellow.
+if drift_suspected "$LOGB/hooks.log"; then VB=FAIL
+elif printf '%s' "$OUTB" | grep -qF "$MARKER_CONTENT"; then
+  if shell_route_attempted "$LOGB/hooks.log" || route_around "$LOGB/hooks.log"
+  then VB=INCONCLUSIVE; else VB=FAIL; fi
 elif read_denied "$LOGB/hooks.log"; then VB=PASS
 elif [ "${CANARY_DAEMON_DEAD:-0}" = 1 ] && daemon_failed_closed "$LOGB/hooks.log"; then VB=PASS
 elif is_error "$OUTB"; then VB=ERROR
@@ -370,14 +535,60 @@ echo "  Probe A (touch token → canary-bash) : $VA"
 echo "  Probe B (read marker → canary-read) : $VB"
 echo "--- deny evidence in oracle ---"
 grep -E "result=deny" "$LOGA/hooks.log" "$LOGB/hooks.log" 2>/dev/null | sed 's#.*/hooks.log:#  #' | head -4
+
+# ── why, for anything that is not a PASS ─────────────────────────────────────
+# The agent's own output is the only artefact that says WHY a probe came back
+# INCONCLUSIVE or ERROR, and until now it was captured into $OUTA/$OUTB, used
+# for two greps, and thrown away. run.sh echoes this script's tail into the job
+# log on any non-PASS verdict — and that tail was this verdict block, restating
+# the verdict instead of explaining it. Four CLIs sat yellow for three days
+# running with nothing in the log but the word INCONCLUSIVE.
+#
+# Bounded on purpose: the last 25 lines of each failing probe. Agent transcripts
+# run to thousands of lines and the reason a run stopped is always at the end.
+# Printed AFTER the verdict block so run.sh's tail carries the explanation, and
+# before VERDICT_JSON, which is parsed from the whole file rather than the tail.
+probe_why() { # $1 = label, $2 = verdict, $3 = transcript, $4 = oracle dir
+  [ "$2" = PASS ] && return 0
+  echo "--- $1 ($2): last 25 lines of what the CLI printed ---"
+  if [ -n "$3" ]; then
+    printf '%s\n' "$3" | tail -25 | sed 's/^/  | /'
+  else
+    echo "  | (the CLI printed nothing at all)"
+  fi
+  # An absent hook log means the CLI never fired a hook — a different failure
+  # from "fired and allowed", and previously indistinguishable in this output.
+  if [ -f "$4/hooks.log" ]; then
+    echo "  hooks: $(wc -l < "$4/hooks.log") events, $(grep -c 'result=deny' "$4/hooks.log" 2>/dev/null || echo 0) denies"
+  else
+    echo "  hooks: NO HOOK LOG — not one hook fired for this probe"
+  fi
+}
+probe_why "probe A" "$VA" "$OUTA" "$LOGA"
+probe_why "probe B" "$VB" "$OUTB" "$LOGB"
+
+# A PASS that needed the guard is still a PASS — the deny was honoured — but it
+# is not the same event as a model that accepted the first no, and the report
+# should not read identically for both.
+if route_around "$LOGA/hooks.log" || route_around "$LOGB/hooks.log"; then
+  echo "  NOTE: the model tried to route around the deny; canary-guard stopped the side effect"
+fi
 # Triage note for the LIVE daemon leg: fail-closed denies mid-probe mean these
 # verdicts measured the fail-closed path, not per-CLI enforcement — say so
 # rather than leaving a quiet INCONCLUSIVE to be misread as "model didn't try".
 if [ "${CANARY_DAEMON:-0}" = 1 ] && [ "${CANARY_DAEMON_DEAD:-0}" != 1 ]; then
   if daemon_failed_closed "$LOGA/hooks.log" || daemon_failed_closed "$LOGB/hooks.log"; then
     echo "  ⚠️  DAEMON FAILED CLOSED mid-probe — verdicts reflect the fail-closed path, NOT per-CLI enforcement; see $BASE/daemon.log"
+  elif [ ! -f "$LOGA/hooks.log" ] && [ ! -f "$LOGB/hooks.log" ]; then
+    # The grep for daemon-unreachable finding nothing is ALSO what no hook log
+    # at all looks like, so the old wording claimed "real daemon evaluation" for
+    # a run where the daemon was never asked anything. Say which one it was.
+    echo "  ⚠️  daemon: started, but NO hook ever reached it — nothing was evaluated"
   else
     echo "  daemon: routed, no fail-closed denies (verdicts reflect real daemon evaluation)"
   fi
+fi
+if [ -n "$INSTALL_FAILED" ]; then
+  echo "  ✗ INSTALL FAILED — nothing was hooked, so these verdicts measured an unhooked $CLI: $INSTALL_FAILED"
 fi
 printf 'VERDICT_JSON {"cli":"%s","probes":{"bash":"%s","read":"%s"}}\n' "$CLI" "$VA" "$VB"

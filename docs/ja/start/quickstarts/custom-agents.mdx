@@ -1,0 +1,50 @@
+---
+title: "カスタムエージェント"
+description: "エージェントを3つの `with` ブロックで囲むだけで、記録が始まります。"
+icon: "code"
+---
+
+自作のエージェント、またはFailproof AIにアダプターが用意されていないフレームワーク向けです。
+
+既存の処理を `with` ブロックで囲むだけです。各ブロックは開始時刻・終了時刻・所要時間を自動的に記録します。他に呼び出すものは何もありません。
+
+## インストール
+
+```bash
+pip install failproofai-sdk
+```
+
+追加パッケージも依存関係も不要です。
+
+## 計装
+
+```python
+import failproofai_sdk
+
+failproofai_sdk.configure(environment="production")
+
+with failproofai_sdk.session():                 # 1回の実行
+    with failproofai_sdk.agent("planner"):      # 1つの作業単位
+        with failproofai_sdk.tool_call("search", input={"q": q}) as t:
+            t.output = search(q)                # 1回のツール呼び出し
+```
+
+上から順に読むと、そのまま意味が伝わります。
+
+| ブロック | 意味 |
+| --- | --- |
+| `session()` | これらのイベントは同一の実行に属する |
+| `agent()` | 何かが作業を行っている — リストで見たときにわかる名前をつける |
+| `tool_call()` | これは1つのツールであり、返した値がこれである |
+
+コードの構造に合わせて自由にネストできます。IDを受け渡す必要は一切ありません。各ブロックが自分の位置を把握しているため、記録した内容は自動的に正しい実行・正しいエージェントに紐付けられます。`async with` もまったく同じように動作します。
+
+## 到着を確認する
+
+一度実行したら、**Observe → Sessions** を開いて環境を選択してください。再構築されたトレースとして実行結果が表示されます。
+
+何も届かない場合は、`failproofai config --status` でマシンの接続状態を確認してください。
+
+<Card title="カスタムエージェントの完全ガイド" icon="arrow-right" href="/ja/start/integrations/custom-agents">
+  すべてのイベントメソッド、コードが例外を発生させた場合の動作、実践的なサンプル、スレッドと非同期処理、アダプターのないフレームワークへの計装方法を詳しく解説しています。
+</Card>

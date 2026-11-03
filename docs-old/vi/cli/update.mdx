@@ -1,0 +1,95 @@
+---
+title: Cập nhật sau khi nâng cấp
+description: "Hoàn thành nửa còn lại của quá trình nâng cấp mà npm không thể thực hiện: di chuyển thư mục home và đồng bộ daemon"
+---
+
+```bash
+npm install -g failproofai@latest && failproofai update
+```
+
+Đó là toàn bộ quá trình nâng cấp. `npm` thay thế CLI; `failproofai update` thực hiện
+phần còn lại.
+
+## Tại sao lại cần một lệnh thứ hai
+
+`npm install -g` chỉ thay thế một thứ — CLI. Hai phần khác của bản cài đặt failproofai
+nằm ngoài package một cách cố ý, và cả hai đều không di chuyển khi npm chạy:
+
+- **`~/.failproofai/`**, cài đặt của bạn, đăng ký cloud, lựa chọn chính sách và
+  lịch sử. Một phiên bản mới có thể sắp xếp nó khác đi, và việc sắp xếp lại phải
+  được thực hiện bởi code biết cả hai cách sắp xếp.
+- **Tệp nhị phân daemon `failproofaid`**, tại
+  `~/.failproofai/bin/failproofaid-<version>`. Nó cố ý *không* nằm trong
+  `node_modules`: một nâng cấp tráo đổi tệp dưới một dịch vụ đang chạy sẽ hướng
+  daemon hoạt động đến một tệp nhị phân được xây dựng từ mã nguồn khác, và xóa
+  package sẽ xóa nó khỏi dưới dịch vụ đó, dẫn đến crash-loop ở mỗi lần khởi động.
+
+Vì vậy sau khi chỉ chạy `npm install -g`, CLI là mới nhưng daemon vẫn cũ.
+`failproofaid` từ chối khởi động khi gặp bố cục home mà nó không hiểu — phiên bản
+"to tiếng" của sự không khớp đó hơn là im lặng — vì vậy hai nửa cần được ghép lại
+với nhau. `failproofai update` là bước đó.
+
+## Nó làm gì
+
+<Steps>
+  <Step title="Chạy bất kỳ di chuyển bố cục nào đang chờ xử lý">
+    Đọc bố cục được ghi lại trong `~/.failproofai/VERSION` và chạy các bước
+    đưa nó đến bố cục mà phiên bản này hiểu. Thường là không có — xem
+    [`failproofai migrate`](/vi/cli/migrate).
+  </Step>
+  <Step title="Đặt tệp nhị phân daemon phù hợp vào chỗ">
+    Từ package dành cho nền tảng mà npm đã tải xuống nếu có thể (không cần mạng),
+    nếu không thì từ release asset cho phiên bản chính xác này, được xác minh SHA-256
+    trước khi sử dụng.
+  </Step>
+  <Step title="Khởi động lại dịch vụ và xác nhận nó đã quay lại">
+    Được kiểm tra chứ không phải là giả định — trình quản lý dịch vụ báo cáo
+    một quy trình đang hoạt động ngay khi nó fork, điều này không giống như
+    nó đang hoạt động.
+  </Step>
+</Steps>
+
+## Tùy chọn
+
+| Cờ | Hiệu ứng |
+|------|--------|
+| `--no-daemon` | Chỉ di chuyển home, giữ daemon ở phiên bản hiện tại. |
+
+<Warning>
+  `--no-daemon` giữ lại daemon có phiên bản không khớp. Trên máy được cấu hình
+  để yêu cầu daemon, mọi sự kiện hook **thất bại và đóng** nếu daemon không thể
+  trả lời — và daemon từ chối khởi động khi gặp home đã được di chuyển không thể
+  trả lời. Tốt hơn là để nửa daemon chạy.
+</Warning>
+
+## Nếu có sự cố
+
+Lệnh thoát với mã khác không và cho biết nửa nào thất bại. Hai trường hợp đáng
+biết:
+
+- **Một bước di chuyển không hoàn thành.** Home được đánh dấu bằng bố cục *cũ*
+  của nó, vì vậy lệnh tiếp theo sẽ thử lại — home không bao giờ được đánh dấu
+  là hiện tại dựa trên di chuyển một phần. Các bản sao cài đặt và đăng ký của bạn
+  được lưu trước khi bất cứ điều gì chạy, trong `~/.failproofai/migrations/backup-layout<n>/`.
+- **Daemon không thể khởi động lại mà không cần mật khẩu.** `sudo -n` được sử dụng
+  cố ý, vì vậy không bao giờ có gợi ý từ dưới màn hình tiến độ. Lệnh in ra
+  dòng chính xác để bạn tự chạy.
+
+<Note>
+  Không có gì ở đây cần trình hướng dẫn thiết lập tương tác. Cài đặt, đăng ký cloud
+  và lựa chọn chính sách của bạn vẫn còn sau nâng cấp, vì vậy máy đã di chuyển
+  thực thi chính xác như trước — điều này quan trọng nhất trên những máy không
+  có ai ngồi ở đó: CI runner, hộp fleet, gateway không đầu.
+</Note>
+
+## Tự động hóa nó
+
+`failproofai update` không tương tác và an toàn để chạy khi không có gì phải làm —
+nó báo cáo "không cần di chuyển" và thoát với 0. Đặt nó sau mỗi nâng cấp trong
+script provisioning hoặc Dockerfile là cách sử dụng dự định:
+
+```dockerfile
+RUN npm install -g failproofai@latest && failproofai update --no-daemon
+```
+
+(`--no-daemon` trong xây dựng image, nơi chưa có dịch vụ để khởi động lại.)

@@ -1,0 +1,39 @@
+---
+title: "LangChain и LangGraph"
+description: "Установите, инструментируйте и получите свой первый трейс."
+icon: "/images/frameworks/langchain.svg"
+---
+
+Три шага к вашему первому трейсу LangChain или LangGraph. Для потоковой передачи, управления человеком в цикле, именования спанов и других опций см. [полное руководство](/ru/start/integrations/langchain).
+
+## Установка
+
+```bash
+pip install 'failproofai-sdk[langgraph]'
+```
+
+Для LangChain без LangGraph используйте `failproofai-sdk[langchain]`.
+
+## Инструментирование
+
+```python
+import failproofai_sdk
+
+failproofai_sdk.configure(environment="production")
+failproofai_sdk.instrument()
+
+with failproofai_sdk.session():
+    graph.invoke({"messages": [HumanMessage("...")]})
+```
+
+Не требуются изменения кода на месте вызова. `instrument()` регистрирует трейсер, который LangChain внедряет в каждый диспетчер обратных вызовов, который он создаёт, поэтому графы, инструменты и модели захватываются — включая те, что находятся внутри библиотек, которые вы не писали.
+
+## Проверьте, что данные поступили
+
+Запустите один раз, затем откройте **Observe → Sessions** и выберите вашу среду. Ваш запуск появится как реконструированный трейс.
+
+Если данные не поступают, проверьте соединение машины командой `failproofai config --status`.
+
+<Card title="Полное руководство LangChain" icon="arrow-right" href="/ru/start/integrations/langchain">
+  Что записывается, потоковая передача, подсчёт токенов, именование спанов, управление сеансом, опции и управление человеком в цикле.
+</Card>

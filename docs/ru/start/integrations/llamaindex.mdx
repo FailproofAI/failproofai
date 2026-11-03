@@ -1,0 +1,249 @@
+---
+title: "LlamaIndex"
+sidebarTitle: "LlamaIndex"
+description: "Инструментируйте workflows, steps, function agents и retrievers."
+icon: "/images/frameworks/llamaindex.svg"
+---
+
+## Установка
+
+```bash
+pip install 'failproofai-sdk[llamaindex]'
+```
+
+Поддерживается: `llama-index-core` версии 0.14.23 до 0.15. 0.14.23 — это релиз, где поток workflow начал переносить типизированные события агента, которые читает этот адаптер. Ниже него отсутствуют и имена моделей, и структура агента.
+
+## Инструментирование
+
+```python
+import asyncio
+
+import failproofai_sdk
+
+failproofai_sdk.configure(environment="production")
+failproofai_sdk.instrument()
+
+
+async def main():
+    async with failproofai_sdk.session():
+        await agent.run("...")
+
+
+asyncio.run(main())
+```
+
+API агента LlamaIndex является асинхронным. Каждая область работает под `async with`, а также под `with` и производит идентичные события.
+
+`instrument()` присоединяет обработчик событий и обработчик spans к глобальному диспетчеру LlamaIndex. Вместе они делают цикл агента видимым, а не только его вызовы модели.
+
+<Warning>
+  Без одного дополнительного аргумента на вашей LLM каждый подсчет токенов в вашем трассировании будет null. См. [Подсчеты токенов](#подсчеты-токенов) ниже.
+</Warning>
+
+## Подсчеты токенов
+
+`FunctionAgent` вызывает `astream_chat`, и `llama-index-llms-openai` не отправляет `stream_options={"include_usage": True}` при потоковой передаче. Поставщик поэтому никогда не отправляет chunk использования, и нечего читать никакому инструментированию.
+
+Это поведение вышестоящего LlamaIndex. Отключите на вашей LLM:
+
+```python
+from llama_index.llms.openai import OpenAI
+
+llm = OpenAI(
+    model="gpt-4o-mini",
+    additional_kwargs={"stream_options": {"include_usage": True}},
+)
+```
+
+Измерено на одном прогоне и модели:
+
+| | Входные токены | Выходные токены |
+| --- | --- | --- |
+| Без | `null` | `null` |
+| С | 148 | 17 |
+
+Вызовы без потоковой передачи (`llm.chat`, `llm.achat`) сообщают об использовании без конфигурации. Только путь потоковой передачи, который является путем агента по умолчанию, требует этого.
+
+## Что записывается
+
+| LlamaIndex | Failproof событие |
+| --- | --- |
+| `Workflow.run` корневой span | Session, `agent_start`, `agent_end` |
+| Вложенный `Workflow.run` span | Вложенные `agent_start`, `agent_end` |
+| Workflow step span | `hook_triggered`, `hook_completed` |
+| LLM chat начало и конец | `model_request`, `model_response` |
+| `FunctionTool.call` span | `tool_use`, `tool_result` |
+| Retrieval начало и конец | `tool_use`, `tool_result`, выход суммирован |
+| Embeddings | Ничего, если только `embeddings=True` |
+| Инструмент, ожидающий человека | `human_wait`, `agent_pause`, затем `agent_resume`, `human_input` |
+| `AgentWorkflow` handoff | Вложенные `agent_start`, `agent_end` на агента, относящиеся к workflow |
+| Exception | `error`, затем `agent_end` с исходом `failed` и `agent_end.summary` его названием |
+| `handler.cancel_run()` | `agent_end` с исходом `cancelled` и без `error` — кнопка остановки — это не сбой |
+
+`agent_id` — это `FunctionAgent.name`, когда вы его установили, и имя класса workflow в противном случае. Под `AgentWorkflow` каждый агент, который берет ход, получает свой собственный вложенный span под workflow, поэтому handoff читается как два агента, а не один.
+
+Выход retrieval суммируется, а не выводится. Retriever возвращает документы, и их сохранение в payload поместит ваш корпус в хранилище событий один раз за запрос. Вместо этого сохраняются количество, диапазон оценок и усеченные фрагменты.
+
+## Пример
+
+```python
+import asyncio
+
+import failproofai_sdk
+from llama_index.core.agent.workflow import FunctionAgent
+from llama_index.core.tools import FunctionTool
+from llama_index.llms.openai import OpenAI
+
+failproofai_sdk.configure(environment="production")
+failproofai_sdk.instrument()
+
+POP = {"tokyo": "37M", "delhi": "33M"}
+AREA = {"tokyo": "2,194 km2", "delhi": "1,484 km2"}
+
+
+def population(city: str) -> str:
+    """Population of a city. Valid: tokyo, delhi."""
+    return POP.get(city.lower().strip(), "unknown")
+
+
+def area(city: str) -> str:
+    """Land area of a city. Valid: tokyo, delhi."""
+    return AREA.get(city.lower().strip(), "unknown")
+
+
+async def main():
+    agent = FunctionAgent(
+        name="city_analyst",
+        tools=[
+            FunctionTool.from_defaults(fn=population),
+            FunctionTool.from_defaults(fn=area),
+        ],
+        llm=OpenAI(
+            model="gpt-4o-mini",
+            additional_kwargs={"stream_options": {"include_usage": True}},
+        ),
+        system_prompt="Use the tools. Be terse.",
+    )
+
+    async with failproofai_sdk.session():
+        async with failproofai_sdk.agent("city_analyst", goal="compare two cities"):
+            print(await agent.run("Compare Tokyo and Delhi on population and area."))
+
+
+asyncio.run(main())
+```
+
+Цикл агента появляется в трассировании как пары hook: `init_run`, `setup_agent`, `run_agent_step`, `parse_agent_output`, `call_tool` и `aggregate_tool_results`. Это собственный цикл framework, поэтому это hooks, а не agents, что делает `agent_id` значимым.
+
+## Назовите ваши spans
+
+`agent_id` — это `FunctionAgent.name`, когда вы его установили, и имя класса workflow в противном случае.
+
+```python
+FunctionAgent(name="city_analyst", tools=[...], llm=llm)   # agent_id = "city_analyst"
+```
+
+В `AgentWorkflow` это имя также записывается для каждого handoff:
+
+```text
+AgentWorkflow            родительский span
+├─ city_analyst          ход 1
+├─ cost_analyst          ход 2
+└─ city_analyst          ход 3  — новый ход, не переоткрытый
+```
+
+Поэтому `agent_id` говорит вам **какой агент** выполнил работу, а `parent_id` говорит вам **к какому workflow** он принадлежал. Агент, который позже вернул управление, открывает второй ход, а не переоткрывает свой первый.
+
+Оберните run, чтобы переопределить его или сгруппировать несколько агентов под одним родителем:
+
+```python
+async with failproofai_sdk.agent("research", goal="compare two cities"):
+    await agent.run(...)
+```
+
+Держите `agent_id` с низкой кардинальностью. Это основной аспект на каждой поверхности приборной панели, поэтому используйте имя роли или workflow, никогда UUID или строку за запуск.
+
+## Контроль session
+
+Этот адаптер **не принимает опцию `session_id`**. Session поступает из окружающей области или в противном случае генерируется `uuid4().hex` на запуск workflow:
+
+```python
+async with failproofai_sdk.session(f"chat-{user_id}"):
+    await agent.run(...)
+```
+
+## Опции
+
+```python
+failproofai_sdk.instrument(
+    "llama_index",
+    embeddings=False,         # True записывает вызовы embedding как пары инструментов
+    steps=True,               # False отбрасывает пары hook workflow-step
+    capture_messages=True,    # False отбрасывает КАЖДЫЙ payload: prompts, completions,
+                              # аргументы и выход инструмента, ввод и вывод step,
+                              # запросы retrieval, цель и финальный ответ
+    capture_limit=8192,       # символы сохраняются на захваченное значение
+    stale_after=600.0,        # секунды до принудительного закрытия заброшенного LEAF
+    reaper_interval=30.0,     # как часто reaper выполняет sweep; 0 отключает его
+)
+```
+
+| Опция | Почему вы бы ее изменили |
+| --- | --- |
+| `embeddings` | Включите только при отладке latency embedding или стоимости. Массовое создание индекса — это тысячи вызовов и похоронит временную шкалу. |
+| `steps` | Отключите, если вам нужны только события модели и инструмента и вы находите цикл агента шумным. |
+| `capture_messages` | Отключите для регулируемых данных. Каждый payload перестает записываться — prompts, выход модели, аргументы и возвращаемые значения инструмента, ввод и вывод workflow-step, запросы retrieval, цель агента и его финальный ответ. Структура, timings, токены и outcomes все еще записываются. |
+| `capture_limit` | Символы сохраняются на захваченное значение перед усечением. Увеличьте его, когда RAG prompt или извлеченный контекст приходят обрезанными. |
+| `stale_after` | Секунды до принудительного закрытия заброшенного **leaf** — потока ответа, который никто не потреблял, span модели или инструмента, чье закрытие никогда не пришло — чтобы session установилась вместо чтения `ongoing` вечно. Это **не** закрывает заброшенный run себя: workflow, чья задача отменена без exit, видимого диспетчером, держит свой `agent_start` открытым до `uninstrument()`. |
+| `reaper_interval` | Частота sweep. Установите `0`, чтобы полностью отключить reaper. |
+
+## Human in the loop
+
+Захватывается, когда ожидание происходит внутри инструмента:
+
+```python
+async def ask_human(question: str) -> str:
+    """Ask a person and wait for their answer."""
+    response = await ctx.wait_for_event(HumanResponseEvent)
+    return response.answer
+```
+
+`ctx.wait_for_event` в простом workflow step не захватывается. Runtime ловит drop до того, как он достигнет диспетчера, поэтому step выходит и переустанавливается позже без сигнала на ключ pause. Паттерн FunctionAgent, который документирует LlamaIndex, ждет внутри инструмента и захватывается полностью.
+
+## Частые проблемы
+
+<AccordionGroup>
+  <Accordion title="Все подсчеты токенов — null">
+    Добавьте `additional_kwargs={"stream_options": {"include_usage": True}}` к вашей LLM. См. [Подсчеты токенов](#подсчеты-токенов).
+  </Accordion>
+
+  <Accordion title="Usage заполнено, но столбцы токенов пусты">
+    LlamaIndex не имеет стандартного поля usage. Адаптер пробует несколько известных форм, и интеграция, которая называет свои счетчики чем-то новым, не будет соответствовать ни одной из них.
+
+    Сырой dict всегда отправляется, поэтому проверьте `usage` в payload, чтобы увидеть, как ваш поставщик их назвал.
+
+    Заполненное `usage` рядом с пустыми столбцами токенов преднамеренно — это лучше, чем уверенное неправильное число.
+  </Accordion>
+
+  <Accordion title="Временная шкала полна setup_agent и parse_agent_output">
+    Это цикл FunctionAgent, один набор за итерацию. Фильтруйте по имени hook на приборной панели. Эти timings step обычно являются причиной использовать этот адаптер, а не только адаптер модели.
+  </Accordion>
+
+  <Accordion title="Ничего не записывается">
+    Проверьте по порядку: `instrument()` запустился перед run; есть `async with failproofai_sdk.session():` вокруг `await`; `llama-index-core` версии 0.14.23 или новее; `FAILPROOFAI_SDK_STRICT=1` установлено, поэтому деградированный hook вызывает исключение вместо проглатывания.
+  </Accordion>
+</AccordionGroup>
+
+## Далее
+
+<Columns cols={3}>
+  <Card title="How it works" icon="workflow" href="/ru/start/integrations/custom-agents#going-deeper">
+    Пары, ids, session lifecycle и delivery.
+  </Card>
+  <Card title="Read a trace" icon="route" href="/ru/sessions/read-a-trace">
+    Следите за причинностью через session, который вы только что захватили.
+  </Card>
+  <Card title="Other frameworks" icon="plug" href="/ru/start/integrations">
+    LangGraph, CrewAI, Pydantic AI и custom agents.
+  </Card>
+</Columns>

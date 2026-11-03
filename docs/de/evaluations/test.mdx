@@ -1,0 +1,29 @@
+---
+title: "Eine Evaluation testen"
+description: "Führen Sie eine Evaluation gegen Ihre echten Sitzungen aus, bevor Sie sie deployen. Es wird nichts gespeichert."
+icon: "flask-conical"
+---
+
+**Diese Evaluation testen** führt auf der Autorenseite den Code gegen Ihre echten Sitzungen auf der Evaluator-Flotte aus, ohne sie zu deployen. Es wird nichts gespeichert: Ein Fehler hier ist lediglich eine Vorschau, und das Deployen ist immer möglich.
+
+<Steps>
+  <Step title="Kompilierung prüfen">
+    Wählen Sie **check**, um den Code und die Bedingung gegen die Regeln der Sandbox zu kompilieren, ohne sie auf einer Sitzung auszuführen.
+  </Step>
+  <Step title="Sitzungen auswählen">
+    Grenzen Sie die übereinstimmenden Sitzungen nach Agent, Umgebung, Zeitraum oder Sitzungs-ID ein und wählen Sie bis zu 10 aus. Nehmen Sie sowohl Sitzungen auf, bei denen die Evaluation fehlschlagen soll, als auch solche, bei denen sie bestehen soll.
+  </Step>
+  <Step title="Ausführen">
+    Wählen Sie **run against N sessions** und lesen Sie jede Zeile.
+  </Step>
+</Steps>
+
+| Zeile | Bedeutung |
+| --- | --- |
+| **ok** | Sie wurde ausgeführt. Die Zeile listet jeden Score, jede Metrik und jede zurückgegebene Assertion sowie die benötigte Zeit auf. |
+| **skipped** | Die Bedingung hat `False` zurückgegeben, sodass die Evaluation nicht ausgeführt wurde. Das ist ein Skip, kein Fehler. |
+| Failed | Sie hat einen Fehler ausgelöst, ist abgelaufen oder hat etwas verwendet, das die Sandbox ablehnt. Die Zeile gibt an, was passiert ist, und **Fix it** übergibt den Fehler an den Assistenten, wenn dieser helfen kann. |
+
+![Das Panel „Diese Evaluation testen": Drei Sitzungen, nach Agent ausgewählt – zwei ok und eine übersprungen, weil ihre Bedingung False zurückgegeben hat.](/images/dashboard/eval-test.png)
+
+Ein Ergebnis verliert seine Aktualität in dem Moment, in dem Sie den Code bearbeiten; es wird abgeblendet statt wiederverwendet.

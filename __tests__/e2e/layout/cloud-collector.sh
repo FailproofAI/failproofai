@@ -24,7 +24,9 @@ export FAILPROOFAI_HOME="$H/home"
 export FAILPROOFAI_NO_FIRST_RUN=1
 
 printf '\n=== 1. CONNECT: both capabilities verified against the real server ===\n'
-OUT=$($CLI config --connect "$API" --token "$KEY" --send-transcripts 2>&1); RC=$?
+# No --send-transcripts: transcripts are the default since #653 (the flag is
+# still accepted as a no-op, for scripts written before then).
+OUT=$($CLI config --connect "$API" --token "$KEY" 2>&1); RC=$?
 has "reports a full connection" "$OUT" "Connected to"
 check "exit 0 when policy enrolment succeeds" "$RC" "0"
 check "credentials.json written" "$([ -f "$H/home/credentials.json" ] && echo y || echo n)" "y"
@@ -33,7 +35,7 @@ has "mode flipped to cloud" "$(cat "$H/home/config.json")" '"kind": "cloud"'
 hasnt "token never lands in config.json" "$(cat "$H/home/config.json")" "$KEY"
 has "both tables present" "$(cat "$H/home/credentials.json")" "\"cloud\":"
 has "ingest table present" "$(cat "$H/home/credentials.json")" "\"ingest\":"
-has "transcripts opted in" "$(cat "$H/home/config.json")" '"sessions": true'
+has "transcripts on by default" "$(cat "$H/home/config.json")" '"sessions": true'
 
 printf '\n=== 2. DAEMON: starts, reads layout-2 config, enables the collector ===\n'
 mkdir -p "$H/home/policies"

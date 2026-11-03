@@ -1,0 +1,48 @@
+---
+title: "LlamaIndex"
+description: "安装、插桩，并查看您的第一条追踪记录。"
+icon: "/images/frameworks/llamaindex.svg"
+---
+
+三步即可完成您的第一条 LlamaIndex 追踪记录。有关工作流步骤、检索、reaper 及选项，请参阅[完整指南](/zh/start/integrations/llamaindex)。
+
+## 安装
+
+```bash
+pip install 'failproofai-sdk[llamaindex]'
+```
+
+## 插桩
+
+LlamaIndex 的 agent API 是异步的。所有作用域既支持 `async with`，也支持 `with`。
+
+```python
+import asyncio
+
+import failproofai_sdk
+
+failproofai_sdk.configure(environment="production")
+failproofai_sdk.instrument()
+
+
+async def main():
+    async with failproofai_sdk.session():
+        await agent.run("...")
+
+
+asyncio.run(main())
+```
+
+<Warning>
+  如果您的 LLM 缺少一个额外参数，追踪记录中的所有 token 计数将为 null——`llama-index-llms-openai` 在流式传输时不会请求用量数据。请参阅 [Token 计数](/zh/start/integrations/llamaindex#token-counts)。
+</Warning>
+
+## 确认数据已到达
+
+运行一次后，打开 **Observe → Sessions** 并选择您的环境。您的运行将以重建后的追踪记录形式显示。
+
+如果没有数据到达，请使用 `failproofai config --status` 确认机器已连接。
+
+<Card title="LlamaIndex 完整指南" icon="arrow-right" href="/zh/start/integrations/llamaindex">
+  Token 计数、记录内容、工作流步骤、检索、选项及常见问题。
+</Card>

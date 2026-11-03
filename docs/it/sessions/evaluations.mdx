@@ -1,0 +1,56 @@
+---
+title: "Leggere i risultati delle valutazioni"
+description: "Traccia i punteggi di valutazione nel tempo, confronta agenti e ambienti, scopri perché una sessione ha ottenuto un punteggio basso e chiedi all'assistente."
+icon: "gauge"
+---
+
+I risultati di ogni valutazione, ospitata o dal tuo worker, arrivano negli stessi luoghi.
+
+## Confronta i punteggi nel tempo
+
+<Tabs>
+  <Tab title="Dashboard">
+    Vai a **Observe → evaluations**.
+
+    - **Recent runs** elenca ogni valutazione man mano che arriva: se proviene da un valutatore ospitato (**managed**) o dal tuo (**customer**), l'agente e la sessione, la valutazione e la sua versione, il suo stato e il suo punteggio o metriche.
+    - **Score over time** traccia quello che chiedi. Seleziona **add series** e scegli un agente, un ambiente, una valutazione e una statistica: avg, min, max, p50, p75, p90, p95, p99, stddev o mode. Ogni serie è una linea; assegnale una propria **curve** per disegnarla su un grafico separato.
+
+    ![La pagina delle valutazioni: esecuzioni recenti contrassegnate come customer, un grafico dei punteggi nel tempo con linee di riferimento a 0,5 e 0,8, e una serie che fa la media di finished_clean su tutti gli agenti e gli ambienti.](/images/dashboard/evaluations-chart.png)
+
+    Un intervallo di tempo e una dimensione del bin si applicano a tutte le serie. Un bin fine trova un incidente; uno grossolano mostra un trend e può nascondere i picchi che stai cercando. Un bucket dove non è stato calcolato alcun punteggio è uno spazio nella linea, mai uno zero, e le linee di riferimento segnano 0,5 e 0,8.
+
+    Ogni parte della vista vive nell'URL: **share** la copia, e chiunque la apra vede esattamente il confronto che hai costruito.
+  </Tab>
+  <Tab title="CLI">
+    ```bash
+    fp evals --agent-id checkout-agent --aggregate
+    fp evals --aggregate --env production --status error
+    fp evals --score helpfulness:0.8.. --since 7d
+    ```
+
+    Aggiungi il global `--json` prima di `evals` per l'automazione, ad esempio `fp --json evals --aggregate --env production`.
+  </Tab>
+</Tabs>
+
+Traccia **avg** e **p90** per la stessa valutazione per vedere se una buona media sta nascondendo una coda scadente, oppure la stessa valutazione per due agenti, o per production e staging, per confrontarli su un solo asse. Costi, latenze e conteggi di token, che hanno unità, si trovano in un grafico sotto **Observe → metrics**, un grafico per unità.
+
+## Scopri perché una sessione ha ottenuto un punteggio basso
+
+Apri una sessione da **Observe → sessions**; la griglia contiene i punteggi di ogni sessione e filtra per intervallo di punteggio. La barra laterale destra della sessione inizia con il riepilogo della valutazione, quindi una barra per ogni punteggio con il ragionamento del valutatore sotto di essa.
+
+![Una vista dei dettagli della sessione che mostra i punteggi di valutazione e il ragionamento accanto alla traccia completa.](/images/dashboard/session-detail.png)
+
+## Chiedi all'assistente
+
+Fai domande sui dati di valutazione in inglese semplice: "dimmi qualcosa sulle valutazioni recenti", oppure su quali agenti i punteggi stanno diminuendo. L'[assistente](/it/sessions/assistant) legge e analizza i risultati e risponde con tabelle su cui puoi fare ulteriori domande, e una domanda interessante può diventare una [query](/it/sessions/queries) o una [dashboard](/it/sessions/dashboards).
+
+![La pagina delle valutazioni accanto all'assistente, che risponde a "tell me about some of the recent evaluations" con un riepilogo di totali, stati e punteggi.](/images/dashboard/evaluations-assistant.png)
+
+## Monitora e agisci
+
+- **Dashboards**, sotto **Analyze → dashboards**, tendono i punteggi che presenti, per agente e ambiente, per l'intera organizzazione.
+
+  ![Una dashboard di qualità che mostra i punteggi medi di valutazione e i trend nel tempo.](/images/dashboard/dashboard-quality.png)
+
+- **Alerts** ti notificano quando un punteggio supera una soglia. Vedi [alerts](/it/audits/alerts).
+- Quando un punteggio diminuisce su molte sessioni, [esegui un audit](/it/audits/run) per scoprire il motivo; quando la causa è un'azione ripetibile, [scrivi una policy](/it/policies/editor).

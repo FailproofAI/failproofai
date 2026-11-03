@@ -2,9 +2,24 @@
 import { mkdtemp, mkdir, rm, writeFile } from "fs/promises";
 import { tmpdir } from "os";
 import { dirname, join, relative } from "path";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { resolveSubagentPath } from "@/lib/resolve-subagent-path";
+
+let mockAccessError: NodeJS.ErrnoException | null = null;
+
+vi.mock("fs/promises", async () => {
+  const actual = await vi.importActual<typeof import("fs/promises")>("fs/promises");
+  return {
+    ...actual,
+    access: vi.fn(async (path, mode) => {
+      if (mockAccessError) {
+        throw mockAccessError;
+      }
+      return actual.access(path, mode);
+    }),
+  };
+});
 
 describe("resolveSubagentPath", () => {
   let fixtureRoot: string;
@@ -15,12 +30,14 @@ describe("resolveSubagentPath", () => {
   const agentId = "abc123";
 
   beforeEach(async () => {
+    mockAccessError = null;
     fixtureRoot = await mkdtemp(join(tmpdir(), "failproofai-subagents-"));
     projectsPath = join(fixtureRoot, "projects");
     await mkdir(join(projectsPath, projectName, sessionId, "subagents"), { recursive: true });
   });
 
   afterEach(async () => {
+    mockAccessError = null;
     await rm(fixtureRoot, { recursive: true, force: true });
   });
 
@@ -73,5 +90,22 @@ describe("resolveSubagentPath", () => {
     await touch(escapedCandidate);
 
     await expect(resolveSubagentPath(projectsPath, projectName, sessionId, traversalAgentId)).resolves.toBeNull();
+  });
+
+  it("prevents path traversal when projectName attempts to escape projectsPath", async () => {
+    const traversalProject = "../../outside";
+    const escapedCandidate = join(projectsPath, traversalProject, `agent-${agentId}.jsonl`);
+    await touch(escapedCandidate);
+
+    await expect(resolveSubagentPath(projectsPath, traversalProject, sessionId, agentId)).resolves.toBeNull();
+  });
+
+  it("stops searching and returns null when an unexpected error occurs (e.g., EACCES)", async () => {
+    const err = new Error("Permission denied") as NodeJS.ErrnoException;
+    err.code = "EACCES";
+    mockAccessError = err;
+
+    const result = await resolveSubagentPath(projectsPath, projectName, sessionId, agentId);
+    expect(result).toBeNull();
   });
 });

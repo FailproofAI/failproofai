@@ -255,6 +255,32 @@ def test_a_claim_with_no_identity_is_no_login(user):
 
 
 @respx.mock
+@pytest.mark.parametrize("token", ["☃☃☃", "abc\r\nx-evil: 1", "a b", "\x1b]0;x\x07", "x" * 5000, ""])
+def test_a_token_no_later_request_could_carry_is_never_saved(token):
+    # Saved, every later command fails on it, and a non-ASCII one with a traceback.
+    respx.post(f"{BASE}/api/auth/cli/claim").mock(
+        return_value=httpx.Response(201, json={**CLAIMED, "session_token": token})
+    )
+    with pytest.raises(AuthError):
+        auth.claim_browser_login(BASE, "POLL")
+
+
+@respx.mock
+@pytest.mark.parametrize(
+    "hostname,label",
+    [("ho\udcffst", "ho?st"), ("\x01\x02", "unknown"), ("   ", "unknown"), ("", "unknown"), ("a\x1b]0;x\x07b", "a]0;xb")],
+    ids=["not-utf8", "controls", "spaces", "empty", "escape"],
+)
+def test_any_hostname_still_starts_a_login(monkeypatch, hostname, label):
+    # JSON can't carry a surrogate, which is how Python hands back bytes that aren't UTF-8,
+    # and the server refuses a label with nothing left in it.
+    monkeypatch.setattr(auth.socket, "gethostname", lambda: hostname)
+    route = respx.post(f"{BASE}/api/auth/cli/start").mock(return_value=_start())
+    assert auth.start_browser_login(BASE) is not None
+    assert json.loads(route.calls[0].request.content)["machine_label"] == label
+
+
+@respx.mock
 def test_what_the_server_says_about_the_person_cannot_drive_the_terminal():
     evil = "me\x1b]0;pwned\x07@te‮st\x1b[2J"
     respx.post(f"{BASE}/api/auth/cli/claim").mock(

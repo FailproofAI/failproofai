@@ -167,11 +167,23 @@ _INVISIBLE = re.compile(
 )
 
 
+#: What a session token can be and still be sent back on every later request. A real one is
+#: 64 hex characters; a cookie or a header can't carry a control or a non-ASCII character.
+_SESSION_TOKEN = re.compile(r"[A-Za-z0-9._~+/=-]{1,4096}")
+
+
 def display_text(value: Any, max_chars: int = 200) -> Optional[str]:
     """A server-supplied string made safe to print, or ``None`` if nothing is left."""
     if not isinstance(value, str):
         return None
     return _INVISIBLE.sub("", value).strip()[:max_chars] or None
+
+
+def _machine_label() -> str:
+    """This machine's name, always sendable. Python hands back a hostname's non-UTF-8 bytes
+    as surrogates, which JSON can't carry, and the server refuses a label with nothing in it."""
+    name = socket.gethostname().encode("utf-8", "replace").decode("utf-8")
+    return display_text(name) or "unknown"
 
 
 def _within(value: Any, low: float, high: float, fallback: float) -> float:
@@ -281,7 +293,7 @@ def start_browser_login(
         base_url,
         "/api/auth/cli/start",
         {
-            "machine_label": socket.gethostname() or "unknown",
+            "machine_label": _machine_label(),
             "machine_os": "macOS" if sys.platform == "darwin" else platform_info.system().lower(),
             "cli_version": f"fp {__version__}",
             "kind": BROWSER_LOGIN_KIND,
@@ -428,7 +440,13 @@ def claim_browser_login(
     user_id, email = display_text(user.get("id")), display_text(user.get("email"))
     # No identity is no login: `persist_session` keeps the previous one when a field is
     # missing, which would save this session under whoever was signed in before.
-    if response.status_code != 201 or not isinstance(token, str) or not token or not user_id or not email:
+    if (
+        response.status_code != 201
+        or not isinstance(token, str)
+        or not _SESSION_TOKEN.fullmatch(token)
+        or not user_id
+        or not email
+    ):
         raise AuthError(
             "That login can't be finished any more.",
             hint="run fp login again",

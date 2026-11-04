@@ -15,6 +15,9 @@
 #   - fp-cloud-cli synced (`uv sync --locked --extra dev`), or FP=<path to fp>
 #   - optionally a Cloud with `failproofai config`'s login but not `fp`'s, on
 #     $CLOUD_1090 with its Postgres in $PG_1090. Skipped when unset.
+#   - optionally the same dashboard image with DASHBOARD_TRUSTED_INGRESS=1 on
+#     $TRUSTED_DASH, for the different-network warning. This script plays the ingress
+#     by setting the header itself. Skipped when unset.
 #
 # Not part of `bun run test:e2e`: like the other harnesses here, it is run
 # deliberately (see README.md in this directory). It stops and restarts the
@@ -36,6 +39,8 @@ REDIS_CONTAINER=${REDIS_CONTAINER:-$STACK-redis-1}
 FP=${FP:-$R/fp-cloud-cli/.venv/bin/fp}
 CLOUD_1090=${CLOUD_1090:-}
 PG_1090=${PG_1090:-}
+TRUSTED_DASH=${TRUSTED_DASH:-}
+PERSON_DASH=$DASH  # which dashboard a person's calls go to
 KEEP=${KEEP:-0}  # 1 = leave the temp dir behind, for reading transcripts
 STAMP=$(date +%s)
 OUT=$(mktemp -d)
@@ -94,8 +99,8 @@ sign_in() { # <email> -> its session, through the real email-code flow
 person() { # <session> <action> <json> [address] -> body; status in $OUT/status
   local xff=()
   [ -n "${4:-}" ] && xff=(-H "x-forwarded-for: $4")
-  curl -s -o "$OUT/body" -w '%{http_code}' -X POST "$DASH/api/auth/cli/$2" -b "ae_session=$1" \
-    "${xff[@]}" -H "origin: $DASH" -H 'content-type: application/json' -d "$3" > "$OUT/status"
+  curl -s -o "$OUT/body" -w '%{http_code}' -X POST "$PERSON_DASH/api/auth/cli/$2" -b "ae_session=$1" \
+    "${xff[@]}" -H "origin: $PERSON_DASH" -H 'content-type: application/json' -d "$3" > "$OUT/status"
   cat "$OUT/body"
 }
 
@@ -451,80 +456,106 @@ else
 fi
 
 # ═════════════════════════════════════════════════════════════════════════════
-head1 "PHASE 11 — the network warning and the email"
-api_start() { # <address> -> start response
+head1 "PHASE 11 — no trusted ingress: no address is believed, and the email always goes out"
+api_start() { # <dashboard> <address> -> start response
   unthrottle
-  curl -s -X POST "$DASH/api/auth/cli/start" -H "x-forwarded-for: $1" -H 'content-type: application/json' \
+  curl -s -X POST "$1/api/auth/cli/start" -H "x-forwarded-for: $2" -H 'content-type: application/json' \
     -d '{"machine_label":"e2e-box","machine_os":"linux","cli_version":"fp e2e","kind":"session"}'
 }
-api_claim() { curl -s -X POST "$DASH/api/auth/cli/claim" -H 'content-type: application/json' -d "{\"poll_secret\":\"$1\"}"; }
+api_claim() { curl -s -X POST "$1/api/auth/cli/claim" -H 'content-type: application/json' -d "{\"poll_secret\":\"$2\"}"; }
+requester_of() { sql "select coalesce(requester_address, 'none') from cli_login_requests where link_token_hash = encode(sha256('$1'::bytea), 'hex')"; }
 
-AWAY="fp-away-$STAMP@example.test"
-AWAY_SESSION=$(sign_in "$AWAY")
-S=$(api_start 203.0.113.7)
+# What a forger would do with nothing in front of the dashboard: write the victim's own
+# address on the request that starts the login.
+FORGED="fp-forged-$STAMP@example.test"
+FORGED_SESSION=$(sign_in "$FORGED")
+S=$(api_start "$DASH" 203.0.113.7)
 LINK=$(link_token "$(echo "$S" | jqp '["verification_url"]')")
 SECRET=$(echo "$S" | jqp '["poll_secret"]')
-PAGE=$(person "$AWAY_SESSION" lookup "{\"link_token\":\"$LINK\"}" 198.51.100.9)
-eq "another network: the page warns" "$(echo "$PAGE" | jqp '["different_network"]')" "True"
-eq "…and names the address" "$(echo "$PAGE" | jqp '["requester_address"]')" "203.0.113.7"
-person "$AWAY_SESSION" approve "{\"link_token\":\"$LINK\",\"client_address\":\"203.0.113.7\"}" 198.51.100.9 >/dev/null
-C=$(api_claim "$SECRET")
-has "…the session is still handed over: it warns, it doesn't block" "$C" "session_token"
-AWAY_TOKEN=$(echo "$C" | jqp '["session_token"]')
-wait_sign_in_mail "$AWAY"
-eq "…one email, even though the page forged a matching address" "$(sign_in_mails "$AWAY")" "1"
-M=$(sign_in_mail_text "$AWAY")
+eq "a forged address is not stored" "$(requester_of "$LINK")" "none"
+PAGE=$(person "$FORGED_SESSION" lookup "{\"link_token\":\"$LINK\"}" 203.0.113.7)
+eq "…and the page has nothing to compare" "$(echo "$PAGE" | jqp '["different_network"]')" "False"
+eq "…so it names no address" "$(echo "$PAGE" | jqp '["requester_address"]')" "None"
+person "$FORGED_SESSION" approve "{\"link_token\":\"$LINK\"}" 203.0.113.7 >/dev/null
+C=$(api_claim "$DASH" "$SECRET")
+has "the session is handed over" "$C" "session_token"
+CLAIMED_TOKEN=$(echo "$C" | jqp '["session_token"]')
+wait_sign_in_mail "$FORGED"
+eq "…and matching forged addresses can't silence the email" "$(sign_in_mails "$FORGED")" "1"
+M=$(sign_in_mail_text "$FORGED")
 has "…naming the machine" "$M" "fp on e2e-box signed in"
-has "…and where the login started" "$M" "The login started from 203.0.113.7"
 has "…and what that terminal now has" "$M" "in all your organizations"
-hasnt "…carrying no secret" "$M" "$AWAY_TOKEN"
+hasnt "…not claiming to know where it started" "$M" "started from"
+hasnt "…and carrying no secret" "$M" "$CLAIMED_TOKEN"
 
-SAME="fp-same-$STAMP@example.test"
-SAME_SESSION=$(sign_in "$SAME")
-S=$(api_start 203.0.113.8)
-LINK=$(link_token "$(echo "$S" | jqp '["verification_url"]')")
-SECRET=$(echo "$S" | jqp '["poll_secret"]')
-PAGE=$(person "$SAME_SESSION" lookup "{\"link_token\":\"$LINK\"}" 203.0.113.8)
-eq "the same network: no warning" "$(echo "$PAGE" | jqp '["different_network"]')" "False"
-eq "…and no address" "$(echo "$PAGE" | jqp '["requester_address"]')" "None"
-person "$SAME_SESSION" approve "{\"link_token\":\"$LINK\"}" 203.0.113.8 >/dev/null
-api_claim "$SECRET" >/dev/null
-sleep 4
-eq "…and no email" "$(sign_in_mails "$SAME")" "0"
-
-# The real `fp`, approved from the same machine: the everyday login stays quiet.
-# (With nothing in front of the dashboard, Next fills in x-forwarded-for from the socket,
-# so both ends read as the docker gateway here. "Can't be compared" is in cli_login_test.rs.)
-LOCAL="fp-local-$STAMP@example.test"
-LOCAL_SESSION=$(sign_in "$LOCAL")
+# The real `fp`, same machine, on a deployment like this one.
+PLAIN="fp-plain-$STAMP@example.test"
+PLAIN_SESSION=$(sign_in "$PLAIN")
 reset_fp
-run_fp samebox "$MENU,key:enter,url" "$DASH" -- login
-LINK=$(link_token "$(wait_url samebox)")
-PAGE=$(person "$LOCAL_SESSION" lookup "{\"link_token\":\"$LINK\"}")
-eq "the real fp, same machine: no warning" "$(echo "$PAGE" | jqp '["different_network"]')" "False"
-person "$LOCAL_SESSION" approve "{\"link_token\":\"$LINK\"}" >/dev/null
-wait_done samebox >/dev/null
-sleep 4
-eq "…and no email" "$(sign_in_mails "$LOCAL")" "0"
+run_fp plainbox "$MENU,key:enter,url" "$DASH" -- login
+LINK=$(link_token "$(wait_url plainbox)")
+PAGE=$(person "$PLAIN_SESSION" lookup "{\"link_token\":\"$LINK\"}")
+eq "the real fp: no warning" "$(echo "$PAGE" | jqp '["different_network"]')" "False"
+person "$PLAIN_SESSION" approve "{\"link_token\":\"$LINK\"}" >/dev/null
+wait_done plainbox >/dev/null
+wait_sign_in_mail "$PLAIN"
+eq "…and the email goes out" "$(sign_in_mails "$PLAIN")" "1"
 
-# The real `fp`, approved from somewhere else: what a phished link looks like.
-reset_fp
-run_fp elsewhere "$MENU,key:enter,url" "$DASH" -- login
-LINK=$(link_token "$(wait_url elsewhere)")
-PAGE=$(person "$LOCAL_SESSION" lookup "{\"link_token\":\"$LINK\"}" 198.51.100.50)
-eq "the real fp, approved elsewhere: the page warns" "$(echo "$PAGE" | jqp '["different_network"]')" "True"
-ADDRESS=$(echo "$PAGE" | jqp '["requester_address"]')
-[ -n "$ADDRESS" ] && [ "$ADDRESS" != None ] && ok "…naming where it started ($ADDRESS)" || bad "…naming where it started" "$PAGE"
-person "$LOCAL_SESSION" approve "{\"link_token\":\"$LINK\"}" 198.51.100.50 >/dev/null
-T=$(wait_done elsewhere)
-eq "…and fp still finishes: a warning, not a block" "$(cat "$OUT/elsewhere.rc")" "0"
-wait_sign_in_mail "$LOCAL"
-eq "…with one email" "$(sign_in_mails "$LOCAL")" "1"
-has "…naming the machine" "$(sign_in_mail_text "$LOCAL")" "fp on $(hostname) signed in"
+# ═════════════════════════════════════════════════════════════════════════════
+head1 "PHASE 11b — behind a trusted ingress: the warning, and an email only when it matters"
+if [ -n "$TRUSTED_DASH" ]; then
+  PERSON_DASH=$TRUSTED_DASH
+  AWAY="fp-away-$STAMP@example.test"
+  AWAY_SESSION=$(sign_in "$AWAY")
+  S=$(api_start "$TRUSTED_DASH" 203.0.113.17)
+  LINK=$(link_token "$(echo "$S" | jqp '["verification_url"]')")
+  SECRET=$(echo "$S" | jqp '["poll_secret"]')
+  eq "the address that started it is kept" "$(requester_of "$LINK")" "203.0.113.17"
+  PAGE=$(person "$AWAY_SESSION" lookup "{\"link_token\":\"$LINK\"}" 198.51.100.9)
+  eq "another network: the page warns" "$(echo "$PAGE" | jqp '["different_network"]')" "True"
+  eq "…and names the address" "$(echo "$PAGE" | jqp '["requester_address"]')" "203.0.113.17"
+  person "$AWAY_SESSION" approve "{\"link_token\":\"$LINK\",\"client_address\":\"203.0.113.17\"}" 198.51.100.9 >/dev/null
+  C=$(api_claim "$TRUSTED_DASH" "$SECRET")
+  has "…the session is still handed over: it warns, it doesn't block" "$C" "session_token"
+  wait_sign_in_mail "$AWAY"
+  eq "…one email, even though the page forged a matching address" "$(sign_in_mails "$AWAY")" "1"
+  has "…saying where the login started" "$(sign_in_mail_text "$AWAY")" "The login started from 203.0.113.17"
+
+  SAME="fp-same-$STAMP@example.test"
+  SAME_SESSION=$(sign_in "$SAME")
+  S=$(api_start "$TRUSTED_DASH" 203.0.113.18)
+  LINK=$(link_token "$(echo "$S" | jqp '["verification_url"]')")
+  SECRET=$(echo "$S" | jqp '["poll_secret"]')
+  PAGE=$(person "$SAME_SESSION" lookup "{\"link_token\":\"$LINK\"}" 203.0.113.18)
+  eq "the same network: no warning" "$(echo "$PAGE" | jqp '["different_network"]')" "False"
+  eq "…and no address" "$(echo "$PAGE" | jqp '["requester_address"]')" "None"
+  person "$SAME_SESSION" approve "{\"link_token\":\"$LINK\"}" 203.0.113.18 >/dev/null
+  api_claim "$TRUSTED_DASH" "$SECRET" >/dev/null
+  sleep 4
+  eq "…and no email" "$(sign_in_mails "$SAME")" "0"
+
+  # The real `fp`, approved from somewhere else: what a phished link looks like.
+  LOCAL="fp-local-$STAMP@example.test"
+  LOCAL_SESSION=$(sign_in "$LOCAL")
+  reset_fp
+  run_fp elsewhere "$MENU,key:enter,url" "$TRUSTED_DASH" -- login
+  LINK=$(link_token "$(wait_url elsewhere)")
+  PAGE=$(person "$LOCAL_SESSION" lookup "{\"link_token\":\"$LINK\"}" 198.51.100.50)
+  eq "the real fp, approved elsewhere: the page warns" "$(echo "$PAGE" | jqp '["different_network"]')" "True"
+  person "$LOCAL_SESSION" approve "{\"link_token\":\"$LINK\"}" 198.51.100.50 >/dev/null
+  T=$(wait_done elsewhere)
+  eq "…and fp still finishes: a warning, not a block" "$(cat "$OUT/elsewhere.rc")" "0"
+  wait_sign_in_mail "$LOCAL"
+  eq "…with one email" "$(sign_in_mails "$LOCAL")" "1"
+  has "…naming the machine" "$(sign_in_mail_text "$LOCAL")" "fp on $(hostname) signed in"
+  PERSON_DASH=$DASH
+else
+  printf '  \033[33mSKIP\033[0m the different-network warning (set TRUSTED_DASH)\n'
+fi
 
 # ═════════════════════════════════════════════════════════════════════════════
 head1 "PHASE 12 — what must be refused"
-S=$(api_start 203.0.113.9)
+S=$(api_start "$DASH" 203.0.113.9)
 LINK=$(link_token "$(echo "$S" | jqp '["verification_url"]')")
 SECRET=$(echo "$S" | jqp '["poll_secret"]')
 BAD=$(curl -s -o /dev/null -w '%{http_code}' -X POST "$DASH/api/auth/cli/start" -H 'x-forwarded-for: 203.0.113.10' -H 'content-type: application/json' -d '{"machine_label":"x","kind":"root"}')
@@ -565,7 +596,7 @@ eq "…and revokes it on the server" "$(sql "select revoked_at is not null from 
 for c in "$SERVER_CONTAINER" "$DASH_CONTAINER"; do
   L=$(docker logs "$c" 2>&1)
   hasnt "$c logs no session token" "$L" "$TOKEN"
-  hasnt "$c logs no session token from the emails phase" "$L" "$AWAY_TOKEN"
+  hasnt "$c logs no session token from the emails phase" "$L" "$CLAIMED_TOKEN"
   hasnt "$c logs no poll secret" "$L" "$SECRET"
 done
 

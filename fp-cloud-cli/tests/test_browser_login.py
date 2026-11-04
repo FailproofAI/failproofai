@@ -340,9 +340,14 @@ class _Box:
 
     def __init__(self, *keys):
         self.keys = list(keys)
+        self.ended = []
 
     def working(self, _text):
         pass
+
+    def link_ended(self, message):
+        self.ended.append((message, list(self.keys)))
+        return False
 
     def wait_key(self, _seconds):
         key = self.keys.pop(0) if self.keys else None
@@ -382,6 +387,33 @@ def test_esc_pressed_during_the_last_poll_means_no_session(approved_link, before
 def test_any_other_key_pressed_during_the_last_poll_changes_nothing(approved_link):
     assert auth_cmds._browser_login_in_box(_state(), BASE, _Box("x", "ENTER"))[0] == "tok"
     assert approved_link == [1]
+
+
+@pytest.mark.parametrize("final", ["denied", "expired"])
+def test_enter_pressed_during_the_last_poll_cannot_answer_a_screen_nobody_saw(approved_link, monkeypatch, final):
+    # It would take the next link straight away, with the denial on screen for no time at all.
+    monkeypatch.setattr(auth, "await_browser_approval", lambda *_a, **_k: final)
+    box = _Box("ENTER", "")
+    assert auth_cmds._browser_login_in_box(_state(), BASE, box) is auth_cmds._BACK_TO_MENU
+    assert [keys for _message, keys in box.ended] == [[]]
+
+
+def test_esc_pressed_during_the_last_poll_of_a_denied_link_still_cancels(approved_link, monkeypatch):
+    monkeypatch.setattr(auth, "await_browser_approval", lambda *_a, **_k: "denied")
+    box = _Box("ESC")
+    with pytest.raises(selectmod.LoginCancelled):
+        auth_cmds._browser_login_in_box(_state(), BASE, box)
+    assert box.ended == []
+
+
+@pytest.mark.parametrize("step", ["start_browser_login", "claim_browser_login"])
+def test_ctrl_c_during_any_request_of_a_browser_login_cancels_calmly(approved_link, monkeypatch, step):
+    def interrupted(*_a, **_k):
+        raise KeyboardInterrupt()
+
+    monkeypatch.setattr(auth, step, interrupted)
+    with pytest.raises(selectmod.LoginCancelled):
+        auth_cmds._browser_login_in_box(_state(), BASE, _Box())
 
 
 # --- the command, on a terminal with no raw mode ----------------------------

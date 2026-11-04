@@ -342,8 +342,10 @@ has "…calmly" "$T" "cancelled"
 
 # A person who presses esc while a poll is in flight has said no, even if that poll comes
 # back approved. Only a stand-in can hold a poll open, so this one records every claim.
-python3 - "$OUT/held.port" "$OUT/held.claims" <<'PY' &
-import http.server, json, sys, time
+python3 - "$OUT/held.port" "$OUT/held.claims" "$OUT/held.mode" "$OUT/held.starts" <<'PY' &
+import http.server, json, os, sys, time
+def mode():
+    return open(sys.argv[3]).read().strip() if os.path.exists(sys.argv[3]) else ""
 class H(http.server.BaseHTTPRequestHandler):
     def reply(self, code, body):
         data = json.dumps(body).encode()
@@ -357,13 +359,19 @@ class H(http.server.BaseHTTPRequestHandler):
     def do_POST(self):
         self.rfile.read(int(self.headers.get("content-length", 0)))
         if self.path.endswith("/start"):
+            open(sys.argv[4], "a").write("start\n")
+            if mode() == "slow-start":
+                time.sleep(8)
             self.reply(201, {"verification_url": f"http://{self.headers['host']}/cli/authorize?r=" + "a" * 64,
                              "poll_secret": "p", "expires_in": 600, "interval": 1, "kind": "session"})
         elif self.path.endswith("/poll"):
-            time.sleep(4)
-            self.reply(200, {"status": "approved"})
+            if mode() != "slow-claim":
+                time.sleep(4)
+            self.reply(200, {"status": "denied" if mode() == "denied" else "approved"})
         elif self.path.endswith("/claim"):
             open(sys.argv[2], "a").write("claim\n")
+            if mode() == "slow-claim":
+                time.sleep(8)
             self.reply(201, {"session_token": "HELD-TOKEN", "expires_in_secs": 3600,
                              "user": {"id": "u1", "email": "held@example.test"}})
     def log_message(self, *a): pass
@@ -394,6 +402,42 @@ run_fp notheld "$MENU,key:enter,url" "$HELD" -- login
 wait_url notheld >/dev/null
 T=$(wait_done notheld)
 eq "the same poll with no key pressed does claim, so the stand-in is a fair test" "$(cat "$OUT/held.claims" 2>/dev/null | wc -l)" "1"
+
+# Enter pressed during a poll that comes back denied was pressed at a screen that's gone.
+reset_fp
+echo denied > "$OUT/held.mode"
+rm -f "$OUT/held.starts"
+run_fp heldenter "$MENU,key:enter,url,wait:waiting for you,sleep:1,key:enter,wait:not authorized,sleep:2,key:esc,$MENU,key:esc" "$HELD" -- login
+wait_url heldenter >/dev/null
+T=$(wait_done heldenter)
+eq "enter during a poll that comes back denied doesn't take a new link" "$(wc -l < "$OUT/held.starts")" "1"
+has "…the denial stays on screen until it's answered" "$T" "new link"
+eq "…and the person can still leave" "$(cat "$OUT/heldenter.rc")" "0"
+reset_fp
+rm -f "$OUT/held.starts"
+run_fp heldescdeny "$MENU,key:enter,url,wait:waiting for you,sleep:1,key:esc" "$HELD" -- login
+wait_url heldescdeny >/dev/null
+T=$(wait_done heldescdeny)
+eq "esc during a poll that comes back denied exits 0" "$(cat "$OUT/heldescdeny.rc")" "0"
+has "…calmly, as the screen promised" "$T" "cancelled"
+eq "…with one link" "$(wc -l < "$OUT/held.starts")" "1"
+
+# Ctrl-C at any request, not only during a poll.
+reset_fp
+echo slow-start > "$OUT/held.mode"
+run_fp heldstart "$MENU,key:enter,wait:asking for a link,sleep:1,key:ctrl-c" "$HELD" -- login
+T=$(wait_done heldstart)
+eq "ctrl-c while asking for a link exits 0" "$(cat "$OUT/heldstart.rc")" "0"
+has "…calmly" "$T" "cancelled"
+reset_fp
+echo slow-claim > "$OUT/held.mode"
+rm -f "$OUT/held.claims"
+run_fp heldclaim "$MENU,key:enter,url,wait:finishing sign-in,sleep:1,key:ctrl-c" "$HELD" -- login
+wait_url heldclaim >/dev/null
+T=$(wait_done heldclaim)
+eq "ctrl-c while finishing exits 0" "$(cat "$OUT/heldclaim.rc")" "0"
+has "…calmly" "$T" "cancelled"
+eq "…and saves nothing" "$(saved session_token)" ""
 kill "$HELD_PID" 2>/dev/null
 
 # ═════════════════════════════════════════════════════════════════════════════

@@ -145,28 +145,30 @@ def _browser_login_in_box(state: AppState, base: str, box: selectmod.LoginBox):
         box.waiting(f"{next(frames)} {doing} · {minutes}:{seconds:02d} · esc to cancel")
         box.wait_key(0.1)
 
-    while True:
-        box.working("asking for a link…")
-        login = auth.start_browser_login(base, **options)
-        if login is None:
-            return None
-        _offer_link(login.verification_url)
-        try:
+    try:
+        while True:
+            box.working("asking for a link…")
+            login = auth.start_browser_login(base, **options)
+            if login is None:
+                return None
+            _offer_link(login.verification_url)
             # ponytail: Esc during a stalled poll waits out its 10s timeout (Ctrl-C doesn't);
             # polling on a thread would fix that if it ever matters.
             outcome = auth.await_browser_approval(base, login, tick=tick, **options)
-        except KeyboardInterrupt:  # Ctrl-C during a poll, outside `wait_key`
-            raise selectmod.LoginCancelled()
-        if outcome == "approved":
-            # A key pressed during the last poll is still waiting to be read, and Esc means no
-            # session. This is the last moment that can be honoured: the claim creates it.
+            # A key pressed during the last poll is still waiting to be read. Esc means no
+            # session, and this is the last moment that can be honoured: the claim creates it.
+            # Anything else was pressed at a screen that's gone, and must not answer the next
+            # one: Enter would take a new link with "not authorized" on screen for no time.
             # `is not None`: the first byte of a non-ASCII character reads as "".
             while box.wait_key(0) is not None:
                 pass
-            box.working("finishing sign-in…")
-            return auth.claim_browser_login(base, login.poll_secret, **options)
-        if not box.link_ended(_LINK_ENDED.get(outcome, "that link can't be used any more")):
-            return _BACK_TO_MENU
+            if outcome == "approved":
+                box.working("finishing sign-in…")
+                return auth.claim_browser_login(base, login.poll_secret, **options)
+            if not box.link_ended(_LINK_ENDED.get(outcome, "that link can't be used any more")):
+                return _BACK_TO_MENU
+    except KeyboardInterrupt:  # Ctrl-C during a request, outside `wait_key`
+        raise selectmod.LoginCancelled()
 
 
 def _browser_login_plain(state: AppState, base: str):

@@ -152,10 +152,16 @@ def _browser_login_in_box(state: AppState, base: str, box: selectmod.LoginBox):
             return None
         _offer_link(login.verification_url)
         try:
+            # ponytail: Esc during a stalled poll waits out its 10s timeout (Ctrl-C doesn't);
+            # polling on a thread would fix that if it ever matters.
             outcome = auth.await_browser_approval(base, login, tick=tick, **options)
         except KeyboardInterrupt:  # Ctrl-C during a poll, outside `wait_key`
             raise selectmod.LoginCancelled()
         if outcome == "approved":
+            # A key pressed during the last poll is still waiting to be read, and Esc means no
+            # session. This is the last moment that can be honoured: the claim creates it.
+            while box.wait_key(0):
+                pass
             box.working("finishing sign-in…")
             return auth.claim_browser_login(base, login.poll_secret, **options)
         if not box.link_ended(_LINK_ENDED.get(outcome, "that link can't be used any more")):
@@ -172,9 +178,16 @@ def _browser_login_plain(state: AppState, base: str):
         return None
     _offer_link(login.verification_url)
     output.info("waiting for you to authorize — ctrl-c to cancel")
-    outcome = auth.await_browser_approval(
-        base, login, tick=lambda _left, _offline: time.sleep(0.25), **options
-    )
+    was_offline = False
+
+    def tick(_left: float, offline: bool) -> None:
+        nonlocal was_offline
+        if offline and not was_offline:
+            output.info("reconnecting…")
+        was_offline = offline
+        time.sleep(0.25)
+
+    outcome = auth.await_browser_approval(base, login, tick=tick, **options)
     if outcome == "approved":
         return auth.claim_browser_login(base, login.poll_secret, **options)
     raise AuthError(
@@ -393,9 +406,15 @@ def login(
     creds = None
     # A terminal this can't draw the box on (Windows). Pipes, CI and `--json` skip this.
     if not state.json and not email and selectmod.stdin_is_tty():
-        answer = str(output.prompt("sign in with [browser/email]", default="browser"))
-        if answer.strip().lower() != "email":
-            creds = _browser_login_plain(state, base)
+        answer = ""
+        while answer not in _SIGN_IN_WITH:
+            answer = str(output.prompt("sign in with [browser/email]", default="browser")).strip().lower()
+        if answer == "browser":
+            try:
+                creds = _browser_login_plain(state, base)
+            except KeyboardInterrupt:
+                output.info("cancelled — not signed in")
+                return
             method = "browser" if creds else "email"
     if creds is None:
         if not email:

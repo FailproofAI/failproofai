@@ -192,9 +192,9 @@ def _is_openable(url: Any) -> bool:
         return False
     try:
         parts = urlsplit(url)
-    except ValueError:
+        return parts.scheme in ("http", "https") and bool(parts.hostname) and parts.port != 0
+    except ValueError:  # malformed, or `.port` past 65535
         return False
-    return parts.scheme in ("http", "https") and bool(parts.hostname)
 
 
 def can_open_browser(
@@ -423,7 +423,12 @@ def claim_browser_login(
         )
     body = _json_object(response) or {}
     token = body.get("session_token")
-    if response.status_code != 201 or not isinstance(token, str) or not token:
+    user = body.get("user")
+    user = user if isinstance(user, dict) else {}
+    user_id, email = display_text(user.get("id")), display_text(user.get("email"))
+    # No identity is no login: `persist_session` keeps the previous one when a field is
+    # missing, which would save this session under whoever was signed in before.
+    if response.status_code != 201 or not isinstance(token, str) or not token or not user_id or not email:
         raise AuthError(
             "That login can't be finished any more.",
             hint="run fp login again",
@@ -431,9 +436,7 @@ def claim_browser_login(
         )
     # The server's own range for a session lifetime. Past it `timedelta` raises on saving.
     expires_in = int(_within(body.get("expires_in_secs"), 60, 30 * 86400, 86400))
-    user = body.get("user")
-    user = user if isinstance(user, dict) else {}
-    return token, expires_in, {"id": display_text(user.get("id")), "email": display_text(user.get("email"))}
+    return token, expires_in, {"id": user_id, "email": email}
 
 
 def persist_session(

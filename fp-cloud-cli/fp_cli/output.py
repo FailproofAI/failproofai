@@ -300,7 +300,7 @@ def auth_header() -> None:
     _stderr.print()
     screen_header(_stderr)
     _stderr.print(Text("SIGN IN", style="bold"))
-    _stderr.print("  [dim]welcome — let's get you signed in with a one-time code[/]")
+    _stderr.print("  [dim]welcome — let's get you signed in[/]")
     _stderr.print()
 
 

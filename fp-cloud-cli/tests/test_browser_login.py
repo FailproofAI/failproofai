@@ -16,7 +16,10 @@ import pytest
 import respx
 
 from fp_cli import auth, config
+from fp_cli import select as selectmod
+from fp_cli._context import AppState
 from fp_cli.app import app
+from fp_cli.commands import auth_cmds
 from fp_cli.errors import ApiError, AuthError, NetworkError
 
 BASE = "http://dash.test"
@@ -86,6 +89,9 @@ def test_a_cloud_that_cannot_do_this_reads_as_unsupported(response):
         "ssh://dash.test",
         "http://",
         "https://:443/cli/authorize?r=abc",
+        "https://dash.test:99999/cli/authorize?r=abc",
+        "https://dash.test:0/cli/authorize?r=abc",
+        "https://[broken/cli/authorize?r=abc",
         f"{LINK}\x1b]0;pwned\x07",
         f"{LINK} --and-more",
         None,
@@ -234,6 +240,21 @@ def test_claim_refuses_anything_but_a_session():
 
 
 @respx.mock
+@pytest.mark.parametrize(
+    "user",
+    [None, {}, {"id": "u1"}, {"email": "me@test"}, {"id": "u1", "email": ""}, {"id": "u1", "email": "\x1b\u200b"}, "me"],
+)
+def test_a_claim_with_no_identity_is_no_login(user):
+    # `persist_session` keeps the previous identity when a field is missing, so this
+    # would otherwise save the new session under whoever was signed in before.
+    respx.post(f"{BASE}/api/auth/cli/claim").mock(
+        return_value=httpx.Response(201, json={**CLAIMED, "user": user})
+    )
+    with pytest.raises(AuthError):
+        auth.claim_browser_login(BASE, "POLL")
+
+
+@respx.mock
 def test_what_the_server_says_about_the_person_cannot_drive_the_terminal():
     evil = "me\x1b]0;pwned\x07@te‮st\x1b[2J"
     respx.post(f"{BASE}/api/auth/cli/claim").mock(
@@ -283,6 +304,56 @@ def test_opening_uses_the_platform_handler_detached_and_never_raises(monkeypatch
 
     monkeypatch.setattr(auth.subprocess, "Popen", missing)
     auth.open_url(LINK, "linux")
+
+
+# --- the box, at the moment it claims ----------------------------------------
+
+
+class _Box:
+    """A login box with a queue of keys already pressed. `fp-login.sh` drives the real one."""
+
+    def __init__(self, *keys):
+        self.keys = list(keys)
+
+    def working(self, _text):
+        pass
+
+    def wait_key(self, _seconds):
+        key = self.keys.pop(0) if self.keys else None
+        if key == "ESC":
+            raise selectmod.LoginCancelled()
+        return key
+
+
+@pytest.fixture
+def approved_link(monkeypatch):
+    """A link whose last poll came back approved; returns the list of claims made."""
+    claims = []
+    monkeypatch.setattr(auth, "can_open_browser", lambda *_a: False)
+    monkeypatch.setattr(auth, "start_browser_login", lambda *_a, **_k: auth.BrowserLogin(LINK, "POLL", 60.0, 1.0))
+    monkeypatch.setattr(auth, "await_browser_approval", lambda *_a, **_k: "approved")
+
+    def claim(*_a, **_k):
+        claims.append(1)
+        return ("tok", 3600, CLAIMED["user"])
+
+    monkeypatch.setattr(auth, "claim_browser_login", claim)
+    return claims
+
+
+def _state():
+    return AppState(json=False, base_url=BASE, token=None, timeout=1.0, config=config.CliConfig())
+
+
+def test_esc_pressed_during_the_last_poll_means_no_session(approved_link):
+    with pytest.raises(selectmod.LoginCancelled):
+        auth_cmds._browser_login_in_box(_state(), BASE, _Box("x", "ESC"))
+    assert approved_link == []
+
+
+def test_any_other_key_pressed_during_the_last_poll_changes_nothing(approved_link):
+    assert auth_cmds._browser_login_in_box(_state(), BASE, _Box("x", "ENTER"))[0] == "tok"
+    assert approved_link == [1]
 
 
 # --- the command, on a terminal with no raw mode ----------------------------
@@ -381,6 +452,51 @@ def test_a_link_that_ends_leaves_nothing_saved(home, runner, plain_terminal, mon
     assert result.exit_code == 4, result.output
     assert not claim.called
     assert config.load_config().session_token is None
+
+
+@respx.mock
+def test_a_typo_at_the_prompt_asks_again_instead_of_starting_a_login(home, runner, plain_terminal):
+    start = respx.post(f"{BASE}/api/auth/cli/start")
+    respx.post(f"{BASE}/api/auth/otp/request").mock(return_value=httpx.Response(200, json={"ok": True}))
+    respx.post(f"{BASE}/api/auth/otp/verify").mock(return_value=httpx.Response(401))
+
+    runner.invoke(app, ["--base-url", BASE, "login"], input="emial\nemail\nme@test\n000000\n")
+
+    assert not start.called
+
+
+@respx.mock
+def test_ctrl_c_while_waiting_cancels_calmly(home, runner, plain_terminal, monkeypatch):
+    respx.post(f"{BASE}/api/auth/cli/start").mock(return_value=_start())
+    claim = respx.post(f"{BASE}/api/auth/cli/claim")
+
+    def interrupted(*_a, **_k):
+        raise KeyboardInterrupt()
+
+    monkeypatch.setattr(auth, "await_browser_approval", interrupted)
+
+    result = runner.invoke(app, ["--base-url", BASE, "login"], input="browser\n")
+
+    assert result.exit_code == 0, result.output
+    assert "cancelled" in result.output
+    assert not claim.called
+    assert config.load_config().session_token is None
+
+
+@respx.mock
+def test_the_plain_flow_says_when_it_is_reconnecting_once(home, runner, plain_terminal, monkeypatch):
+    _fast_links(monkeypatch)
+    respx.post(f"{BASE}/api/auth/cli/start").mock(return_value=_start())
+    respx.post(f"{BASE}/api/auth/cli/poll").mock(
+        side_effect=[httpx.ConnectError("x"), httpx.ConnectError("x"), httpx.Response(200, json={"status": "approved"})]
+    )
+    respx.post(f"{BASE}/api/auth/cli/claim").mock(return_value=httpx.Response(201, json=CLAIMED))
+    respx.get(f"{BASE}/api/auth/session").mock(return_value=httpx.Response(200, json=SESSION))
+
+    result = runner.invoke(app, ["--base-url", BASE, "login"], input="browser\n")
+
+    assert result.exit_code == 0, result.output
+    assert result.output.count("reconnecting") == 1
 
 
 @respx.mock

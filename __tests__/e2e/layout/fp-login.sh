@@ -333,6 +333,55 @@ T=$(wait_done ctrlc)
 eq "ctrl-c while waiting exits 0" "$(cat "$OUT/ctrlc.rc")" "0"
 has "…calmly" "$T" "cancelled"
 
+# A person who presses esc while a poll is in flight has said no, even if that poll comes
+# back approved. Only a stand-in can hold a poll open, so this one records every claim.
+python3 - "$OUT/held.port" "$OUT/held.claims" <<'PY' &
+import http.server, json, sys, time
+class H(http.server.BaseHTTPRequestHandler):
+    def reply(self, code, body):
+        data = json.dumps(body).encode()
+        self.send_response(code)
+        self.send_header("content-type", "application/json")
+        self.send_header("content-length", str(len(data)))
+        self.end_headers()
+        self.wfile.write(data)
+    def do_GET(self):
+        self.reply(200, {"id": "u1", "email": "held@example.test", "is_instance_admin": False, "memberships": []})
+    def do_POST(self):
+        self.rfile.read(int(self.headers.get("content-length", 0)))
+        if self.path.endswith("/start"):
+            self.reply(201, {"verification_url": f"http://{self.headers['host']}/cli/authorize?r=" + "a" * 64,
+                             "poll_secret": "p", "expires_in": 600, "interval": 1, "kind": "session"})
+        elif self.path.endswith("/poll"):
+            time.sleep(4)
+            self.reply(200, {"status": "approved"})
+        elif self.path.endswith("/claim"):
+            open(sys.argv[2], "a").write("claim\n")
+            self.reply(201, {"session_token": "HELD-TOKEN", "expires_in_secs": 3600,
+                             "user": {"id": "u1", "email": "held@example.test"}})
+    def log_message(self, *a): pass
+s = http.server.ThreadingHTTPServer(("127.0.0.1", 0), H)
+open(sys.argv[1], "w").write(str(s.server_address[1]))
+s.serve_forever()
+PY
+HELD_PID=$!
+for _ in $(seq 1 40); do [ -s "$OUT/held.port" ] && break; sleep 0.1; done
+HELD="http://127.0.0.1:$(cat "$OUT/held.port")"
+reset_fp
+run_fp held "$MENU,key:enter,url,wait:waiting for you,sleep:2,key:esc" "$HELD" -- login
+wait_url held >/dev/null
+T=$(wait_done held)
+eq "esc during a poll that comes back approved exits 0" "$(cat "$OUT/held.rc")" "0"
+has "…calmly" "$T" "cancelled"
+eq "…with no claim" "$(cat "$OUT/held.claims" 2>/dev/null | wc -l)" "0"
+eq "…and nothing saved" "$(saved session_token)" ""
+reset_fp
+run_fp notheld "$MENU,key:enter,url" "$HELD" -- login
+wait_url notheld >/dev/null
+T=$(wait_done notheld)
+eq "the same poll with no key pressed does claim, so the stand-in is a fair test" "$(cat "$OUT/held.claims" 2>/dev/null | wc -l)" "1"
+kill "$HELD_PID" 2>/dev/null
+
 # ═════════════════════════════════════════════════════════════════════════════
 head1 "PHASE 8 — a dropped connection is not an answer"
 reset_fp

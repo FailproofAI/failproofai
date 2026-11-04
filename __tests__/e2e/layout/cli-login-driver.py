@@ -89,12 +89,16 @@ def main() -> int:
             time.sleep(0.3)
             os.write(fd, arg.encode())
         elif kind == "typefile":
-            while not os.path.exists(arg):
-                if time.time() > deadline or not pump(0.2):
+            # Not just "exists": the shell creates the file before it writes to it.
+            data = b""
+            while not data:
+                if os.path.exists(arg):
+                    with open(arg, "rb") as f:
+                        data = f.read().strip()
+                if not data and (time.time() > deadline or not pump(0.2)):
                     print(f"driver: {arg} never appeared", file=sys.stderr)
                     return 124
-            with open(arg, "rb") as f:
-                os.write(fd, f.read().strip())
+            os.write(fd, data)
         elif kind == "sleep":
             end = time.time() + float(arg)
             while time.time() < end:

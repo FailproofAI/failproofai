@@ -85,6 +85,7 @@ def test_a_cloud_that_cannot_do_this_reads_as_unsupported(response):
         "javascript:alert(1)",
         "ssh://dash.test",
         "http://",
+        "https://:443/cli/authorize?r=abc",
         f"{LINK}\x1b]0;pwned\x07",
         f"{LINK} --and-more",
         None,
@@ -121,6 +122,12 @@ def test_a_servers_numbers_are_kept_to_a_range_this_client_can_live_with():
     route.mock(return_value=_start(expires_in="soon", interval=True))
     login = auth.start_browser_login(BASE)
     assert (login.expires_in, login.interval) == (600, 2)
+    # JSON integers have no size limit, and a float can be infinite.
+    route.mock(return_value=_start(expires_in=10**400, interval=10**400))
+    login = auth.start_browser_login(BASE)
+    assert (login.expires_in, login.interval) == (3600, 30)
+    route.mock(return_value=httpx.Response(201, text=json.dumps(STARTED).replace("600", "Infinity")))
+    assert auth.start_browser_login(BASE).expires_in == 600
 
 
 # --- poll -------------------------------------------------------------------
@@ -195,6 +202,18 @@ def test_waiting_gives_up_when_the_link_runs_out():
 def test_claim_returns_the_session_in_the_shape_of_the_emailed_code():
     respx.post(f"{BASE}/api/auth/cli/claim").mock(return_value=httpx.Response(201, json=CLAIMED))
     assert auth.claim_browser_login(BASE, "POLL") == ("tok-browser", 3600, CLAIMED["user"])
+
+
+@respx.mock
+@pytest.mark.parametrize("lifetime,saved", [(10**400, 30 * 86400), (0, 86400), ("soon", 86400), (None, 86400)])
+def test_a_servers_session_lifetime_cannot_crash_saving_it(home, lifetime, saved):
+    respx.post(f"{BASE}/api/auth/cli/claim").mock(
+        return_value=httpx.Response(201, json={**CLAIMED, "expires_in_secs": lifetime})
+    )
+    token, expires_in, user = auth.claim_browser_login(BASE, "POLL")
+    assert expires_in == saved
+    auth.persist_session(config.load_config(), BASE, token, expires_in, user)
+    assert config.load_config().session_token == "tok-browser"
 
 
 @respx.mock

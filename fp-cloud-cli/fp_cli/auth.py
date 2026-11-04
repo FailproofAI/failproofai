@@ -178,7 +178,9 @@ def _within(value: Any, low: float, high: float, fallback: float) -> float:
     """A server's number, kept to a range this client can live with."""
     if isinstance(value, bool) or not isinstance(value, (int, float)):
         return fallback
-    if not math.isfinite(value) or value <= 0:
+    # `isfinite` only on a float: JSON integers have no size limit, and past a float's
+    # range it raises instead of answering.
+    if (isinstance(value, float) and not math.isfinite(value)) or value <= 0:
         return fallback
     return min(high, max(low, value))
 
@@ -192,7 +194,7 @@ def _is_openable(url: Any) -> bool:
         parts = urlsplit(url)
     except ValueError:
         return False
-    return parts.scheme in ("http", "https") and bool(parts.netloc)
+    return parts.scheme in ("http", "https") and bool(parts.hostname)
 
 
 def can_open_browser(
@@ -427,10 +429,8 @@ def claim_browser_login(
             hint="run fp login again",
             request_id=request_id,
         )
-    try:
-        expires_in = int(body.get("expires_in_secs"))
-    except (TypeError, ValueError):
-        expires_in = 86400
+    # The server's own range for a session lifetime. Past it `timedelta` raises on saving.
+    expires_in = int(_within(body.get("expires_in_secs"), 60, 30 * 86400, 86400))
     user = body.get("user")
     user = user if isinstance(user, dict) else {}
     return token, expires_in, {"id": display_text(user.get("id")), "email": display_text(user.get("email"))}

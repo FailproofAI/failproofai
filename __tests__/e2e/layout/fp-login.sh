@@ -41,6 +41,7 @@ STAMP=$(date +%s)
 OUT=$(mktemp -d)
 FP_DIR="$OUT/fp-home"
 STUB_PID=""
+DASH_STOPPED=0
 
 PASS=0; FAIL=0
 ok()  { PASS=$((PASS+1)); printf '  \033[32mPASS\033[0m %s\n' "$1"; }
@@ -56,6 +57,8 @@ sql() { docker exec "$PG_CONTAINER" psql -U postgres -d agenteye -tAc "$1"; }
 
 cleanup() {
   [ -n "$STUB_PID" ] && kill "$STUB_PID" 2>/dev/null
+  # An interrupted run must not leave someone's stack without its dashboard.
+  [ "$DASH_STOPPED" = 1 ] && docker start "$DASH_CONTAINER" >/dev/null 2>&1
   if [ "$KEEP" = 1 ]; then echo "kept: $OUT"; else rm -rf "$OUT"; fi
 }
 trap cleanup EXIT
@@ -335,9 +338,11 @@ head1 "PHASE 8 — a dropped connection is not an answer"
 reset_fp
 run_fp drop "$MENU,key:enter,url,wait:waiting for you,wait:reconnecting,wait:waiting for you" "$DASH" -- login
 LINK=$(link_token "$(wait_url drop)")
+DASH_STOPPED=1
 docker stop -t 0 "$DASH_CONTAINER" >/dev/null
 sleep 5
 docker start "$DASH_CONTAINER" >/dev/null
+DASH_STOPPED=0
 for _ in $(seq 1 60); do curl -s -m 2 -o /dev/null "$DASH/login" && break; sleep 0.5; done
 ok "the dashboard went away and came back"
 person "$ONE_SESSION" approve "{\"link_token\":\"$LINK\"}" >/dev/null

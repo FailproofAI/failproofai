@@ -25,6 +25,14 @@ def stdin_is_tty() -> bool:  # noqa: D401
         return False
 
 
+def stderr_is_tty() -> bool:
+    """True iff stderr is an interactive terminal, so a person can see what's written there."""
+    try:
+        return sys.stderr.isatty()
+    except Exception:
+        return False
+
+
 def choose_org(slugs: Sequence[str], default: Optional[str] = None) -> str:
     """Render ``slugs`` and prompt until the user picks one (by slug or number).
 

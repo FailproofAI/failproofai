@@ -426,6 +426,7 @@ def test_ctrl_c_during_any_request_of_a_browser_login_cancels_calmly(approved_li
 @pytest.fixture
 def plain_terminal(monkeypatch):
     monkeypatch.setattr("fp_cli.select.stdin_is_tty", lambda: True)
+    monkeypatch.setattr("fp_cli.select.stderr_is_tty", lambda: True)
     monkeypatch.setattr("fp_cli.select.login_box_supported", lambda: False)
     # Never a real browser from a test run, wherever it runs.
     monkeypatch.setattr(auth, "open_url", lambda *_a, **_k: pytest.fail("opened a browser"))
@@ -563,6 +564,44 @@ def test_the_plain_flow_says_when_it_is_reconnecting_once(home, runner, plain_te
     assert result.exit_code == 0, result.output
     assert result.output.count("reconnecting") == 1
     assert "back online" in result.output
+
+
+@respx.mock
+def test_the_plain_flow_says_it_is_back_when_the_next_answer_is_the_approval(home, runner, plain_terminal, monkeypatch):
+    _fast_links(monkeypatch)
+    respx.post(f"{BASE}/api/auth/cli/start").mock(return_value=_start())
+    respx.post(f"{BASE}/api/auth/cli/poll").mock(
+        side_effect=[httpx.ConnectError("x"), httpx.Response(200, json={"status": "approved"})]
+    )
+    respx.post(f"{BASE}/api/auth/cli/claim").mock(return_value=httpx.Response(201, json=CLAIMED))
+    respx.get(f"{BASE}/api/auth/session").mock(return_value=httpx.Response(200, json=SESSION))
+
+    result = runner.invoke(app, ["--base-url", BASE, "login"], input="browser\n")
+
+    assert result.exit_code == 0, result.output
+    assert result.output.index("reconnecting") < result.output.index("back online")
+
+
+@respx.mock
+def test_a_redirected_stderr_keeps_the_old_prompts(home, runner, plain_terminal, monkeypatch):
+    # The link and the waiting would go to that file, and the person would watch nothing.
+    monkeypatch.setattr("fp_cli.select.stderr_is_tty", lambda: False)
+    start = respx.post(f"{BASE}/api/auth/cli/start")
+    respx.post(f"{BASE}/api/auth/otp/request").mock(return_value=httpx.Response(200, json={"ok": True}))
+    respx.post(f"{BASE}/api/auth/otp/verify").mock(
+        return_value=httpx.Response(
+            200,
+            json={"user": {"id": "u1", "email": "me@test"}, "expires_in_secs": 3600},
+            headers={"set-cookie": "ae_session=tok-otp; Path=/"},
+        )
+    )
+    respx.get(f"{BASE}/api/auth/session").mock(return_value=httpx.Response(200, json=SESSION))
+
+    result = runner.invoke(app, ["--base-url", BASE, "login"], input="me@test\n123456\n")
+
+    assert result.exit_code == 0, result.output
+    assert not start.called
+    assert config.load_config().session_token == "tok-otp"
 
 
 @respx.mock

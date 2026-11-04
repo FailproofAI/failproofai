@@ -194,6 +194,8 @@ def _browser_login_plain(state: AppState, base: str):
 
     outcome = auth.await_browser_approval(base, login, tick=tick, **options)
     if outcome == "approved":
+        if was_offline:
+            output.info("back online")
         return auth.claim_browser_login(base, login.poll_secret, **options)
     raise AuthError(
         f"{_LINK_ENDED.get(outcome, 'That link cannot be used any more')}.".capitalize(),
@@ -409,8 +411,9 @@ def login(
     output.auth_header()
     method = "email"
     creds = None
-    # A terminal this can't draw the box on (Windows). Pipes, CI and `--json` skip this.
-    if not state.json and not email and selectmod.stdin_is_tty():
+    # A terminal this can't draw the box on (Windows). Pipes, CI and `--json` skip this, and so
+    # does a redirected stderr: the link and the waiting would go to that file, out of sight.
+    if not state.json and not email and selectmod.stdin_is_tty() and selectmod.stderr_is_tty():
         answer = ""
         while answer not in _SIGN_IN_WITH:
             answer = str(output.prompt("sign in with [browser/email]", default="browser")).strip().lower()

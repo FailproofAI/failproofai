@@ -452,6 +452,11 @@ docker start "$DASH_CONTAINER" >/dev/null
 DASH_STOPPED=0
 for _ in $(seq 1 60); do curl -s -m 2 -o /dev/null "$DASH/login" && break; sleep 0.5; done
 ok "the dashboard went away and came back"
+# Only once it says it's waiting again, or the very next poll is the approval and it never does.
+for _ in $(seq 1 60); do
+  sed 's/\x1b\[[0-9;?]*[A-Za-z]//g' "$OUT/drop.log" | grep -a -E 'reconnecting|waiting for you' | tail -1 | grep -q 'waiting for you' && break
+  sleep 0.5
+done
 person "$ONE_SESSION" approve "{\"link_token\":\"$LINK\"}" >/dev/null
 T=$(wait_done drop)
 eq "fp finished on the same link" "$(cat "$OUT/drop.rc")" "0"
@@ -626,6 +631,12 @@ EARLY=$(curl -s -o /dev/null -w '%{http_code}' -X POST "$DASH/api/auth/cli/claim
 eq "no claim before approval" "$EARLY" "409"
 LINKCLAIM=$(curl -s -o /dev/null -w '%{http_code}' -X POST "$DASH/api/auth/cli/claim" -H 'content-type: application/json' -d "{\"poll_secret\":\"$LINK\"}")
 eq "the link cannot claim" "$LINKCLAIM" "404"
+# Sessions never slide. One that could approve its own replacement would never end.
+person "$CLAIMED_TOKEN" lookup "{\"link_token\":\"$LINK\"}" >/dev/null
+eq "a session claimed from a link can look at another link" "$(cat "$OUT/status")" "200"
+person "$CLAIMED_TOKEN" approve "{\"link_token\":\"$LINK\"}" >/dev/null
+eq "…but can't approve it, or it would renew itself for ever" "$(cat "$OUT/status")" "403"
+eq "…which leaves that link pending" "$(request_status "$LINK")" "pending"
 person "$ONE_SESSION" approve "{\"link_token\":\"$LINK\"}" >/dev/null
 FIRST=$(curl -s -o /dev/null -w '%{http_code}' -X POST "$DASH/api/auth/cli/claim" -H 'content-type: application/json' -d "{\"poll_secret\":\"$SECRET\"}")
 SECOND=$(curl -s -o /dev/null -w '%{http_code}' -X POST "$DASH/api/auth/cli/claim" -H 'content-type: application/json' -d "{\"poll_secret\":\"$SECRET\"}")

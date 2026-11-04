@@ -280,13 +280,48 @@ class LoginBox:
         # text_step's own loop shows the error; this is for the verify-fail re-prompt path.
         self._draw(error=message)
 
-    def pick(self, slugs: Sequence[str], *, default: Optional[str] = None) -> str:
-        """The nested org-picker inset: arrow keys move the cursor, Enter selects (collapses to
-        ``✓ org {slug}``), Esc / Ctrl-C raise ``LoginCancelled``."""
+    def waiting(self, text: str) -> None:
+        """Redraw the live line of a pending browser approval."""
+        self._draw(waiting=text)
+
+    def wait_key(self, seconds: float) -> Optional[str]:
+        """Up to ``seconds`` for a keypress: its token, or ``None``. Esc / Ctrl-C raise
+        ``LoginCancelled``."""
+        import select as _sel
+
+        try:
+            ready, _, _ = _sel.select([self._fd], [], [], seconds)
+            key = _read_key(self._fd) if ready else None
+        except KeyboardInterrupt:
+            raise LoginCancelled()
+        if key in ("ESC", "CTRL_C", "EOF"):
+            raise LoginCancelled()
+        return key
+
+    def link_ended(self, message: str) -> bool:
+        """A link that can't be used any more, inside the box. ``True`` asks for a new link
+        (Enter), ``False`` goes back to the menu (Esc), Ctrl-C raises ``LoginCancelled``."""
+        self._draw(failed=(message, "⏎ new link · esc back"))
+        while True:
+            try:
+                key = _read_key(self._fd)
+            except KeyboardInterrupt:
+                raise LoginCancelled()
+            if key == "ENTER":
+                return True
+            if key == "ESC":
+                return False
+            if key in ("CTRL_C", "EOF"):
+                raise LoginCancelled()
+
+    def pick(self, slugs: Sequence[str], *, default: Optional[str] = None,
+             title: str = "choose your org", step: str = "org", notes=None) -> str:
+        """The nested picker inset: arrow keys move the cursor, Enter selects (collapses to
+        ``✓ {step} {slug}``), Esc / Ctrl-C raise ``LoginCancelled``."""
         slugs = list(slugs)
         idx = slugs.index(default) if default in slugs else 0
         self.active = None
-        self._draw(inset=output.login_inset(slugs, idx))
+        self._draw(inset=output.login_inset(slugs, idx, title=title, notes=notes))
         while True:
             try:
                 key = _read_key(self._fd)
@@ -298,14 +333,14 @@ class LoginBox:
                 idx = (idx + 1) % len(slugs)
             elif key == "ENTER":
                 chosen = slugs[idx]
-                self.done.append(("org", chosen))
+                self.done.append((step, chosen))
                 self._draw()
                 return chosen
             elif key in ("ESC", "CTRL_C", "q", "EOF"):
                 raise LoginCancelled()
             else:
                 continue
-            self._draw(inset=output.login_inset(slugs, idx))
+            self._draw(inset=output.login_inset(slugs, idx, title=title, notes=notes))
 
     def finish(self, email: str, org: Optional[str]) -> None:
         """Final state: the outer border + legend flip SUCCESS green; ``● signed in`` + email + org."""

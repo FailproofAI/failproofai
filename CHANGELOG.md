@@ -2,6 +2,10 @@
 
 ## 1.0.14-beta.0 — 2026-11-02
 
+### Features
+
+- `fp login` can sign you in from a browser, as `failproofai config` does: on a terminal it asks browser or email code, and either way you get your own session. New deliberate-run harness: `__tests__/e2e/layout/fp-login.sh`.
+
 ### Dependencies
 
 - Replace Dependabot's #965 and #955, neither of which could install, and clear every fixable Dependabot alert in the TypeScript SDK's integration fixtures. `mastra-1` takes `@mastra/mcp` 2.7.0 with the `@mastra/core` 1.81.0 and `@mastra/memory` 1.40.0 it needs, `mastra-0` stays on Mastra 0.x and clears `@hono/node-server`, `systeminformation`, `glob` and `minimatch`, `deepmerge` leaves three fixtures through `html-to-text` 10.0.1, and the nested zod 3 leaves two. None of these lockfiles ship in a published package (#966)

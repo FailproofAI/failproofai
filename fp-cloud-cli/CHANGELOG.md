@@ -2,10 +2,9 @@
 
 ## 0.0.3b0 — 2026-10-25
 
-Open for the next release. `0.0.2` published on 2026-10-25 and the `bump` job
-moved the version here automatically; nothing has landed against `0.0.3b0` yet.
-Add entries as changes merge — this section becomes the GitHub Release body when
-it ships.
+### Added
+
+- `fp login` can sign you in from a browser. On a terminal it now asks: **browser** opens a link (over SSH or with no display it prints it, and it works from any device), you authorize it, and the terminal finishes on its own, or **email** sends the 6-digit code as before. `--email` goes straight to the code, and `--json` and anything without a terminal behave as they always did. A dashboard without browser login falls back to the code by itself and never creates a key. Either way you get the same session, with the same lifetime.
 
 ## 0.0.2 — 2026-10-25
 

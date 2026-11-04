@@ -389,34 +389,45 @@ def _login_slots(buf: str, slots: int) -> Text:
     return out
 
 
-def login_inset(slugs: Sequence[str], idx: int):
-    """The nested org-picker inset (a renderable inside the login frame): a ``choose your org · N``
-    title, then a FAINT-bordered inset box (a hair-lighter fill) with one row per org — ``❯`` cursor
-    (ACCENT) on row ``idx``, selected slug bright, others dim — then a FAINT key-hint line."""
-    title = Text()
-    title.append("choose your org", style=f"bold {theme.TEXT}")
-    title.append(f"  ·  {len(slugs)}", style=theme.FAINT)
+def login_inset(slugs: Sequence[str], idx: int, *, title: str = "choose your org", notes=None):
+    """The nested picker inset (a renderable inside the login frame): a ``{title} · N`` title,
+    then a FAINT-bordered inset box (a hair-lighter fill) with one row per choice — ``❯`` cursor
+    (ACCENT) on row ``idx``, selected slug bright, others dim, and its ``notes`` entry if any —
+    then a FAINT key-hint line."""
+    heading = Text()
+    heading.append(title, style=f"bold {theme.TEXT}")
+    if notes is None:  # a count says something about a list of orgs, not about a menu
+        heading.append(f"  ·  {len(slugs)}", style=theme.FAINT)
     table = Table(box=None, show_header=False, pad_edge=False, padding=(0, 2, 0, 0))
+    table.add_column(no_wrap=True)
     table.add_column(no_wrap=True)
     table.add_column(no_wrap=True)
     for i, slug in enumerate(slugs):
         selected = i == idx
         ptr = Text("❯", style=f"bold {theme.ACCENT}") if selected else Text(" ")
         name = Text(str(slug), style=theme.TEXT if selected else theme.TEXT_DIM)
-        table.add_row(ptr, name)
+        table.add_row(ptr, name, Text((notes or {}).get(slug, ""), style=theme.FAINT))
     inset = Panel(table, box=ROUNDED, border_style=theme.FAINT, style=f"on {theme.INSET_BG}",
                   padding=(0, 1), expand=False)
     hint = Text("↑↓ move · ⏎ select · esc cancel", style=theme.FAINT)
-    return Group(title, inset, hint)
+    return Group(heading, inset, hint)
+
+
+def print_unwrapped(text: str) -> None:
+    """One line on stderr that the terminal wraps, not Rich, so a long link stays one link.
+    Above the login box when it is up (same console), and not silenced by ``--quiet``:
+    the login can't go on without it."""
+    _stderr.print(Text(text), soft_wrap=True)
 
 
 def render_login_frame(done, active, *, active_value: str = "", active_slots: Optional[int] = None,
                        helper=None, error=None, inset=None, note=None, signed_in=None,
-                       cancelled=None, failed=None):
+                       cancelled=None, failed=None, waiting=None):
     """Build the one login Panel (a renderable the caller redraws via ``Live``). ``done`` is a list
     of ``(label, value)`` collapsed ✓ steps; ``active`` is the current step label (bright ``❯``
     line) with ``active_value`` the in-progress typed text (rendered as fixed slots when
-    ``active_slots`` is set, e.g. the 6-digit code). ``inset`` is the org-picker block; ``signed_in``
+    ``active_slots`` is set, e.g. the 6-digit code). ``inset`` is a picker block; ``waiting`` is the
+    live line while a browser approval is pending; ``signed_in``
     = ``(email, org)`` flips the border green; ``cancelled`` (bool: was the session persisted?)
     renders the calm close; ``failed`` = ``(message, hint)`` flips the border red and shows the
     failure INSIDE the same box (e.g. a wrong code). Legend ``◆ fp`` rides the top border."""
@@ -433,7 +444,7 @@ def render_login_frame(done, active, *, active_value: str = "", active_slots: Op
         intro = Text()
         intro.append("welcome ", style=theme.TEXT_DIM)
         intro.append("— ", style=theme.FAINT)
-        intro.append("sign in with a one-time code", style=theme.TEXT_DIM)
+        intro.append("sign in", style=theme.TEXT_DIM)
         lines.append(intro)
     for label, value in done:
         ln = Text()
@@ -460,6 +471,8 @@ def render_login_frame(done, active, *, active_value: str = "", active_slots: Op
             lines.append(Text("  " + str(helper), style=theme.TEXT_DIM))
     if note:
         lines.append(Text("· " + str(note), style=theme.FAINT))
+    if waiting:
+        lines.append(Text(str(waiting), style=theme.TEXT_DIM))
     if inset is not None:
         lines.append(inset)
     if signed_in is not None:
@@ -572,7 +585,7 @@ _TOP_LEVEL_GROUPS = [
     ("ESSENTIALS", [
         ("version", "Show the CLI version.", ""),
         ("help", "Show this help and the available commands.", ""),
-        ("login", "Sign in with an emailed one-time code.", ""),
+        ("login", "Sign in from a browser or with an emailed code.", ""),
         ("logout", "Clear the saved session on this machine.", ""),
         ("whoami", "Show the current user, active org, and perms.", ""),
     ]),

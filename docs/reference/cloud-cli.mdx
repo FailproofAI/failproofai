@@ -163,16 +163,19 @@ unchanged when no artifact is returned.
 
 | Command | Purpose | Options |
 | --- | --- | --- |
-| `fp login` | Sign in with an emailed one-time code and select an organization. | `--email`, `-e`; `--org`; `--force` |
+| `fp login` | Sign in from a browser or with an emailed one-time code, and select an organization. `--email` goes straight to the code. | `--email`, `-e`; `--org`; `--force` |
 | `fp logout` | Revoke and remove the saved user session. | — |
 | `fp whoami` | Show the current identity, authentication mode, organization, and permissions. | — |
 | `fp version` | Show the installed CLI version. | — |
 | `fp help` | Show top-level command help. | — |
 
 ```bash
+fp login
 fp login --email you@example.com --org reliability-team
 fp whoami
 ```
+
+On a terminal, `fp login` asks how you want to sign in. **browser** opens a link (over SSH or with no display it prints it, and it works from any device); authorize it and the terminal finishes on its own. That terminal gets your access in all your organizations until the session expires, so only authorize a link you just asked for. If the login started on a different network, the page warns you and you get an email once the session exists. **email** sends a 6-digit code to paste back, and is what `--email`, `--json` and anything without a terminal use.
 
 ### Events
 

@@ -51,7 +51,7 @@ on failure a `{"error": …, "exit_code": …}` object on **stdout** too; human 
 
 **Getting started**
 
-* `fp --base-url https://cloud.example.com login` — email a one-time code, then paste it
+* `fp --base-url https://cloud.example.com login` — authorize from a browser, or use an emailed code
 * `fp whoami` — confirm who you are and your permissions
 * `fp --json sessions --since 24h` — run a query (results are newest-first)
 

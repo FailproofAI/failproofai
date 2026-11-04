@@ -10,6 +10,7 @@ not depend on — so they are invoked deliberately.
 | `cloud-collector.sh` | an AgentEye stack | real connect against a live server, daemon + collector writing layout-2 paths, decisions reaching ClickHouse, disconnect back to OSS |
 | `systemd-service.sh` | Docker | REAL `systemctl enable --now` as root in a privileged container: service lifecycle, fail-closed, self-heal, reinstall |
 | `cli-login.sh` | an AgentEye stack (dashboard + mailpit + its Postgres), an older Cloud server without `/api/auth/cli/*` routes, Docker, `bun run build` + the release daemon | `config`'s browser login through a real pty in a systemd container: approve, re-login, deny + retry, abandon after approval (no key minted), esc, expiry, revoked saved key, older server, and the person-side refusals (Origin, form posts, no session, start rate limit) |
+| `fp-login.sh` | an AgentEye stack (dashboard + mailpit + its containers), `uv sync` in `fp-cloud-cli`; optionally a Cloud with `config`'s login but not `fp`'s | `fp login`'s browser flow through a real pty: approve, the org picker, the email code from the menu, deny + retry, expiry, esc and ctrl-c, an approval nobody collects (no session), a dropped connection, opening the browser, Clouds without it (nothing minted), the network warning and when the email goes out, the person-side refusals, and no secret in any log |
 
 `systemd-service.sh` exists because the service half cannot be tested on a
 developer machine without a password prompt, and a container gives real systemd
@@ -37,6 +38,12 @@ bash __tests__/e2e/layout/systemd-service.sh
 # answer requests but lack the CLI login routes; it defaults to localhost:28080.
 DASH=http://localhost:3000 MAILPIT=http://localhost:8026 OLD_CLOUD=http://localhost:28080 PG_CONTAINER=agenteye-postgres-1 \
   bash __tests__/e2e/layout/cli-login.sh
+
+# fp-login.sh drives the real `fp` the same way. STACK is the compose project, which
+# names the containers it reads. Add CLOUD_1090 and PG_1090 to cover a Cloud from
+# before `fp`'s half of this; it stops and restarts the dashboard container once.
+DASH=http://127.0.0.1:3000 MAILPIT=http://127.0.0.1:8026 STACK=agenteye \
+  bash __tests__/e2e/layout/fp-login.sh
 
 # cloud-collector.sh expects the stack on the remapped ports (18080/18123) so it
 # can run alongside an existing project rather than displacing it:

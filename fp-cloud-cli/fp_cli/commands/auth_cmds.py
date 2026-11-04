@@ -160,7 +160,8 @@ def _browser_login_in_box(state: AppState, base: str, box: selectmod.LoginBox):
         if outcome == "approved":
             # A key pressed during the last poll is still waiting to be read, and Esc means no
             # session. This is the last moment that can be honoured: the claim creates it.
-            while box.wait_key(0):
+            # `is not None`: the first byte of a non-ASCII character reads as "".
+            while box.wait_key(0) is not None:
                 pass
             box.working("finishing sign-in…")
             return auth.claim_browser_login(base, login.poll_secret, **options)
@@ -184,6 +185,8 @@ def _browser_login_plain(state: AppState, base: str):
         nonlocal was_offline
         if offline and not was_offline:
             output.info("reconnecting…")
+        elif was_offline and not offline:
+            output.info("back online — still waiting for you to authorize")
         was_offline = offline
         time.sleep(0.25)
 

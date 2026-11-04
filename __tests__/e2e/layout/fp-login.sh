@@ -46,6 +46,7 @@ STAMP=$(date +%s)
 OUT=$(mktemp -d)
 FP_DIR="$OUT/fp-home"
 STUB_PID=""
+HELD_PID=""
 DASH_STOPPED=0
 
 PASS=0; FAIL=0
@@ -62,6 +63,7 @@ sql() { docker exec "$PG_CONTAINER" psql -U postgres -d agenteye -tAc "$1"; }
 
 cleanup() {
   [ -n "$STUB_PID" ] && kill "$STUB_PID" 2>/dev/null
+  [ -n "$HELD_PID" ] && kill "$HELD_PID" 2>/dev/null
   # An interrupted run must not leave someone's stack without its dashboard.
   [ "$DASH_STOPPED" = 1 ] && docker start "$DASH_CONTAINER" >/dev/null 2>&1
   if [ "$KEEP" = 1 ]; then echo "kept: $OUT"; else rm -rf "$OUT"; fi
@@ -378,6 +380,13 @@ wait_url held >/dev/null
 T=$(wait_done held)
 eq "esc during a poll that comes back approved exits 0" "$(cat "$OUT/held.rc")" "0"
 has "…calmly" "$T" "cancelled"
+eq "…with no claim" "$(cat "$OUT/held.claims" 2>/dev/null | wc -l)" "0"
+eq "…and nothing saved" "$(saved session_token)" ""
+reset_fp
+run_fp heldutf "$MENU,key:enter,url,wait:waiting for you,sleep:1,type:é,key:esc" "$HELD" -- login
+wait_url heldutf >/dev/null
+T=$(wait_done heldutf)
+has "esc after a non-ASCII key, same poll: calm too" "$T" "cancelled"
 eq "…with no claim" "$(cat "$OUT/held.claims" 2>/dev/null | wc -l)" "0"
 eq "…and nothing saved" "$(saved session_token)" ""
 reset_fp

@@ -345,9 +345,11 @@ def _state():
     return AppState(json=False, base_url=BASE, token=None, timeout=1.0, config=config.CliConfig())
 
 
-def test_esc_pressed_during_the_last_poll_means_no_session(approved_link):
+@pytest.mark.parametrize("before", [(), ("x",), ("UP",), ("", "")], ids=["alone", "letter", "arrow", "non-ascii"])
+def test_esc_pressed_during_the_last_poll_means_no_session(approved_link, before):
+    # A non-ASCII character reads as "", once per byte: not the end of the queue.
     with pytest.raises(selectmod.LoginCancelled):
-        auth_cmds._browser_login_in_box(_state(), BASE, _Box("x", "ESC"))
+        auth_cmds._browser_login_in_box(_state(), BASE, _Box(*before, "ESC"))
     assert approved_link == []
 
 
@@ -488,7 +490,12 @@ def test_the_plain_flow_says_when_it_is_reconnecting_once(home, runner, plain_te
     _fast_links(monkeypatch)
     respx.post(f"{BASE}/api/auth/cli/start").mock(return_value=_start())
     respx.post(f"{BASE}/api/auth/cli/poll").mock(
-        side_effect=[httpx.ConnectError("x"), httpx.ConnectError("x"), httpx.Response(200, json={"status": "approved"})]
+        side_effect=[
+            httpx.ConnectError("x"),
+            httpx.ConnectError("x"),
+            httpx.Response(200, json={"status": "pending"}),
+            httpx.Response(200, json={"status": "approved"}),
+        ]
     )
     respx.post(f"{BASE}/api/auth/cli/claim").mock(return_value=httpx.Response(201, json=CLAIMED))
     respx.get(f"{BASE}/api/auth/session").mock(return_value=httpx.Response(200, json=SESSION))
@@ -497,6 +504,7 @@ def test_the_plain_flow_says_when_it_is_reconnecting_once(home, runner, plain_te
 
     assert result.exit_code == 0, result.output
     assert result.output.count("reconnecting") == 1
+    assert "back online" in result.output
 
 
 @respx.mock

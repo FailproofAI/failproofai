@@ -385,8 +385,8 @@ Unknown-route 404s exit 6 with “not available on this FailproofAI Cloud yet”
 Missing-record 404s also exit 6 but preserve the server's record-not-found message;
 an empty response on a record-scoped request identifies the missing record path.
 Session-only commands exit 2 before HTTP in key mode.
-Human output uses mint/pink open screens and full ids; legacy `--full-ids`
-remains accepted. Exports refuse to overwrite existing files.
+Human output uses rounded panels and full ids, which wrap rather than being cut;
+legacy `--full-ids` remains accepted. Exports refuse to overwrite existing files.
 
 Use global `--json` for API objects or `--out` to save a session/query JSON
 export. Without either, human mode renders a readable view rather than raw

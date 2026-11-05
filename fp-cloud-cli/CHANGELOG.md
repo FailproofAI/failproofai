@@ -6,6 +6,10 @@
 
 - `fp login` can sign you in from a browser. On a terminal it asks for your email and sends a 6-digit code, as before; press Tab there for a link instead, to use your browser or SSO, and Tab again to go back. The link stays in the login box, opens where a browser can (over SSH or with no display it only shows it, and it works from any device), and the terminal finishes on its own once you authorize it. `--email`, `--json` and anything without a terminal keep the code as they always did. A dashboard without browser login stays with the code and never creates a key. Either way you get the same session, with the same lifetime. (#981)
 
+### Changed
+
+- Back to the earlier look: rounded panels, the purple `◆ fp` mark, lowercase panel titles and red error boxes. Ids stay whole, wrapping instead of being cut, and screens added since keep their plain tables. `--json`, exit codes and messages are unchanged. (#981)
+
 ## 0.0.2 — 2026-10-25
 
 **Stable release.** The `0.0.2b0` line the `bump` job opened after `0.0.1` is cut stable

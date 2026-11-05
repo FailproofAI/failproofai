@@ -17,95 +17,25 @@ from typing import Any, Dict, List, Optional, Sequence
 
 import typer
 from rich.box import ROUNDED, SIMPLE_HEAD
+from rich.cells import cell_len
 from rich.console import Console, Group
 from rich.padding import Padding
-from rich.panel import Panel as RichPanel
-from rich.rule import Rule as RichRule
+from rich.panel import Panel
+from rich.rule import Rule
 from rich.table import Table as RichTable
-from rich.measure import Measurement
 from rich.text import Text
 
 from . import theme
-from ._version import __version__
-
-_screen_started = False
-_screen_context = "Cloud"
-
-
-def wordmark(context: Optional[str] = None) -> Text:
-    line = Text("fa", style="bold")
-    line.append("il", style=f"bold {theme.PINK}")
-    line.append("proof ai", style="bold")
-    line.append(f" v{__version__} · {context or _screen_context}", style=theme.LABEL)
-    return line
-
-
-def heading(value: Any) -> Text:
-    text = value.copy() if isinstance(value, Text) else Text.from_markup(str(value))
-    # Change chrome, never the case of a resource name/id in a title.
-    name, sep, rest = text.plain.partition(" · ")
-    known = {"events", "sessions", "evals", "errors", "keys", "users", "queries", "settings",
-             "issues", "models", "chats", "audits", "findings", "commands", "version",
-             "permissions", "orgs", "assistant", "usage", "guardrails", "policies", "fleet",
-             "options", "arguments"}
-    if name.lower() in known:
-        text = Text(name.upper(), style=f"bold {theme.TEXT}") + Text(sep + rest, style=theme.LABEL)
-    return text
-
-
-def screen_header(console=None) -> None:
-    global _screen_started
-    if not _screen_started and not _quiet and not _json_out:
-        _screen_started = True
-        (console or _stdout).print(wordmark())
-        (console or _stdout).print()
-
-
-class Panel(RichPanel):
-    """Legacy cards rendered through the open-screen primitive, without boxes.
-
-    Keep RichPanel's constructor/attributes so existing renderers need no rewrite.
-    """
-    def __rich_console__(self, console, options):
-        global _screen_started
-        if not _screen_started and not _quiet and not _json_out:
-            _screen_started = True
-            yield wordmark()
-            yield Text("")
-        if self.title:
-            yield heading(self.title)
-        yield self.renderable
-        if self.subtitle:
-            yield heading(self.subtitle)
-
-    def __rich_measure__(self, console, options):
-        parts = [self.renderable]
-        if self.title:
-            parts.insert(0, heading(self.title))
-        return Measurement.get(console, options, Group(*parts))
-
-
-class Rule(RichRule):
-    """Legacy separators are intentionally invisible in the 2026-10 language."""
-    def __rich_console__(self, console, options):
-        return iter(())
-
-    def __rich_measure__(self, console, options):
-        return Measurement(0, 0)
 
 
 class Table(RichTable):
-    """Shared tables: grey labels, no borders/rules, fold instead of cut."""
-    def __init__(self, *args, **kwargs):
-        kwargs["box"] = None
-        kwargs["show_edge"] = False
-        kwargs["header_style"] = theme.LABEL
-        super().__init__(*args, **kwargs)
-
+    """Long values wrap rather than being cut: an id, a URL or a command is never shown with a
+    ``…``. Everything else about a table is the caller's."""
     def add_column(self, *args, **kwargs):
         kwargs["overflow"] = "fold"
         kwargs["no_wrap"] = False
         return super().add_column(*args, **kwargs)
+
 
 _stdout = Console()
 _stderr = Console(stderr=True)
@@ -114,16 +44,14 @@ _no_color = False
 _json_out = False
 
 
-def configure(*, no_color: bool = False, quiet: bool = False, json: bool = False, context: str = "Cloud") -> None:
+def configure(*, no_color: bool = False, quiet: bool = False, json: bool = False) -> None:
     """Reconfigure the consoles from the resolved global flags."""
-    global _stdout, _stderr, _quiet, _no_color, _json_out, _screen_started, _screen_context
+    global _stdout, _stderr, _quiet, _no_color, _json_out
     _stdout = Console(no_color=no_color)
     _stderr = Console(stderr=True, no_color=no_color)
     _quiet = quiet
     _no_color = no_color
     _json_out = json
-    _screen_started = False
-    _screen_context = context
 
 
 def is_json() -> bool:
@@ -215,30 +143,29 @@ def print_table(
     title: Optional[str] = None,
     show_header: bool = True,
 ) -> None:
-    screen_header()
-    if title:
-        _stdout.print(Text(str(title).upper(), style="bold"))
     widths = [max([len(str(column))] + [len(_cell(row[i])) for row in rows if i < len(row)]) for i, column in enumerate(columns)]
-    if len(columns) > 1 and sum(widths) + 3 * len(columns) > _stdout.width:
+    if len(columns) > 1 and sum(widths) + 3 * len(columns) + 1 > _stdout.width:
         # On a narrow terminal, wrapped adjacent columns interleave copyable
         # ids and URLs. Stack the fields so each value remains a whole line.
+        if title:
+            _stdout.print(Text(str(title), style="bold"))
         for row in rows:
             for column, value in zip(columns, row):
-                _stdout.print(Text(str(column).upper(), style=theme.LABEL))
+                _stdout.print(Text(str(column), style=theme.LABEL))
                 _stdout.print(Text("  " + _cell(value)), soft_wrap=True)
             _stdout.print()
         return
-    table = Table(show_header=show_header)
+    table = Table(
+        title=Text(title) if title else None, title_justify="left", header_style="bold",
+        show_header=show_header,
+    )
     for column in columns:
         table.add_column(str(column), overflow="fold")
     for row in rows:
         # Wrap each cell in Text so a value containing Rich markup (e.g. "[/]" or
         # "[red]" in a server-provided field) renders literally instead of raising
         # MarkupError mid-render (which would abort with a raw traceback).
-        table.add_row(*[
-            Text(_cell(value), style=theme.LABEL if list(columns) == ["Field", "Value"] and i == 0 else "")
-            for i, value in enumerate(row)
-        ])
+        table.add_row(*[Text(_cell(value)) for value in row])
     _stdout.print(table)
 
 
@@ -255,7 +182,7 @@ def info(message: str) -> None:
 
 def success(message: str) -> None:
     if not _quiet:
-        _stderr.print(Text("✓ ", style=theme.SUCCESS) + Text(message))
+        _stderr.print(Text(message, style="green"))
 
 
 def hint(message: str) -> None:
@@ -264,12 +191,12 @@ def hint(message: str) -> None:
 
 
 def error(message: str) -> None:
-    _stderr.print(Text("✕ ", style=theme.ERROR) + Text(message))
+    _stderr.print(Text(message, style="bold red"))
 
 
 def warn(message: str) -> None:
     if not _quiet:
-        _stderr.print(Text("▲ ", style=theme.PINK) + Text(message))
+        _stderr.print(Text(message, style="yellow"))
 
 
 def cli_warn(message: str) -> None:
@@ -290,7 +217,7 @@ def cli_warn(message: str) -> None:
 # here is stderr status chrome (never the --json data on stdout); the accent is
 # the project's pink/magenta. All gated on `_quiet`.
 
-_ACCENT = theme.PINK
+_ACCENT = "magenta"
 _NEUTRAL = "grey62"  # gray for 'already in that state' no-op boxes (neutral, not red/green)
 
 
@@ -299,8 +226,7 @@ def auth_header() -> None:
     if _quiet:
         return
     _stderr.print()
-    screen_header(_stderr)
-    _stderr.print(Text("SIGN IN", style="bold"))
+    _stderr.print(f"  [bold {_ACCENT}]◆ fp[/]")
     _stderr.print("  [dim]welcome — let's get you signed in[/]")
     _stderr.print()
 
@@ -316,7 +242,7 @@ def code_sent(email: str) -> None:
     """Confirm the one-time code was emailed (the completed `request_otp` step)."""
     if _quiet:
         return
-    _stderr.print(f"  [{theme.SUCCESS}]✓[/] code sent to [bold {_ACCENT}]{email}[/]")
+    _stderr.print(f"  [green]✓[/] code sent to [bold {_ACCENT}]{email}[/]")
 
 
 def org_picker(slugs: Sequence[str], current: Optional[str] = None) -> None:
@@ -417,28 +343,46 @@ def print_unwrapped(text: str) -> None:
     _stderr.print(Text(text), soft_wrap=True)
 
 
+def _login_keys(text: str) -> Text:
+    """A key hint, with the keys themselves standing out: ``⏎ send a code · esc cancel``."""
+    hint = Text(text, style=theme.TEXT_DIM)
+    hint.highlight_regex(r"⏎|\btab\b|\besc\b", style=theme.TEXT)
+    return hint
+
+
 def print_login_link(done, intro: str, url: str) -> int:
-    """The still part of the box's link screen, once: the steps so far, ``intro``, then the link,
-    which the terminal wraps. Returns the rows it took on screen."""
-    head = Group(render_login_frame(done, None), Padding(Text(intro, style=theme.TEXT_DIM), (0, 0, 0, 2)))
-    link = Text("  ").append(url, style=theme.ACCENT)
+    """The still part of the box's link screen, once: the box says what to do, and the link sits
+    right under it, outside the border. A border would break a link wider than the window, so it
+    couldn't be clicked or copied whole, where the terminal can wrap it as one. Returns the rows it
+    took on screen."""
+    head = Group(render_login_frame(done, None, asks=intro), Text(""))
+    # One that fits lines up with the box. One that doesn't starts at the margin, so its rows line
+    # up with each other.
+    indent = "  " if cell_len(url) + 2 <= _stderr.width else ""
+    link = Text(indent).append(url, style=f"underline {theme.ACCENT}")
     _stderr.print(head)
     _stderr.print(link, soft_wrap=True)
-    return len(_stderr.render_lines(head, pad=False)) + math.ceil(link.cell_len / _stderr.width)
+    _stderr.print()
+    return len(_stderr.render_lines(head, pad=False)) + math.ceil(link.cell_len / _stderr.width) + 1
 
 
 def render_login_waiting(line: str, keys: str):
-    """The live part of the box's link screen, under the link."""
-    return Padding(Group(Text(line, style=theme.TEXT_DIM), Text(keys, style=theme.FAINT)), (0, 0, 0, 2))
+    """The live part of the box's link screen, under the link: a spinner, what it's waiting for and
+    the time left, then the keys."""
+    waiting = Text(line, style=theme.TEXT_DIM)
+    waiting.stylize(theme.ACCENT, 0, 1)
+    waiting.highlight_regex(r"\d+:\d\d$", style=theme.TEXT)
+    return Padding(Group(waiting, _login_keys(keys)), (0, 0, 0, 2))
 
 
 def render_login_frame(done, active, *, active_value: str = "", active_slots: Optional[int] = None,
                        helper=None, error=None, inset=None, note=None, signed_in=None,
-                       cancelled=None, failed=None):
+                       cancelled=None, failed=None, asks=None):
     """Build the one login Panel (a renderable the caller redraws via ``Live``). ``done`` is a list
     of ``(label, value)`` collapsed ✓ steps; ``active`` is the current step label (bright ``❯``
     line) with ``active_value`` the in-progress typed text (rendered as fixed slots when
-    ``active_slots`` is set, e.g. the 6-digit code). ``inset`` is a picker block; ``signed_in``
+    ``active_slots`` is set, e.g. the 6-digit code), and ``asks`` the same bright line for something
+    to do outside the box, with no field to type in. ``inset`` is a picker block; ``signed_in``
     = ``(email, org)`` flips the border green; ``cancelled`` (bool: was the session persisted?)
     renders the calm close; ``failed`` = ``(message, hint)`` flips the border red and shows the
     failure INSIDE the same box (e.g. a wrong code). Legend ``◆ fp`` rides the top border."""
@@ -479,7 +423,12 @@ def render_login_frame(done, active, *, active_value: str = "", active_slots: Op
         if error:
             lines.append(Text("  " + str(error), style=theme.ERROR))
         elif helper:
-            lines.append(Text("  " + str(helper), style=theme.TEXT_DIM))
+            lines.append(_login_keys("  " + str(helper)))
+    if asks:
+        ln = Text()
+        ln.append("❯ ", style=f"bold {theme.ACCENT}")
+        ln.append(str(asks), style=theme.TEXT)
+        lines.append(ln)
     if note:
         lines.append(Text("· " + str(note), style=theme.FAINT))
     if inset is not None:
@@ -511,7 +460,7 @@ def render_login_frame(done, active, *, active_value: str = "", active_slots: Op
         fl.append(str(msg), style=theme.TEXT)
         lines.append(fl)
         if hint:
-            h = Text(str(hint), style=theme.TEXT_DIM)
+            h = _login_keys(str(hint))
             h.highlight_words(["fp login"], style=theme.ACCENT)  # glow the command to run
             lines.append(h)
     legend = Text()
@@ -528,7 +477,6 @@ def _panel(mark: str, color: str, title: str, body: Text, hint: Optional[str] = 
     highlighted. Built from a `rich.Text` (literal body — no markup injection). The colour
     carries the meaning: **green** = success, **brand-accent** = neutral 'already-in-state'
     no-op, **red** = failure. One shape so they all read as one family."""
-    color = theme.SUCCESS if color == "green" else theme.PINK if color in ("red", "yellow", "cyan", "magenta") else color
     text = Text()
     indent = ""
     # A box may be mark-less (the colour/title carry the meaning, e.g. the red
@@ -541,7 +489,7 @@ def _panel(mark: str, color: str, title: str, body: Text, hint: Optional[str] = 
         text.append(f"\n{indent}")
         text.append(hint, style="dim")
     text.highlight_words(
-        ["fp login", "fp logout", "login --force"], style=f"bold {theme.PINK}"
+        ["fp login", "fp logout", "login --force"], style="bold cyan"
     )
     panel = Panel(
         text,
@@ -559,12 +507,8 @@ def _panel(mark: str, color: str, title: str, body: Text, hint: Optional[str] = 
 
 
 def _error_box(message: str, hint: Optional[str] = None) -> None:
-    """One failure line, followed by a grey recovery hint when present."""
-    _stderr.print(Text("✕ ", style=theme.ERROR) + Text(message))
-    if hint:
-        line = Text("  " + hint, style=theme.LABEL)
-        line.highlight_regex(r"(?:fp|failproofai)\s+[^`]+", style=theme.PINK)
-        _stderr.print(line)
+    """A red `✗` failure box — the chokepoint for every CLI error."""
+    _panel("✗", "red", "error", Text(message), hint)
 
 
 def _status_box(title: str, body: Text, hint: Optional[str] = None) -> None:
@@ -580,8 +524,21 @@ def version_banner(version: str) -> None:
     if _quiet:
         _stdout.print(version)
         return
-    screen_header()
-    _stdout.print(Text(f"fp v{version}", style=theme.LABEL))
+    body = Text()
+    body.append("◆  ", style=f"bold {_ACCENT}")
+    body.append("fp", style="bold")
+    body.append("  ")
+    body.append(f"v{version}", style=f"bold {_ACCENT}")
+    panel = Panel(
+        body,
+        border_style=_ACCENT,
+        title=f"[bold {_ACCENT}]version[/]",
+        title_align="left",
+        expand=False,
+        padding=(0, 1),
+    )
+    _stdout.print()
+    _stdout.print(Padding(panel, (0, 0, 0, 2)))
 
 
 # ── top-level help (the grouped `fp` / `fp help` / `fp --help` screen) ──
@@ -654,21 +611,17 @@ def render_top_level_help() -> None:
     bold-white headings, BLUE command names, white one-line descriptions, FAINT subcommand hints,
     a FAINT footer), then aligned EXAMPLES. Presentation only — same routing, same commands.
     NO_COLOR keeps the box + bold headings + alignment, drops colour."""
-    global _screen_started
     total = sum(len(cmds) for _, cmds in _TOP_LEVEL_GROUPS)
 
     def _bullet(*parts) -> Text:
         line = Text("  · ", style=theme.FAINT)
         for text, style in parts:
-            if text.startswith("fp "):
-                style = theme.PINK
             line.append(text, style=style)
         return line
 
     # ── brand mark ──
     _stdout.print()
-    _screen_started = True
-    _stdout.print(wordmark())
+    _stdout.print(Text("  ◆ fp", style=f"bold {theme.ACCENT}"))
 
     # ── getting started ──
     _stdout.print()
@@ -700,9 +653,9 @@ def render_top_level_help() -> None:
         glob.append(g, style=theme.TEXT_DIM)
     _stdout.print(glob)
     eg = Text("    e.g.  ")
-    eg.append("fp --json events ", style=theme.PINK)
+    eg.append("fp --json events ", style=theme.TEXT_DIM)
     eg.append("✓", style=theme.SUCCESS)
-    eg.append("     fp events --json ", style=theme.PINK)
+    eg.append("     fp events --json ", style=theme.TEXT_DIM)
     eg.append("✗", style=theme.ERROR)
     _stdout.print(eg)
     mt = Text("    multi-tenant: set the org at login (", style=theme.FAINT)
@@ -752,7 +705,7 @@ def render_top_level_help() -> None:
             if hint:
                 cell.append("  ·  ", style=theme.FAINT)
                 cell.append(hint, style=theme.FAINT)
-            table.add_row(Text(name, style=theme.PINK), cell)
+            table.add_row(Text(name, style=theme.BLUE), cell)
     footer = Text()
     footer.append("run ", style=theme.FAINT)
     footer.append("fp <command> --help", style=theme.TEXT_DIM)
@@ -773,7 +726,7 @@ def render_top_level_help() -> None:
     ex.add_column(no_wrap=True)
     ex.add_column(no_wrap=True, overflow="ellipsis", max_width=max(SCORES_MIN_WIDTH, min(_stdout.width, 110) - 56))
     for cmd, why in _TOP_LEVEL_EXAMPLES:
-        ex.add_row(Text(cmd, style=theme.PINK), Text(why, style=theme.TEXT_DIM))
+        ex.add_row(Text(cmd, style=theme.ACCENT), Text(why, style=theme.TEXT_DIM))
     _stdout.print(Padding(ex, (0, 0, 0, 2)))
 
     _stdout.print()
@@ -1042,7 +995,6 @@ def render_whoami(
     """The logged-in ``whoami`` view (stdout): an identity header, then the shared
     permissions + orgs panels. Presentation only; no legend."""
     c = _stdout
-    screen_header(c)
 
     # ── identity header (no box) ──
     c.print()
@@ -1964,6 +1916,9 @@ def _errors_title(count: int, order: Optional[str], days) -> Text:
     return t
 
 
+ERRORS_SUMMARY_MIN_WIDTH = 28
+
+
 def render_errors(items: Sequence[Any], *, order: Optional[str] = None, full_ids: bool = False,
                   empty_message: str = "no errors") -> None:
     """The ``errors`` list view (stdout): an error-themed (muted red-purple border) boxed table —
@@ -1990,7 +1945,8 @@ def render_errors(items: Sequence[Any], *, order: Optional[str] = None, full_ids
             max((len(x) for x in agents), default=0),
             max((len(x) for x in sessions), default=0),
         ))
-        budget = max(SCORES_MIN_WIDTH, _stdout.width - fixed - _LIST_CHROME)
+        # Full ids can fill the row: keep the summary readable, and let the long ids wrap instead.
+        budget = max(ERRORS_SUMMARY_MIN_WIDTH, _stdout.width - fixed - _LIST_CHROME)
 
     rows = []
     for i, e in enumerate(items):
@@ -2780,13 +2736,13 @@ def _sql_syntax_theme():
         class _FpSqlStyle(Style):
             background_color = "#0e0c12"  # overridden by Syntax(background_color="default")
             styles = {
-                Token: "",
+                Token: theme.TEXT,
                 Comment: f"italic {theme.FAINT}",
                 Keyword: f"bold {theme.ACCENT}",
                 Keyword.Type: theme.SCORE_HIGH,
                 Operator: theme.TEXT_DIM,
                 Operator.Word: f"bold {theme.ACCENT}",  # AND / OR / NOT
-                Name: "",
+                Name: theme.TEXT,
                 Name.Builtin: theme.SUCCESS,
                 Name.Function: theme.SUCCESS,
                 Name.Variable: theme.PERM_WRITE,  # :name / @var params
@@ -2918,8 +2874,6 @@ def _plain(*parts, console=None) -> None:
     ``--quiet`` for non-error chrome; callers that must always show pass ``console``)."""
     line = Text("  ")
     for text, style in parts:
-        if text.startswith("fp "):
-            style = theme.PINK
         line.append(text, style=style)
     (console or _stderr).print(line)
 

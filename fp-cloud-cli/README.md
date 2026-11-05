@@ -329,8 +329,8 @@ Unknown-route 404s exit 6 with “not available on this FailproofAI Cloud yet”
 Missing-record 404s also exit 6 but report that the record was not found.
 `plan` and `plan claim` require a signed-in person and deny API-key mode before
 HTTP with the standard `fp login` message.
-Human screens use the mint/pink wordmark, grey labels, open tables and full ids;
-existing JSON shapes are unchanged.
+Human screens use rounded panels, the purple `◆ fp` mark and full ids, which wrap
+rather than being cut; existing JSON shapes are unchanged.
 
 Human commands show summaries, tables and wrapped text rather than response
 objects. Use global `--json` for raw API results. For `sessions export` or

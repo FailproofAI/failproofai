@@ -208,8 +208,8 @@ has "…as the person who approved" "$T" "$ONE"
 # In the raw bytes: the window is 100 wide, the link wider, and nothing but the terminal may
 # wrap it. A line break from Rich would break it for a click or a copy, and so would writing it
 # again with the spinner, which clears a selection.
-LINE=$(grep -caP '^(\r|\x1b\[[0-9;?]*[A-Za-z])*  (\x1b\[[0-9;]*m)?https?://\S+/cli/authorize\?r=[0-9a-f]{64}(\x1b\[[0-9;]*m)?\r?$' "$OUT/first.log")
-eq "the link is one unbroken run on its own line, in the box" "$LINE" "1"
+LINE=$(grep -caP '^(\r|\x1b\[[0-9;?]*[A-Za-z])*( {2})?(\x1b\[[0-9;]*m)?https?://\S+/cli/authorize\?r=[0-9a-f]{64}(\x1b\[[0-9;]*m)?\r?$' "$OUT/first.log")
+eq "the link is one unbroken run on its own line, right under the box" "$LINE" "1"
 eq "…written once, not again with the spinner" "$(grep -ao 'cli/authorize?r=' "$OUT/first.log" | wc -l)" "1"
 eq "one more session on the server" "$(sessions_of "$ONE")" "$((BEFORE + 1))"
 eq "the request is spent" "$(request_status "$LINK")" "claimed"

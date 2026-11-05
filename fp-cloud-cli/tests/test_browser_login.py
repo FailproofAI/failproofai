@@ -556,25 +556,31 @@ def test_the_email_flag_goes_straight_to_the_code(emailed_code, monkeypatch):
 LONG_LINK = "https://app.befailproof.ai/cli/authorize?r=" + "a" * 64  # 107 characters
 
 
-@pytest.mark.parametrize("width,rows", [(200, 1), (110, 1), (109, 1), (108, 2), (80, 2), (55, 2), (54, 3)])
-def test_a_link_stays_whole_and_its_rows_are_counted(monkeypatch, width, rows):
+@pytest.mark.parametrize(
+    "width,indent,rows",
+    [(200, "  ", 1), (110, "  ", 1), (109, "  ", 1), (108, "", 1), (107, "", 1), (106, "", 2), (80, "", 2), (54, "", 2), (53, "", 3)],
+)
+def test_a_link_stays_whole_and_its_rows_are_counted(monkeypatch, width, indent, rows):
     # Rich mustn't break it, and a wrong count leaves stray rows on screen or eats the ones above.
     console = Console(file=io.StringIO(), force_terminal=True, width=width, color_system=None)
     monkeypatch.setattr(output, "_stderr", console)
-    monkeypatch.setattr(output, "_screen_started", True)
 
     taken = output.print_login_link([("code", None)], "open this link:", LONG_LINK)
 
     printed = console.file.getvalue()
-    assert f"  {LONG_LINK}\n" in printed
-    assert taken == len(["◆ fp", "welcome", "✓ code", "open this link:"]) + rows
+    # Right under the box, never inside its border. It lines up with the box when it fits, and
+    # starts at the margin when it doesn't, so its rows line up with each other.
+    under_the_box = printed.split("╯")[-1]
+    assert under_the_box.strip("\n ") == LONG_LINK
+    assert f"\n{indent}{LONG_LINK}\n" in under_the_box
+    box = ["╭─ ◆ fp ─╮", "welcome", "✓ code", "❯ open this link:", "╰────╯", "blank above the link"]
+    assert taken == len(box) + rows + len(["blank below the link"])
 
 
 def test_the_box_leaves_the_link_alone_until_it_takes_it_down_row_by_row(monkeypatch):
     monkeypatch.setenv("TERM", "xterm")  # Live draws nothing on a dumb terminal
     console = Console(file=io.StringIO(), force_terminal=True, width=80, color_system=None)
     monkeypatch.setattr(output, "_stderr", console)
-    monkeypatch.setattr(output, "_screen_started", True)
     monkeypatch.setattr("sys.stdin", SimpleNamespace(fileno=lambda: 0))
     box = selectmod.LoginBox()
     box._live = Live(console=console, auto_refresh=False)
@@ -591,10 +597,11 @@ def test_the_box_leaves_the_link_alone_until_it_takes_it_down_row_by_row(monkeyp
             tick = written_by(lambda: box.waiting("waiting", "keys"))
             assert "waiting" in tick and LONG_LINK not in tick
         taken_down = written_by(box._draw)
-        # ◆ fp, welcome, the intro and two rows of link, and the waiting line's own row.
-        assert taken_down.count("\x1b[1A\x1b[2K") == 5 + 1
-        # Nothing more to take down: only the frame's own second row.
-        assert written_by(box._draw).count("\x1b[1A\x1b[2K") == 1
+        # The box (border, welcome, the ask, border), a blank, two rows of link, a blank, and the
+        # waiting line's own row.
+        assert taken_down.count("\x1b[1A\x1b[2K") == 4 + 1 + 2 + 1 + 1
+        # Nothing more to take down: only the frame's own rows (border, welcome, border).
+        assert written_by(box._draw).count("\x1b[1A\x1b[2K") == 2
 
 
 @pytest.mark.parametrize("step", ["start_browser_login", "claim_browser_login"])

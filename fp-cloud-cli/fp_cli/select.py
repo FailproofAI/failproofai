@@ -345,7 +345,7 @@ class LoginBox:
     def link_ended(self, message: str) -> None:
         """A link that can't be used any more, inside the box. Returns on Enter, for a new link.
         Tab raises ``SwitchSignIn``; Esc and Ctrl-C raise ``LoginCancelled``."""
-        self._draw(failed=(message, "⏎ new link · tab use email · esc cancel"))
+        self._draw(failed=(message, "enter new link · tab use email · esc cancel"))
         while True:
             try:
                 key = _read_key(self._fd)

@@ -222,7 +222,7 @@ def _email_code_in_box(state: AppState, base: str, box: selectmod.LoginBox, emai
         email = email_opt
         box.note("email", email)
     else:
-        keys = "⏎ send a code · tab browser or SSO · esc cancel" if tab else "⏎ send a code · esc cancel"
+        keys = "enter send a code · tab SSO · esc cancel" if tab else "enter send a code · esc cancel"
         email = box.text_step("email", helper=keys, validate=_looks_like_email,
                               error_msg="that doesn't look like an email", value=typed, tab=tab)
     # send the code

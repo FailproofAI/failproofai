@@ -333,7 +333,7 @@ def login_inset(slugs: Sequence[str], idx: int):
         table.add_row(ptr, name)
     inset = Panel(table, box=ROUNDED, border_style=theme.FAINT, style=f"on {theme.INSET_BG}",
                   padding=(0, 1), expand=False)
-    hint = Text("↑↓ move · ⏎ select · esc cancel", style=theme.FAINT)
+    hint = Text("↑↓ move · enter select · esc cancel", style=theme.FAINT)
     return Group(title, inset, hint)
 
 
@@ -344,9 +344,10 @@ def print_unwrapped(text: str) -> None:
 
 
 def _login_keys(text: str) -> Text:
-    """A key hint, with the keys themselves standing out: ``⏎ send a code · esc cancel``."""
+    """A key hint, with the keys themselves standing out: ``enter send a code · esc cancel``."""
     hint = Text(text, style=theme.TEXT_DIM)
-    hint.highlight_regex(r"⏎|\btab\b|\besc\b", style=theme.TEXT)
+    if " · " in text:  # "enter the 6-digit code" is an instruction, and its "enter" is no key
+        hint.highlight_regex(r"\b(?:enter|tab|esc)\b", style=theme.TEXT)
     return hint
 
 
@@ -1105,14 +1106,14 @@ def render_org_perms(*, slug: str, role: str, permissions: Sequence[str],
 # The picker frame and the switched card share the same rounded Panel shell as every other
 # boxed view (only the border colour + contents differ), so they read as one system.
 
-_PICKER_FOOTER = "↑↓ move · ⏎ select · esc cancel"
+_PICKER_FOOTER = "↑↓ move · enter select · esc cancel"
 
 
 def org_picker_frame(orgs: Sequence[dict], idx: int):
     """One frame of the interactive ``orgs switch`` picker (a renderable, redrawn in place by the
     caller's ``Live``): a rounded ACCENT panel ``switch org · {n} available``; one row per org with
     a ``❯`` pointer (ACCENT) on row ``idx`` — the selected slug bright (TEXT), others dim — and a
-    ``● current`` (SUCCESS) / ``○`` (FAINT) status. Footer ``↑↓ move · ⏎ select · esc cancel`` in
+    ``● current`` (SUCCESS) / ``○`` (FAINT) status. Footer ``↑↓ move · enter select · esc cancel`` in
     the bottom border. NO_COLOR keeps the box, pointer, and ●/○ shapes (colour drops out)."""
     table = Table(box=None, pad_edge=False, show_header=False, padding=(0, 2, 0, 0))
     table.add_column(no_wrap=True)  # pointer
@@ -1132,7 +1133,7 @@ def org_picker_frame(orgs: Sequence[dict], idx: int):
     panel = Panel(table, box=ROUNDED, border_style=theme.ACCENT, title=title, title_align="left",
                   padding=(0, 1), expand=False)
     # The key hint rides as a FAINT line just beneath the panel (always fits — no border
-    # truncation of the wide ⏎/arrow glyphs), aligned under the box.
+    # truncation of the wide arrow glyphs), aligned under the box.
     footer = Text("  " + _PICKER_FOOTER, style=theme.FAINT)
     return Group(Padding(panel, (0, 0, 0, 2)), footer)
 

@@ -67,6 +67,12 @@ def test_a_table_title_is_shown_as_written(capsys):
     assert "fromtheserver:[/]and[red]" in "".join(capsys.readouterr().out.split())  # it wraps to the table
 
 
+def test_only_a_key_hint_lights_up_its_keys():
+    lit = lambda text: [text[span.start:span.end] for span in output._login_keys(text).spans]
+    assert lit("enter send a code · tab SSO · esc cancel") == ["enter", "tab", "esc"]
+    assert lit("  enter the 6-digit code") == []
+
+
 def test_narrow_ids_and_urls_are_not_cut(capsys):
     output.configure(no_color=True)
     output._stdout = Console(width=45, no_color=True)

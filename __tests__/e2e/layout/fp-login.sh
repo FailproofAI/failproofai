@@ -167,7 +167,7 @@ fp_plain() { # <base-url> <fp args...>, no terminal
 saved() { python3 -c "import json;print(json.load(open('$FP_DIR/cli-auth.json')).get('$1') or '')" 2>/dev/null; }
 reset_fp() { rm -rf "$FP_DIR"; }
 
-EMAIL_STEP=wait:tab\ browser\ or\ SSO
+EMAIL_STEP=wait:tab\ SSO
 
 # ═════════════════════════════════════════════════════════════════════════════
 head1 "PHASE 0 — preconditions"
@@ -199,7 +199,7 @@ person "$ONE_SESSION" approve "{\"link_token\":\"$LINK\"}" >/dev/null
 eq "approve answered 200" "$(cat "$OUT/status")" "200"
 T=$(wait_done first)
 eq "fp exited 0" "$(cat "$OUT/first.rc")" "0"
-has "it opens on the email, offering the browser" "$T" "tab browser or SSO"
+has "it opens on the email, offering the browser" "$T" "tab SSO"
 has "…and saying enter sends a code" "$T" "send a code"
 has "no display here, so it says the link works anywhere" "$T" "open this link on any device"
 has "it waited with a countdown" "$T" "waiting for you to authorize"
@@ -230,7 +230,7 @@ head1 "PHASE 2 — signed in already: no asking; --force asks again"
 run_fp again "wait:$ONE" "$DASH" -- login
 T=$(wait_done again)
 eq "fp exited 0" "$(cat "$OUT/again.rc")" "0"
-hasnt "no asking someone already signed in" "$T" "tab browser or SSO"
+hasnt "no asking someone already signed in" "$T" "tab SSO"
 run_fp force "$EMAIL_STEP,key:esc" "$DASH" -- login --force
 T=$(wait_done force)
 eq "--force asks, and esc leaves it" "$(cat "$OUT/force.rc")" "0"
@@ -278,10 +278,10 @@ run_fp flag_mail "wait:enter the 6-digit code,typefile:$OUT/code,key:enter" "$DA
 CODE=$(otp_code "$MAILED"); echo "$CODE" > "$OUT/code"
 T=$(wait_done flag_mail)
 eq "--email signed in" "$(saved email)" "$MAILED"
-hasnt "--email skips the asking" "$T" "tab browser or SSO"
+hasnt "--email skips the asking" "$T" "tab SSO"
 reset_fp
 OUTPUT=$(env -u FP_TOKEN -u FP_API_KEY NO_COLOR=1 FP_ANALYTICS_DISABLED=1 FP_HOME="$FP_DIR" "$FP" --base-url "$DASH" login </dev/null 2>&1)
-hasnt "no terminal: no offer of a browser" "$OUTPUT" "tab browser or SSO"
+hasnt "no terminal: no offer of a browser" "$OUTPUT" "tab SSO"
 hasnt "no terminal: no link" "$OUTPUT" "/cli/authorize"
 
 # ═════════════════════════════════════════════════════════════════════════════
@@ -591,7 +591,7 @@ CLAIMED_TOKEN=$(echo "$C" | jqp '["session_token"]')
 wait_sign_in_mail "$FORGED"
 eq "…and matching forged addresses can't silence the email" "$(sign_in_mails "$FORGED")" "1"
 M=$(sign_in_mail_text "$FORGED")
-has "…naming the machine" "$M" "fp on e2e-box signed in"
+has "…naming the machine" "$M" "fp-cloud-cli on e2e-box signed in"
 has "…and what that terminal now has" "$M" "in all your organizations"
 hasnt "…not claiming to know where it started" "$M" "started from"
 hasnt "…and carrying no secret" "$M" "$CLAIMED_TOKEN"
@@ -655,7 +655,7 @@ if [ -n "$TRUSTED_DASH" ]; then
   eq "…and fp still finishes: a warning, not a block" "$(cat "$OUT/elsewhere.rc")" "0"
   wait_sign_in_mail "$LOCAL"
   eq "…with one email" "$(sign_in_mails "$LOCAL")" "1"
-  has "…naming the machine" "$(sign_in_mail_text "$LOCAL")" "fp on $(hostname) signed in"
+  has "…naming the machine" "$(sign_in_mail_text "$LOCAL")" "fp-cloud-cli on $(hostname) signed in"
   PERSON_DASH=$DASH
 else
   printf '  \033[33mSKIP\033[0m the different-network warning (set TRUSTED_DASH)\n'

@@ -523,7 +523,7 @@ def test_tab_at_the_email_goes_to_the_link_and_back_keeping_what_was_typed(email
     assert [(label, value, tab) for label, value, tab, _helper in box.asked] == [
         ("email", "", True), ("email", "me@te", True), ("code", "", False),
     ]
-    assert "tab browser or SSO" in box.asked[0][3]
+    assert box.asked[0][3] == "enter send a code · tab SSO · esc cancel"
 
 
 def test_a_browser_link_from_the_email_step_signs_in(approved_link):

@@ -4,7 +4,7 @@
 
 ### Added
 
-- `fp login` can sign you in from a browser. On a terminal it now asks: **browser** opens a link (over SSH or with no display it prints it, and it works from any device), you authorize it, and the terminal finishes on its own, or **email** sends the 6-digit code as before. `--email` goes straight to the code, and `--json` and anything without a terminal behave as they always did. A dashboard without browser login falls back to the code by itself and never creates a key. Either way you get the same session, with the same lifetime. (#981)
+- `fp login` can sign you in from a browser. On a terminal it asks for your email and sends a 6-digit code, as before; press Tab there for a link instead, to use your browser or SSO, and Tab again to go back. The link stays in the login box, opens where a browser can (over SSH or with no display it only shows it, and it works from any device), and the terminal finishes on its own once you authorize it. `--email`, `--json` and anything without a terminal keep the code as they always did. A dashboard without browser login stays with the code and never creates a key. Either way you get the same session, with the same lifetime. (#981)
 
 ## 0.0.2 — 2026-10-25
 

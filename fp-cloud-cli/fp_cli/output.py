@@ -170,6 +170,7 @@ def prompt(label: str, *, default: Optional[str] = None, hide_input: bool = Fals
     kwargs: dict = {"err": True, "prompt_suffix": " ", "hide_input": hide_input}
     if default is not None:
         kwargs["default"] = default
+        kwargs["show_default"] = bool(default)  # a blank default would show as `[]`
     return typer.prompt(text, **kwargs)
 
 
@@ -389,45 +390,55 @@ def _login_slots(buf: str, slots: int) -> Text:
     return out
 
 
-def login_inset(slugs: Sequence[str], idx: int, *, title: str = "choose your org", notes=None):
-    """The nested picker inset (a renderable inside the login frame): a ``{title} · N`` title,
-    then a FAINT-bordered inset box (a hair-lighter fill) with one row per choice — ``❯`` cursor
-    (ACCENT) on row ``idx``, selected slug bright, others dim, and its ``notes`` entry if any —
-    then a FAINT key-hint line."""
-    heading = Text()
-    heading.append(title, style=f"bold {theme.TEXT}")
-    if notes is None:  # a count says something about a list of orgs, not about a menu
-        heading.append(f"  ·  {len(slugs)}", style=theme.FAINT)
+def login_inset(slugs: Sequence[str], idx: int):
+    """The nested org-picker inset (a renderable inside the login frame): a ``choose your org · N``
+    title, then a FAINT-bordered inset box (a hair-lighter fill) with one row per org — ``❯`` cursor
+    (ACCENT) on row ``idx``, selected slug bright, others dim — then a FAINT key-hint line."""
+    title = Text()
+    title.append("choose your org", style=f"bold {theme.TEXT}")
+    title.append(f"  ·  {len(slugs)}", style=theme.FAINT)
     table = Table(box=None, show_header=False, pad_edge=False, padding=(0, 2, 0, 0))
-    table.add_column(no_wrap=True)
     table.add_column(no_wrap=True)
     table.add_column(no_wrap=True)
     for i, slug in enumerate(slugs):
         selected = i == idx
         ptr = Text("❯", style=f"bold {theme.ACCENT}") if selected else Text(" ")
         name = Text(str(slug), style=theme.TEXT if selected else theme.TEXT_DIM)
-        table.add_row(ptr, name, Text((notes or {}).get(slug, ""), style=theme.FAINT))
+        table.add_row(ptr, name)
     inset = Panel(table, box=ROUNDED, border_style=theme.FAINT, style=f"on {theme.INSET_BG}",
                   padding=(0, 1), expand=False)
     hint = Text("↑↓ move · ⏎ select · esc cancel", style=theme.FAINT)
-    return Group(heading, inset, hint)
+    return Group(title, inset, hint)
 
 
 def print_unwrapped(text: str) -> None:
     """One line on stderr that the terminal wraps, not Rich, so a long link stays one link.
-    Above the login box when it is up (same console), and not silenced by ``--quiet``:
-    the login can't go on without it."""
+    Not silenced by ``--quiet``: the login can't go on without it."""
     _stderr.print(Text(text), soft_wrap=True)
+
+
+def print_login_link(done, intro: str, url: str) -> int:
+    """The still part of the box's link screen, once: the steps so far, ``intro``, then the link,
+    which the terminal wraps. Returns the rows it took on screen."""
+    head = Group(render_login_frame(done, None), Padding(Text(intro, style=theme.TEXT_DIM), (0, 0, 0, 2)))
+    link = Text("  ").append(url, style=theme.ACCENT)
+    _stderr.print(head)
+    _stderr.print(link, soft_wrap=True)
+    return len(_stderr.render_lines(head, pad=False)) + math.ceil(link.cell_len / _stderr.width)
+
+
+def render_login_waiting(line: str, keys: str):
+    """The live part of the box's link screen, under the link."""
+    return Padding(Group(Text(line, style=theme.TEXT_DIM), Text(keys, style=theme.FAINT)), (0, 0, 0, 2))
 
 
 def render_login_frame(done, active, *, active_value: str = "", active_slots: Optional[int] = None,
                        helper=None, error=None, inset=None, note=None, signed_in=None,
-                       cancelled=None, failed=None, waiting=None):
+                       cancelled=None, failed=None):
     """Build the one login Panel (a renderable the caller redraws via ``Live``). ``done`` is a list
     of ``(label, value)`` collapsed ✓ steps; ``active`` is the current step label (bright ``❯``
     line) with ``active_value`` the in-progress typed text (rendered as fixed slots when
-    ``active_slots`` is set, e.g. the 6-digit code). ``inset`` is a picker block; ``waiting`` is the
-    live line while a browser approval is pending; ``signed_in``
+    ``active_slots`` is set, e.g. the 6-digit code). ``inset`` is a picker block; ``signed_in``
     = ``(email, org)`` flips the border green; ``cancelled`` (bool: was the session persisted?)
     renders the calm close; ``failed`` = ``(message, hint)`` flips the border red and shows the
     failure INSIDE the same box (e.g. a wrong code). Legend ``◆ fp`` rides the top border."""
@@ -471,8 +482,6 @@ def render_login_frame(done, active, *, active_value: str = "", active_slots: Op
             lines.append(Text("  " + str(helper), style=theme.TEXT_DIM))
     if note:
         lines.append(Text("· " + str(note), style=theme.FAINT))
-    if waiting:
-        lines.append(Text(str(waiting), style=theme.TEXT_DIM))
     if inset is not None:
         lines.append(inset)
     if signed_in is not None:

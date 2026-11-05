@@ -20,7 +20,7 @@ import socket
 import subprocess
 import sys
 import time
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
 from typing import Any, Callable, Dict, Mapping, Optional, Tuple
 from urllib.parse import urlsplit
@@ -278,6 +278,7 @@ class BrowserLogin:
     poll_secret: str
     expires_in: float
     interval: float
+    started: float = field(default_factory=time.monotonic, compare=False)
 
 
 def start_browser_login(
@@ -382,7 +383,7 @@ def await_browser_approval(
     stays responsive, and how a key press gets to cancel. A dropped connection is not
     an answer, so polling carries on through it.
     """
-    deadline = time.monotonic() + login.expires_in
+    deadline = login.started + login.expires_in  # not from now: Tab can come back to a link
     next_poll = time.monotonic() + login.interval
     offline = False
     while True:

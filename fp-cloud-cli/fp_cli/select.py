@@ -168,6 +168,15 @@ class LoginCancelled(Exception):
     """The user pressed Esc / Ctrl-C during the login flow (calm cancel, not an error)."""
 
 
+class SwitchSignIn(Exception):
+    """Tab at the email or the link: the other way of signing in. ``typed`` is what the email
+    field held, to put back when the person returns to it."""
+
+    def __init__(self, typed: str = "") -> None:
+        super().__init__()
+        self.typed = typed
+
+
 def login_box_supported() -> bool:
     """True iff the single-box interactive login can run (real TTY on stdin+stderr + termios) —
     otherwise ``login`` uses the plain prompt flow (tests, pipes, CI, ``--json``)."""
@@ -183,9 +192,11 @@ class LoginBox:
     def __init__(self) -> None:
         self.done: List = []      # collapsed ✓ steps: (label, value)
         self.active: Optional[str] = None
+        self.link = None          # the browser link on offer, kept while Tab goes to email and back
         self._fd = sys.stdin.fileno()
         self._old = None
         self._live = None
+        self._link_rows = 0       # rows `show_link` printed above the live part
 
     def __enter__(self) -> "LoginBox":
         import termios
@@ -210,17 +221,26 @@ class LoginBox:
             termios.tcsetattr(self._fd, termios.TCSADRAIN, self._old)
 
     def _draw(self, **kw) -> None:
+        if self._link_rows:  # take down what `show_link` printed
+            from rich.control import Control
+            from rich.segment import ControlType
+            from rich.text import Text
+
+            self._live.update(Text(""), refresh=True)  # the cursor is now just under those rows
+            up_and_erase = ((ControlType.CURSOR_UP, 1), (ControlType.ERASE_IN_LINE, 2))
+            self._live.console.control(Control(*up_and_erase * self._link_rows))
+            self._link_rows = 0
         self._live.update(output.render_login_frame(self.done, self.active, **kw))
         self._live.refresh()
 
-    def _read_line(self, *, helper, slots, error) -> str:
+    def _read_line(self, *, helper, slots, error, value: str = "", tab: bool = False) -> str:
         """Read one line in raw mode, redrawing the frame on every keystroke so the typed text
         appears INSIDE the box (echo is off). Backspace edits; Enter accepts; Esc / Ctrl-C / EOF
         cancel (an arrow escape-sequence mid-type is swallowed, not a cancel). A ``slots`` field
-        accepts digits only, capped at ``slots``."""
+        accepts digits only, capped at ``slots``. With ``tab``, Tab raises ``SwitchSignIn``."""
         import select as _sel
 
-        buf = ""
+        buf = value
         self._draw(active_value=buf, active_slots=slots, helper=helper, error=error)
         while True:
             try:
@@ -233,6 +253,9 @@ class LoginBox:
                 return buf
             if ch == b"\x03":  # Ctrl-C as a byte (if signals were off)
                 raise LoginCancelled()
+            if ch == b"\t" and tab:
+                self.active = None
+                raise SwitchSignIn(buf)
             if ch == b"\x1b":  # Esc, or the start of an arrow escape sequence
                 r, _, _ = _sel.select([self._fd], [], [], 0.0008)
                 if r:
@@ -256,16 +279,18 @@ class LoginBox:
 
     def text_step(self, label: str, *, helper=None, slots=None, validate=None,
                   error_msg=None, hidden_value: bool = False, collapse: bool = True,
-                  initial_error=None) -> str:
+                  initial_error=None, value: str = "", tab: bool = False) -> str:
         """Run one bright ``❯ {label}`` input step; on a failed ``validate`` show the error sub-line
         and re-prompt. On accept it collapses to a dim ``✓ {label} {value}`` line (the value is
         omitted when ``hidden_value``). With ``collapse=False`` it returns the value WITHOUT adding
         the ✓ line (the caller verifies it over the network first, then calls ``note``); ``initial_error``
-        seeds the error sub-line on the first draw (a re-prompt after a wrong code)."""
+        seeds the error sub-line on the first draw (a re-prompt after a wrong code). ``value`` starts
+        the field with text in it, and ``tab`` makes Tab raise ``SwitchSignIn``."""
         self.active = label
         error = initial_error
         while True:
-            buf = self._read_line(helper=helper, slots=slots, error=error).strip()
+            buf = self._read_line(helper=helper, slots=slots, error=error, value=value, tab=tab).strip()
+            value = ""
             if validate is None or validate(buf):
                 self.active = None
                 if collapse:
@@ -288,9 +313,20 @@ class LoginBox:
         # text_step's own loop shows the error; this is for the verify-fail re-prompt path.
         self._draw(error=message)
 
-    def waiting(self, text: str) -> None:
-        """Redraw the live line of a pending browser approval."""
-        self._draw(waiting=text)
+    def show_link(self, intro: str, url: str) -> None:
+        """Put a link in the box. It's printed, not drawn: the frame redraws on every tick, which
+        clears a person's selection, and Rich would break a long link across lines, where it
+        can't be clicked or copied whole. Only the waiting line under it stays live, and the next
+        frame takes it all down again."""
+        from rich.text import Text
+
+        self._live.update(Text(""), refresh=True)
+        self._link_rows = output.print_login_link(self.done, intro, url)
+
+    def waiting(self, line: str, keys: str) -> None:
+        """Redraw the live part under a link, leaving the link alone."""
+        self._live.update(output.render_login_waiting(line, keys))
+        self._live.refresh()
 
     def wait_key(self, seconds: float) -> Optional[str]:
         """Up to ``seconds`` for a keypress: its token, or ``None``. Esc / Ctrl-C raise
@@ -306,30 +342,29 @@ class LoginBox:
             raise LoginCancelled()
         return key
 
-    def link_ended(self, message: str) -> bool:
-        """A link that can't be used any more, inside the box. ``True`` asks for a new link
-        (Enter), ``False`` goes back to the menu (Esc), Ctrl-C raises ``LoginCancelled``."""
-        self._draw(failed=(message, "⏎ new link · esc back"))
+    def link_ended(self, message: str) -> None:
+        """A link that can't be used any more, inside the box. Returns on Enter, for a new link.
+        Tab raises ``SwitchSignIn``; Esc and Ctrl-C raise ``LoginCancelled``."""
+        self._draw(failed=(message, "⏎ new link · tab use email · esc cancel"))
         while True:
             try:
                 key = _read_key(self._fd)
             except KeyboardInterrupt:
                 raise LoginCancelled()
             if key == "ENTER":
-                return True
-            if key == "ESC":
-                return False
-            if key in ("CTRL_C", "EOF"):
+                return
+            if key == "\t":
+                raise SwitchSignIn()
+            if key in ("ESC", "CTRL_C", "EOF"):
                 raise LoginCancelled()
 
-    def pick(self, slugs: Sequence[str], *, default: Optional[str] = None,
-             title: str = "choose your org", step: str = "org", notes=None) -> str:
-        """The nested picker inset: arrow keys move the cursor, Enter selects (collapses to
-        ``✓ {step} {slug}``), Esc / Ctrl-C raise ``LoginCancelled``."""
+    def pick(self, slugs: Sequence[str], *, default: Optional[str] = None) -> str:
+        """The nested org-picker inset: arrow keys move the cursor, Enter selects (collapses to
+        ``✓ org {slug}``), Esc / Ctrl-C raise ``LoginCancelled``."""
         slugs = list(slugs)
         idx = slugs.index(default) if default in slugs else 0
         self.active = None
-        self._draw(inset=output.login_inset(slugs, idx, title=title, notes=notes))
+        self._draw(inset=output.login_inset(slugs, idx))
         while True:
             try:
                 key = _read_key(self._fd)
@@ -341,14 +376,14 @@ class LoginBox:
                 idx = (idx + 1) % len(slugs)
             elif key == "ENTER":
                 chosen = slugs[idx]
-                self.done.append((step, chosen))
+                self.done.append(("org", chosen))
                 self._draw()
                 return chosen
             elif key in ("ESC", "CTRL_C", "q", "EOF"):
                 raise LoginCancelled()
             else:
                 continue
-            self._draw(inset=output.login_inset(slugs, idx, title=title, notes=notes))
+            self._draw(inset=output.login_inset(slugs, idx))
 
     def finish(self, email: str, org: Optional[str]) -> None:
         """Final state: the outer border + legend flip SUCCESS green; ``● signed in`` + email + org."""

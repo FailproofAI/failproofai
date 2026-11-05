@@ -8,14 +8,18 @@ what a server's answer means, because each mistake there is silent: a Cloud that
 
 from __future__ import annotations
 
+import io
 import json
 import time
+from types import SimpleNamespace
 
 import httpx
 import pytest
 import respx
+from rich.console import Console
+from rich.live import Live
 
-from fp_cli import auth, config
+from fp_cli import auth, config, output
 from fp_cli import select as selectmod
 from fp_cli._context import AppState
 from fp_cli.app import app
@@ -201,6 +205,18 @@ def test_waiting_gives_up_when_the_link_runs_out():
     assert not route.called
 
 
+@respx.mock
+def test_coming_back_to_a_link_keeps_its_countdown():
+    # Tab away and back must not promise ten more minutes the server won't honour.
+    respx.post(f"{BASE}/api/auth/cli/poll").mock(return_value=httpx.Response(200, json={"status": "approved"}))
+    left = []
+    old = auth.BrowserLogin(LINK, "POLL", 60.0, 0.0, started=time.monotonic() - 50.0)
+    auth.await_browser_approval(BASE, old, tick=lambda seconds, _offline: left.append(seconds))
+    assert left and left[0] <= 10.0
+    gone = auth.BrowserLogin(LINK, "POLL", 60.0, 0.0, started=time.monotonic() - 61.0)
+    assert auth.await_browser_approval(BASE, gone, tick=lambda *_: None) == "expired"
+
+
 # --- claim ------------------------------------------------------------------
 
 
@@ -341,13 +357,21 @@ class _Box:
     def __init__(self, *keys):
         self.keys = list(keys)
         self.ended = []
+        self.link = None
+        self.shown = []
 
     def working(self, _text):
         pass
 
+    def show_link(self, intro, url):
+        self.shown.append((intro, url))
+
+    def waiting(self, _line, _keys):
+        pass
+
     def link_ended(self, message):
         self.ended.append((message, list(self.keys)))
-        return False
+        raise selectmod.SwitchSignIn()  # as Tab there does: it gets a test out of the loop
 
     def wait_key(self, _seconds):
         key = self.keys.pop(0) if self.keys else None
@@ -394,8 +418,10 @@ def test_enter_pressed_during_the_last_poll_cannot_answer_a_screen_nobody_saw(ap
     # It would take the next link straight away, with the denial on screen for no time at all.
     monkeypatch.setattr(auth, "await_browser_approval", lambda *_a, **_k: final)
     box = _Box("ENTER", "")
-    assert auth_cmds._browser_login_in_box(_state(), BASE, box) is auth_cmds._BACK_TO_MENU
+    with pytest.raises(selectmod.SwitchSignIn):
+        auth_cmds._browser_login_in_box(_state(), BASE, box)
     assert [keys for _message, keys in box.ended] == [[]]
+    assert box.link is None, "the next time gets a new link, not this dead one"
 
 
 def test_esc_pressed_during_the_last_poll_of_a_denied_link_still_cancels(approved_link, monkeypatch):
@@ -404,6 +430,171 @@ def test_esc_pressed_during_the_last_poll_of_a_denied_link_still_cancels(approve
     with pytest.raises(selectmod.LoginCancelled):
         auth_cmds._browser_login_in_box(_state(), BASE, box)
     assert box.ended == []
+
+
+def test_tab_pressed_during_the_last_poll_means_no_session(approved_link):
+    box = _Box("x", "\t")
+    with pytest.raises(selectmod.SwitchSignIn):
+        auth_cmds._browser_login_in_box(_state(), BASE, box)
+    assert approved_link == []
+    assert box.link is not None, "the approval is still there to come back to"
+
+
+def test_tab_pressed_during_the_last_poll_of_a_denied_link_answers_nothing(approved_link, monkeypatch):
+    monkeypatch.setattr(auth, "await_browser_approval", lambda *_a, **_k: "denied")
+    box = _Box("\t")
+    with pytest.raises(selectmod.SwitchSignIn):  # raised by the denied screen, once shown
+        auth_cmds._browser_login_in_box(_state(), BASE, box)
+    assert [message for message, _keys in box.ended] == ["not authorized"]
+
+
+def test_tab_away_and_back_finds_the_same_link(approved_link, monkeypatch):
+    # Asking again would spend the rate limit, leave rows behind, and open another browser tab.
+    starts, opened = [], []
+
+    def start(*_a, **_k):
+        starts.append(1)
+        return auth.BrowserLogin(LINK, "POLL", 60.0, 1.0)
+
+    def waited(_base, _login, *, tick, **_k):
+        tick(60.0, False)
+        return "approved"
+
+    monkeypatch.setattr(auth, "start_browser_login", start)
+    monkeypatch.setattr(auth, "can_open_browser", lambda *_a: True)
+    monkeypatch.setattr(auth, "open_url", opened.append)
+    monkeypatch.setattr(auth, "await_browser_approval", waited)
+
+    box = _Box("\t")
+    with pytest.raises(selectmod.SwitchSignIn):
+        auth_cmds._browser_login_in_box(_state(), BASE, box)
+    assert auth_cmds._browser_login_in_box(_state(), BASE, box)[0] == "tok"
+
+    assert starts == [1]
+    assert opened == [LINK]
+    assert box.shown == [(auth_cmds._LINK_OPENING, LINK), (auth_cmds._LINK_ANYWHERE, LINK)]
+    assert approved_link == [1]
+
+
+def test_the_link_goes_on_screen_before_any_browser_opens(approved_link, monkeypatch):
+    box = _Box()
+    monkeypatch.setattr(auth, "can_open_browser", lambda *_a: True)
+    monkeypatch.setattr(auth, "open_url", lambda url: box.shown.append(("opened", url)))
+    auth_cmds._browser_login_in_box(_state(), BASE, box)
+    assert [what for what, _url in box.shown] == [auth_cmds._LINK_OPENING, "opened"]
+
+
+class _EmailBox(_Box):
+    """``text_step`` answers from a script: text to accept, or a Tab with what had been typed."""
+
+    def __init__(self, *steps):
+        super().__init__()
+        self.steps = list(steps)
+        self.asked = []
+        self.notes = []
+
+    def text_step(self, label, *, helper=None, value="", tab=False, **_k):
+        self.asked.append((label, value, tab, helper))
+        step = self.steps.pop(0)
+        if isinstance(step, Exception):
+            raise step
+        return step
+
+    def note(self, label, value=None):
+        self.notes.append(label)
+
+
+@pytest.fixture
+def emailed_code(monkeypatch):
+    monkeypatch.setattr(auth, "request_otp", lambda *_a, **_k: None)
+    monkeypatch.setattr(auth, "verify_otp", lambda *_a, **_k: ("tok-otp", 3600, CLAIMED["user"]))
+
+
+def test_tab_at_the_email_goes_to_the_link_and_back_keeping_what_was_typed(emailed_code, monkeypatch):
+    def left(*_a, **_k):
+        raise selectmod.SwitchSignIn()
+
+    monkeypatch.setattr(auth_cmds, "_browser_login_in_box", left)
+    box = _EmailBox(selectmod.SwitchSignIn("me@te"), "me@test", "123456")
+
+    method, creds = auth_cmds._sign_in_in_box(_state(), BASE, box, None)
+
+    assert (method, creds[0]) == ("email", "tok-otp")
+    assert [(label, value, tab) for label, value, tab, _helper in box.asked] == [
+        ("email", "", True), ("email", "me@te", True), ("code", "", False),
+    ]
+    assert "tab browser or SSO" in box.asked[0][3]
+
+
+def test_a_browser_link_from_the_email_step_signs_in(approved_link):
+    box = _EmailBox(selectmod.SwitchSignIn(""))
+    method, creds = auth_cmds._sign_in_in_box(_state(), BASE, box, None)
+    assert (method, creds[0]) == ("browser", "tok")
+    assert approved_link == [1]
+
+
+def test_a_cloud_without_browser_login_stops_offering_tab(emailed_code, monkeypatch):
+    monkeypatch.setattr(auth, "start_browser_login", lambda *_a, **_k: None)
+    box = _EmailBox(selectmod.SwitchSignIn("me@"), "me@test", "123456")
+
+    method, _creds = auth_cmds._sign_in_in_box(_state(), BASE, box, None)
+
+    assert method == "email"
+    assert box.notes[0] == auth_cmds._NO_BROWSER_LOGIN
+    label, value, tab, helper = box.asked[1]
+    assert (label, value, tab) == ("email", "me@", False)
+    assert "tab" not in helper
+
+
+def test_the_email_flag_goes_straight_to_the_code(emailed_code, monkeypatch):
+    monkeypatch.setattr(auth, "start_browser_login", lambda *_a, **_k: pytest.fail("asked for a link"))
+    box = _EmailBox("123456")
+    assert auth_cmds._sign_in_in_box(_state(), BASE, box, "me@test")[0] == "email"
+    assert [label for label, *_rest in box.asked] == ["code"]
+
+
+LONG_LINK = "https://app.befailproof.ai/cli/authorize?r=" + "a" * 64  # 107 characters
+
+
+@pytest.mark.parametrize("width,rows", [(200, 1), (110, 1), (109, 1), (108, 2), (80, 2), (55, 2), (54, 3)])
+def test_a_link_stays_whole_and_its_rows_are_counted(monkeypatch, width, rows):
+    # Rich mustn't break it, and a wrong count leaves stray rows on screen or eats the ones above.
+    console = Console(file=io.StringIO(), force_terminal=True, width=width, color_system=None)
+    monkeypatch.setattr(output, "_stderr", console)
+    monkeypatch.setattr(output, "_screen_started", True)
+
+    taken = output.print_login_link([("code", None)], "open this link:", LONG_LINK)
+
+    printed = console.file.getvalue()
+    assert f"  {LONG_LINK}\n" in printed
+    assert taken == len(["◆ fp", "welcome", "✓ code", "open this link:"]) + rows
+
+
+def test_the_box_leaves_the_link_alone_until_it_takes_it_down_row_by_row(monkeypatch):
+    monkeypatch.setenv("TERM", "xterm")  # Live draws nothing on a dumb terminal
+    console = Console(file=io.StringIO(), force_terminal=True, width=80, color_system=None)
+    monkeypatch.setattr(output, "_stderr", console)
+    monkeypatch.setattr(output, "_screen_started", True)
+    monkeypatch.setattr("sys.stdin", SimpleNamespace(fileno=lambda: 0))
+    box = selectmod.LoginBox()
+    box._live = Live(console=console, auto_refresh=False)
+
+    def written_by(step):
+        console.file.seek(0)
+        console.file.truncate()
+        step()
+        return console.file.getvalue()
+
+    with box._live:
+        assert LONG_LINK in written_by(lambda: box.show_link("open this link:", LONG_LINK))
+        for _tick in range(2):  # redrawing it would clear a person's selection
+            tick = written_by(lambda: box.waiting("waiting", "keys"))
+            assert "waiting" in tick and LONG_LINK not in tick
+        taken_down = written_by(box._draw)
+        # ◆ fp, welcome, the intro and two rows of link, and the waiting line's own row.
+        assert taken_down.count("\x1b[1A\x1b[2K") == 5 + 1
+        # Nothing more to take down: only the frame's own second row.
+        assert written_by(box._draw).count("\x1b[1A\x1b[2K") == 1
 
 
 @pytest.mark.parametrize("step", ["start_browser_login", "claim_browser_login"])
@@ -478,7 +669,7 @@ def test_a_cloud_without_browser_login_falls_back_to_the_emailed_code(home, runn
     )
     respx.get(f"{BASE}/api/auth/session").mock(return_value=httpx.Response(200, json=SESSION))
 
-    result = runner.invoke(app, ["--base-url", BASE, "login"], input="browser\nme@test\n123456\n")
+    result = runner.invoke(app, ["--base-url", BASE, "login"], input="\nme@test\n123456\n")
 
     assert result.exit_code == 0, result.output
     assert "no browser login" in result.output
@@ -495,7 +686,7 @@ def test_a_cloud_that_dropped_the_kind_is_never_claimed_from(home, runner, plain
     respx.post(f"{BASE}/api/auth/otp/request").mock(return_value=httpx.Response(200, json={"ok": True}))
     respx.post(f"{BASE}/api/auth/otp/verify").mock(return_value=httpx.Response(401))
 
-    runner.invoke(app, ["--base-url", BASE, "login"], input="browser\nme@test\n000000\n")
+    runner.invoke(app, ["--base-url", BASE, "login"], input="\nme@test\n000000\n")
 
     assert not poll.called and not claim.called
 
@@ -508,7 +699,7 @@ def test_a_link_that_ends_leaves_nothing_saved(home, runner, plain_terminal, mon
     respx.post(f"{BASE}/api/auth/cli/poll").mock(return_value=httpx.Response(200, json={"status": final}))
     claim = respx.post(f"{BASE}/api/auth/cli/claim")
 
-    result = runner.invoke(app, ["--base-url", BASE, "login"], input="browser\n")
+    result = runner.invoke(app, ["--base-url", BASE, "login"], input="\n")
 
     assert result.exit_code == 4, result.output
     assert not claim.called
@@ -516,14 +707,15 @@ def test_a_link_that_ends_leaves_nothing_saved(home, runner, plain_terminal, mon
 
 
 @respx.mock
-def test_a_typo_at_the_prompt_asks_again_instead_of_starting_a_login(home, runner, plain_terminal):
+def test_an_email_at_the_prompt_is_the_email_and_starts_no_link(home, runner, plain_terminal):
     start = respx.post(f"{BASE}/api/auth/cli/start")
-    respx.post(f"{BASE}/api/auth/otp/request").mock(return_value=httpx.Response(200, json={"ok": True}))
+    otp = respx.post(f"{BASE}/api/auth/otp/request").mock(return_value=httpx.Response(200, json={"ok": True}))
     respx.post(f"{BASE}/api/auth/otp/verify").mock(return_value=httpx.Response(401))
 
-    runner.invoke(app, ["--base-url", BASE, "login"], input="emial\nemail\nme@test\n000000\n")
+    runner.invoke(app, ["--base-url", BASE, "login"], input="me@test\n000000\n")
 
     assert not start.called
+    assert json.loads(otp.calls[0].request.content)["email"] == "me@test"
 
 
 @respx.mock
@@ -536,7 +728,7 @@ def test_ctrl_c_while_waiting_cancels_calmly(home, runner, plain_terminal, monke
 
     monkeypatch.setattr(auth, "await_browser_approval", interrupted)
 
-    result = runner.invoke(app, ["--base-url", BASE, "login"], input="browser\n")
+    result = runner.invoke(app, ["--base-url", BASE, "login"], input="\n")
 
     assert result.exit_code == 0, result.output
     assert "cancelled" in result.output
@@ -559,7 +751,7 @@ def test_the_plain_flow_says_when_it_is_reconnecting_once(home, runner, plain_te
     respx.post(f"{BASE}/api/auth/cli/claim").mock(return_value=httpx.Response(201, json=CLAIMED))
     respx.get(f"{BASE}/api/auth/session").mock(return_value=httpx.Response(200, json=SESSION))
 
-    result = runner.invoke(app, ["--base-url", BASE, "login"], input="browser\n")
+    result = runner.invoke(app, ["--base-url", BASE, "login"], input="\n")
 
     assert result.exit_code == 0, result.output
     assert result.output.count("reconnecting") == 1
@@ -576,7 +768,7 @@ def test_the_plain_flow_says_it_is_back_when_the_next_answer_is_the_approval(hom
     respx.post(f"{BASE}/api/auth/cli/claim").mock(return_value=httpx.Response(201, json=CLAIMED))
     respx.get(f"{BASE}/api/auth/session").mock(return_value=httpx.Response(200, json=SESSION))
 
-    result = runner.invoke(app, ["--base-url", BASE, "login"], input="browser\n")
+    result = runner.invoke(app, ["--base-url", BASE, "login"], input="\n")
 
     assert result.exit_code == 0, result.output
     assert result.output.index("reconnecting") < result.output.index("back online")
@@ -601,6 +793,7 @@ def test_a_redirected_stderr_keeps_the_old_prompts(home, runner, plain_terminal,
 
     assert result.exit_code == 0, result.output
     assert not start.called
+    assert "browser link" not in result.output
     assert config.load_config().session_token == "tok-otp"
 
 
@@ -617,7 +810,7 @@ def test_choosing_email_never_touches_the_browser_routes(home, runner, plain_ter
     )
     respx.get(f"{BASE}/api/auth/session").mock(return_value=httpx.Response(200, json=SESSION))
 
-    result = runner.invoke(app, ["--base-url", BASE, "login"], input="email\nme@test\n123456\n")
+    result = runner.invoke(app, ["--base-url", BASE, "login"], input="me@test\n123456\n")
 
     assert result.exit_code == 0, result.output
     assert not start.called
@@ -632,7 +825,7 @@ def test_choosing_email_never_touches_the_browser_routes(home, runner, plain_ter
         (["--base-url", BASE, "login"], False, "me@test\n123456\n"),
     ],
 )
-def test_email_flag_json_and_no_terminal_never_see_the_menu(home, runner, monkeypatch, args, tty, stdin):
+def test_email_flag_json_and_no_terminal_are_never_offered_a_link(home, runner, monkeypatch, args, tty, stdin):
     monkeypatch.setattr("fp_cli.select.stdin_is_tty", lambda: tty)
     monkeypatch.setattr("fp_cli.select.login_box_supported", lambda: False)
     start = respx.post(f"{BASE}/api/auth/cli/start")
@@ -650,4 +843,19 @@ def test_email_flag_json_and_no_terminal_never_see_the_menu(home, runner, monkey
 
     assert result.exit_code == 0, result.output
     assert not start.called
+    assert "browser link" not in result.output
     assert config.load_config().session_token == "tok-otp"
+
+
+@respx.mock
+def test_a_blank_line_without_a_terminal_starts_no_link(home, runner, monkeypatch):
+    # At a terminal a blank answer means the link. Down a pipe nobody could see one.
+    monkeypatch.setattr("fp_cli.select.stdin_is_tty", lambda: False)
+    monkeypatch.setattr("fp_cli.select.login_box_supported", lambda: False)
+    start = respx.post(f"{BASE}/api/auth/cli/start")
+    respx.post(f"{BASE}/api/auth/otp/request").mock(return_value=httpx.Response(200, json={"ok": True}))
+    respx.post(f"{BASE}/api/auth/otp/verify").mock(return_value=httpx.Response(401))
+
+    runner.invoke(app, ["--base-url", BASE, "login"], input="\nme@test\n000000\n")
+
+    assert not start.called

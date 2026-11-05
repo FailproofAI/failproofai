@@ -636,7 +636,7 @@ def render_top_level_help() -> None:
                   Text(" or set ", style=theme.FAINT) +
                   Text("FP_DASHBOARD_URL", style=theme.TEXT_DIM) +
                   Text("; saved after login.)", style=theme.FAINT))
-    _stdout.print(_bullet(("sign in with the 6-digit code emailed to you.  self-signed dashboard? add ", theme.TEXT),
+    _stdout.print(_bullet(("authorize the link in your browser, or press tab for a code by email.  self-signed dashboard? add ", theme.TEXT),
                           ("--insecure", theme.ACCENT), (".", theme.TEXT)))
     _stdout.print(_bullet(("then: ", theme.TEXT), ("fp whoami", theme.ACCENT),
                           ("   ", theme.FAINT), ("fp --json sessions --since 24h", theme.ACCENT)))

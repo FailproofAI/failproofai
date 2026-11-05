@@ -168,6 +168,7 @@ saved() { python3 -c "import json;print(json.load(open('$FP_DIR/cli-auth.json'))
 reset_fp() { rm -rf "$FP_DIR"; }
 
 EMAIL_STEP=wait:tab\ SSO
+TO_EMAIL=wait:waiting\ for\ you,key:tab,$EMAIL_STEP
 
 # ═════════════════════════════════════════════════════════════════════════════
 head1 "PHASE 0 — preconditions"
@@ -183,7 +184,7 @@ ONE_SESSION=$(sign_in "$ONE")
 
 # ═════════════════════════════════════════════════════════════════════════════
 head1 "PHASE 1 — browser login: the link, the approval, and the terminal finishes alone"
-run_fp first "$EMAIL_STEP,key:tab,url" "$DASH" -- login
+run_fp first "url" "$DASH" -- login
 URL=$(wait_url first)
 has "fp printed the authorize link" "$URL" "$DASH/cli/authorize?r="
 LINK=$(link_token "$URL")
@@ -199,8 +200,8 @@ person "$ONE_SESSION" approve "{\"link_token\":\"$LINK\"}" >/dev/null
 eq "approve answered 200" "$(cat "$OUT/status")" "200"
 T=$(wait_done first)
 eq "fp exited 0" "$(cat "$OUT/first.rc")" "0"
-has "it opens on the email, offering the browser" "$T" "tab SSO"
-has "…and saying enter sends a code" "$T" "send a code"
+has "it starts on the link, offering the email" "$T" "tab use email"
+hasnt "…without asking for an email first" "$T" "send a code"
 has "no display here, so it says the link works anywhere" "$T" "open this link on any device"
 has "it waited with a countdown" "$T" "waiting for you to authorize"
 has "it says it signed in" "$T" "signed in"
@@ -230,8 +231,8 @@ head1 "PHASE 2 — signed in already: no asking; --force asks again"
 run_fp again "wait:$ONE" "$DASH" -- login
 T=$(wait_done again)
 eq "fp exited 0" "$(cat "$OUT/again.rc")" "0"
-hasnt "no asking someone already signed in" "$T" "tab SSO"
-run_fp force "$EMAIL_STEP,key:esc" "$DASH" -- login --force
+hasnt "no asking someone already signed in" "$T" "tab use email"
+run_fp force "wait:waiting for you,key:esc" "$DASH" -- login --force
 T=$(wait_done force)
 eq "--force asks, and esc leaves it" "$(cat "$OUT/force.rc")" "0"
 has "…saying nothing changed" "$T" "cancelled"
@@ -243,7 +244,7 @@ TWO_SESSION=$(sign_in "$TWO")
 new_org "$TWO_SESSION" "fp-a-$STAMP" >/dev/null
 new_org "$TWO_SESSION" "fp-b-$STAMP" >/dev/null
 reset_fp
-run_fp pick "$EMAIL_STEP,key:tab,url,wait:choose your org,key:down,key:enter" "$DASH" -- login
+run_fp pick "url,wait:choose your org,key:down,key:enter" "$DASH" -- login
 LINK=$(link_token "$(wait_url pick)")
 person "$TWO_SESSION" approve "{\"link_token\":\"$LINK\"}" >/dev/null
 T=$(wait_done pick)
@@ -251,7 +252,7 @@ eq "fp exited 0" "$(cat "$OUT/pick.rc")" "0"
 PICKED=$(saved org)
 [ "$PICKED" = "fp-a-$STAMP" ] || [ "$PICKED" = "fp-b-$STAMP" ] && ok "the org picked in the terminal was saved" || bad "the org was saved" "$PICKED"
 reset_fp
-run_fp flag "$EMAIL_STEP,key:tab,url" "$DASH" -- login --org "fp-b-$STAMP"
+run_fp flag "url" "$DASH" -- login --org "fp-b-$STAMP"
 LINK=$(link_token "$(wait_url flag)")
 person "$TWO_SESSION" approve "{\"link_token\":\"$LINK\"}" >/dev/null
 T=$(wait_done flag)
@@ -259,17 +260,17 @@ eq "--org skips the picker" "$(saved org)" "fp-b-$STAMP"
 hasnt "…no picker shown" "$T" "choose your org"
 
 # ═════════════════════════════════════════════════════════════════════════════
-head1 "PHASE 4 — the email code still works, from the first screen and with --email"
+head1 "PHASE 4 — the email code still works, with tab and with --email"
 reset_fp
 MAILED="fp-mail-$STAMP@example.test"
 curl -s -X DELETE "$MAILPIT/api/v1/search?query=to:$MAILED" >/dev/null || true
 rm -f "$OUT/code"
-run_fp menu_mail "$EMAIL_STEP,type:$MAILED,key:enter,wait:enter the 6-digit code,typefile:$OUT/code,key:enter" "$DASH" -- login
+run_fp menu_mail "$TO_EMAIL,type:$MAILED,key:enter,wait:enter the 6-digit code,typefile:$OUT/code,key:enter" "$DASH" -- login
 CODE=$(otp_code "$MAILED"); echo "$CODE" > "$OUT/code"
 T=$(wait_done menu_mail)
 eq "fp exited 0" "$(cat "$OUT/menu_mail.rc")" "0"
 eq "the emailed code signed in" "$(saved email)" "$MAILED"
-hasnt "no link was offered" "$T" "/cli/authorize"
+has "…after starting on the link" "$T" "/cli/authorize"
 eq "the email code path sends no sign-in alert" "$(sign_in_mails "$MAILED")" "0"
 reset_fp
 curl -s -X DELETE "$MAILPIT/api/v1/search?query=to:$MAILED" >/dev/null || true
@@ -279,6 +280,7 @@ CODE=$(otp_code "$MAILED"); echo "$CODE" > "$OUT/code"
 T=$(wait_done flag_mail)
 eq "--email signed in" "$(saved email)" "$MAILED"
 hasnt "--email skips the asking" "$T" "tab SSO"
+hasnt "…and never asks for a link" "$T" "/cli/authorize"
 reset_fp
 OUTPUT=$(env -u FP_TOKEN -u FP_API_KEY NO_COLOR=1 FP_ANALYTICS_DISABLED=1 FP_HOME="$FP_DIR" "$FP" --base-url "$DASH" login </dev/null 2>&1)
 hasnt "no terminal: no offer of a browser" "$OUTPUT" "tab SSO"
@@ -287,7 +289,7 @@ hasnt "no terminal: no link" "$OUTPUT" "/cli/authorize"
 # ═════════════════════════════════════════════════════════════════════════════
 head1 "PHASE 5 — not authorized: enter for a new link, tab back to the email, esc to leave"
 reset_fp
-run_fp deny "$EMAIL_STEP,key:tab,url,wait:not authorized,key:enter,url" "$DASH" -- login
+run_fp deny "url,wait:not authorized,key:enter,url" "$DASH" -- login
 LINK1=$(link_token "$(wait_url deny)")
 person "$ONE_SESSION" deny "{\"link_token\":\"$LINK1\"}" >/dev/null
 eq "deny answered 200" "$(cat "$OUT/status")" "200"
@@ -300,7 +302,7 @@ eq "signed in" "$(saved email)" "$ONE"
 eq "the denied request stays denied" "$(request_status "$LINK1")" "denied"
 reset_fp
 BEFORE=$(sessions_of "$ONE")
-run_fp back "$EMAIL_STEP,key:tab,url,wait:not authorized,key:tab,$EMAIL_STEP,key:esc" "$DASH" -- login
+run_fp back "url,wait:not authorized,key:tab,$EMAIL_STEP,key:esc" "$DASH" -- login
 LINK=$(link_token "$(wait_url back)")
 person "$ONE_SESSION" deny "{\"link_token\":\"$LINK\"}" >/dev/null
 T=$(wait_done back)
@@ -308,31 +310,31 @@ eq "tab went back to the email, and esc left" "$(cat "$OUT/back.rc")" "0"
 has "…calmly" "$T" "cancelled"
 eq "…with nothing saved" "$(saved session_token)" ""
 reset_fp
-run_fp leave "$EMAIL_STEP,key:tab,url,wait:not authorized,key:esc" "$DASH" -- login
+run_fp leave "url,wait:not authorized,key:esc" "$DASH" -- login
 LINK=$(link_token "$(wait_url leave)")
 person "$ONE_SESSION" deny "{\"link_token\":\"$LINK\"}" >/dev/null
 T=$(wait_done leave)
 eq "esc at not authorized leaves, like everywhere else" "$(cat "$OUT/leave.rc")" "0"
 has "…calmly" "$T" "cancelled"
 
-# Tab goes to the link and back, and it stays the same link: another each time would spend the
+# Tab goes to the email and back, and it stays the same link: another each time would spend the
 # rate limit, leave rows behind, and open another browser tab.
 reset_fp
 ROWS=$(sql "select count(*) from cli_login_requests")
-run_fp toggle "$EMAIL_STEP,type:half@,key:tab,url,wait:waiting for you,key:tab,wait:half@,key:tab,url,wait:waiting for you" "$DASH" -- login
+run_fp toggle "url,$TO_EMAIL,type:half@,key:tab,url,wait:waiting for you,key:tab,wait:half@,key:tab,url,wait:waiting for you" "$DASH" -- login
 LINK=$(link_token "$(wait_url toggle)")
-until [ "$(grep -ao 'cli/authorize?r=' "$OUT/toggle.log" | wc -l)" = 2 ]; do sleep 0.1; done
+until [ "$(grep -ao 'cli/authorize?r=' "$OUT/toggle.log" | wc -l)" = 3 ]; do sleep 0.1; done
 person "$ONE_SESSION" approve "{\"link_token\":\"$LINK\"}" >/dev/null
 T=$(wait_done toggle)
 eq "tab there and back still signs in" "$(cat "$OUT/toggle.rc")" "0"
 has "…what was typed came back" "$(transcript toggle | sed -n '/waiting for you/,$p')" "half@"
-eq "…the same link both times" "$(grep -aoP 'authorize\?r=\K[0-9a-f]{64}' "$OUT/toggle.log" | sort -u | wc -l)" "1"
+eq "…the same link every time" "$(grep -aoP 'authorize\?r=\K[0-9a-f]{64}' "$OUT/toggle.log" | sort -u | wc -l)" "1"
 eq "…one request on the server" "$(sql "select count(*) from cli_login_requests")" "$((ROWS + 1))"
 eq "…signed in" "$(saved email)" "$ONE"
 
 # Approved while the person was back at the email: coming back finds it.
 reset_fp
-run_fp later "$EMAIL_STEP,key:tab,url,wait:waiting for you,key:tab,wait:send a code,sleep:4,key:tab" "$DASH" -- login
+run_fp later "url,wait:waiting for you,key:tab,wait:send a code,sleep:4,key:tab" "$DASH" -- login
 LINK=$(link_token "$(wait_url later)")
 until transcript later | sed -n '/waiting for you/,$p' | grep -q 'send a code'; do sleep 0.1; done
 person "$ONE_SESSION" approve "{\"link_token\":\"$LINK\"}" >/dev/null
@@ -346,7 +348,7 @@ eq "…the request spent" "$(request_status "$LINK")" "claimed"
 # Left at the email with the approval unclaimed: nobody collects it, so it makes nothing.
 reset_fp
 BEFORE=$(sessions_of "$ONE")
-run_fp nocollect "$EMAIL_STEP,key:tab,url,wait:waiting for you,key:tab,wait:send a code,sleep:3,key:esc" "$DASH" -- login
+run_fp nocollect "url,wait:waiting for you,key:tab,wait:send a code,sleep:3,key:esc" "$DASH" -- login
 LINK=$(link_token "$(wait_url nocollect)")
 until transcript nocollect | sed -n '/waiting for you/,$p' | grep -q 'send a code'; do sleep 0.1; done
 person "$ONE_SESSION" approve "{\"link_token\":\"$LINK\"}" >/dev/null
@@ -359,7 +361,7 @@ eq "…and no session" "$(sessions_of "$ONE")" "$BEFORE"
 # ═════════════════════════════════════════════════════════════════════════════
 head1 "PHASE 6 — a link that expires offers a fresh one"
 reset_fp
-run_fp expire "$EMAIL_STEP,key:tab,url,wait:that link expired,key:enter,url" "$DASH" -- login
+run_fp expire "url,wait:that link expired,key:enter,url" "$DASH" -- login
 LINK1=$(link_token "$(wait_url expire)")
 sql "update cli_login_requests set expires_at = now() - interval '1 second' where link_token_hash = encode(sha256('$LINK1'::bytea), 'hex')" >/dev/null
 LINK2=$(link_token "$(wait_url expire)")
@@ -372,7 +374,7 @@ eq "the expired link can no longer be approved" "$(cat "$OUT/status")" "410"
 # ═════════════════════════════════════════════════════════════════════════════
 head1 "PHASE 7 — leaving: esc, ctrl-c, and an approval nobody collects"
 reset_fp
-run_fp esc "$EMAIL_STEP,key:tab,url,wait:waiting for you,key:esc" "$DASH" -- login
+run_fp esc "url,wait:waiting for you,key:esc" "$DASH" -- login
 LINK=$(link_token "$(wait_url esc)")
 T=$(wait_done esc)
 eq "esc while waiting exits 0" "$(cat "$OUT/esc.rc")" "0"
@@ -384,7 +386,7 @@ eq "the abandoned link can still be approved" "$(cat "$OUT/status")" "200"
 sleep 3
 eq "…but no session ever exists: nobody claimed it" "$(sessions_of "$ONE")" "$BEFORE"
 eq "…and it stays unclaimed" "$(request_status "$LINK")" "approved"
-run_fp ctrlc "$EMAIL_STEP,key:tab,url,wait:waiting for you,key:ctrl-c" "$DASH" -- login
+run_fp ctrlc "url,wait:waiting for you,key:ctrl-c" "$DASH" -- login
 wait_url ctrlc >/dev/null
 T=$(wait_done ctrlc)
 eq "ctrl-c while waiting exits 0" "$(cat "$OUT/ctrlc.rc")" "0"
@@ -433,7 +435,7 @@ HELD_PID=$!
 for _ in $(seq 1 40); do [ -s "$OUT/held.port" ] && break; sleep 0.1; done
 HELD="http://127.0.0.1:$(cat "$OUT/held.port")"
 reset_fp
-run_fp held "$EMAIL_STEP,key:tab,url,wait:waiting for you,sleep:2,key:esc" "$HELD" -- login
+run_fp held "url,wait:waiting for you,sleep:2,key:esc" "$HELD" -- login
 wait_url held >/dev/null
 T=$(wait_done held)
 eq "esc during a poll that comes back approved exits 0" "$(cat "$OUT/held.rc")" "0"
@@ -441,14 +443,14 @@ has "…calmly" "$T" "cancelled"
 eq "…with no claim" "$(cat "$OUT/held.claims" 2>/dev/null | wc -l)" "0"
 eq "…and nothing saved" "$(saved session_token)" ""
 reset_fp
-run_fp heldutf "$EMAIL_STEP,key:tab,url,wait:waiting for you,sleep:1,type:é,key:esc" "$HELD" -- login
+run_fp heldutf "url,wait:waiting for you,sleep:1,type:é,key:esc" "$HELD" -- login
 wait_url heldutf >/dev/null
 T=$(wait_done heldutf)
 has "esc after a non-ASCII key, same poll: calm too" "$T" "cancelled"
 eq "…with no claim" "$(cat "$OUT/held.claims" 2>/dev/null | wc -l)" "0"
 eq "…and nothing saved" "$(saved session_token)" ""
 reset_fp
-run_fp notheld "$EMAIL_STEP,key:tab,url" "$HELD" -- login
+run_fp notheld "url" "$HELD" -- login
 wait_url notheld >/dev/null
 T=$(wait_done notheld)
 eq "the same poll with no key pressed does claim, so the stand-in is a fair test" "$(cat "$OUT/held.claims" 2>/dev/null | wc -l)" "1"
@@ -457,7 +459,7 @@ eq "the same poll with no key pressed does claim, so the stand-in is a fair test
 reset_fp
 echo denied > "$OUT/held.mode"
 rm -f "$OUT/held.starts"
-run_fp heldenter "$EMAIL_STEP,key:tab,url,wait:waiting for you,sleep:1,key:enter,wait:not authorized,sleep:2,key:esc" "$HELD" -- login
+run_fp heldenter "url,wait:waiting for you,sleep:1,key:enter,wait:not authorized,sleep:2,key:esc" "$HELD" -- login
 wait_url heldenter >/dev/null
 T=$(wait_done heldenter)
 eq "enter during a poll that comes back denied doesn't take a new link" "$(wc -l < "$OUT/held.starts")" "1"
@@ -465,7 +467,7 @@ has "…the denial stays on screen until it's answered" "$T" "new link"
 eq "…and the person can still leave" "$(cat "$OUT/heldenter.rc")" "0"
 reset_fp
 rm -f "$OUT/held.starts"
-run_fp heldescdeny "$EMAIL_STEP,key:tab,url,wait:waiting for you,sleep:1,key:esc" "$HELD" -- login
+run_fp heldescdeny "url,wait:waiting for you,sleep:1,key:esc" "$HELD" -- login
 wait_url heldescdeny >/dev/null
 T=$(wait_done heldescdeny)
 eq "esc during a poll that comes back denied exits 0" "$(cat "$OUT/heldescdeny.rc")" "0"
@@ -475,14 +477,14 @@ eq "…with one link" "$(wc -l < "$OUT/held.starts")" "1"
 # Ctrl-C at any request, not only during a poll.
 reset_fp
 echo slow-start > "$OUT/held.mode"
-run_fp heldstart "$EMAIL_STEP,key:tab,wait:asking for a link,sleep:1,key:ctrl-c" "$HELD" -- login
+run_fp heldstart "wait:asking for a link,sleep:1,key:ctrl-c" "$HELD" -- login
 T=$(wait_done heldstart)
 eq "ctrl-c while asking for a link exits 0" "$(cat "$OUT/heldstart.rc")" "0"
 has "…calmly" "$T" "cancelled"
 reset_fp
 echo slow-claim > "$OUT/held.mode"
 rm -f "$OUT/held.claims"
-run_fp heldclaim "$EMAIL_STEP,key:tab,url,wait:finishing sign-in,sleep:1,key:ctrl-c" "$HELD" -- login
+run_fp heldclaim "url,wait:finishing sign-in,sleep:1,key:ctrl-c" "$HELD" -- login
 wait_url heldclaim >/dev/null
 T=$(wait_done heldclaim)
 eq "ctrl-c while finishing exits 0" "$(cat "$OUT/heldclaim.rc")" "0"
@@ -493,7 +495,7 @@ kill "$HELD_PID" 2>/dev/null
 # ═════════════════════════════════════════════════════════════════════════════
 head1 "PHASE 8 — a dropped connection is not an answer"
 reset_fp
-run_fp drop "$EMAIL_STEP,key:tab,url,wait:waiting for you,wait:reconnecting,wait:waiting for you" "$DASH" -- login
+run_fp drop "url,wait:waiting for you,wait:reconnecting,wait:waiting for you" "$DASH" -- login
 LINK=$(link_token "$(wait_url drop)")
 DASH_STOPPED=1
 docker stop -t 0 "$DASH_CONTAINER" >/dev/null
@@ -520,7 +522,7 @@ mkdir -p "$OUT/bin"
 printf '#!/bin/sh\necho "$@" > "%s/opened"\n' "$OUT" > "$OUT/bin/xdg-open"
 chmod +x "$OUT/bin/xdg-open"
 rm -f "$OUT/opened"
-run_fp opens "$EMAIL_STEP,key:tab,url,wait:waiting for you,key:esc" "$DASH" DISPLAY=:99 SSH_TTY= PATH="$OUT/bin:$PATH" -- login
+run_fp opens "url,wait:waiting for you,key:esc" "$DASH" DISPLAY=:99 SSH_TTY= PATH="$OUT/bin:$PATH" -- login
 URL=$(wait_url opens)
 T=$(wait_done opens)
 for _ in $(seq 1 20); do [ -s "$OUT/opened" ] && break; sleep 0.25; done
@@ -543,7 +545,7 @@ PY
 STUB_PID=$!
 for _ in $(seq 1 40); do [ -s "$OUT/stub.port" ] && break; sleep 0.1; done
 reset_fp
-run_fp old404 "$EMAIL_STEP,key:tab,wait:no browser login,wait:send a code,key:esc" "http://127.0.0.1:$(cat "$OUT/stub.port")" -- login
+run_fp old404 "wait:no browser login,wait:send a code,key:esc" "http://127.0.0.1:$(cat "$OUT/stub.port")" -- login
 T=$(wait_done old404)
 eq "a Cloud with no such route falls through to the email step" "$(cat "$OUT/old404.rc")" "0"
 has "…saying why" "$T" "this Cloud has no browser login yet"
@@ -551,7 +553,7 @@ if [ -n "$CLOUD_1090" ]; then
   reset_fp
   KEYS_BEFORE=$(docker exec "$PG_1090" psql -U postgres -d agenteye -tAc "select count(*) from api_keys where created_via = 'cli_login'")
   STARTED_BEFORE=$(docker exec "$PG_1090" psql -U postgres -d agenteye -tAc "select count(*) from cli_login_requests")
-  run_fp old1090 "$EMAIL_STEP,key:tab,wait:no browser login,wait:send a code,key:esc" "$CLOUD_1090" -- login
+  run_fp old1090 "wait:no browser login,wait:send a code,key:esc" "$CLOUD_1090" -- login
   T=$(wait_done old1090)
   eq "a Cloud with only \`failproofai config\`'s login falls through too" "$(cat "$OUT/old1090.rc")" "0"
   has "…saying why" "$T" "this Cloud has no browser login yet"
@@ -600,7 +602,7 @@ hasnt "…and carrying no secret" "$M" "$CLAIMED_TOKEN"
 PLAIN="fp-plain-$STAMP@example.test"
 PLAIN_SESSION=$(sign_in "$PLAIN")
 reset_fp
-run_fp plainbox "$EMAIL_STEP,key:tab,url" "$DASH" -- login
+run_fp plainbox "url" "$DASH" -- login
 LINK=$(link_token "$(wait_url plainbox)")
 PAGE=$(person "$PLAIN_SESSION" lookup "{\"link_token\":\"$LINK\"}")
 eq "the real fp: no warning" "$(echo "$PAGE" | jqp '["different_network"]')" "False"
@@ -646,7 +648,7 @@ if [ -n "$TRUSTED_DASH" ]; then
   LOCAL="fp-local-$STAMP@example.test"
   LOCAL_SESSION=$(sign_in "$LOCAL")
   reset_fp
-  run_fp elsewhere "$EMAIL_STEP,key:tab,url" "$TRUSTED_DASH" -- login
+  run_fp elsewhere "url" "$TRUSTED_DASH" -- login
   LINK=$(link_token "$(wait_url elsewhere)")
   PAGE=$(person "$LOCAL_SESSION" lookup "{\"link_token\":\"$LINK\"}" 198.51.100.50)
   eq "the real fp, approved elsewhere: the page warns" "$(echo "$PAGE" | jqp '["different_network"]')" "True"
@@ -698,7 +700,7 @@ has "a claim answer is never cacheable" "$CACHE" "no-store"
 # ═════════════════════════════════════════════════════════════════════════════
 head1 "PHASE 13 — logout, and no secret in any log"
 reset_fp
-run_fp last "$EMAIL_STEP,key:tab,url" "$DASH" -- login
+run_fp last "url" "$DASH" -- login
 LINK=$(link_token "$(wait_url last)")
 person "$ONE_SESSION" approve "{\"link_token\":\"$LINK\"}" >/dev/null
 wait_done last >/dev/null

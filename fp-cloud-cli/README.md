@@ -35,10 +35,10 @@ uv run fp --help
 ## Authentication
 
 The CLI talks to your dashboard (set `--base-url` or `FP_DASHBOARD_URL`) and signs you in
-with an emailed one-time code or from a browser:
+from a browser or with an emailed one-time code:
 
 ```bash
-fp login                           # enter your email for a code, or press tab for a browser link
+fp login                           # opens a link to authorize; press tab for a code by email instead
 fp login --email you@example.com   # straight to the code; also what scripts and pipes use
 # either way the session is stored in
 # ~/.failproofai/fpcli/cli-auth.json (mode 0600)
@@ -46,11 +46,11 @@ fp whoami
 fp logout
 ```
 
-Press **tab** at the email to sign in with your browser or SSO instead, and tab again to go
-back. `fp` shows a link and opens it (over SSH or with no display it only shows it, and it
-works from any device). Authorize it and the terminal finishes on its own. That terminal gets
-your access in all your orgs until the session expires, so only authorize a link you just
-asked for. A dashboard without browser login stays with the code.
+`fp` starts on a link, to sign in with your browser or SSO, and opens it (over SSH or with no
+display it only shows it, and it works from any device). Authorize it and the terminal finishes
+on its own. That terminal gets your access in all your orgs until the session expires, so only
+authorize a link you just asked for. Press **tab** for a code by email instead, and tab again to
+go back. If there's no link to offer, as on a dashboard without browser login, it uses the code.
 
 Sessions expire (24h by default); re-run `fp login` when prompted.
 

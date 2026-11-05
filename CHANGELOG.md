@@ -4,7 +4,7 @@
 
 ### Features
 
-- `fp login` can sign you in from a browser, as `failproofai config` does: on a terminal it asks for your email, Tab switches to a browser link, and either way you get your own session. New deliberate-run harness: `__tests__/e2e/layout/fp-login.sh`. (#981)
+- `fp login` can sign you in from a browser, as `failproofai config` does: on a terminal it starts on a link, Tab switches to a code by email, and either way you get your own session. New deliberate-run harness: `__tests__/e2e/layout/fp-login.sh`. (#981)
 
 ### Dependencies
 

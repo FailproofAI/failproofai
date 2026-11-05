@@ -163,7 +163,7 @@ unchanged when no artifact is returned.
 
 | Command | Purpose | Options |
 | --- | --- | --- |
-| `fp login` | Sign in with an emailed one-time code or from a browser, and select an organization. `--email` goes straight to the code. | `--email`, `-e`; `--org`; `--force` |
+| `fp login` | Sign in from a browser or with an emailed one-time code, and select an organization. `--email` goes straight to the code. | `--email`, `-e`; `--org`; `--force` |
 | `fp logout` | Revoke and remove the saved user session. | — |
 | `fp whoami` | Show the current identity, authentication mode, organization, and permissions. | — |
 | `fp version` | Show the installed CLI version. | — |
@@ -175,7 +175,7 @@ fp login --email you@example.com --org reliability-team
 fp whoami
 ```
 
-On a terminal, `fp login` asks for your email and sends a 6-digit code to paste back, which is also what `--email`, `--json` and anything without a terminal use. Press **Tab** there to sign in with your browser or SSO instead, and Tab again to go back. `fp` shows a link and opens it (over SSH or with no display it only shows it, and it works from any device); authorize it and the terminal finishes on its own. That terminal gets your access in all your organizations until the session expires, so only authorize a link you just asked for. If the login started on a different network, you get an email once the session exists, and the page warns you where the deployment can tell.
+On a terminal, `fp login` starts on a link, to sign in with your browser or SSO, and opens it (over SSH or with no display it only shows it, and it works from any device); authorize it and the terminal finishes on its own. That terminal gets your access in all your organizations until the session expires, so only authorize a link you just asked for. If the login started on a different network, you get an email once the session exists, and the page warns you where the deployment can tell. Press **Tab** for a 6-digit code by email instead, and Tab again to go back. `--email`, `--json` and anything without a terminal use the code.
 
 ### Events
 

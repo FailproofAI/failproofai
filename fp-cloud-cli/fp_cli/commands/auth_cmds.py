@@ -25,7 +25,7 @@ from .._context import (
     resolved_base_url,
 )
 from ..client import ClientContext, get_session_user, org_is_accessible
-from ..errors import ApiError, AuthError
+from ..errors import ApiError, AuthError, NetworkError
 
 
 def _resolve_login_org(
@@ -111,6 +111,7 @@ def _looks_like_email(value: str) -> bool:
 _LINK_OPENING = "opening your browser — if nothing appears, open this link:"
 _LINK_ANYWHERE = "open this link on any device to authorize:"
 _NO_BROWSER_LOGIN = "this Cloud has no browser login yet — using an emailed code"
+_NO_LINK_NOW = "couldn't get a link right now — using an emailed code"
 _LINK_ENDED = {
     "denied": "not authorized",
     "expired": "that link expired",
@@ -131,7 +132,7 @@ def _offer_link(url: str) -> None:
 
 def _browser_login_in_box(state: AppState, base: str, box: selectmod.LoginBox):
     """Link → approval → session, inside the box. Returns ``(token, expires_in, user)``, or ``None``
-    when this Cloud has no browser login. Tab raises ``SwitchSignIn``, and ``box.link`` keeps the
+    with a note saying why when there's no link to offer. Tab raises ``SwitchSignIn``, and ``box.link`` keeps the
     link for coming back: asking for another each time would spend the rate limit and open another
     tab, and an approval given in the meantime would be lost."""
     options = {"timeout": state.timeout, "verify": not state.insecure}
@@ -150,8 +151,15 @@ def _browser_login_in_box(state: AppState, base: str, box: selectmod.LoginBox):
                 box.show_link(_LINK_ANYWHERE, box.link.verification_url)
             else:
                 box.working("asking for a link…")
-                box.link = auth.start_browser_login(base, **options)
+                try:
+                    box.link = auth.start_browser_login(base, **options)
+                except (ApiError, NetworkError):
+                    # The link is only the default. A rate limit or an outage of this one route
+                    # must not stand between a person and the emailed code.
+                    box.note(_NO_LINK_NOW)
+                    return None
                 if box.link is None:
+                    box.note(_NO_BROWSER_LOGIN)
                     return None
                 # The link goes on screen before any browser opens, so one that never appears
                 # strands nobody. Over SSH or with no display it is the whole offer.
@@ -248,28 +256,27 @@ def _email_code_in_box(state: AppState, base: str, box: selectmod.LoginBox, emai
 
 
 def _sign_in_in_box(state: AppState, base: str, box: selectmod.LoginBox, email_opt: Optional[str]):
-    """Ask for an email, with Tab to a browser link and back. Returns ``(method, creds)``."""
+    """Start on a browser link, with Tab to an emailed code and back. Returns ``(method, creds)``."""
     if email_opt:
         return "email", _email_code_in_box(state, base, box, email_opt)
-    typed, tab = "", True
+    typed = ""
     while True:
-        try:
-            return "email", _email_code_in_box(state, base, box, None, typed=typed, tab=tab)
-        except selectmod.SwitchSignIn as switch:
-            typed = switch.typed
         try:
             creds = _browser_login_in_box(state, base, box)
         except selectmod.SwitchSignIn:
-            continue
+            try:
+                return "email", _email_code_in_box(state, base, box, None, typed=typed, tab=True)
+            except selectmod.SwitchSignIn as switch:
+                typed = switch.typed
+                continue
         if creds:
             return "browser", creds
-        box.note(_NO_BROWSER_LOGIN)
-        tab = False
+        return "email", _email_code_in_box(state, base, box, None, typed=typed)
 
 
 def _login_interactive(state: AppState, base: str, email_opt: Optional[str], org_opt: Optional[str]) -> None:
-    """The single-box interactive login (real TTY only): one redrawn-in-place panel — email code
-    or browser link → (org picker) → signed-in. Mirrors the non-interactive orchestration below; only the
+    """The single-box interactive login (real TTY only): one redrawn-in-place panel — browser link
+    or email code → (org picker) → signed-in. Mirrors the non-interactive orchestration below; only the
     UI differs. Network/auth errors propagate (terminal restored on the way out) to the standard red
     error box."""
     saved = state.config.org
@@ -331,13 +338,13 @@ def login(
     org: Optional[str] = typer.Option(None, "--org", help="Org/tenant slug to sign in to — skips the picker. Must be one you can access."),
     force: bool = typer.Option(False, "--force", help="Re-authenticate even if you already have a valid session."),
 ) -> None:
-    """Sign in to the dashboard, with an emailed one-time code or from a browser.
+    """Sign in to the dashboard, from a browser or with an emailed one-time code.
 
-    On a terminal it asks for your email and sends a 6-digit code to paste back, which is also
-    what `--email`, `--json` and anything without a terminal use. Press **Tab** there for a link
-    instead, to sign in with your browser or SSO. It opens your browser (over SSH or with no display
-    it just shows the link, which works from any device); authorize there and the terminal finishes
-    on its own. A Cloud without browser login stays with the code.
+    On a terminal it starts on a link, to sign in with your browser or SSO. It opens your browser
+    (over SSH or with no display it just shows the link, which works from any device); authorize
+    there and the terminal finishes on its own. Press **Tab** for a 6-digit code by email instead,
+    which is also what `--email`, `--json` and anything without a terminal use. A Cloud without
+    browser login uses the code by itself.
     The session is saved to `~/.failproofai/fpcli/cli-auth.json` (mode 0600) and lasts ~24h — just
     re-run `login` when it expires. Already signed in? `login` shows who you are and exits 0
     without prompting; pass `--force` to re-authenticate anyway.

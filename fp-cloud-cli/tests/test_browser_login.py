@@ -359,12 +359,16 @@ class _Box:
         self.ended = []
         self.link = None
         self.shown = []
+        self.notes = []
 
     def working(self, _text):
         pass
 
     def show_link(self, intro, url):
         self.shown.append((intro, url))
+
+    def note(self, label, value=None):
+        self.notes.append(label)
 
     def waiting(self, _line, _keys):
         pass
@@ -491,7 +495,6 @@ class _EmailBox(_Box):
         super().__init__()
         self.steps = list(steps)
         self.asked = []
-        self.notes = []
 
     def text_step(self, label, *, helper=None, value="", tab=False, **_k):
         self.asked.append((label, value, tab, helper))
@@ -500,9 +503,6 @@ class _EmailBox(_Box):
             raise step
         return step
 
-    def note(self, label, value=None):
-        self.notes.append(label)
-
 
 @pytest.fixture
 def emailed_code(monkeypatch):
@@ -510,7 +510,7 @@ def emailed_code(monkeypatch):
     monkeypatch.setattr(auth, "verify_otp", lambda *_a, **_k: ("tok-otp", 3600, CLAIMED["user"]))
 
 
-def test_tab_at_the_email_goes_to_the_link_and_back_keeping_what_was_typed(emailed_code, monkeypatch):
+def test_tab_at_the_link_goes_to_the_email_and_back_keeping_what_was_typed(emailed_code, monkeypatch):
     def left(*_a, **_k):
         raise selectmod.SwitchSignIn()
 
@@ -526,24 +526,60 @@ def test_tab_at_the_email_goes_to_the_link_and_back_keeping_what_was_typed(email
     assert box.asked[0][3] == "enter send a code · tab SSO · esc cancel"
 
 
-def test_a_browser_link_from_the_email_step_signs_in(approved_link):
-    box = _EmailBox(selectmod.SwitchSignIn(""))
+def test_login_starts_on_the_link_and_never_asks_for_an_email(approved_link):
+    box = _EmailBox()
     method, creds = auth_cmds._sign_in_in_box(_state(), BASE, box, None)
     assert (method, creds[0]) == ("browser", "tok")
     assert approved_link == [1]
+    assert box.asked == []
+    assert box.shown == [(auth_cmds._LINK_ANYWHERE, LINK)]
 
 
-def test_a_cloud_without_browser_login_stops_offering_tab(emailed_code, monkeypatch):
+def _uses_the_code(box):
+    label, value, tab, helper = box.asked[0]
+    assert (label, value, tab) == ("email", "", False)
+    assert "tab" not in helper
+
+
+def test_a_cloud_without_browser_login_uses_the_code_and_offers_no_tab(emailed_code, monkeypatch):
     monkeypatch.setattr(auth, "start_browser_login", lambda *_a, **_k: None)
-    box = _EmailBox(selectmod.SwitchSignIn("me@"), "me@test", "123456")
+    box = _EmailBox("me@test", "123456")
 
     method, _creds = auth_cmds._sign_in_in_box(_state(), BASE, box, None)
 
     assert method == "email"
     assert box.notes[0] == auth_cmds._NO_BROWSER_LOGIN
-    label, value, tab, helper = box.asked[1]
-    assert (label, value, tab) == ("email", "me@", False)
-    assert "tab" not in helper
+    _uses_the_code(box)
+
+
+@pytest.mark.parametrize(
+    "failure",
+    [ApiError("Too many login attempts", status=429), NetworkError("answered HTTP 502")],
+    ids=["rate-limited", "server-error"],
+)
+def test_failing_to_get_a_link_still_leaves_the_emailed_code(emailed_code, monkeypatch, failure):
+    # The link is only the default, so it must not be the only way in.
+    def refused(*_a, **_k):
+        raise failure
+
+    monkeypatch.setattr(auth, "start_browser_login", refused)
+    box = _EmailBox("me@test", "123456")
+
+    method, creds = auth_cmds._sign_in_in_box(_state(), BASE, box, None)
+
+    assert (method, creds[0]) == ("email", "tok-otp")
+    assert box.notes[0] == auth_cmds._NO_LINK_NOW
+    _uses_the_code(box)
+
+
+def test_a_claim_that_fails_is_not_mistaken_for_having_no_link(approved_link, monkeypatch):
+    # Someone approved this. Dropping to a code would hide why it didn't work.
+    def refused(*_a, **_k):
+        raise ApiError("approval_revoked", status=403)
+
+    monkeypatch.setattr(auth, "claim_browser_login", refused)
+    with pytest.raises(ApiError, match="approval_revoked"):
+        auth_cmds._sign_in_in_box(_state(), BASE, _EmailBox(), None)
 
 
 def test_the_email_flag_goes_straight_to_the_code(emailed_code, monkeypatch):
@@ -602,6 +638,23 @@ def test_the_box_leaves_the_link_alone_until_it_takes_it_down_row_by_row(monkeyp
         assert taken_down.count("\x1b[1A\x1b[2K") == 4 + 1 + 2 + 1 + 1
         # Nothing more to take down: only the frame's own rows (border, welcome, border).
         assert written_by(box._draw).count("\x1b[1A\x1b[2K") == 2
+
+
+def test_cancelling_leaves_no_prompt_behind(monkeypatch):
+    monkeypatch.setenv("TERM", "xterm")
+    console = Console(file=io.StringIO(), force_terminal=True, width=80, color_system=None)
+    monkeypatch.setattr(output, "_stderr", console)
+    monkeypatch.setattr("sys.stdin", SimpleNamespace(fileno=lambda: 0))
+    box = selectmod.LoginBox()
+    box._live = Live(console=console, auto_refresh=False)
+    box.active = "email"
+    with box._live:
+        box._draw()
+        console.file.seek(0)
+        console.file.truncate()
+        box.cancel(False)
+    closing = console.file.getvalue()
+    assert "cancelled" in closing and "❯ email" not in closing
 
 
 @pytest.mark.parametrize("step", ["start_browser_login", "claim_browser_login"])

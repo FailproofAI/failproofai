@@ -392,6 +392,7 @@ class LoginBox:
     def cancel(self, persisted: bool) -> None:
         """Render the calm close — ``○ cancelled — not signed in`` (or ``○ signed in · pick an org …``
         when the session was already persisted)."""
+        self.active = None  # the step that was asking is over, so no prompt is left behind
         self._draw(cancelled=bool(persisted))
 
     def fail(self, message: str, hint: Optional[str] = None) -> None:

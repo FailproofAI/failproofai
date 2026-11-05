@@ -329,7 +329,7 @@ fp audits create checkout-reliability \
 | `fp policies disable POLICY_ID` | 从所有携带它的部署中移除，并在每个部署上生成新的代次。 | `--yes`, `-y` |
 | `fp policies delete POLICY_ID` | 删除一个策略版本。 | `--yes`, `-y` |
 | `fp policies test PATH` | 在本地针对合成上下文运行策略。对每个策略的 `match` 过滤器逐一应用，不覆盖给定事件/工具的策略会被报告为 `skipped` 而非运行。 | `--event`；`--tool`；`--command`；`--file`；`--expect` |
-| `fp policies compose PROMPT` | 使用助手起草策略。需要 `fixes:write` 权限。 | — |
+| `fp policies compose PROMPT` | 使用助手起草策略。需要 `policies:write` 权限。 | — |
 
 ### 机群
 

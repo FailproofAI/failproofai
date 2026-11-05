@@ -37,7 +37,7 @@ Una versione di policy pubblicata non cambia mai. La modifica di una policy e un
     fp fleet rollback <machine-id> <generation>
     ```
 
-    `rollback` crea una nuova generazione con il vecchio set anziché riavvolgere il contatore, quindi la cronologia rimane append-only e rifiuta una generazione che nomina una policy successivamente disabilitata o eliminata. Richiede una sessione autenticata con `fixes:write`. `fp fleet diff <machine-id>` mostra cosa era previsto rispetto a ciò che il computer ha applicato — viene letto come `behind` finché il computer non fa il prossimo polling — e sulla macchina stessa, `failproofai policies` elenca la distribuzione che sta eseguendo.
+    `rollback` crea una nuova generazione con il vecchio set anziché riavvolgere il contatore, quindi la cronologia rimane append-only e rifiuta una generazione che nomina una policy successivamente disabilitata o eliminata. Richiede una sessione autenticata con `policies:write`. `fp fleet diff <machine-id>` mostra cosa era previsto rispetto a ciò che il computer ha applicato — viene letto come `behind` finché il computer non fa il prossimo polling — e sulla macchina stessa, `failproofai policies` elenca la distribuzione che sta eseguendo.
   </Tab>
 </Tabs>
 

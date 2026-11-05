@@ -329,7 +329,7 @@ fp audits create checkout-reliability \
 | `fp policies disable POLICY_ID` | それを含むすべてのデプロイメントから削除し、各デプロイメントで新しいジェネレーションを作成します。 | `--yes`, `-y` |
 | `fp policies delete POLICY_ID` | ポリシーバージョンを削除します。 | `--yes`, `-y` |
 | `fp policies test PATH` | 合成コンテキストに対してポリシーをローカルで実行します。各ポリシーの `match` フィルターを適用するため、指定されたイベント/ツールをカバーしないポリシーは実行されずに `skipped` と報告されます。 | `--event`; `--tool`; `--command`; `--file`; `--expect` |
-| `fp policies compose PROMPT` | アシスタントでポリシーを下書きします。`fixes:write` が必要です。 | — |
+| `fp policies compose PROMPT` | アシスタントでポリシーを下書きします。`policies:write` が必要です。 | — |
 
 ### フリート
 

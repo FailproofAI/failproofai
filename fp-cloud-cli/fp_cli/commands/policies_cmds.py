@@ -48,7 +48,7 @@ def policies_list(ctx: typer.Context) -> None:
 
     `state` is active, disabled (kept but not enforced) or archived (deleted;
     machines already carrying it keep it until redeployed). Needs
-    `fixes:read`. With `--json`: the server's policy list verbatim — also
+    `policies:read`. With `--json`: the server's policy list verbatim — also
     every version, so deduplicate on `id` if you want one row per policy.
 
     Example:
@@ -71,7 +71,7 @@ def policies_show(
 ) -> None:
     """Show one policy, including its full source and its Jev checks.
 
-    Needs `fixes:read`. With `--json`: the policy object with `source`,
+    Needs `policies:read`. With `--json`: the policy object with `source`,
     `kind`, and for `jev`/`both` its `semantic` declarations, `semanticSha256`
     and the server-derived `authority`/`reviewedBy`.
 
@@ -161,7 +161,7 @@ def policies_publish(
     when you give none and stdin is a terminal.
 
     **Publishing deploys nothing.** A new version sits unused until
-    `fp fleet deploy` puts it on a machine. Needs `fixes:write`.
+    `fp fleet deploy` puts it on a machine. Needs `policies:write`.
     With `--json`: the created version plus `carriers` — a map of machine id to
     the version of this policy it currently runs, so a harness can tell what a
     publish left behind without a second call.
@@ -271,7 +271,7 @@ def policies_enable(
     deployment it was removed from, advancing each machine's generation again.
     Nothing needs redeploying by hand.
 
-    Needs `fixes:write`. With `--json`: `{id, disabled, archived,
+    Needs `policies:write`. With `--json`: `{id, disabled, archived,
     machinesUpdated}` — `machinesUpdated` counts the deployments rewritten, and
     matches the count the preceding `disable` reported.
 
@@ -323,7 +323,7 @@ def policies_disable(
     `policies enable` is the exact inverse: it puts the policy back into every
     deployment it was removed from, so nothing needs redeploying by hand.
 
-    Needs `fixes:write`. With `--json`: `{id, disabled, archived,
+    Needs `policies:write`. With `--json`: `{id, disabled, archived,
     machinesUpdated}` — `machinesUpdated` is how many deployments were rewritten
     to drop it, and is the number to check if you expected this to be a no-op.
 
@@ -363,7 +363,7 @@ def policies_delete(
     machine already carrying it keeps enforcing it until something redeploys —
     deleting is not a way to stop enforcement everywhere, and `disable` is.
 
-    Needs `fixes:write`. With `--json`: `{id, disabled, archived,
+    Needs `policies:write`. With `--json`: `{id, disabled, archived,
     machinesUpdated}`, or `{"cancelled": true}` if you decline.
 
     Example:
@@ -487,12 +487,12 @@ def policies_compose(
     deploys itself is a generated policy nobody read.
 
     `--out` saves it; `--publish <id>` publishes it, still syntax-checked first.
-    Needs `fixes:write` — for the draft as well as the publish. The route is
+    Needs `policies:write` — for the draft as well as the publish. The route is
     `POST /api/agent/compose-policy`, which the dashboard exports as
-    `withAuth("fixes:write", …)`; `agent:use` gates the assistant's other
+    `withAuth("policies:write", …)`; `agent:use` gates the assistant's other
     routes (chat, answer, conversations) and is NOT checked on this one. So a
     role holding only `agent:use` is refused here, and one holding
-    `fixes:write` without it works. Session-only.
+    `policies:write` without it works. Session-only.
 
     With `--json`: `{prompt, source, syntax, published}`.
 
@@ -517,7 +517,7 @@ def policies_compose(
     syn = check_syntax(source)
 
     # Saved BEFORE anything that can fail. `--out` used to run after the
-    # publish, so a publish that was refused — bad syntax, no `fixes:write`,
+    # publish, so a publish that was refused — bad syntax, no `policies:write`,
     # a network blip — threw away the draft the user had just paid an assistant
     # to write, with no way to get that same text back.
     if out:
@@ -627,7 +627,7 @@ def policies_backtest(
     as before. A jev/both policy — a published one, or `--semantic checks.json`
     with or without a source file — runs the every-kind backtest: an estimate
     by default, `--run` to spend Jev allowance on up to `--sample` calls.
-    Needs fixes:write and events:read.
+    Needs policies:write and events:read.
     """
     from pathlib import Path
     _cloud.session_only(ctx.obj, "policies backtest")

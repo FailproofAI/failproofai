@@ -62,7 +62,7 @@ APIキーは組織に属し、明示的な権限を持ちます。エージェ�
 | アラート | `alerts:read`, `alerts:write` |
 | イシュー | `issues:read`, `issues:create`, `issues:close` |
 | 監査 | `audits:read`, `audits:write` |
-| ポリシー | `fixes:read`, `fixes:write`, `policies:pull` |
+| ポリシー | `policies:read`, `policies:write`, `policies:pull` |
 | 使用量 | `usage:read` |
 
 `orgs:admin` はインスタンスオペレーター専用に予約されており、組織キーや一般メンバーには付与できません。廃止された `incidents:*` および `alerts:ack` トークンは互換性のために受け付けられ、現在の `issues:*` 権限に正規化されます。

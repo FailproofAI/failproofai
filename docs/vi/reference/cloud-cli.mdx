@@ -329,7 +329,7 @@ Phiên bản policy được quản lý bởi cloud. **Session-only** — mỗi 
 | `fp policies disable POLICY_ID` | Loại bỏ nó khỏi mỗi deployment mang nó, tạo ra một thế hệ mới trên mỗi cái. | `--yes`, `-y` |
 | `fp policies delete POLICY_ID` | Xóa một phiên bản policy. | `--yes`, `-y` |
 | `fp policies test PATH` | Chạy một policy cục bộ chống lại bối cảnh tổng hợp. Áp dụng bộ lọc `match` của mỗi policy, vì vậy bộ không bao gồm sự kiện/tool được cung cấp sẽ được báo cáo `skipped` thay vì được chạy. | `--event`; `--tool`; `--command`; `--file`; `--expect` |
-| `fp policies compose PROMPT` | Dự thảo một policy với assistant. Cần `fixes:write`. | — |
+| `fp policies compose PROMPT` | Dự thảo một policy với assistant. Cần `policies:write`. | — |
 
 ### Fleet
 

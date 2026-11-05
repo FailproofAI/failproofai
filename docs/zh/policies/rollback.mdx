@@ -37,7 +37,7 @@ icon: "rotate-ccw"
     fp fleet rollback <machine-id> <generation>
     ```
 
-    `rollback` 会以旧配置集生成一个新代次，而非回退计数器，因此历史记录保持只追加模式。若指定的代次所引用的策略已被禁用或删除，该命令将拒绝执行。执行此命令需要已登录且拥有 `fixes:write` 权限的会话。`fp fleet diff <machine-id>` 会对比预期配置与机器实际应用的配置——在机器下次轮询之前，状态显示为 `behind`；在机器本身上，`failproofai policies` 会列出当前运行的部署。
+    `rollback` 会以旧配置集生成一个新代次，而非回退计数器，因此历史记录保持只追加模式。若指定的代次所引用的策略已被禁用或删除，该命令将拒绝执行。执行此命令需要已登录且拥有 `policies:write` 权限的会话。`fp fleet diff <machine-id>` 会对比预期配置与机器实际应用的配置——在机器下次轮询之前，状态显示为 `behind`；在机器本身上，`failproofai policies` 会列出当前运行的部署。
   </Tab>
 </Tabs>
 

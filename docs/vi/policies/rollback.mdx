@@ -37,7 +37,7 @@ Một phiên bản chính sách đã công bố không bao giờ thay đổi. Ch
     fp fleet rollback <machine-id> <generation>
     ```
 
-    `rollback` tạo một thế hệ mới mang bộ cũ thay vì đặt lại bộ đếm, vì vậy lịch sử luôn chỉ được nối thêm, và nó từ chối một thế hệ đặt tên cho chính sách vì đã bị vô hiệu hóa hoặc xóa. Nó cần một phiên đăng nhập với `fixes:write`. `fp fleet diff <machine-id>` hiển thị những gì được dự định so với những gì máy áp dụng — nó được đọc là `behind` cho đến khi máy thăm dò tiếp theo — và trên chính máy đó, `failproofai policies` liệt kê triển khai mà nó đang chạy.
+    `rollback` tạo một thế hệ mới mang bộ cũ thay vì đặt lại bộ đếm, vì vậy lịch sử luôn chỉ được nối thêm, và nó từ chối một thế hệ đặt tên cho chính sách vì đã bị vô hiệu hóa hoặc xóa. Nó cần một phiên đăng nhập với `policies:write`. `fp fleet diff <machine-id>` hiển thị những gì được dự định so với những gì máy áp dụng — nó được đọc là `behind` cho đến khi máy thăm dò tiếp theo — và trên chính máy đó, `failproofai policies` liệt kê triển khai mà nó đang chạy.
   </Tab>
 </Tabs>
 

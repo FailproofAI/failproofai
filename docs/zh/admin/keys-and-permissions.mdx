@@ -62,7 +62,7 @@ API 密钥归属于某个组织，并携带明确的权限配置。请为 Agent 
 | 告警 | `alerts:read`、`alerts:write` |
 | 问题 | `issues:read`、`issues:create`、`issues:close` |
 | 审计 | `audits:read`、`audits:write` |
-| 策略 | `fixes:read`、`fixes:write`、`policies:pull` |
+| 策略 | `policies:read`、`policies:write`、`policies:pull` |
 | 用量 | `usage:read` |
 
 `orgs:admin` 为实例运营方专属权限，不能授予组织密钥或普通成员。已停用的 `incidents:*` 和 `alerts:ack` 令牌出于兼容性仍可接受，并将规范化为当前的 `issues:*` 权限。

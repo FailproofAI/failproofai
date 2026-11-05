@@ -284,4 +284,4 @@ def test_roles_permissions_wrap_as_readable_text(logged_in, runner, monkeypatch,
     assert result.exit_code == 0
     assert "permissions" in result.stdout
     assert "[" not in result.stdout
-    assert "events:read" in result.stdout and "fixes:write" in result.stdout
+    assert "events:read" in result.stdout and "policies:write" in result.stdout

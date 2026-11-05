@@ -8,25 +8,25 @@ A policy stops an agent doing the wrong thing. Sometimes the problem is how the 
 
 ## From insight to pull request
 
-When an audit reads the cause of an insight in your agent's code, the insight says a code change can fix it, and why. From **what to do** on any insight, you can:
+Policies come first. When a policy can't stop the problem and the agent's code can, the insight offers two things, and one click does either:
 
-- **Create a pull request.** Codex works on a copy of your repository, makes the change and runs what tests it can, then opens a draft pull request for your team to review.
+- **Create a pull request.** Codex works on a copy of your repository, makes the change and runs what tests it can, then opens a draft pull request for your team to review. You get an email when it opens.
 - **Raise a GitHub issue.** The insight's findings go to your repository's issues, for someone on your team to pick up.
 
-## You review first
+The click is the go-ahead, recorded against the person who made it. The insight says who asked, links to the result, and says when the pull request is merged or closed.
 
-Both start with a draft built from the insight: what went wrong, the likely cause, the rule it breaks and the code involved. You can edit it and add what only you know. Nothing reaches GitHub, and no model runs, until you approve it.
-
-A pull request is always yours to review, and nothing merges by itself. Follow every fix under **fix › code fixes**.
+A pull request is always yours to review, and nothing merges by itself.
 
 ## From Slack and your AI tools
 
 You don't have to open the dashboard. Ask in Slack, or through FailproofAI's MCP server in an AI tool like Claude or Cursor, and the assistant tells you what can fix an issue.
 
-- **In Slack:** the assistant lays out the options, drafts the fix and takes anything you want to add. You approve it in the thread. Codex runs in FailproofAI Cloud, and the thread hears when the pull request opens.
+- **In Slack:** the assistant suggests what fits, policies first. Pick one and answer yes. Codex runs in FailproofAI Cloud, and the thread hears when the pull request opens.
 - **In your AI tool:** you have two choices. Submit the job to run in FailproofAI Cloud, the same as from Slack. Or get the full context of the issue, including the rules the agent must keep, and have your own agent make the change and raise the pull request itself.
 
 ## What it needs
 
 - GitHub connected, with the agent linked to the folder that runs it.
-- The `fixes:write` permission to draft and approve, and `fixes:read` to see fixes. These permissions also cover cloud policies.
+- The `code_fixes:write` permission to raise a fix or stop one, and `code_fixes:read` to see them. These are separate from `policies:read` and `policies:write`.
+
+GitHub connects the same way everywhere, with no app to create and no key to set. Your code goes between GitHub and your deployment directly.

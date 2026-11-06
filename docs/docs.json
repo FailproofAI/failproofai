@@ -207,7 +207,8 @@
                   "admin/usage",
                   "admin/keys-and-permissions",
                   "admin/users-and-organizations",
-                  "admin/settings-and-security"
+                  "admin/settings-and-security",
+                  "admin/product-analytics"
                 ]
               }
             ]
@@ -226,6 +227,13 @@
                   "reference/evaluator-sdk",
                   "reference/policy-sdk",
                   "reference/self-hosting"
+                ]
+              },
+              {
+                "group": "Connect your tools",
+                "pages": [
+                  "reference/mcp",
+                  "reference/slack"
                 ]
               },
               {

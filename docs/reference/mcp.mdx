@@ -1,0 +1,129 @@
+---
+title: "MCP server"
+description: "Connect Claude, Cursor, Codex, or another MCP client to Failproof AI Cloud, using your own permissions."
+icon: "plug"
+---
+
+Connect an AI tool to Failproof AI Cloud and work with your agents' data from it. Your tool can query sessions and events, run read-only SQL, read dashboards, alerts, issues, audits, and policies, and, if you hold the permission, make changes such as creating an alert or deploying a policy.
+
+Every call runs with **your own** permissions, in **one** organization you choose when connecting.
+
+There is one address for everyone, hosted or self-hosted:
+
+```text
+https://gateway.befailproof.ai/mcp
+```
+
+## Connect a client
+
+Add the address to your client. The first time a tool is used, your browser opens. Choose where your Failproof AI Cloud is, sign in, pick one organization, and select **Allow**. **Cancel** connects nothing.
+
+The page names the app and where it returns to. An app that isn't identified by its own web address is marked **unverified app**, so continue only if you just started this from your own client.
+
+<Tabs>
+  <Tab title="Claude">
+    In claude.ai or Claude Desktop, go to **Settings → Connectors → Add custom connector**. Name it `Failproof AI`, enter the address, select **Add**, then **Connect**.
+
+    On Team and Enterprise plans, an owner adds the connector for the organization first. Each person then connects their own account.
+  </Tab>
+  <Tab title="Claude Code">
+    ```bash
+    claude mcp add --transport http failproofai https://gateway.befailproof.ai/mcp
+    ```
+
+    Then run `/mcp` inside Claude Code, select `failproofai`, and choose **Authenticate**.
+  </Tab>
+  <Tab title="Cursor">
+    Add this to `~/.cursor/mcp.json`, or to your project's `.cursor/mcp.json`:
+
+    ```json
+    {
+      "mcpServers": {
+        "failproofai": { "url": "https://gateway.befailproof.ai/mcp" }
+      }
+    }
+    ```
+
+    Cursor shows **Needs login** next to the server. Select it to sign in.
+  </Tab>
+  <Tab title="Codex">
+    Add this to `~/.codex/config.toml`:
+
+    ```toml
+    [mcp_servers.failproofai]
+    url = "https://gateway.befailproof.ai/mcp"
+    ```
+
+    Then run `codex mcp login failproofai`.
+  </Tab>
+  <Tab title="Other clients">
+    Any client that supports remote MCP servers over Streamable HTTP with OAuth works. Give it the address above. There is no client ID or secret to configure.
+  </Tab>
+</Tabs>
+
+## One organization per connection
+
+A connection acts only in the organization you picked. To use two organizations, add the server twice under different names, such as `failproofai-acme` and `failproofai-sandbox`, and connect each to its own organization.
+
+Demo organizations don't accept connections. Pick your own organization instead.
+
+## Permissions
+
+A connection can do what you can do in the organization, within the set below. It follows your current permissions: if an admin gives you more, the tool gains it, and if they take something away, the tool loses it on its next call.
+
+| Permission | Lets the tool |
+| --- | --- |
+| `events:read` | List events, read a session's overview, list agents and environments |
+| `evaluations:read` | List sessions, and read and summarize evaluation results and jobs |
+| `evaluations:trigger` | Create evaluations, publish new versions, turn them on or off, backfill, and re-evaluate a session |
+| `dashboards:read`, `dashboards:write` | Read dashboards, or create, rename, and add queries to them |
+| `queries:read`, `queries:write` | Read saved queries, or save and edit them |
+| `queries:run` | Run one read-only SQL query and read the query schema |
+| `alerts:read`, `alerts:write` | Read alerts, or create, edit, pause, delete, and test them |
+| `issues:read` | Read issues, acknowledge them, and comment on them |
+| `issues:create` | Open an issue on an alert |
+| `issues:close` | Resolve and close issues |
+| `audits:read`, `audits:write` | Read audits, runs, and findings, or create and edit audits and start a run |
+| `code_fixes:read` | See how to fix an issue, and get its context for your own agent to fix |
+| `code_fixes:write` | Start a fix in Failproof AI Cloud, which opens a pull request on your GitHub |
+| `policies:read`, `policies:write` | Read policies, machines, and deployments, or publish, deploy, and roll back policies |
+
+A few tools need no permission because they read no organization data: building session and event links, and searching this documentation.
+
+An AI tool can never touch API keys, users, settings, or organization administration, and it can't send events.
+
+## Approving changes
+
+Writes ask you first if your client can show the prompt. You see what will change and select **Approve this change** to go ahead. If you decline or don't answer within about 4 minutes, nothing changes. Some clients stop waiting after a minute, so answer promptly.
+
+<Warning>
+  A client that doesn't support prompts isn't asked, and a write runs as soon as the client makes the call. There, your client's own confirmation is the only one, so keep it on for write tools.
+</Warning>
+
+## Connected apps and revoking
+
+**Settings → Integrations → MCP** lists your connected apps in the current organization, with their permissions and last use. **Revoke** cuts an app off at once. Removing the server in your client also revokes the connection.
+
+You can have up to 5 connected apps per organization. Connecting the same app again replaces its earlier connection.
+
+## Self-hosted deployments
+
+Choose **Self-hosted Failproof AI Cloud** when connecting, and enter the address you sign in at. Your deployment must be reachable over public HTTPS.
+
+Tool calls and their results pass through the hosted Failproof AI gateway on their way between your AI tool and your deployment. The gateway doesn't store them.
+
+## What happens to your data
+
+Results go to the AI tool you connected, and that tool's provider handles them under its own terms. For each tool call, Failproof AI logs the tool's name, its outcome, how long it took, and the organization, never the arguments or results. See the [privacy policy](https://befailproof.ai/privacy/).
+
+## Troubleshooting
+
+| What you see | What to do |
+| --- | --- |
+| "Started in another browser" | Finish sign-in in the browser the client opened, with cookies allowed, and start again from the client |
+| An error after **Allow** | The link works once and expires after 10 minutes, so start again from the client |
+| A tool you expected is missing | You don't hold its permission in this organization. Ask an admin. You don't need to reconnect once you have it |
+| The client keeps asking you to sign in | The connection was revoked, you left the organization, or it went unused for 90 days. Connect again |
+| "You have 5 connected apps" | Revoke one under **Settings → Integrations → MCP**, then connect again |
+
+Still stuck? Email [support@befailproof.ai](mailto:support@befailproof.ai).

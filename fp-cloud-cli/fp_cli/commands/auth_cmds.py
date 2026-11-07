@@ -193,7 +193,11 @@ def _browser_login_plain(state: AppState, base: str):
     """The same, for a terminal with no raw mode (Windows). ``None`` when this Cloud has
     no browser login. A link that ends ends the login: `fp login` is one command away."""
     options = {"timeout": state.timeout, "verify": not state.insecure}
-    login = auth.start_browser_login(base, **options)
+    try:
+        login = auth.start_browser_login(base, **options)
+    except (ApiError, NetworkError):  # as in the box: the link is not the only way in
+        output.info(_NO_LINK_NOW)
+        return None
     if login is None:
         output.info(_NO_BROWSER_LOGIN)
         return None

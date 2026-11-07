@@ -737,6 +737,28 @@ def test_a_cloud_without_browser_login_falls_back_to_the_emailed_code(home, runn
 
 
 @respx.mock
+@pytest.mark.parametrize("failed", [429, 500], ids=["rate-limited", "server-error"])
+def test_failing_to_get_a_link_on_a_plain_terminal_still_leaves_the_emailed_code(home, runner, plain_terminal, failed):
+    respx.post(f"{BASE}/api/auth/cli/start").mock(return_value=httpx.Response(failed, json={"error": "nope"}))
+    otp = respx.post(f"{BASE}/api/auth/otp/request").mock(return_value=httpx.Response(200, json={"ok": True}))
+    respx.post(f"{BASE}/api/auth/otp/verify").mock(
+        return_value=httpx.Response(
+            200,
+            json={"user": {"id": "u1", "email": "me@test"}, "expires_in_secs": 3600},
+            headers={"set-cookie": "ae_session=tok-otp; Path=/"},
+        )
+    )
+    respx.get(f"{BASE}/api/auth/session").mock(return_value=httpx.Response(200, json=SESSION))
+
+    result = runner.invoke(app, ["--base-url", BASE, "login"], input="\nme@test\n123456\n")
+
+    assert result.exit_code == 0, result.output
+    assert auth_cmds._NO_LINK_NOW in result.output
+    assert otp.called
+    assert config.load_config().session_token == "tok-otp"
+
+
+@respx.mock
 def test_a_cloud_that_dropped_the_kind_is_never_claimed_from(home, runner, plain_terminal):
     respx.post(f"{BASE}/api/auth/cli/start").mock(
         return_value=httpx.Response(201, json={k: v for k, v in STARTED.items() if k != "kind"})

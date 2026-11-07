@@ -227,7 +227,7 @@ def org_switch(
     """Switch the active org/tenant — pass a slug, or omit it to pick one interactively.
 
     `fp orgs switch acme` switches straight to `acme`. `fp orgs switch` with no slug
-    opens an arrow-key picker (↑↓ to move, ⏎ to select, esc to cancel) starting on your current
+    opens an arrow-key picker (↑↓ to move, enter to select, esc to cancel) starting on your current
     org; if you belong to exactly one org there's nothing to switch to. Either way the result is
     a boxed `switched org` card, and the choice is persisted to
     `~/.failproofai/fpcli/cli-auth.json` so later

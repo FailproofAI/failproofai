@@ -51,7 +51,7 @@ def test_print_table_writes_to_stdout(capsys):
     output.configure(no_color=True, quiet=False)
     output.print_table(["a", "b"], [["1", "2"]], title="Demo")
     out = capsys.readouterr().out
-    assert "DEMO" in out
+    assert "Demo" in out
     assert "1" in out and "2" in out
 
 
@@ -91,7 +91,7 @@ def test_render_events_box_to_stdout(capsys):
     output.render_events([_event("2026-06-22T12:21:54Z")], order="desc")
     captured = capsys.readouterr()
     # The box (human data view) goes to STDOUT; the title carries count, direction and date.
-    assert "EVENTS" in captured.out
+    assert "events" in captured.out
     assert "newest first" in captured.out
     assert "2026-06-22" in captured.out
     assert captured.err == ""
@@ -208,7 +208,7 @@ def test_render_sessions_box_has_no_scores(capsys):
     _wide_stdout()
     output.render_sessions([_sample_eval()])
     out = capsys.readouterr().out
-    assert "SESSIONS" in out and "newest first" in out and "2026-06-22" in out
+    assert "sessions" in out and "newest first" in out and "2026-06-22" in out
     assert "agent-codegen" in out and "done" in out
     assert "12:56:31" in out and "sess-20260615-fcf97e01" in out
     assert "coherence" not in out and "scores" not in out  # scores moved to evals
@@ -219,7 +219,7 @@ def test_render_evals_box_has_scores(capsys):
     _wide_stdout()
     output.render_evals([_sample_eval()])
     out = capsys.readouterr().out
-    assert "EVALS" in out and "scores" in out and "coherence" in out
+    assert "evals" in out and "scores" in out and "coherence" in out
     assert "agent-codegen" in out and "sess-20260615-fcf97e01" in out
     output.configure(no_color=True, quiet=False)
 
@@ -296,7 +296,7 @@ def test_render_sessions_expanded_lists_full_roster(capsys):
     assert "agent-testgen" in out and "9 ev" in out
     assert "●" not in out                                  # uniform: no special "root" marker
     assert "├" in out and "└" in out                       # uniform tree glyphs, └ closes the list
-    assert "SESSIONS · 1" in out                           # count = sessions, not rows
+    assert "sessions · 1" in out                           # panel count = sessions, not rows
     output.configure(no_color=True, quiet=False)
 
 
@@ -403,7 +403,7 @@ def test_render_errors_box(capsys):
     _wide_stdout()
     output.render_errors([_errevent("error", "RateLimitError: upstream timed out")])
     out = capsys.readouterr().out
-    assert "ERRORS" in out and "newest first" in out
+    assert "errors" in out and "newest first" in out
     assert "agent-orderbot" in out and "sess-20260622-4b90b240" in out
     assert "RateLimitError: upstream timed out" in out          # server-computed summary field
     assert "17:51:34" in out
@@ -479,7 +479,7 @@ def test_render_org_perms(capsys):
     out = capsys.readouterr().out
     # header leads with the org name + slug + role; the count moved into the box title
     assert "Globex Corp" in out and "globex" in out and "role admin" in out
-    assert "PERMISSIONS · 5 · Globex Corp" in out
+    assert "permissions · 5 · Globex Corp" in out
     assert "dashboards" in out and "keys" in out and "agent" in out
     output.configure(no_color=True, quiet=False)
 
@@ -659,7 +659,7 @@ def test_render_users_box_and_footer(capsys):
     output.users_footer(users)
     cap = capsys.readouterr()
     out, err = cap.out, cap.err
-    assert "USERS · 3" in out
+    assert "users · 3" in out
     for c in ("email", "access", "perms", "joined", "status"):
         assert c in out
     assert "root@test" in out and "admin" in out and "06-25" in out
@@ -695,7 +695,7 @@ def test_render_user_show_card_and_perms(capsys):
     out = capsys.readouterr().out  # show is a read view → stdout
     assert "user" in out and "dev@test" in out and "protected" in out
     assert "access admin" in out and "3 permissions" in out and "active" in out
-    assert "PERMISSIONS · 3" in out and "keys" in out and "dashboards" in out
+    assert "permissions · 3" in out and "keys" in out and "dashboards" in out
     output.configure(no_color=True, quiet=False)
 
 
@@ -706,7 +706,7 @@ def test_render_user_created_green_card(capsys):
     err = capsys.readouterr().err  # write result → stderr chrome
     assert "user created" in err and "new@test" in err
     assert "access read-only" in err and "2 permissions" in err and "active" in err
-    assert "PERMISSIONS · 2 · read-only" in err  # suffix shows the set
+    assert "permissions · 2 · read-only" in err  # suffix shows the set
     output.configure(no_color=True, quiet=False)
 
 
@@ -718,7 +718,7 @@ def test_render_user_updated_diff(capsys):
     err = capsys.readouterr().err
     assert "permissions updated · dev@test" in err
     assert "now 3" in err and "+1 added" in err and "−1 removed" in err
-    assert "PERMISSIONS · 3" in err          # NEW set size (struck removal not counted)
+    assert "permissions · 3" in err          # NEW set size (struck removal not counted)
     assert "+create" in err and "-write" in err  # added chip / removed ghost (no-color prefixes)
     assert "unchanged" in err                # legend
     output.configure(no_color=True, quiet=False)
@@ -1146,7 +1146,7 @@ def test_render_settings_box(capsys):
     output.render_settings(rows)
     cap = capsys.readouterr()
     out, err = cap.out, cap.err
-    assert "SETTINGS · 3" in out
+    assert "settings · 3" in out
     for c in ("key", "value", "type", "updated"):
         assert c in out
     assert "session_ttl_secs" in out and "86400" in out and "integer" in out
@@ -1231,7 +1231,7 @@ def test_render_incidents_box_and_footer(capsys):
     output.incidents_footer(incs)
     cap = capsys.readouterr()
     out, err = cap.out, cap.err
-    assert "ISSUES · 3" in out
+    assert "issues · 3" in out
     for c in ("id", "alert", "severity", "state", "opened", "assignees"):
         assert c in out
     assert "1f5803aaaaaabbbbcccc000000009826" in out
@@ -1399,7 +1399,7 @@ def test_render_agent_health_configured(capsys):
     _wide_stdout()
     output.render_agent_health(configured=True, default_model="claude-x", model_count=3)
     out = capsys.readouterr().out  # data view → stdout
-    assert "ASSISTANT" in out and "configured" in out
+    assert "assistant" in out and "configured" in out
     assert "default model claude-x" in out and "3 models available" in out
     output.configure(no_color=True, quiet=False)
 
@@ -1417,7 +1417,7 @@ def test_render_agent_models_marks_default(capsys):
     _wide_stdout()
     output.render_agent_models(["m-default", "m-fast"], default_model="m-default")
     out = capsys.readouterr().out
-    assert "MODELS · 2" in out and "m-default" in out and "m-fast" in out and "default" in out
+    assert "models · 2" in out and "m-default" in out and "m-fast" in out and "default" in out
     output.configure(no_color=True, quiet=False)
 
 
@@ -1425,7 +1425,7 @@ def test_render_agent_models_empty(capsys):
     _wide_stdout()
     output.render_agent_models([], default_model=None)
     out = capsys.readouterr().out
-    assert "MODELS · 0" in out and "no models reported" in out
+    assert "models · 0" in out and "no models reported" in out
     output.configure(no_color=True, quiet=False)
 
 
@@ -1438,7 +1438,7 @@ def test_render_agent_chats_box(capsys):
     output.render_agent_chats(chats)
     cap = capsys.readouterr()
     out, err = cap.out, cap.err
-    assert "CHATS · 2" in out
+    assert "chats · 2" in out
     for c in ("chat-id", "title", "messages", "updated"):
         assert c in out
     assert "older" in out and "newer" in out
@@ -1642,7 +1642,7 @@ def test_policy_list_counts_policies_and_captions_versions(capsys):
     _wide_stdout()
     output.render_policies([pv("a", 1), pv("b", 2), pv("b", 1)])
     out = capsys.readouterr().out
-    assert "POLICIES · 2 · 3 versions" in out
+    assert "policies · 2 · 3 versions" in out
     # newest version of each policy first, rather than server order
     b_rows = [ln for ln in out.splitlines() if "b" in ln and "v" in ln
               and ("v1" in ln or "v2" in ln)]
@@ -1657,7 +1657,7 @@ def test_policy_list_omits_the_caption_when_each_policy_has_one_version(capsys):
                                           source=None, created_at="", created_by=None,
                                           disabled=False, archived=False)])
     out = capsys.readouterr().out
-    assert "POLICIES · 1" in out and "versions" not in out
+    assert "policies · 1" in out and "versions" not in out
 
 
 # ─────────────────────────────────────────────────────────────────────────────

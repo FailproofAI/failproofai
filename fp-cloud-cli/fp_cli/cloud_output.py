@@ -15,7 +15,6 @@ from . import output, theme
 
 
 def begin(title: str) -> None:
-    output.screen_header()
     output._stdout.print(Text(title.upper(), style="bold"))
 
 

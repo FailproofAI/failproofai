@@ -2,6 +2,10 @@
 
 ## 1.0.14-beta.0 — 2026-11-02
 
+### Features
+
+- `fp login` can sign you in from a browser, as `failproofai config` does: on a terminal it starts on a link, Tab switches to a code by email, and either way you get your own session. New deliberate-run harness: `__tests__/e2e/layout/fp-login.sh`. (#981)
+
 ### Docs
 
 - Add public pages for the MCP server, the Slack app and product analytics, which the assistant and MCP server can now answer from (#982).

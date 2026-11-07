@@ -1,16 +1,18 @@
 #!/usr/bin/env python3
-"""Drive `failproofai config` through a real pseudo-terminal, screen by screen.
+"""Drive a login through a real pseudo-terminal, screen by screen.
 
-Used by cli-login.sh, inside the systemd container, as the unprivileged user.
-The wizard only offers browser login to a real terminal, so a pty is the only
-honest way to test it end to end.
+Used by cli-login.sh for `failproofai config` (inside the systemd container, as the
+unprivileged user) and by fp-login.sh for `fp login`. Both only offer browser login
+to a real terminal, so a pty is the only honest way to test it end to end.
 
 Usage: cli-login-driver.py <script> <transcript-file> <url-file> -- <command...>
 
 <script> is a comma-separated list of steps, each `wait:<text>` (block until
 the screen shows <text>), `key:<name>` (enter, down, up, esc, ctrl-c, tab),
-`url` (wait for the authorize link and write it to <url-file>), or
-`sleep:<seconds>`. Exit status is the command's own, or 124 on a timeout.
+`url` (wait for the authorize link and write it to <url-file>), `sleep:<seconds>`,
+`type:<text>`, or `typefile:<path>` (wait for that file, then type what it holds:
+for a value the script only learns later, like an emailed code). Exit status is
+the command's own, or 124 on a timeout.
 """
 import os
 import pty
@@ -83,6 +85,20 @@ def main() -> int:
         elif kind == "key":
             time.sleep(0.3)  # let the screen settle so the key lands on it
             os.write(fd, KEYS[arg])
+        elif kind == "type":
+            time.sleep(0.3)
+            os.write(fd, arg.encode())
+        elif kind == "typefile":
+            # Not just "exists": the shell creates the file before it writes to it.
+            data = b""
+            while not data:
+                if os.path.exists(arg):
+                    with open(arg, "rb") as f:
+                        data = f.read().strip()
+                if not data and (time.time() > deadline or not pump(0.2)):
+                    print(f"driver: {arg} never appeared", file=sys.stderr)
+                    return 124
+            os.write(fd, data)
         elif kind == "sleep":
             end = time.time() + float(arg)
             while time.time() < end:

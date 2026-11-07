@@ -50,7 +50,7 @@ Throughout this skill, `fp` means "whichever form you resolved."
 
   | | How you supply it | What it is |
   |---|---|---|
-  | **Session** | `fp login` (interactive; it emails a one-time code) | a signed-in **user**, carrying that person's org memberships and permissions |
+  | **Session** | `fp login` (interactive; a browser link or an emailed one-time code) | a signed-in **user**, carrying that person's org memberships and permissions |
   | **API key** | `--api-key <key>`, or `FP_API_KEY` in the environment | a scoped **credential**, carrying exactly the permissions it was granted |
 
   A key is what you want in CI or any other non-interactive context: no browser, no
@@ -112,8 +112,8 @@ Throughout this skill, `fp` means "whichever form you resolved."
 Before real work, run `fp --json whoami` and react to the exit code:
 
 - **exit 4** → no usable credential. If the user is working from a session, tell
-  them to run `fp login` (it emails a one-time code and prompts
-  interactively — you can't complete it for them, and don't fabricate a token).
+  them to run `fp login` in their own terminal (they authorize a browser link or
+  paste an emailed code — you can't complete it for them, and don't fabricate a token).
   If a key was supplied, the key itself was rejected — say so and stop; logging in
   is not the fix, and silently switching to a session would run the command as a
   different identity than the user asked for.

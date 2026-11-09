@@ -208,11 +208,11 @@ wheels = [
 
 [[package]]
 name = "click"
-version = "8.5.0"
+version = "8.5.1"
 source = { registry = "https://pypi.org/simple" }
-sdist = { url = "https://files.pythonhosted.org/packages/c7/0e/7fa0ef50764b67090eca4114772a2abf8b6148198475e54c660b97caeee6/click-8.5.0.tar.gz", hash = "sha256:ba0d2089de75ea0310e2dde03160e6ca10009947fb95a182f9b54021bb272e34", size = 382235, upload-time = "2026-08-26T13:33:14.56Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/45/37/edbf1b0707709013c0cf2e8317e03d97ed29bf4cac709fe328904ae92a38/click-8.5.1.tar.gz", hash = "sha256:9bbfada76703fd1d784b83eea012e3e8c6a001a876543ef104fa56aaaeb072b4", size = 399151, upload-time = "2026-11-06T17:37:01.021Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/58/50/6c0d534c5f134586a8e1ba4e330569e32f057e33372ae556463212fb4cd3/click-8.5.0-py3-none-any.whl", hash = "sha256:255bc9599cf7748b4b1a446ccc735421bd08a2ae529a8b88597d3de5664ee360", size = 125251, upload-time = "2026-08-26T13:33:12.928Z" },
+    { url = "https://files.pythonhosted.org/packages/31/7d/164b7ffc8624fe9efb4221bf9af485d5c1e41b9ae118045d2b6dc5457d8b/click-8.5.1-py3-none-any.whl", hash = "sha256:8bb5376d2006950386f8c6427613334a2acadc5f559cb80e638d00b4df957e37", size = 126163, upload-time = "2026-11-06T17:36:59.287Z" },
 ]
 
 [[package]]
@@ -272,7 +272,7 @@ requires-dist = [
     { name = "pytest", marker = "extra == 'dev'", specifier = ">=7" },
     { name = "respx", marker = "extra == 'dev'", specifier = ">=0.21" },
     { name = "rich", specifier = ">=13" },
-    { name = "typer", specifier = ">=0.13,<0.28" },
+    { name = "typer", specifier = ">=0.13,<0.29" },
 ]
 provides-extras = ["dev"]
 
@@ -372,7 +372,7 @@ wheels = [
 
 [[package]]
 name = "posthog"
-version = "7.81.1"
+version = "7.84.3"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "backoff" },
@@ -380,9 +380,9 @@ dependencies = [
     { name = "requests" },
     { name = "typing-extensions" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/0e/f5/21477c4d7868129ce839a4a768a51225da9df3b54c4775d73d04d769c1d8/posthog-7.81.1.tar.gz", hash = "sha256:6d1d7846c4be791d8e91b474a6dd6b73ba994ef52f9ad86ad78e42d8d07ee085", size = 880022, upload-time = "2026-10-30T13:57:25.763Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/f2/42/68a47d0dc5c77a23dd710e3592b46202e51e03f1a73e0dc0a19e4094bb70/posthog-7.84.3.tar.gz", hash = "sha256:3a689b189a86e77ee1b6638b565fb8179a086101b76306cc6c7251866c1e3440", size = 905830, upload-time = "2026-11-06T13:38:04.791Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/ce/b0/2439291ea8d5a881d6effe893d3ef609c2207225af7075a5c87c803275fb/posthog-7.81.1-py3-none-any.whl", hash = "sha256:7ed2346e8c527b254b01b3fc89d3f4dae59c36962385ce71ffa7dd69a3d9d62d", size = 1020959, upload-time = "2026-10-30T13:57:23.377Z" },
+    { url = "https://files.pythonhosted.org/packages/1e/c0/d103dff3a76a277dc9454bd4a65b6a712d0c18bdfaa41a93196fcba48852/posthog-7.84.3-py3-none-any.whl", hash = "sha256:f39bde1793b81bf33ae441469df5a742caa405a68145e2da168cd7e71ee471af", size = 1048785, upload-time = "2026-11-06T13:38:02.459Z" },
 ]
 
 [[package]]
@@ -517,7 +517,7 @@ wheels = [
 
 [[package]]
 name = "typer"
-version = "0.27.3"
+version = "0.28.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "annotated-doc" },
@@ -525,9 +525,9 @@ dependencies = [
     { name = "rich" },
     { name = "shellingham" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/03/51/d33db42cc72ffd8c30777547b42d01f0cbf9d95a770457698d0174b3ed71/typer-0.27.3.tar.gz", hash = "sha256:d0396f770a560ab1b0a8504e13b5f254b728cedb05c61cf0359e944e50ce8901", size = 205303, upload-time = "2026-10-06T17:24:16.61Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/ad/8f/21021859316f44289101638dc74d82e13d722d8533e4b8708a3ab7c8461a/typer-0.28.0.tar.gz", hash = "sha256:69ab84ef79fd601cff071bbd2566d855ecadfd93adbc4b3360b9924359bdd857", size = 205415, upload-time = "2026-11-06T08:37:19.779Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/07/ea/2e31b67051e91a133189e9c000c222502ddc6969856416de0d095de4c0b0/typer-0.27.3-py3-none-any.whl", hash = "sha256:e50022f28b82a86313e54501317a1db64bf8f8d036ff8cfe5ca7e47675454aff", size = 123312, upload-time = "2026-10-06T17:24:15.054Z" },
+    { url = "https://files.pythonhosted.org/packages/19/98/8ef60c7cd773dbab9d276a4c7bff505913a25b61acd8a9ef01ceeb70f554/typer-0.28.0-py3-none-any.whl", hash = "sha256:afd18929180b706c5e9a239f53c3c8136903553c0c2d460598bbaa924191d4ab", size = 123253, upload-time = "2026-11-06T08:37:18.611Z" },
 ]
 
 [[package]]

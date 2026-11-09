@@ -12,7 +12,7 @@ import { createHash } from "node:crypto";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { runCli, assertCleanError, assertSuccess } from "../helpers/cli-runner";
+import { runCli, runCliWithTTY, assertCleanError, assertSuccess } from "../helpers/cli-runner";
 
 // ── Top-level flags ───────────────────────────────────────────────────────────
 
@@ -58,6 +58,7 @@ describe("top-level: --help", () => {
     expect(result.stdout).toContain("policies");
     // The half that replaced every inlined flag.
     expect(result.stdout).toContain("failproofai help <command>");
+    expect(result.stdout).toContain("--no-color");
   });
 
   it("-h shorthand prints help and exits 0", () => {
@@ -263,6 +264,24 @@ describe("policies: list (default)", () => {
     expect(result.stdout).toMatch(HEADER);
   });
 
+  it("accepts --no-color after the subcommand", () => {
+    const baseline = runCliWithTTY("policies");
+    assertSuccess(baseline);
+    expect(baseline.stdout).toMatch(/\x1B\[/);
+
+    const result = runCliWithTTY("policies", "--no-color");
+    assertSuccess(result);
+    expect(result.stdout).toMatch(HEADER);
+    expect(result.stdout).not.toMatch(/\x1B\[/);
+  });
+
+  it("accepts --no-color before the subcommand", () => {
+    const result = runCliWithTTY("--no-color", "policies");
+    assertSuccess(result);
+    expect(result.stdout).toMatch(HEADER);
+    expect(result.stdout).not.toMatch(/\x1B\[/);
+  });
+
   it("rejects unexpected positional argument", () => {
     const result = runCli("policies", "hi");
     assertCleanError(result, "Unexpected argument: hi");
@@ -285,6 +304,7 @@ describe("policies: --help", () => {
     assertSuccess(result);
     expect(result.stdout).toContain("--install");
     expect(result.stdout).toContain("--uninstall");
+    expect(result.stdout).toContain("--no-color");
   });
 
   it("-h shorthand prints policies help", () => {

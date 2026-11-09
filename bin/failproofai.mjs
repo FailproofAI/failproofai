@@ -6,6 +6,7 @@
  *   --hook <event>        Hook event from Claude Code (minimal startup latency)
  *   --version / -v        Print version and exit
  *   --help / -h           Show usage and exit
+ *   --no-color            Suppress ANSI color output
  *   policies              Manage policies (list / install / uninstall)
  *   (default)             Launch production dashboard
  */
@@ -33,6 +34,15 @@ if (!process.env.FAILPROOFAI_DIST_PATH) {
 }
 
 const args = process.argv.slice(2);
+
+// Global presentation flag: consume it before aliases, help routing, and
+// subcommand validation so it works in any position without loading the TUI.
+if (args.includes("--no-color")) {
+  process.env.NO_COLOR = "1";
+  for (let i = args.length - 1; i >= 0; i--) {
+    if (args[i] === "--no-color") args.splice(i, 1);
+  }
+}
 
 // ── one noun for policies ──────────────────────────────────────────────────
 // `policies`, `policy` and `pack` were three commands for one idea, two of them
@@ -420,6 +430,7 @@ async function runCli() {
       ["", "hermes, openclaw, factory, devin, antigravity, goose"],
       ["--scope <scope>", "user, project, local (default user); all when removing"],
       ["--beta", "Include beta policies"],
+      ["--no-color", "Plain output; same as NO_COLOR=1; works with every command"],
       ["-c, --custom <file>", "With --install, add a custom policy file (repeatable)"],
       ["", "--uninstall -c removes every custom policy file"],
       ["--releases", "With show: list its releases, and which one is here"],
@@ -584,7 +595,7 @@ async function runCli() {
         ]),
         "",
         `Run ${kit.cmd("failproofai help <command>")} for its options, ${kit.cmd("failproofai -v")} for the version.`,
-        "docs.befailproof.ai  ·  discord.befailproof.ai",
+        "docs.befailproof.ai  ·  discord.befailproof.ai  ·  --no-color: plain output",
       ]);
     }
     process.exit(0);

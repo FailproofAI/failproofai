@@ -18,15 +18,18 @@ An evaluation scores a finished agent session. When a session ends, every enable
 | Runs | On Failproof AI's managed evaluator, in a sandbox | On your infrastructure |
 | Best for | Deterministic checks, and model-backed ones we host for you | Packages, secrets, your own network, models you host yourself, heavy processing |
 
-Hosted evaluations come in three shapes, and the assistant picks between them for you:
+Hosted evaluations come in two shapes, and the assistant picks between them for you:
 
 | | Reads the session with | Gives you |
 | --- | --- | --- |
 | **Code** | nothing — one Python expression, no imports, no network | a score, a metric, or an assertion |
 | **[Jev classifier](/evaluations/jev)** | a small model built for classification | a score, and nothing else — it does not explain itself |
-| **[Judge](/evaluations/judge)** | a general-purpose model | a score **and** the reasoning behind it |
 
-Code costs nothing to run. The other two cost a model call per session, so give them a condition that narrows them to the sessions the question is actually about.
+Code costs nothing to run. Jev costs model calls per session, so give it a condition that narrows it to the sessions the question is actually about.
+
+Hosted LLM judges are retired. Existing results remain available; use Jev for
+classification, code for exact checks, or the assistant and audits for written
+analysis. Your own worker can still run your custom model-based evaluations.
 
 Your own worker is still where an evaluation goes when it needs something we do not host: a package, a secret, your own network, or a model you run yourself. Neither kind needs an inbound connection: workers claim finished sessions and submit results over outbound HTTPS.
 

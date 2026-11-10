@@ -4,9 +4,13 @@
 
 ### Docs
 
+- Document automatic Cloud model selection and hosted LLM judge retirement, preserving Jev and custom worker guidance (#996).
+
 - Add public pages for the MCP server, the Slack app and product analytics, which the assistant and MCP server can now answer from (#982).
 
 ### Dependencies
+
+- Update the Python SDK test lockfile’s oauthlib to 4.0.1 for GHSA-3jp2-3mrg-2vxc, which blocked the docs companion’s supply-chain check; SDK runtime dependencies remain empty (#996).
 
 - Replace Dependabot's #965 and #955, neither of which could install, and clear every fixable Dependabot alert in the TypeScript SDK's integration fixtures. `mastra-1` takes `@mastra/mcp` 2.7.0 with the `@mastra/core` 1.81.0 and `@mastra/memory` 1.40.0 it needs, `mastra-0` stays on Mastra 0.x and clears `@hono/node-server`, `systeminformation`, `glob` and `minimatch`, `deepmerge` leaves three fixtures through `html-to-text` 10.0.1, and the nested zod 3 leaves two. None of these lockfiles ship in a published package (#966)
 - Stop Dependabot moving `@mastra/core` off the `mastra-0` floor to remove `@ai-sdk/provider-utils`. `.github/dependabot.yml` gives that package its own `ignore` range on `ai-4` and `mastra-0`, because a range is read only for the package being updated, not for a parent moved on its behalf (#966)

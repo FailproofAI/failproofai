@@ -7,7 +7,7 @@ description: |-
   • inspect agent telemetry — did agents error/fail/go flaky; sessions, events, latency, token usage, slowest models, sentiment; eval/quality scores and whether quality dropped;
   • operate the deployment — triage issues and audits; manage alerts, access, keys, settings, dashboards, and queries;
   • manage Cloud enforcement — compose/test/backtest/publish policy versions (regex, Jev or both), deploy them to fleet machines or single agents, inspect guardrails, promote, or roll back;
-  • author, dry-run, deploy and backfill hosted code, LLM-judge or Jev evaluators (`fp evaluators`).
+  • author, dry-run, deploy and backfill hosted code or Jev evaluators (`fp evaluators`).
 
   Served by the `fp` CLI against FailproofAI Cloud.
 
@@ -175,7 +175,7 @@ State-changing commands: `keys create/update/disable/regenerate`,
 `roles create/update/delete`, `users delete`, `settings context-windows set/delete`, `otel enable/disable`,
 `slack disconnect`, `orgs create`, `plan claim`, `sessions re-evaluate` and `sessions import`,
 `evaluators create/deploy/enable/disable/label/backfill` (an enabled evaluator scores every
-new session; judge/Jev evaluators and Jev dry-runs spend model budget),
+new session; Jev evaluators and Jev dry-runs spend model budget),
 `policies backtest --run` (spends Jev allowance), `agent ask --approve`,
 `agent rename/delete`, `orgs switch`, and — the
 highest-consequence of the lot — `policies publish/enable/disable/delete` and
@@ -254,7 +254,7 @@ command (`list <kind>`, `whoami`, a `list` subcommand) before committing.
 | "give CI / this service an API key" | `keys create <name> --add events:add` (scope to what they describe) — **state it, then create**; capture the one-time secret |
 | "who has access?", "add / remove a teammate", "make them read-only" | `users list` / `users show <email>` / `users create`/`update`/`disable` |
 | "change a setting", "what can I configure?" | `settings schema` (what's tunable) then `settings set <key> --value …` — **confirm first** |
-| "what models can the assistant use?", "ask the assistant …" | `agent models`; `agent ask "…"` |
+| "what models can the assistant use?", "ask the assistant …" | `agent health` (selection is automatic); `agent ask "…"` |
 | "what can I query?", "run this SQL" | `query schema` / `query run --sql "…"` (or a saved `query run <name>`) |
 | "what am I allowed to do?", "which org am I in?" | `whoami`, `orgs current`, `orgs perms` |
 
@@ -342,7 +342,7 @@ for the full write-up → **confirm with the user** → `audits resolve <id>`.
 
 Use `fp evaluators` for hosted authoring; `fp evals` remains the results reader.
 To decide *what* to measure use `failproofai-eval-brainstorm`; to design the
-evaluation itself (code vs Jev vs LLM judge, the condition, the rubric) use
+evaluation itself (code vs Jev, the condition, the rubric) use
 `failproofai-eval-author` — then come back here to draft, dry-run and deploy it.
 Read [the evaluator command reference](references/commands.md#author-an-evaluator)
 for the full flags and API spec shape. Creation enables a definition by default;
@@ -371,17 +371,9 @@ fp --json evals --since 24h
 Review the draft before creating. It may choose a different `eval_key`: read
 the file and use its key later; the filename does not determine the key.
 
-Judge workflow (server selects the model; judge dry-runs are refused):
-
-```bash
-fp --json evaluators create --key relevance --name Relevance --judge \
-  --criteria "Grade how directly the response answers the request" \
-  --step "Assess relevance and specificity on a continuous scale" --threshold 0.7
-fp --json evaluators deploy relevance --version 2 --judge \
-  --criteria "Grade relevance, accuracy and completeness" --threshold 0.8
-fp --json sessions re-evaluate run-001
-fp --json sessions history run-001
-```
+Hosted LLM judges are retired; do not create, deploy or backfill judge envelopes.
+Historical results remain readable. Use Jev for classification, code for exact
+checks, or assistant/audit analysis for prose.
 
 Jev workflow (dry-runs spend model budget):
 
@@ -401,9 +393,9 @@ Use `--jev score` with 3–5 distinct `--level` values, ordered worst to best, f
 a rubric. `deploy` creates the new immutable version **before** disabling older
 enabled versions. A partial failure names the new id: inspect `list --all`,
 then disable any remaining old version; do not retry creation blindly.
-Backfill (`evaluators backfill`, or `deploy --backfill 7d`) covers code, judge
+Backfill (`evaluators backfill`, or `deploy --backfill 7d`) covers code
 and Jev evaluators, at most 90 days, and queues only the (session, evaluator)
-pairs not scored yet; judge/Jev backfills spend model budget, so run
+pairs not scored yet; Jev backfills spend model budget, so run
 `backfill --dry-run` first and tell the user the count.
 
 Human mode displays dry-run outcomes before creation/deployment. Failed runs

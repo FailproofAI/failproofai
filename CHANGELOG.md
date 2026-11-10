@@ -4,7 +4,7 @@
 
 ### Fixes
 
-- Keep telemetry retryable through prolonged network and server outages, retain interrupted acknowledgements, and preserve permanent rejections for inspection.
+- Keep telemetry retryable through prolonged network and server outages, retain interrupted acknowledgements, and preserve permanent rejections for inspection. (#997)
 
 ## 1.0.14-beta.0 — 2026-11-02
 

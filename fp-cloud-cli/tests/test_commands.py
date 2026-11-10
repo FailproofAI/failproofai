@@ -522,7 +522,7 @@ def test_sessions_table(logged_in, runner):
     )
     result = runner.invoke(app, ["sessions"])
     assert result.exit_code == 0, result.output
-    assert "sessions" in result.stdout  # the boxed panel title
+    assert "SESSIONS" in result.stdout
     assert "done" in result.stdout  # status flattened up from latest_evaluation
 
 
@@ -679,7 +679,7 @@ def test_help_command(home, runner):
     result = runner.invoke(app, ["help"])
     assert result.exit_code == 0
     out = result.stdout
-    assert "Commands" in out  # the grouped top-level panel
+    assert "COMMANDS" in out
     # the four purpose groups, in order
     for g in ("ESSENTIALS", "OBSERVE", "MANAGE", "TOOLS"):
         assert g in out
@@ -744,7 +744,7 @@ def test_fields_unknown_is_usage_error(logged_in, runner):
 def test_dash_h_alias_shows_help(home, runner):
     result = runner.invoke(app, ["-h"])
     assert result.exit_code == 0
-    assert "Commands" in result.stdout and "sessions" in result.stdout
+    assert "COMMANDS" in result.stdout and "sessions" in result.stdout
     assert "ESSENTIALS" in result.stdout  # the grouped top-level help, via the rich_format_help override
 
 

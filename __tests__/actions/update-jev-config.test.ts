@@ -367,12 +367,12 @@ describe("validation is the loader's, not a second copy of it", () => {
     expect(loadJevConfig()).toBeNull();
   });
 
-  it("refuses plain http in enforce mode, and accepts loopback http in observe", async () => {
+  it("accepts loopback http in enforce and observe mode", async () => {
     const enforced = await saveJevConfigAction(
       input({ provider: "custom", baseUrl: "http://localhost:9999", mode: "enforce" }),
     );
-    expect(enforced.ok).toBe(false);
-    expect(loadJevConfig()).toBeNull();
+    expect(enforced.ok).toBe(true);
+    expect(loadJevConfig()?.mode).toBe("enforce");
 
     const observed = await saveJevConfigAction(
       input({ provider: "custom", baseUrl: "http://localhost:9999", mode: "observe" }),

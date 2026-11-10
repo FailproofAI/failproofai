@@ -21,10 +21,10 @@ import typer
 
 from .. import _click_compat as click  # the Click Typer is running; see _click_compat
 from .. import client as api
-from .. import output
+from .. import cloud_output, output
 from .._context import GLOBALS_EPILOG, AppState, deny_in_key_mode, require_auth
-from ..errors import NotFoundError
-from . import _write
+from ..errors import FpCliError, NetworkError, NotFoundError
+from . import _cloud, _write
 
 # The assistant has NO server route at all: `/agent/chat` and `/agent/health` are
 # implemented by the dashboard itself, and the conversation routes are per-human
@@ -279,6 +279,7 @@ def agent_ask(
     chat: Optional[str] = typer.Option(None, "--chat", help="Continue this chat — its short id from `agent chats` (a prefix) or full id. Omit to start a NEW chat (its id is printed)."),
     model: Optional[str] = typer.Option(None, "--model", help="Model to use (see `agent models`)."),
     page_context: Optional[str] = typer.Option(None, "--page-context", help="Optional context string to ground the answer."),
+    approve: bool = typer.Option(False, "--approve", help="Explicitly approve requested writes. Without this, scripts/--json decline."),
 ) -> None:
     """Ask the assistant a question — every ask is saved to a chat.
 
@@ -301,7 +302,7 @@ def agent_ask(
     * `fp agent ask "summarize p95 latency" --model claude-opus-4-7`
     """
     state: AppState = ctx.obj
-    deny_in_key_mode(state, "agent", _KEY_MODE_REASON)
+    _cloud.session_only(state, "agent ask")
     if not message:
         message = sys.stdin.read().strip() if not sys.stdin.isatty() else typer.prompt("question", err=True)
     if not message:
@@ -323,11 +324,49 @@ def agent_ask(
     ]
     thread.append({"role": "user", "content": {"text": message}})
 
+    artifacts = []
+
+    def on_artifact(block):
+        rendered = run_artifact(cctx, block)
+        artifacts.append(rendered)
+        if not state.json:
+            render_artifact(rendered)
+
+    def on_ask_user(event):
+        decision = "reject"
+        if event.get("kind") == "approval":
+            if approve:
+                decision = "approve"
+            elif not state.json and sys.stdin.isatty():
+                output.info(str(event.get("question", "Approve this write?")))
+                if event.get("details"):
+                    output.info(str(event["details"]))
+                if typer.confirm("Approve this change", default=False, err=True):
+                    decision = "approve"
+        answer = {"callId": event["callId"], "decision": decision}
+        try:
+            api.cloud_request(cctx, "POST", "/api/agent/answer", body=answer)
+        except FpCliError as exc:
+            # Unwind the stream and Rich status before the central error renderer
+            # prints one line. Preserve the transport's exit code and request id.
+            reason = (
+                "cannot reach FailproofAI Cloud" if isinstance(exc, NetworkError)
+                else " ".join(exc.message.split()).rstrip(".")
+            )
+            exc.message = (
+                f"Assistant approval answer failed: {reason}; delivery unconfirmed."
+            )
+            exc.hint = None
+            raise exc from None
+        if decision == "reject" and not state.json:
+            output.hint("Declined assistant request; no write approved.")
+
     # The reply streams server-side (an LLM turn + tool calls can take many seconds); show a
     # themed spinner on stderr so the CLI doesn't look hung. No-op under --json / non-TTY.
     with output.thinking("thinking…", enabled=not state.json):
         result = api.agent_chat_oneshot(
-            cctx, messages=thread, conversation_id=full_chat_id, page_context=page_context, model=model
+            cctx, messages=thread, conversation_id=full_chat_id, page_context=page_context, model=model,
+            on_ask_user=on_ask_user, on_artifact=on_artifact,
         )
 
     chat_id = full_chat_id
@@ -337,7 +376,10 @@ def agent_ask(
             # create-with-empty-title then a follow-up rename PATCH.
             chat_id = (api.create_conversation(cctx, title=_title_from_question(message)) or {}).get("id")
         if chat_id:
-            full = thread + [{"role": "assistant", "content": {"text": result.get("answer", "")}}]
+            content = {"text": result.get("answer", "")}
+            if artifacts:
+                content["artifacts"] = [{k: v for k, v in a.items() if k != "result"} for a in artifacts]
+            full = thread + [{"role": "assistant", "content": content}]
             api.replace_messages(cctx, chat_id, full)
             if full_chat_id is not None and not prior:
                 # Continuing a chat that had no messages yet → title it from this first question
@@ -350,7 +392,7 @@ def agent_ask(
         mode="continue" if chat else "new",
     )
     if state.json:
-        output.emit_json({**result, "chat_id": chat_id})
+        output.emit_json({**result, "chat_id": chat_id, **({"artifacts": artifacts} if artifacts else {})})
     else:
         for tool in result.get("tools", []):
             output.agent_tool_used(tool)
@@ -404,4 +446,35 @@ def register(app: typer.Typer) -> None:
     agent.command("show", epilog=GLOBALS_EPILOG)(agent_show)
     agent.command("rename", epilog=GLOBALS_EPILOG)(agent_rename)
     agent.command("delete", epilog=GLOBALS_EPILOG)(agent_delete)
+    agent.command("brief", epilog=GLOBALS_EPILOG)(agent_brief)
     app.add_typer(agent, name="agent")
+
+
+def run_artifact(cctx, block):
+    """Only execute through queries:run; never follow arbitrary URLs or actions."""
+    rendered = dict(block)
+    sql = block.get("sql")
+    if sql:
+        import re
+        if not isinstance(sql, str) or not re.match(r"^\s*(select|with)\b", sql, re.I):
+            raise click.UsageError("Assistant artifact SQL must be SELECT or WITH")
+        rendered["result"] = api.cloud_request(cctx, "POST", "/api/queries/run", body={"sql": sql, "params": []})
+    return rendered
+
+
+def render_artifact(block):
+    cloud_output.artifact(block)
+
+
+def agent_brief(ctx: typer.Context, range: str = typer.Option("24h", "--range")) -> None:
+    """Print the agent-curated home brief (24h or 7d). Session only."""
+    _cloud.session_only(ctx.obj, "agent brief")
+    if range not in ("24h", "7d"):
+        raise click.UsageError("--range must be 24h or 7d")
+    cctx = require_auth(ctx.obj)
+    data = api.cloud_request(cctx, "POST", "/api/agent/home-brief", body={"range": range})
+    blocks = [run_artifact(cctx, block) for block in data.get("blocks", [])]
+    if ctx.obj.json:
+        output.emit_json({**data, "blocks": blocks})
+    else:
+        cloud_output.brief({**data, "blocks": blocks})

@@ -1,0 +1,18 @@
+{
+  "cases": [
+    {"name":"unscoped", "schemaVersion":2, "targets":null, "agent":null, "valid":true, "matches":true},
+    {"name":"integration-all-profiles", "schemaVersion":3, "targets":[{"integration":"claude"}], "agent":{"integration":"claude","instanceId":"agt_1111111111111111"}, "valid":true, "matches":true},
+    {"name":"integration-other-agent", "schemaVersion":3, "targets":[{"integration":"claude"}], "agent":{"integration":"codex","instanceId":"agt_1111111111111111"}, "valid":true, "matches":false},
+    {"name":"profile-exact", "schemaVersion":3, "targets":[{"integration":"hermes","instanceId":"agt_2222222222222222"}], "agent":{"integration":"hermes","instanceId":"agt_2222222222222222"}, "valid":true, "matches":true},
+    {"name":"profile-other-instance", "schemaVersion":3, "targets":[{"integration":"hermes","instanceId":"agt_2222222222222222"}], "agent":{"integration":"hermes","instanceId":"agt_3333333333333333"}, "valid":true, "matches":false},
+    {"name":"profile-other-integration", "schemaVersion":3, "targets":[{"integration":"hermes","instanceId":"agt_2222222222222222"}], "agent":{"integration":"codex","instanceId":"agt_2222222222222222"}, "valid":true, "matches":false},
+    {"name":"scope-unresolved", "schemaVersion":3, "targets":[{"integration":"codex"}], "agent":null, "valid":true, "matches":false},
+    {"name":"or-combination", "schemaVersion":3, "targets":[{"integration":"claude"},{"integration":"hermes","instanceId":"agt_2222222222222222"}], "agent":{"integration":"hermes","instanceId":"agt_2222222222222222"}, "valid":true, "matches":true},
+    {"name":"both-halves-same-scope", "schemaVersion":3, "targets":[{"integration":"codex"}], "agent":{"integration":"codex","instanceId":"agt_4444444444444444"}, "valid":true, "matches":true},
+    {"name":"empty-array", "schemaVersion":3, "targets":[], "agent":null, "valid":false},
+    {"name":"duplicate-selector", "schemaVersion":3, "targets":[{"integration":"codex"},{"integration":"codex"}], "agent":null, "valid":false},
+    {"name":"unknown-integration", "schemaVersion":3, "targets":[{"integration":"invented"}], "agent":null, "valid":false},
+    {"name":"invalid-profile-id", "schemaVersion":3, "targets":[{"integration":"hermes","instanceId":"bad"}], "agent":null, "valid":false},
+    {"name":"scoped-in-schema-two", "schemaVersion":2, "targets":[{"integration":"claude"}], "agent":null, "valid":false}
+  ]
+}

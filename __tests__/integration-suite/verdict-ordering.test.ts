@@ -18,8 +18,7 @@
  * unread on disk.
  *
  * These assert the ground-truth check comes first. A shell script has no unit
- * seam, so this reads the source — the same approach is_error.test.ts and
- * dogfood-configs.test.ts take.
+ * seam, so this reads the source — the same approach is_error.test.ts takes.
  */
 import { describe, it, expect } from "vitest";
 import { readFileSync } from "node:fs";

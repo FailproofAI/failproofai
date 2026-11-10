@@ -60,8 +60,14 @@ async function loadWith(packs: ResolvedPack[], paths: string[] = [artifact]) {
   return result.hooks as unknown as Tagged[];
 }
 
+// Loading a pack writes its ESM shim under <failproofai home>/state/shims. Left
+// on the default, every run of this file dropped one into the developer's real
+// ~/.failproofai.
+const priorFpHome = process.env.FAILPROOFAI_HOME;
+
 beforeEach(() => {
   root = mkdtempSync(join(tmpdir(), "fpai-pack-load-"));
+  process.env.FAILPROOFAI_HOME = join(root, "fp-home");
   const artifacts = join(root, "artifacts");
   mkdirSync(artifacts, { recursive: true });
   artifact = join(artifacts, `${SHA}.mjs`);
@@ -71,6 +77,8 @@ beforeEach(() => {
 
 afterEach(() => {
   clearCustomHooks();
+  if (priorFpHome === undefined) delete process.env.FAILPROOFAI_HOME;
+  else process.env.FAILPROOFAI_HOME = priorFpHome;
   rmSync(root, { recursive: true, force: true });
 });
 
@@ -95,6 +103,31 @@ describe("pack loading", () => {
     expect(result.hooks).toHaveLength(0);
     expect(result.packFailures.get("acme/finance")?.type).toBe("runtime_error");
     expect(result.packFailures.get("acme/finance")?.reason).toContain("integrity");
+  });
+
+  // B13 (e2e round 1): a policy reading its own data file at load, which is
+  // missing, was labelled module_not_found — a missing package, to anyone
+  // reading the report. It is a missing file, and still fail-closed.
+  it("classifies a missing data file read at load as file_not_found, not module_not_found", async () => {
+    const src = `
+      import { readFileSync } from "node:fs";
+      const data = readFileSync(${JSON.stringify(join(tmpdir(), "fpai-absent-data-file.json"))}, "utf8");
+      export default data;
+    `;
+    writeFileSync(artifact, src, "utf8");
+    const sha256 = createHash("sha256").update(src).digest("hex");
+    const result = await loadAllCustomHooks([artifact], { sessionCwd: root, packs: [packRecord({ sha256 })] });
+    expect(result.packFailures.get("acme/finance")?.type).toBe("file_not_found");
+    const { PERMANENT_LOAD_FAILURES } = await import("@/src/hooks/pack-failclosed");
+    expect(PERMANENT_LOAD_FAILURES.has("file_not_found")).toBe(true);
+  });
+
+  it("still classifies an import of a missing module as module_not_found", async () => {
+    const src = `import "./no-such-module-here.mjs";\n`;
+    writeFileSync(artifact, src, "utf8");
+    const sha256 = createHash("sha256").update(src).digest("hex");
+    const result = await loadAllCustomHooks([artifact], { sessionCwd: root, packs: [packRecord({ sha256 })] });
+    expect(result.packFailures.get("acme/finance")?.type).toBe("module_not_found");
   });
 
   it("reports a pack entry that disappears between manifest read and import", async () => {

@@ -1,0 +1,61 @@
+---
+title: "Product analytics"
+description: "The usage telemetry Failproof AI Cloud sends about itself, what is never collected, and how to turn it off."
+icon: "chart-no-axes-column"
+---
+
+Failproof AI Cloud sends usage telemetry **about the software itself** to its maintainers. It never includes your agents' data. On a self-hosted install it's on by default, and you can turn it off.
+
+## What is collected
+
+Every event carries five dimensions and nothing that identifies a person:
+
+| Dimension | Example | What it is |
+| --- | --- | --- |
+| `product` | `agenteye` | Which product sent it |
+| `component` | `dashboard`, `server`, `cli` | Which part of the product sent it |
+| `app_version` | `0.0.1-beta.81` | The build you are running |
+| `deployment_kind` | `self_hosted` | Whether this is a customer install, our demo, our QA, or a dev machine |
+| `org_id` | a UUID | Which organization the action happened in, as an opaque identifier |
+
+On top of those, events record **what was used, never what was in it**: which page was viewed (as a route pattern such as `/:org/sessions/:id`, never the real URL), how many filters of which kind were applied, whether an action succeeded, and how long it took.
+
+The Slack app records workspace connects and disconnects, account links, questions asked, charts posted, approval decisions, and failures by a fixed category. It never includes Slack workspace, user, or channel IDs, email, questions, answers, SQL, or tokens.
+
+### Your organization's name
+
+Alongside the opaque `org_id`, we record your organization's name, URL slug, and dashboard address once, on an organization record rather than on every event. It lets us tell which account a pattern belongs to when we look at adoption or investigate a problem you reported. This is the one piece of identifying information the product sends about you.
+
+### Your usage totals
+
+The server reports each organization's metered usage totals, the same numbers you see on the Usage page. These are counts only: events, sessions, agents, environments, evaluation runs, scores, audit runs, saved queries, dashboards, alerts, issues, API keys, and members, plus the metering window's dates. They contain no identifiers, names, or query text, and they arrive whether or not anyone is signed in.
+
+## What is never collected
+
+- **No prompts, model responses, or event content**, not as text, a prefix, or a hash
+- **No session, agent, or trace identifiers**
+- **No evaluator score names**
+- **No error messages, exception text, or response bodies**, only a status code and a category from a fixed list
+- **No tool arguments, SQL, or query text**
+- **No connected-app details.** Connecting or revoking an MCP client sends a permission count at most, never the app's name or any token
+- **No email addresses**
+- **No referrer URLs or query strings**
+- **No screen recording, DOM capture, or click and cursor tracking**
+
+## Turn it off on a self-hosted install
+
+Set `DO_NOT_TRACK=1` on both the dashboard and the server. They decide separately, so setting it on only one leaves the other reporting. Restart the server for the change to apply.
+
+Your release README describes the other opt-out settings and how to confirm telemetry is off.
+
+## One ping when you opt out
+
+If you opt out with a product setting rather than `DO_NOT_TRACK`, the dashboard may send **one anonymous ping** recording that, with a probability of 1 in 1000 per process start. It tells us how many operators turn telemetry off. It contains no identifiers: no organization, user, hostname, URL, or IP, only the product, component, version, deployment kind, and reason. An opted-out server sends nothing.
+
+It is never sent when you use `DO_NOT_TRACK`, which is why that's the setting to use if your policy forbids any outbound telemetry.
+
+## Where it goes
+
+To PostHog (`us.i.posthog.com`) over TLS on port 443. It's one hostname, so you can also block it with a single egress rule.
+
+For how we handle personal information more broadly, see the [privacy policy](https://befailproof.ai/privacy/).

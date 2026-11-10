@@ -36,6 +36,7 @@ interface WorkerHookRequest {
   cli: IntegrationType;
   stdin: string;
   cwd?: string;
+  agentSettingsPath?: string;
 }
 
 function isWorkerHookRequest(msg: unknown): msg is WorkerHookRequest {
@@ -54,7 +55,9 @@ function isWorkerHookRequest(msg: unknown): msg is WorkerHookRequest {
     // `failproofai config` aborted with "its worker process could not be run"
     // against a daemon and worker that were both perfectly healthy. On a
     // daemonConfigured machine the same mismatch denies the tool call.
-    (m.cwd === undefined || m.cwd === null || typeof m.cwd === "string")
+    (m.cwd === undefined || m.cwd === null || typeof m.cwd === "string") &&
+    (m.agentSettingsPath === undefined || m.agentSettingsPath === null ||
+      typeof m.agentSettingsPath === "string")
   );
 }
 
@@ -278,6 +281,7 @@ function handleConnection(socket: Socket, shutdown: () => void): void {
             // Normalised here so no consumer has to know the wire spells
             // "absent" as null.
             fallbackCwd: request.cwd ?? undefined,
+            agentSettingsPath: request.agentSettingsPath ?? undefined,
             releaseRegistry: release,
           });
           deliver(

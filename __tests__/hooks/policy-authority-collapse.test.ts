@@ -108,7 +108,7 @@ describe("two cloud assignments sharing one artifact", () => {
       fn: async () => allow() });
   `;
 
-  function deploy(assignments: Array<Record<string, unknown>>): void {
+  function deploy(assignments: Array<Record<string, unknown>>, jevMode?: string): void {
     const digest = sha(SOURCE);
     mkdirSync(join(cloudRoot, "artifacts"), { recursive: true });
     writeFileSync(join(cloudRoot, "artifacts", `${digest}.mjs`), SOURCE);
@@ -118,6 +118,7 @@ describe("two cloud assignments sharing one artifact", () => {
         schemaVersion: 2,
         deployment: 7,
         policies: assignments.map((a) => ({ sha256: digest, path: `artifacts/${digest}.mjs`, ...a })),
+        ...(jevMode ? { jevMode } : {}),
       }),
     );
   }
@@ -141,16 +142,28 @@ describe("two cloud assignments sharing one artifact", () => {
     expect(authorityOf(cloud.get("db-guard"))).toEqual({ authority: "hard" });
   });
 
+  // A Cloud policy is reviewed by its OWN Cloud Jev checks, and only while
+  // FailproofAI Cloud's Jev mode asks (CONTRACT C10.5) — each name keeps the
+  // assignment it came from through the merge.
   it.each(ORDERS)("is reviewable through every check either names when both are reviewable, %s", async (_l, flip) => {
     const other = { id: "team-b-db-guard", version: 4, authority: "reviewable", reviewedBy: ["destructive-deletion"] };
-    deploy(flip ? [other, teamReviewable] : [teamReviewable, other]);
+    deploy(flip ? [other, teamReviewable] : [teamReviewable, other], "enforce");
     const p = under(await registeredAfterOneEvent(), "cloud/").get("db-guard");
     expect(p?.authority).toBe("reviewable");
-    expect([...(p?.reviewedBy ?? [])].sort()).toEqual(["database-destruction", "destructive-deletion"]);
+    expect([...(p?.reviewedBy ?? [])].sort()).toEqual([
+      "cloud:team-a-db-guard/database-destruction",
+      "cloud:team-b-db-guard/destructive-deletion",
+    ]);
+  });
+
+  it.each(ORDERS)("is hard when both are reviewable but FailproofAI Cloud sets no Jev mode that asks, %s", async (_l, flip) => {
+    const other = { id: "team-b-db-guard", version: 4, authority: "reviewable", reviewedBy: ["destructive-deletion"] };
+    deploy(flip ? [other, teamReviewable] : [teamReviewable, other]);
+    expect(authorityOf(under(await registeredAfterOneEvent(), "cloud/").get("db-guard"))).toEqual({ authority: "hard" });
   });
 
   it("says why, once Jev is configured, and not before", async () => {
-    deploy([teamReviewable, { id: "org-db-guard", version: 5 }]);
+    deploy([teamReviewable, { id: "org-db-guard", version: 5 }], "enforce");
     await registeredAfterOneEvent();
     expect(stderr.join("")).not.toMatch(/do not all declare it reviewable/);
 

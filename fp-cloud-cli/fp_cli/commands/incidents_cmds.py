@@ -14,7 +14,8 @@ import typer
 
 from .. import client as api
 from .. import output
-from .._context import GLOBALS_EPILOG, AppState, require_auth, validate_limit
+from .. import _click_compat as click
+from .._context import GLOBALS_EPILOG, AppState, require_auth, resolve_dates, validate_limit
 from ..errors import ApiError, ForbiddenError, NotFoundError
 from . import _write
 
@@ -68,12 +69,40 @@ def _fail(state: AppState, exc: Exception, *, incident_id: str = "") -> None:
     raise exc
 
 
+def _issue_filters(
+    agent_id, env, machine, source, audit_id, assignee, archived, search, since,
+) -> dict:
+    if archived is not None and archived not in ("false", "true", "only", "all"):
+        raise click.UsageError("--archived must be false, only or all")
+    if source is not None:
+        bad = [s for s in source.split(",") if s.strip() and s.strip() not in ("alert", "audit", "manual")]
+        if bad:
+            raise click.UsageError("--source must be alert, audit or manual (CSV)")
+    opened_from = None
+    if since is not None:
+        opened_from, _ = resolve_dates(since, None, None)
+    return {
+        "agent": agent_id, "environment": env, "machine": machine, "source": source,
+        "audit_id": audit_id, "assignee": assignee, "archived": archived, "q": search,
+        "opened_from": opened_from,
+    }
+
+
 def incidents_list(
     ctx: typer.Context,
     state_filter: Optional[str] = typer.Option(None, "--state", help="Filter by state(s): firing, acknowledged, resolved, closed (CSV)."),
     alert_id: Optional[str] = typer.Option(None, "--alert-id", help="Only incidents for this alert."),
     limit: int = typer.Option(50, "--limit", "-n", help="Max incidents to return."),
     show_id: bool = typer.Option(False, "--show-id", help="Show the full incident id instead of the short form (always full in --json)."),
+    agent_id: Optional[str] = typer.Option(None, "--agent-id", help="Only issues touching these agent ids (CSV)."),
+    env: Optional[str] = typer.Option(None, "--env", help="Only these environments (CSV)."),
+    machine: Optional[str] = typer.Option(None, "--machine", help="Only these machine ids (CSV)."),
+    source: Optional[str] = typer.Option(None, "--source", help="alert, audit and/or manual (CSV)."),
+    audit_id: Optional[str] = typer.Option(None, "--audit-id", help="Only issues from these audits (CSV of ids)."),
+    assignee: Optional[str] = typer.Option(None, "--assignee", help="Emails, `me` or `unassigned` (CSV)."),
+    archived: Optional[str] = typer.Option(None, "--archived", help="false (default), only or all."),
+    search: Optional[str] = typer.Option(None, "--search", help="Case-insensitive text in the title or summary."),
+    since: Optional[str] = typer.Option(None, "--since", help="Opened within: 15m 1h 6h 24h 7d."),
 ) -> None:
     """List incidents in a boxed table (newest-opened first).
 
@@ -94,7 +123,8 @@ def incidents_list(
     _validate_states(state_filter)
     validate_limit(limit)
     cctx = require_auth(state)
-    incidents = api.list_incidents(cctx, state=state_filter, alert_id=alert_id, limit=limit)
+    extra = _issue_filters(agent_id, env, machine, source, audit_id, assignee, archived, search, since)
+    incidents = api.list_incidents(cctx, state=state_filter, alert_id=alert_id, limit=limit, filters=extra)
     if state.json:
         output.emit_json({"issues": incidents})
         return
@@ -105,6 +135,16 @@ def incidents_list(
 def incidents_count(
     ctx: typer.Context,
     state_filter: Optional[str] = typer.Option(None, "--state", help="Filter by state(s) (CSV)."),
+    alert_id: Optional[str] = typer.Option(None, "--alert-id", help="Only issues from these alerts (CSV of ids)."),
+    agent_id: Optional[str] = typer.Option(None, "--agent-id", help="Only issues touching these agent ids (CSV)."),
+    env: Optional[str] = typer.Option(None, "--env", help="Only these environments (CSV)."),
+    machine: Optional[str] = typer.Option(None, "--machine", help="Only these machine ids (CSV)."),
+    source: Optional[str] = typer.Option(None, "--source", help="alert, audit and/or manual (CSV)."),
+    audit_id: Optional[str] = typer.Option(None, "--audit-id", help="Only issues from these audits (CSV of ids)."),
+    assignee: Optional[str] = typer.Option(None, "--assignee", help="Emails, `me` or `unassigned` (CSV)."),
+    archived: Optional[str] = typer.Option(None, "--archived", help="false (default), only or all."),
+    search: Optional[str] = typer.Option(None, "--search", help="Case-insensitive text in the title or summary."),
+    since: Optional[str] = typer.Option(None, "--since", help="Opened within: 15m 1h 6h 24h 7d."),
 ) -> None:
     """Count incidents (optionally by state) as a compact stat card.
 
@@ -118,7 +158,10 @@ def incidents_count(
     state: AppState = ctx.obj
     _validate_states(state_filter)
     cctx = require_auth(state)
-    count = api.count_incidents(cctx, state=state_filter)
+    extra = _issue_filters(agent_id, env, machine, source, audit_id, assignee, archived, search, since)
+    if alert_id:
+        extra["alert_id"] = alert_id
+    count = api.count_incidents(cctx, state=state_filter, filters=extra)
     if state.json:
         output.emit_json({"count": count})
     else:
@@ -261,10 +304,11 @@ def incidents_close(
 
     For an issue that came from an audit, this also marks the finding `dismissed`. It does
     NOT write the finding's org-wide suppression: closing one issue never hides that pattern
-    in your other audits. Use `fp audits finding-status <id> --action dismiss` for that.
+    in your other audits. Use `fp audits dismiss <finding-id>` for that.
 
-    Needs `issues:close`. Exits 9 (conflict) if the issue already ended — an issue ends once,
-    and closing must not overwrite the record that someone believed they had fixed it.
+    Needs `issues:close`. Exits 1 (the server answers 409 conflict) if the issue already
+    ended — an issue ends once, and closing must not overwrite the record that someone
+    believed they had fixed it.
 
     With `--json`: `{"closed": true, "id": "<id>"}` (or `{cancelled: true}` on a declined
     prompt).
@@ -666,6 +710,37 @@ def incidents_open(
     output.render_incident_opened(summary=summary, severity=sev, state=st, title=hero)
 
 
+def incidents_facets(
+    ctx: typer.Context,
+    state_filter: Optional[str] = typer.Option(None, "--state", help="Filter by state(s) (CSV)."),
+    alert_id: Optional[str] = typer.Option(None, "--alert-id", help="Only issues from these alerts (CSV of ids)."),
+    agent_id: Optional[str] = typer.Option(None, "--agent-id", help="Only issues touching these agent ids (CSV)."),
+    env: Optional[str] = typer.Option(None, "--env", help="Only these environments (CSV)."),
+    machine: Optional[str] = typer.Option(None, "--machine", help="Only these machine ids (CSV)."),
+    source: Optional[str] = typer.Option(None, "--source", help="alert, audit and/or manual (CSV)."),
+    audit_id: Optional[str] = typer.Option(None, "--audit-id", help="Only issues from these audits (CSV of ids)."),
+    assignee: Optional[str] = typer.Option(None, "--assignee", help="Emails, `me` or `unassigned` (CSV)."),
+    archived: Optional[str] = typer.Option(None, "--archived", help="false (default), only or all."),
+    search: Optional[str] = typer.Option(None, "--search", help="Case-insensitive text in the title or summary."),
+    since: Optional[str] = typer.Option(None, "--since", help="Opened within: 15m 1h 6h 24h 7d."),
+) -> None:
+    """The values the issue filters can take right now (agents, environments, machines,
+    sources, assignees), with counts — the dashboard inbox's filter bar. Needs `issues:read`.
+
+    Example:
+
+    * `fp issues facets --state firing,acknowledged`
+    """
+    from . import _cloud
+    state: AppState = ctx.obj
+    _validate_states(state_filter)
+    extra = _issue_filters(agent_id, env, machine, source, audit_id, assignee, archived, search, since)
+    params = {"state": state_filter, "alert_id": alert_id, **extra}
+    data = api.cloud_request(require_auth(state), "GET", "/api/issues/facets",
+                             params={k: v for k, v in params.items() if v is not None})
+    _cloud.emit(state, data, "Issue facets")
+
+
 def register(app: typer.Typer) -> None:
     inc = typer.Typer(
         no_args_is_help=True,
@@ -675,6 +750,7 @@ def register(app: typer.Typer) -> None:
     )
     inc.command("list", epilog=GLOBALS_EPILOG)(incidents_list)
     inc.command("count", epilog=GLOBALS_EPILOG)(incidents_count)
+    inc.command("facets", epilog=GLOBALS_EPILOG)(incidents_facets)
     inc.command("show", epilog=GLOBALS_EPILOG)(incidents_show)
     inc.command("ack", epilog=GLOBALS_EPILOG)(incidents_ack)
     inc.command("assign", epilog=GLOBALS_EPILOG)(incidents_assign)

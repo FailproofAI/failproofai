@@ -140,20 +140,7 @@ pub fn slot_micros(row_id: i64, slot: u32) -> u32 {
     base + slot.min(SLOT_END)
 }
 
-/// Format epoch milliseconds as the RFC3339-with-microseconds string ingest
-/// requires.
-///
-/// Microseconds are forced rather than left to RFC3339's variable precision, so
-/// every source emits one shape and the hook stream and this one sort against
-/// each other on a shared session timeline.
-pub fn to_rfc3339_micros(epoch_ms: i64, micros: u32) -> Option<String> {
-    let nanos = (epoch_ms as i128) * 1_000_000 + (micros as i128) * 1_000;
-    let dt = time::OffsetDateTime::from_unix_timestamp_nanos(nanos).ok()?;
-    const FMT: &[time::format_description::BorrowedFormatItem<'_>] = time::macros::format_description!(
-        "[year]-[month]-[day]T[hour]:[minute]:[second].[subsecond digits:6]Z"
-    );
-    dt.format(FMT).ok()
-}
+pub use crate::sources::to_rfc3339_micros;
 
 /// A row's timestamp for one slot, or `None` when the row's time is unusable.
 ///

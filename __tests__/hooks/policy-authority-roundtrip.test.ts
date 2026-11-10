@@ -318,7 +318,7 @@ describe("a third-party pack: its manifest decides, and only for its own policie
 
 describe("a cloud assignment → registry", () => {
   /** Write one content-addressed artifact per policy and an active.json naming them. */
-  function deploy(policies: Array<{ id: string; source: string; extra?: Record<string, unknown> }>): void {
+  function deploy(policies: Array<{ id: string; source: string; extra?: Record<string, unknown> }>, jevMode?: string): void {
     mkdirSync(join(cloudRoot, "artifacts"), { recursive: true });
     writeFileSync(
       join(cloudRoot, "active.json"),
@@ -330,6 +330,7 @@ describe("a cloud assignment → registry", () => {
           writeFileSync(join(cloudRoot, "artifacts", `${digest}.mjs`), source);
           return { id, version: 3, sha256: digest, path: `artifacts/${digest}.mjs`, ...extra };
         }),
+        ...(jevMode ? { jevMode } : {}),
       }),
     );
   }
@@ -339,25 +340,39 @@ describe("a cloud assignment → registry", () => {
       ${claim} fn: async () => allow() });
   `;
 
+  const assignments = () => [
+    {
+      id: "org-db-guard",
+      source: hookSource("db-guard"),
+      extra: { authority: "reviewable", reviewedBy: ["database-destruction"] },
+    },
+    {
+      id: "org-plain",
+      source: hookSource("plain", `authority: "reviewable", reviewedBy: ["secret-exposure"],`),
+    },
+  ];
+
+  // CONTRACT C10.5: a Cloud assignment's `reviewedBy` names its OWN Cloud Jev
+  // checks, which run on FailproofAI Cloud — registered as `cloud:<id>/<name>`
+  // while Cloud's Jev mode asks, never satisfied by a pack's check of the name.
   it("takes authority from the assignment, is hard by default, and ignores the artifact's own claim", async () => {
-    deploy([
-      {
-        id: "org-db-guard",
-        source: hookSource("db-guard"),
-        extra: { authority: "reviewable", reviewedBy: ["database-destruction"] },
-      },
-      {
-        id: "org-plain",
-        source: hookSource("plain", `authority: "reviewable", reviewedBy: ["secret-exposure"],`),
-      },
-    ]);
+    deploy(assignments(), "enforce");
     const registered = await registeredAfterOneEvent();
     expect(authorityOf(registered.get("cloud/org-db-guard@3/db-guard"))).toEqual({
       authority: "reviewable",
-      reviewedBy: ["database-destruction"],
+      reviewedBy: ["cloud:org-db-guard/database-destruction"],
     });
     // Central enforcement is not weakened by default, nor by the code itself.
     expect(authorityOf(registered.get("cloud/org-plain@3/plain"))).toEqual({ authority: "hard" });
+  });
+
+  it("is hard, whatever an installed pack declares, while FailproofAI Cloud sets no Jev mode that asks", async () => {
+    for (const mode of [undefined, "off"]) {
+      vi.resetModules();
+      deploy(assignments(), mode);
+      const registered = await registeredAfterOneEvent();
+      expect(authorityOf(registered.get("cloud/org-db-guard@3/db-guard")), String(mode)).toEqual({ authority: "hard" });
+    }
   });
 
   it("makes a malformed assignment hard without refusing the deployment", async () => {

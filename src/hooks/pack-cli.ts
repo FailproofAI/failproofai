@@ -12,7 +12,7 @@ import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdir
 import { basename, dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import { INTEGRATION_TYPES } from "./types";
 import { PACK_COMMIT_RE, PACK_VERSION_RE } from "./pack-manifest";
-import { detectInstalledClis } from "./integrations";
+import { detectInstalledClis, getIntegration } from "./integrations";
 import {
   packParamsProblem,
   parsePackIdentity,
@@ -57,8 +57,10 @@ import {
   note,
   nextStep,
   optsFor,
+  paint,
   rows as kitRows,
   rule,
+  screenKit,
   stack,
   table,
   title,
@@ -729,25 +731,23 @@ export async function runPolicyPicker(
       `\`policies ${action}\` with no name needs a terminal to show you the list.`,
       "From a script, name what you mean:",
       `  failproofai policies ${action} <policy-name>`,
-      `  failproofai policies ${action} <owner>/<repo> [--policy a,b] [--category x,y] [--all]`,
+      // Pack-lane remove takes an id and no flags: it uninstalls the whole pack,
+      // so advertising add's selection flags here invited exactly that.
+      action === "remove"
+        ? "  failproofai policies remove <pack-id>"
+        : "  failproofai policies add <owner>/<repo> [--policy a,b] [--category x,y] [--all]",
     ]);
   }
 
   if (packs.length === 0) {
-    return ok(
-      stack(
-        emptyState(
-          {
-            what: "No policies are installed yet.",
-            hint: "Take ours, or anyone's:",
-            cmd: "failproofai policies add FailproofAI/policies",
-          },
-          opts,
-        ),
-        note("Someone else's:  failproofai policies add <owner>/<repo>", opts),
-        note("Look first:      failproofai policies show <owner>/<repo>", opts),
-      ),
-    );
+    // The same three doors the policies screen's empty state offers.
+    const kit = screenKit(opts);
+    return ok([
+      "No policies are installed yet.",
+      `  Turn on ours:  ${kit.cmd("failproofai policies add FailproofAI/policies")}`,
+      `  Or anyone's:   ${kit.cmd("failproofai policies add <owner>/<repo>")}`,
+      `  Look first:    ${kit.cmd("failproofai policies show <owner>/<repo>")}`,
+    ]);
   }
 
   // One row per policy across every pack. The pack id leads the section heading
@@ -777,10 +777,9 @@ export async function runPolicyPicker(
 
   const before = new Set(rows.filter((r) => r.checked).map((r) => r.value));
   const picked = await multiSelect<string>({
-    message: "Which policies should be on?",
+    message: "Choose policies",
     choices: rows,
     summaryNoun: "policies",
-    hint: "space toggles · ctrl+a all · ↵ confirm · what is on now is ticked",
     stdin,
     stdout,
   });
@@ -2244,7 +2243,6 @@ async function publish(rest: string[]): Promise<PackCliResult> {
   );
   let version =
     flag("version") ?? (entry ? inferTaggedVersion(entry, bundledSources) : null) ?? undefined;
-  let versionFromSha = false;
   // The id and the repo are usually the same words, and requiring both is asking
   // the same question twice. Either one alone answers for the other.
   const dryRun = rest.includes("--dry-run") || !repo;
@@ -2319,7 +2317,6 @@ async function publish(rest: string[]): Promise<PackCliResult> {
     const resolved = versionForPublish(provenance);
     if ("error" in resolved) return fail(resolved.error);
     version = resolved.version;
-    versionFromSha = true;
   }
 
   // Check an EXPLICIT tag against the version before anything reaches the
@@ -2365,16 +2362,18 @@ async function publish(rest: string[]): Promise<PackCliResult> {
     // A repository this command creates is made public, so this only ever
     // fires on reuse of one that was already private.
     if (repoInfo.json?.private === true && !allowPrivate) {
-      return fail([
-        `${repo} is PRIVATE, so nothing was published.`,
-        "Installing a pack fetches its release assets over anonymous HTTPS with no",
-        "credential to offer, so every install would 404 — including your own from",
-        "another machine. Publishing would only have attached three assets",
-        "advertising a route nobody can take.",
-        `Make it public and re-run:  gh repo edit ${repo} --visibility public`,
-        "Or, to keep it private and hand the pack over some other way, publish it",
-        "with --allow-private.",
-      ]);
+      // The reason is the install, not the privacy: it fetches over anonymous
+      // HTTPS with no credential to offer, so it 404s even for the author on
+      // another machine, and publishing would only attach three assets
+      // advertising a route nobody can take.
+      return fail(
+        screenKit(optsFor(process.stderr)).notice(
+          "fail",
+          `${repo} is private, so nothing was published: installs fetch over anonymous HTTPS, so every one would 404.\n` +
+            `Make it public and publish again:  \`gh repo edit ${repo} --visibility public\`\n` +
+            "Or keep it private and hand the pack over yourself:  `--allow-private`",
+        ),
+      );
     }
   }
   const tag = flag("tag") ?? version;
@@ -2528,36 +2527,46 @@ async function publish(rest: string[]): Promise<PackCliResult> {
     uploaded.push(asset);
   }
 
+  // The design's done screen: one `✓` per thing that happened, then how to
+  // install it. The policy count comes from the build; a pack of Jev checks
+  // alone has no regex policies to count, and says so in its reminder.
+  const kit = screenKit(optsFor(process.stdout));
+  const policies = built.meta?.policies ?? 0;
+  const counted = policies > 0 ? ` with ${policies} ${policies === 1 ? "policy" : "policies"}` : "";
+  // Where it went, only when the id and version do not already say it: `--id`
+  // can differ from the repository, and `--tag v1.2.0` from version 1.2.0.
+  const where = repo === id && tag === version ? "" : ` to ${repo} at tag ${tag}`;
   const lines = [
+    kit.header("Publish"),
+    "",
     // What was done to the user's own directory, before what was done to
     // GitHub. A side effect on somebody's working tree is never silent, even
     // when it is the side effect they wanted.
-    ...gitLines,
-    ...(gitLines.length ? [""] : []),
-    ...bundleNote,
-    ...(created ? [`Created ${repo} (public).`] : []),
-    `Published ${id}@${version} to ${repo} at tag ${tag}.` +
-      (versionFromSha ? " That names the commit it was built from." : ""),
-    `  ${assets.length} assets attached`,
-    ...(built.meta?.semanticOnly ? JEV_ONLY_ROLLBACK_REMINDER : []),
-    "",
-    // The install lines are the whole point of the success message, and on a
-    // private repository they are a lie — `policies add` 404s there. Print the
-    // warning INSTEAD of them, never underneath them: a reader who copies the
+    ...gitLines.map((line) => kit.ok(line)),
+    ...(discovered.length > 1
+      ? [
+          kit.ok(
+            `Bundled ${discovered.length} files into one artifact: ` +
+              discovered.map((f) => f.replace(process.cwd() + "/", "")).join(", "),
+          ),
+        ]
+      : []),
+    ...(created ? [kit.ok(`Created ${repo} (public).`)] : []),
+    kit.ok(`Published ${id}@${version}${counted}${where}.`),
+    // The install line is the whole point of the success message, and on a
+    // private repository it is a lie — `policies add` 404s there. Print the
+    // warning INSTEAD of it, never underneath it: a reader who copies the
     // first command they see must not be copying one that cannot work.
     ...(isPrivate
-      ? [
-          `WARNING: ${repo} is PRIVATE, so nobody can install this — you asked for`,
-          "that with --allow-private. Installs are anonymous HTTPS with no credential",
-          "to offer, so every `failproofai policies add` will 404. Distribute the",
-          "three assets yourself, or make it public:",
-          `  gh repo edit ${repo} --visibility public`,
-        ]
-      : [
-          "Anyone can now install it:",
-          `  failproofai policies add ${repo}`,
-          `  failproofai policies show ${repo}      (look first, without running it)`,
-        ]),
+      ? kit.notice(
+          "caution",
+          `${repo} is private, and installs fetch over anonymous HTTPS, so every install will fail.\n` +
+            `Share the three assets yourself, or make it public:  \`gh repo edit ${repo} --visibility public\``,
+        )
+      : [`  Anyone can install it:  ${kit.cmd(`failproofai policies add ${repo}`)}`]),
+    ...(built.meta?.semanticOnly
+      ? kit.notice("caution", JEV_ONLY_ROLLBACK_REMINDER.map((line) => line.trim()).join("\n"))
+      : []),
   ];
   return ok(lines);
 }
@@ -2612,7 +2621,7 @@ async function pickClis(
 ): Promise<string[] | null> {
   const detected = new Set(detectInstalledClis());
   const choices: MultiChoice<string>[] = INTEGRATION_TYPES.map((id) => ({
-    label: id,
+    label: getIntegration(id).displayName,
     value: id,
     checked: true,
     hint: detected.has(id) ? "installed here" : "",
@@ -2621,8 +2630,9 @@ async function pickClis(
     message: "Which agents should this pack guard?",
     choices,
     minSelected: 1,
+    minMessage: "Pick at least one agent.",
     summaryNoun: "agents",
-    hint: `space toggles · ctrl+a all · ↵ confirm · ${detected.size} detected on this machine`,
+    meta: (checked) => `${checked.length} of ${choices.length} selected  ·  ${detected.size} found on this machine`,
     stdin: io.stdin,
     stdout: io.stdout,
   });
@@ -2710,21 +2720,18 @@ async function pickFromSource(
       });
     }
   }
-  const on = preview.policies.filter((p) => p.defaultEnabled).length;
-  // Said BEFORE the list, because the list cannot say it: a pack's Jev checks are
-  // not rows here, and they arrive whole. Somebody ticking boxes should know
-  // that is part of what they are agreeing to.
+  const kit = screenKit(optsFor(io.stdout));
+  const lead = ["", kit.header(`Add ${preview.id}@${preview.version}`), ""];
+  // Said BEFORE the list because the list cannot say it: Jev checks are not
+  // rows here, and they arrive whole with the pack.
   if (preview.semantic.length > 0) {
-    io.stdout.write(
-      `\n  This pack also brings ${semanticPhrase(preview.semantic.length)} (not selectable), ` +
-        `${howJevAsksChecks(preview)}.\n  See: failproofai policies show ${source}\n\n`,
-    );
+    lead.push(`Also brings ${semanticPhrase(preview.semantic.length)}, ${howJevAsksChecks(preview)}.`, "");
   }
+  io.stdout.write(lead.join("\n") + "\n");
   const picked = await multiSelect<string>({
-    message: `${preview.id}@${preview.version} — which of these should be on?`,
+    message: "Choose policies",
     choices: rows,
     summaryNoun: "policies",
-    hint: `space toggles · ctrl+a all · ↵ confirm · ${on} of ${rows.length} are the publisher's defaults`,
     stdin: io.stdin,
     stdout: io.stdout,
   });
@@ -2798,29 +2805,15 @@ async function add(rest: string[]): Promise<PackCliResult> {
 
   try {
     const result = await addPack(resolvedSource!, selection);
-    const lines = [
-      ...(result.replaced?.length
-        ? [
-            // What was OBSERVED, and then the inference — not the inference
-            // stated as fact. Identical artifact bytes are the only evidence
-            // there is, and they cannot tell a renamed pack from a second pack
-            // one repository builds from the same source. Absorbing is the
-            // right default (a publisher renaming a set must not reset everyone
-            // who narrowed it), but the record that goes away is one the user
-            // installed on purpose, so the line has to say what to do when the
-            // guess was wrong instead of asserting it was right.
-            `Replaced ${result.replaced.join(", ")} — same artifact, so it was taken as this pack renamed, and your selection was carried over.`,
-            `If ${result.replaced.length > 1 ? "those are separate packs" : "that is a separate pack"}, re-add ${result.replaced.join(", ")} to restore ${result.replaced.length > 1 ? "them" : "it"}.`,
-          ]
-        : []),
-      result.resolvedFromLatest
-        ? `Installed ${result.id}@${result.version} from ${result.source} (newest release; pinned to ${result.tag})`
-        : `Installed ${result.id}@${result.version} from ${result.source}`,
-    ];
+    const kit = screenKit(optsFor(process.stdout));
+    const ref = `${result.id}@${result.version}`;
     const skipped = result.available.filter((n) => !result.enabled.includes(n));
+    const policies = (n: number): string => `${n} ${n === 1 ? "policy" : "policies"}`;
 
     // Say WHY this set is on. Without it, "10 of 39 enabled" reads like
-    // something went wrong rather than like the pack's own recommendation.
+    // something went wrong rather than like the pack's own recommendation. Five
+    // distinct reasons, because a reader who cannot tell them apart cannot tell
+    // whose decision put these policies on their machine.
     const why = {
       defaults: "the pack's defaults",
       selected: "your selection",
@@ -2831,54 +2824,85 @@ async function add(rest: string[]): Promise<PackCliResult> {
       added: "what you added, plus what was already on",
       all: "everything in the pack",
     }[result.selection];
-    // `summarise([])` is the empty string, which would print a line ending in a
-    // colon and nothing else — the one outcome that most needs saying out loud,
-    // rendered as if something had gone missing.
-    lines.push(
-      result.enabled.length === 0
-        ? // "enforcing nothing" is only true when the pack brought nothing else.
-          // A pack of Jev checks alone enforces through the semantic tier with no
-          // regex policy enabled at all, and telling that user their install does
-          // nothing is worse than saying nothing.
-          `  enabled (0/${result.available.length}, ${why}): none` +
-          (result.semantic > 0 ? "" : " — the pack is installed and enforcing nothing")
-        : `  enabled (${result.enabled.length}/${result.available.length}, ${why}): ${summarise(result.enabled)}`,
-    );
-    // Counted separately, and without an on/off ratio, because there is none:
-    // a pack's Jev checks arrive whole, and a FailproofAI pack's REPLACE the ones
-    // this build ships (anyone else's are added to them).
-    // Silence here was the shape of the original bug — the manifest's semantic
-    // half was fetched, verified and then never written to `installed.json`, so
-    // the half somebody installed did nothing and nothing said so.
-    if (result.semantic > 0) {
-      lines.push(
-        `  ${semanticPhrase(result.semantic)}, ${howJevAsksChecks(result)}. ` +
-          "They apply only where you configured Jev (`failproofai jev status`).",
+    // "Turned on N" only when this run turned them on. A re-add that carried
+    // the machine's selection turned nothing on, a merge counts what was already
+    // on, and a pack with nothing on — or nothing to turn on, a pack of Jev
+    // checks alone — gets a sentence that says so instead of "Turned on 0".
+    const headline =
+      result.available.length === 0
+        ? `Installed ${ref}.`
+        : result.enabled.length === 0
+          ? // "enforces nothing" is only true when the pack brought nothing else:
+            // a pack's Jev checks enforce through the semantic tier with no regex
+            // policy on at all.
+            `Installed ${ref} with no policies on (${why})` +
+            (result.semantic > 0 ? "." : ", so it enforces nothing.")
+          : result.selection === "carried"
+            ? `Kept ${policies(result.enabled.length)} on from ${ref}: ${why}.`
+            : result.selection === "added"
+              ? `${ref} has ${policies(result.enabled.length)} on: ${why}.`
+              : `Turned on ${policies(result.enabled.length)} from ${ref}: ${why}.`;
+
+    // How many of each category are on, read back from what was just recorded:
+    // the result carries category slugs, not which policy is in which.
+    let perCategory = "";
+    try {
+      const recorded = readInstalledPacks().packs.find((p) => p.id === result.id);
+      const on = new Set(result.enabled);
+      const counts = new Map<string, number>();
+      for (const policy of recorded?.policies ?? []) {
+        if (on.has(policy.name)) counts.set(policy.category, (counts.get(policy.category) ?? 0) + 1);
+      }
+      perCategory = [...counts].map(([category, n]) => `${category.toLowerCase()} ${n}`).join(", ");
+    } catch {
+      // A count that cannot be read is left out, never guessed.
+    }
+
+    // The facts only this outcome has, one line each.
+    const facts: string[] = [];
+    if (result.replaced?.length) {
+      // What was OBSERVED, and then the inference — not the inference stated as
+      // fact. Identical artifact bytes are the only evidence there is, and they
+      // cannot tell a renamed pack from a second pack one repository builds from
+      // the same source. Absorbing is the right default (a publisher renaming a
+      // set must not reset everyone who narrowed it), but the record that goes
+      // away is one the user installed on purpose, so the line says what to do
+      // when the guess was wrong instead of asserting it was right.
+      const many = result.replaced.length > 1;
+      facts.push(
+        `Replaced ${result.replaced.join(", ")}, the same artifact under another name, and kept your selection. ` +
+          `If ${many ? "they are separate packs, re-add them" : "it is a separate pack, re-add it"}.`,
       );
     }
+    // The pin made visible: re-running the same command later can install
+    // something different, and that should not be a silent surprise.
+    if (result.resolvedFromLatest) facts.push(`Pinned to ${result.source}, the newest release.`);
+    // Counted separately, and without an on/off ratio, because there is none: a
+    // pack's Jev checks arrive whole. Silence here was the shape of the original
+    // bug — the manifest's semantic half was fetched, verified and then never
+    // written to `installed.json`, so the half somebody installed did nothing
+    // and nothing said so.
+    if (result.semantic > 0) facts.push(`${semanticPhrase(result.semantic)}, ${howJevAsksChecks(result)}.`);
     // Nothing after this screen says it: the record keeps no unreadable minimum.
-    if (result.minCliVersionNote) lines.push(`  ${result.minCliVersionNote}`);
+    if (result.minCliVersionNote) facts.push(result.minCliVersionNote);
     // Which of its checks the resolver will leave out beside what is already
     // installed (the shared question budget, a reserved or contested name).
     // Otherwise said only in the hook log, on the first call that asks Jev.
     if (result.semantic > 0) {
-      for (const e of jevCheckWarnings(result.id)) lines.push(`  ▲ ${e}`);
+      for (const e of jevCheckWarnings(result.id)) facts.push(kit.caution(e));
     }
 
+    const lines = [
+      kit.header("Policies"),
+      "",
+      kit.ok(headline),
+      ...(perCategory ? [`  ${perCategory}`] : []),
+      ...facts.map((fact) => `  ${fact}`),
+    ];
+    // The source as TYPED, never the manifest's id: the id is self-declared and
+    // can name a repository the pack did not come from.
     if (skipped.length > 0) {
-      lines.push(`  not enabled (${skipped.length}): ${summarise(skipped)}`);
-      lines.push("");
-      lines.push(`  see all:      failproofai policies`);
-      // Naming --policy here as well as the coarser two: it is the flag people
-      // reach for first ("just give me that one"), and it was only ever
-      // suggested on the branch that installed our own pack from disk — so
-      // every third-party pack told you about categories and everything, and
-      // never about taking a single policy.
-      lines.push(`  one policy:   failproofai policies add ${source} --policy ${skipped[0]}`);
-      if (result.categories.length > 0) {
-        lines.push(`  by category:  failproofai policies add ${source} --category ${result.categories.slice(0, 3).join(",")}`);
-      }
-      lines.push(`  everything:   failproofai policies add ${source} --all`);
+      lines.push("", `Turn on the other ${skipped.length} with ${kit.cmd(`failproofai policies add ${source} --all`)}`);
     }
     return ok(lines);
   } catch (err) {
@@ -3001,20 +3025,15 @@ async function listReleases(source: string): Promise<PackCliResult> {
     return Number.NEGATIVE_INFINITY;
   };
   const releases = [...raw].sort((a, b) => when(b) - when(a));
+  const kit = screenKit(opts);
   if (releases.length === 0) {
-    return ok(
-      stack(
-        title(`${spec.owner}/${spec.repo}`, "no releases", opts),
-        emptyState(
-          {
-            what: "This repository has published no releases, so there is nothing to install.",
-            hint: "Its author publishes one with:",
-            cmd: "failproofai publish",
-          },
-          opts,
-        ),
-      ),
-    );
+    return ok([
+      kit.header(`${spec.owner}/${spec.repo}`),
+      "",
+      kit.head("Releases", "no releases"),
+      "This repository has published no releases, so there is nothing to install.",
+      `  Its author publishes one with:  ${kit.cmd("failproofai publish")}`,
+    ]);
   }
 
   // Which of them is on THIS machine — the question somebody runs this to
@@ -3073,26 +3092,22 @@ async function listReleases(source: string): Promise<PackCliResult> {
       flags,
     ]);
   }
-  return ok(
-    stack(
-      title(`${spec.owner}/${spec.repo}`, `${rows.length} release${rows.length === 1 ? "" : "s"}`, opts),
-      table(
-        { head: ["version", "published", "commit", "policies", "default", ""], rows },
-        opts,
-      ),
-      // `—` is load-bearing: it means "this release did not say", which is what
-      // a release published before this format did, and what anybody else's
-      // hand-made release does. Filling those in would cost a manifest download
-      // each, and a listing that silently costs a hundred downloads is worse
-      // than one with gaps in it.
-      note("— means the release did not record it.", opts),
-      nextStep(
-        `failproofai policies add ${spec.owner}/${spec.repo}@${newest ?? "<tag>"}`,
-        "Install a particular one with:",
-        opts,
-      ),
-    ),
-  );
+  return ok([
+    kit.header(`${spec.owner}/${spec.repo}`),
+    "",
+    // The id stays in the header: `head` uppercases, and an id is case-sensitive.
+    kit.head("Releases", `${rows.length} release${rows.length === 1 ? "" : "s"}`),
+    // Columns, so it stays a table: the kit's rows are two-column.
+    ...table({ head: ["version", "published", "commit", "policies", "default", ""], rows }, opts),
+    // `—` is load-bearing: it means "this release did not say", which is what
+    // a release published before this format did, and what anybody else's
+    // hand-made release does. Filling those in would cost a manifest download
+    // each, and a listing that silently costs a hundred downloads is worse than
+    // one with gaps in it.
+    `  ${paint(opts.color).ink3("— means the release did not record it.")}`,
+    "",
+    `Install a particular one with:  ${kit.cmd(`failproofai policies add ${spec.owner}/${spec.repo}@${newest ?? "<tag>"}`)}`,
+  ]);
 }
 
 /** `2 hours ago`, `6 days ago`. Coarse on purpose — the question is "how stale",
@@ -3237,10 +3252,7 @@ export function jevChecksSection(
   return [
     // The count is on the heading rather than in a row, the way every other
     // section on this screen carries its own total.
-    ...rule(
-      `Jev checks — ${pack.semantic.length} · not selectable · only where Jev is configured`,
-      opts,
-    ),
+    screenKit(opts).head("Jev checks", `${pack.semantic.length} · not selectable · only where Jev is configured`),
     // The reviewers column is the only one allowed to shrink: a mode or a check
     // name cut in half is a fact nobody can act on, while a cut reviewer list is
     // one that was already abbreviated.
@@ -3274,52 +3286,55 @@ async function listRemote(source: string): Promise<PackCliResult> {
     return fail([`Could not read ${source}: ${err instanceof Error ? err.message : String(err)}`]);
   }
 
-  const defaults = preview.policies.filter((p) => p.defaultEnabled);
+  const kit = screenKit({ ...opts, fit: Boolean(process.stdout.isTTY) });
+  const count = (n: number, one: string, many: string): string => `${n} ${n === 1 ? one : many}`;
   const categories = [...new Set(preview.policies.map((p) => p.category))];
-  const rows: Array<string[] | { section: string }> = [];
-  for (const category of categories) {
-    const inCategory = preview.policies.filter((p) => p.category === category);
-    const on = inCategory.filter((p) => p.defaultEnabled).length;
-    rows.push({
-      section: `${category} — ${on}/${inCategory.length} on by default · ${slugifyCategory(category)}`,
-    });
-    for (const policy of inCategory) {
-      // The publisher's DEFAULTS, not a machine's state — this pack is not
-      // installed, so a row claiming ON would be describing nothing.
-      rows.push([
-        policy.defaultEnabled ? "default" : "opt-in",
-        policy.name,
-        policy.description,
-      ]);
-    }
-  }
 
-  return ok(
-    stack(
-      title(
-        `${preview.id}@${preview.version}`,
-        `${preview.policies.length} policies · ${categories.length} categories` +
-          (preview.semantic.length > 0 ? ` · ${semanticPhrase(preview.semantic.length)}` : ""),
-        opts,
+  // The PUBLISHER is the account the release was actually fetched from — the
+  // owner in `github:<owner>/<repo>@<tag>` — never the id's owner segment,
+  // which is whatever the manifest claims. No release date: knowing one would
+  // take a GitHub API call this path does not make (decision D16).
+  const kvRows: Array<[string, string]> = [["publisher", preview.source.replace(/^github:/i, "").split("/")[0]]];
+  // Optional by design: a pack published from outside a git checkout has none.
+  if (preview.commit) kvRows.push(["commit", preview.commit]);
+  kvRows.push([
+    "policies",
+    preview.policies.length === 0
+      ? "none"
+      : `${preview.policies.length} in ${count(categories.length, "category", "categories")}  ${kit.selected} on by default`,
+  ]);
+  if (preview.effect === "observe") kvRows.push(["effect", "observe, blocks nothing"]);
+  if (preview.minCliVersion) kvRows.push(["requires", `failproofai ${preview.minCliVersion} or newer`]);
+  if (preview.minCliVersionNote) kvRows.push(["requires", preview.minCliVersionNote]);
+  if (preview.semantic.length > 0) kvRows.push(["jev checks", String(preview.semantic.length)]);
+
+  const lines = [kit.header(`${preview.id}@${preview.version}`), "", ...kit.kv(kvRows)];
+  // ■ is the publisher's DEFAULT, not a machine's state: this pack is not
+  // installed, so a row claiming ● on would be describing nothing.
+  const column = Math.max(24, ...preview.policies.map((p) => p.name.length + 4));
+  for (const category of categories) {
+    lines.push(
+      "",
+      kit.head(category),
+      ...kit.rows(
+        preview.policies
+          .filter((p) => p.category === category)
+          .map((p): [string, string] => [`${p.defaultEnabled ? kit.selected : kit.unselected} ${p.name}`, p.description]),
+        column,
       ),
-      note(
-        `Not installed. ${defaults.length} of ${preview.policies.length} are on by default; the rest are opt-in.` +
-          (preview.effect === "observe" ? " This pack OBSERVES — it records and blocks nothing." : ""),
-        opts,
-      ),
-      preview.minCliVersion ? note(`Requires failproofai ${preview.minCliVersion} or newer.`, opts) : null,
-      preview.minCliVersionNote ? note(preview.minCliVersionNote, opts) : null,
-      preview.resolvedFromLatest ? note(`Newest release: ${preview.source}`, opts) : null,
-      table({ head: ["", "", ""], rows }, opts),
-      // The half the table above cannot hold: its own section, under the
-      // policies rather than above them, because a check is read against the
-      // policies it can clear and those are the rows just passed.
-      jevChecksSection(preview, opts),
-      preview.semantic.length > 0 ? jevCheckWarnings(preview.id, preview).flatMap((e) => warning([e], opts)) : null,
-      nextStep(`failproofai policies add ${source}`, "Install the defaults with:", opts),
-      note("Or take part of it: --policy <a,b>, --category <x,y>, --all", opts),
-    ),
-  );
+    );
+  }
+  // The half the rows above cannot hold: its own section, under the policies
+  // rather than above them, because a check is read against the policies it can
+  // clear and those are the rows just passed.
+  const jev = jevChecksSection(preview, opts);
+  if (jev) lines.push("", ...jev);
+  if (preview.semantic.length > 0) {
+    const warnings = jevCheckWarnings(preview.id, preview);
+    if (warnings.length > 0) lines.push("", ...warnings.map((e) => kit.caution(e)));
+  }
+  lines.push("", `Install with ${kit.cmd(`failproofai policies add ${source}`)}`);
+  return ok(lines);
 }
 
 async function list(): Promise<PackCliResult> {

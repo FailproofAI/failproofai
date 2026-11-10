@@ -122,6 +122,7 @@
                 "group": "Plug in your agent",
                 "pages": [
                   "start/integrations",
+                  "agenteye/opentelemetry",
                   "start/integrations/custom-agents",
                   "start/integrations/langchain",
                   "start/integrations/crewai",
@@ -206,7 +207,8 @@
                   "admin/usage",
                   "admin/keys-and-permissions",
                   "admin/users-and-organizations",
-                  "admin/settings-and-security"
+                  "admin/settings-and-security",
+                  "admin/product-analytics"
                 ]
               }
             ]
@@ -228,6 +230,13 @@
                 ]
               },
               {
+                "group": "Connect your tools",
+                "pages": [
+                  "reference/mcp",
+                  "reference/slack"
+                ]
+              },
+              {
                 "group": "Jev reference",
                 "pages": [
                   "reference/jev",
@@ -241,6 +250,7 @@
                 "expanded": false,
                 "pages": [
                   "reference/failproof-cli",
+                  "reference/otel",
                   "reference/local-dashboard",
                   "policies/local-configuration",
                   "reference/cloud-cli",

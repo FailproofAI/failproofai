@@ -231,8 +231,10 @@ describe("failproofai jev", () => {
     it("says Jev is off, and how to turn it on, when there is no config", async () => {
       const r = await runJevCommand(["status"], RENDER);
       expect(r.exitCode).toBe(0);
-      expect(text(r)).toContain("Jev is off");
-      expect(text(r)).toContain("regex policies exactly as before");
+      // The status row, in the redesign's `label  ○ value` shape, names the
+      // missing file; the old "Hooks run the regex policies exactly as before"
+      // paragraph went with the rest of the explanatory prose (D6).
+      expect(text(r)).toContain(`status ○ off: there is no ${jevConfigPath()}`);
       expect(text(r)).toContain("failproofai jev setup");
       expect(text(r)).toContain("No Jev evaluations recorded");
     });
@@ -301,6 +303,51 @@ describe("failproofai jev", () => {
       process.env.FAILPROOFAI_EVALUATOR = "legacy";
       const r = await runJevCommand(["status"], RENDER);
       expect(text(r)).toContain("FAILPROOFAI_EVALUATOR=legacy");
+    });
+
+    it("draws the design's jevStatus: the header, then label/value rows, with no `last test` row", async () => {
+      await runJevCommand(["setup", "--provider", "openrouter", "--mode", "observe", "--key-stdin"], withKey(KEY));
+      const { lines } = await runJevCommand(["status"], RENDER);
+
+      expect(lines[0]).toMatch(/^failproof ai {2}v\S+ {2}· {2}Jev$/);
+      // One value column for the block, two past its widest label (`reviewable`).
+      expect(lines.slice(2, 9)).toEqual([
+        "  status      ● on · observe",
+        "  provider    openrouter, model typesafe/jev-1.13 (provider default)",
+        "  endpoint    https://openrouter.ai/api/v1/systemone",
+        "  mode        observe — Jev is asked and logged; the regex result is what is enforced",
+        "  timeout     3000 ms",
+        "  key         set in the config file",
+        `  config      ${jevConfigPath()}  ·  ${posix ? "0600 (owner-only)" : lines[8].split("  ·  ")[1]}`,
+      ]);
+      expect(lines[9]).toMatch(/^ {2}reviewable {2}\d+ of \d+ enabled polic/);
+      // Nothing records a test, so no row claims one (D16).
+      expect(lines.join("\n")).not.toMatch(/last test/);
+      // The activity block is a heading of its own, last before any next step.
+      expect(lines).toContain("ACTIVITY  last 24 hours");
+    });
+
+    it("paints by role with colour on, and writes no escape with it off", async () => {
+      await runJevCommand(["setup", "--provider", "typesafe", "--key-stdin"], withKey(KEY));
+      const plain = await runJevCommand(["status"], RENDER);
+      expect(plain.lines.join("\n")).not.toMatch(/\x1B\[/);
+
+      const saved = { COLORTERM: process.env.COLORTERM, TERM: process.env.TERM };
+      process.env.COLORTERM = "truecolor";
+      process.env.TERM = "xterm-256color";
+      try {
+        const coloured = await runJevCommand(["status"], { ...RENDER, render: { cols: 100, color: true } });
+        const out = coloured.lines.join("\n");
+        // Grey labels, the mint ● for on, and the wordmark's pink `il`.
+        expect(out).toContain("\x1B[38;2;118;127;139mstatus\x1B[0m");
+        expect(out).toContain("\x1B[38;2;102;209;181m●\x1B[0m on · enforce");
+        expect(out).toContain("\x1B[1;38;2;228;88;125mil\x1B[0m");
+      } finally {
+        for (const [k, v] of Object.entries(saved)) {
+          if (v === undefined) delete process.env[k];
+          else process.env[k] = v;
+        }
+      }
     });
 
     it("renders activity from jevStats()", () => {

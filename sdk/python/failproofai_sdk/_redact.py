@@ -6,8 +6,9 @@ written by older SDKs receive the same protection.
 """
 
 import json
-import os
 from pathlib import Path
+
+from ._resolver import failproofai_home
 
 _PREFIX_RULES = (
     ("sk-ant-api", 16, "anthropic-key"),
@@ -180,13 +181,10 @@ def scrub_string(value: str) -> tuple[str, int]:
 
 def redaction_enabled(base_dir: Path) -> bool:
     """Read the daemon's redaction switch, defaulting safely to minimal."""
-    configured_home = os.environ.get("FAILPROOFAI_HOME")
     if base_dir.name == "custom-agents":
         config_path = base_dir.parent / "config.json"
-    elif configured_home:
-        config_path = Path(configured_home) / "config.json"
     else:
-        config_path = Path.home() / ".failproofai" / "config.json"
+        config_path = failproofai_home() / "config.json"
     try:
         config = json.loads(config_path.read_text(encoding="utf-8"))
         if not isinstance(config, dict):

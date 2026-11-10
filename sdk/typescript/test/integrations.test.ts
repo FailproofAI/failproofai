@@ -324,7 +324,7 @@ describe("RunTracker", () => {
 
 describe("the registry", () => {
   it("lists the frameworks it can instrument", () => {
-    expect(available()).toEqual(["ai", "langchain", "llamaindex", "mastra"]);
+    expect(available()).toEqual(["ai", "langchain", "llamaindex", "mastra", "otel"]);
   });
 
   it("throws on an unknown name, listing the valid ones", async () => {

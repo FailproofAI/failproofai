@@ -24,6 +24,9 @@ _LIST_KINDS = {
     "hooks": ("hook_names", "events:read", "Hook names seen across events.", "seen across events"),
     "tools": ("tool_names", "events:read", "Tool names seen across events.", "seen across events"),
     "error_types": ("error_types", "events:read", "Error types seen across events.", "seen across events"),
+    "trigger_events": ("trigger_events", "events:read", "Hook trigger events seen across events.", "seen across events"),
+    "eval_envs": ("eval_environments", "evaluations:read", "Environments that have evaluation results.", "with evaluation results"),
+    "metric_keys": ("metric_keys", "evaluations:read", "Evaluation metric keys (metrics, not scores).", "evaluation metric keys"),
 }
 
 def _make_list_cmd(name: str, facet_key: str, perm: str, summary: str, description: str):
@@ -56,7 +59,7 @@ def register(app: typer.Typer) -> None:
         context_settings={"help_option_names": ["-h", "--help"]},
         help="List the distinct values behind the dashboard's filter dropdowns. Subcommands: "
         "**envs**, **agents**, **event_types**, **score_filters**, **models**, **hooks**, "
-        "**tools**, **error_types**.",
+        "**tools**, **error_types**, **trigger_events**, **eval_envs**, **metric_keys**.",
     )
     for name, (facet_key, perm, summary, description) in _LIST_KINDS.items():
         list_app.command(name, epilog=GLOBALS_EPILOG)(_make_list_cmd(name, facet_key, perm, summary, description))

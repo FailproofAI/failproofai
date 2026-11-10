@@ -25,6 +25,7 @@ import {
   type JevReview,
   type RegexVerdict,
   type ObserveVerdict,
+  type ObservedCloudVerdict,
   type TwoTierReview,
 } from "./semantic/combine";
 // The code, not a copy of the string: the log line below turns on it, and a
@@ -64,6 +65,8 @@ export interface EvaluationResult {
     jevOrigin?: { packId: string; packVersion?: string };
     /** Observe mode: Jev's own deny/instruct, recorded as a "would have" (see `ObserveVerdict`). */
     observeVerdict?: ObserveVerdict;
+    /** An `observe` Cloud Jev assignment's would-haves (see `JevReview.observedCloud`). */
+    observedCloud?: ReadonlyArray<ObservedCloudVerdict>;
   };
 }
 
@@ -217,6 +220,19 @@ export async function evaluatePolicies(
     twoTier.releaseRegistry?.();
     review = await twoTier.review;
   }
+  // Jev asked no check about this call (Cloud's short-circuit, or nothing
+  // selected): it took no part, so the row carries no Jev fields at all — the
+  // regex result, exactly as without a review.
+  if (review.kind === "answered" && review.asked.length === 0 && review.decision === "allow" && !review.observedAsked?.length) {
+    return formatVerdict(eventType, session, toolName, regexOnly(collected.verdicts));
+  }
+  // A hard regex deny decided before FailproofAI Cloud's Jev answered, and the
+  // request was dropped: Jev took no part, so the row is the regex (Cloud or
+  // local) policy's, with no Jev fields. A local `jev.json` keeps its
+  // `not-consulted` row, which `jev status` counts.
+  if (review.kind === "not-consulted" && twoTier.cloud) {
+    return formatVerdict(eventType, session, toolName, regexOnly(collected.verdicts));
+  }
   const combined = combineTwoTier(collected.verdicts, review, twoTier.mode);
   if (combined.cleared.length > 0) {
     hookLogInfo(`jev ${twoTier.mode === "observe" ? "would clear" : "cleared"}: ${combined.cleared.join(", ")}`);
@@ -250,8 +266,13 @@ export async function evaluatePolicies(
     twoTier: {
       activity: combined.activity,
       decidedByJev: combined.decidedByJev,
-      ...(combined.decidedByJev && review.kind === "answered" && review.origin ? { jevOrigin: review.origin } : {}),
+      // The deciding check's origin — and, in observe mode, the origin of the
+      // check that WOULD have decided (B12), so that row names its policy too.
+      ...((combined.decidedByJev || combined.observeVerdict) && review.kind === "answered" && review.origin
+        ? { jevOrigin: review.origin }
+        : {}),
       ...(combined.observeVerdict ? { observeVerdict: combined.observeVerdict } : {}),
+      ...(review.kind === "answered" && review.observedCloud?.length ? { observedCloud: review.observedCloud } : {}),
     },
   };
 }

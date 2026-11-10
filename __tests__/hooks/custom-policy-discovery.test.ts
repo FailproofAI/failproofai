@@ -17,7 +17,6 @@ import { discoverPolicyFiles, findSkippedPolicyFiles } from "../../src/hooks/cus
 import {
   describeCustomPolicies,
   setCustomPoliciesEnabled,
-  reviewLines,
 } from "../../src/hooks/configure-wizard";
 
 let dir: string;
@@ -169,38 +168,5 @@ describe("disabling custom policies", () => {
     writeFileSync(cfg, JSON.stringify({ enabledPolicies: [], customPoliciesEnabled: false }), "utf8");
     setCustomPoliciesEnabled("project", dir, undefined);
     expect(JSON.parse(readFileSync(cfg, "utf8")).customPoliciesEnabled).toBe(false);
-  });
-});
-
-describe("the Custom choice is visible to the user", () => {
-  // The toggle worked but nothing on screen changed: the review screen said
-  // "(auto-loaded)" whether or not custom policies had been switched off. With
-  // no feedback anywhere, a working toggle is indistinguishable from a broken
-  // one — which is why the review screen has to reflect the DECISION and not
-  // merely what is on disk.
-  it("review screen says DISABLED when custom policies are switched off", () => {
-    write("team-policies.mjs");
-    const off = reviewLines({
-      target: "project",
-      clis: ["claude"],
-      policies: [],
-      cwd: dir,
-      customEnabled: false,
-    }).join("\n");
-    expect(off).toContain("DISABLED");
-    expect(off).not.toContain("(auto-loaded)");
-  });
-
-  it("review screen says auto-loaded when custom policies are left on", () => {
-    write("team-policies.mjs");
-    const on = reviewLines({
-      target: "project",
-      clis: ["claude"],
-      policies: [],
-      cwd: dir,
-      customEnabled: true,
-    }).join("\n");
-    expect(on).toContain("(auto-loaded)");
-    expect(on).not.toContain("DISABLED");
   });
 });

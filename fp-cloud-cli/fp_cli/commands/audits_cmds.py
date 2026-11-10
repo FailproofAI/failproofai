@@ -1051,4 +1051,6 @@ def register(app: typer.Typer) -> None:
     audits_app.command("resolve", epilog=GLOBALS_EPILOG)(findings_resolve)
     audits_app.command("reopen", epilog=GLOBALS_EPILOG)(findings_reopen)
     audits_app.command("assign", epilog=GLOBALS_EPILOG)(findings_assign)
+    from . import contracts_cmds
+    contracts_cmds.register(audits_app)
     app.add_typer(audits_app, name="audits")

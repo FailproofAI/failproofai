@@ -280,12 +280,6 @@ MIT with [Commons Clause](https://commonsclause.com/) — free for internal and 
 
 See [CONTRIBUTING.md](./CONTRIBUTING.md). New policies, edge cases, and translations all welcome.
 
-> **Build before you start.** Run `bun install && bun run build` first. This repo runs
-> failproofai's own hooks on itself, and they resolve the `failproofai` import against the
-> compiled `dist/` bundle — without a build you'll hit `Cannot find package 'failproofai'`
-> hook errors. Rebuild after changing `src/`. See
-> [Build before the in-repo dev hooks will work](./CONTRIBUTING.md#build-before-the-in-repo-dev-hooks-will-work).
-
 ---
 
 Built with ❤️ by [befailproof.ai](https://befailproof.ai) in SF and Bengaluru.

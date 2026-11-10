@@ -10,15 +10,15 @@
 #
 # Two mechanisms, and the reason to reach for each:
 #
-#   [[IgnoredVulns]] silences ONE advisory by id, and is what everything below
-#   uses. It is the narrowest thing that works: any OTHER advisory against the
-#   same package still blocks, including a newly FIXABLE one — which is the
-#   signal worth keeping, because a fixable finding is one we would act on.
+#   [[IgnoredVulns]] silences ONE advisory by id, and is what every entry below
+#   uses. It is the narrowest thing that works: any OTHER advisory
+#   against the same package still blocks, including a newly FIXABLE one — which
+#   is the signal worth keeping, because a fixable finding is one we would act on.
 #
-#   [[PackageOverrides]] silences every advisory against a package, and is
-#   deliberately NOT used here. It also suppresses fixable findings, so it costs
-#   exactly the signal above; see SECURITY.md for the narrow case that justifies
-#   it and the conditions attached. Note the different date key there —
+#   [[PackageOverrides]] silences every advisory against a package, and no entry
+#   below uses it at present. It also suppresses fixable findings,
+#   so it costs exactly the signal above; see SECURITY.md for the narrow case that
+#   justifies it and the conditions attached. Note the different date key there —
 #   `effectiveUntil`, not `ignoreUntil`.
 #
 # The scanner matches aliases, so ONE id per advisory is enough — listing a
@@ -30,7 +30,7 @@
 # reason = "No upstream fix yet; transitive via <pkg>; not reachable in our usage. Re-review by 2026-07-01."
 
 # ---------------------------------------------------------------------------
-# chromadb 1.1.1 — four advisories, none with a fixed version.
+# chromadb 1.5.9 — four advisories, none with a fixed version.
 #
 # Shared justification for all four entries below:
 #
@@ -38,6 +38,8 @@
 #   the dev/test lockfile that pins every extra so CI can exercise the adapters.
 #   No fixed version exists for any of them — OSV reports "0 vulnerabilities can
 #   be fixed" and an empty FIXED VERSION — so there is nothing to bump to.
+#   crewai 1.15.27 requires `chromadb~=1.5.9`, which moved the lock from 1.1.1
+#   to 1.5.9: the newest chromadb release, and still inside all four ranges.
 #
 #   `pip install failproofai-sdk` never brings chromadb: the SDK declares NO
 #   unconditional dependencies (every Requires-Dist in the built wheel is gated
@@ -66,63 +68,19 @@
 [[IgnoredVulns]]
 id = "GHSA-f4j7-r4q5-qw2c"
 ignoreUntil = 2026-11-20
-reason = "chromadb 1.1.1 (published 2026-05-18, alias PYSEC-2026-311). No fixed version. Transitive via crewai, dev/test lockfile only; see the shared justification above. Re-review by 2026-11-20."
+reason = "chromadb 1.5.9 (published 2026-05-18, alias PYSEC-2026-311). No fixed version. Transitive via crewai, dev/test lockfile only; see the shared justification above. Re-review by 2026-11-20."
 
 [[IgnoredVulns]]
 id = "GHSA-2wm9-hf6c-p5cr"
 ignoreUntil = 2026-11-20
-reason = "chromadb 1.1.1 (published 2026-06-12, surfaced 2026-08-24). No fixed version. Transitive via crewai, dev/test lockfile only; see the shared justification above. Re-review by 2026-11-20."
+reason = "chromadb 1.5.9 (published 2026-06-12, surfaced 2026-08-24). No fixed version. Transitive via crewai, dev/test lockfile only; see the shared justification above. Re-review by 2026-11-20."
 
 [[IgnoredVulns]]
 id = "GHSA-36p7-vc44-83pf"
 ignoreUntil = 2026-11-20
-reason = "chromadb 1.1.1 (published 2026-06-12, surfaced 2026-08-24). No fixed version. Transitive via crewai, dev/test lockfile only; see the shared justification above. Re-review by 2026-11-20."
+reason = "chromadb 1.5.9 (published 2026-06-12, surfaced 2026-08-24). No fixed version. Transitive via crewai, dev/test lockfile only; see the shared justification above. Re-review by 2026-11-20."
 
 [[IgnoredVulns]]
 id = "GHSA-xph7-9rjv-w5fr"
 ignoreUntil = 2026-11-20
-reason = "chromadb 1.1.1 (published 2026-06-12, surfaced 2026-08-24). No fixed version. Transitive via crewai, dev/test lockfile only; see the shared justification above. Re-review by 2026-11-20."
-
-# ---------------------------------------------------------------------------
-# nltk 3.10.3 — one advisory, no fixed version.
-#
-# Surfaced 2026-09-03 against an already-approved PR, which is the case this
-# file exists for: nothing on the branch introduced it, and nothing on the
-# branch can resolve it.
-#
-# nltk is transitive via llama-index-core and appears only in
-# sdk/python/uv.lock, the dev/test lockfile that pins every extra so CI can
-# exercise the adapters. The SDK's own runtime dependency list is empty — the
-# `llamaindex` extra is opt-in and the integration module imports it lazily —
-# so nltk reaches no shipped code path. OSV reports "0 vulnerabilities can be
-# fixed" and an empty FIXED VERSION, so there is nothing to bump to; the only
-# alternative is dropping the llamaindex extra and the adapter tests with it.
-#
-# Same re-review date as the chromadb entries above, so the whole list is
-# revisited in one pass.
-# ---------------------------------------------------------------------------
-
-[[IgnoredVulns]]
-id = "GHSA-8mgp-746c-j5xp"
-ignoreUntil = 2026-11-20
-reason = "nltk 3.10.3 (surfaced 2026-09-03, CVSS 8.3). No fixed version. Transitive via llama-index-core, dev/test lockfile only; the SDK ships zero runtime dependencies. Re-review by 2026-11-20."
-
-# ---------------------------------------------------------------------------
-# braces 3.0.3 — stack-exhaustion DoS on deeply nested brace patterns
-# (GHSA-vfj7-8cjw-p6xm, published 2026-09-18, CVSS 8.7). Every version through
-# 3.0.3 is affected and no fixed release exists, so there is nothing to bump to.
-#
-# It is in bun.lock only through lint tooling: @next/eslint-plugin-next ->
-# fast-glob -> micromatch -> braces. Nothing under src/, bin/ or lib/ imports
-# micromatch, braces or fast-glob, none of the four runtime dependencies pulls
-# them, and the published package does not include them. The patterns braces
-# expands at lint time come from this repo's own config, never from input.
-#
-# Id-scoped, so any other advisory against braces (in particular a fixable one)
-# still turns this gate red. Same re-review date as the entries above.
-# ---------------------------------------------------------------------------
-
-[[IgnoredVulns]]
-id = "GHSA-vfj7-8cjw-p6xm"
-ignoreUntil = 2026-11-20
-reason = "braces 3.0.3 (published 2026-09-18, CVSS 8.7). No fixed version. Dev-only, via @next/eslint-plugin-next -> fast-glob -> micromatch; not shipped and only fed this repo's own glob patterns. Re-review by 2026-11-20."
+reason = "chromadb 1.5.9 (published 2026-06-12, surfaced 2026-08-24). No fixed version. Transitive via crewai, dev/test lockfile only; see the shared justification above. Re-review by 2026-11-20."

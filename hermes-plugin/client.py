@@ -11,7 +11,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Mapping, Sequence
 
-PROTOCOL_VERSION = 1
+PROTOCOL_VERSION = 2
 MAX_FRAME_BYTES = 16 * 1024 * 1024
 MAX_REQUEST_BYTES = 1024 * 1024
 
@@ -75,6 +75,7 @@ def evaluate_policy(
     event: str,
     payload: Mapping[str, Any],
     cwd: str | None,
+    agent_settings_path: str | None = None,
     connect_timeout_ms: int = 250,
     evaluation_timeout_ms: int = 12_000,
 ) -> PolicyVerdict:
@@ -85,6 +86,9 @@ def evaluate_policy(
         "event": event,
         "payload": dict(payload),
         "cwd": cwd,
+        # An unknown profile is explicit. Omitting this field would let a new
+        # daemon's warm worker attribute the call to its own Hermes home.
+        "agentSettingsPath": agent_settings_path or "",
     }
     try:
         body = json.dumps(

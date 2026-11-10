@@ -20,16 +20,7 @@ import {
   writeAuth,
   type StoredAuth,
 } from "../../lib/auth/auth-store";
-import {
-  ANSI_RESET,
-  BAR,
-  colorsEnabled,
-  intro,
-  outro,
-  promptText,
-  step,
-  stepOpen,
-} from "../hooks/tui";
+import { INDENT, optsFor, paint, promptText, screenKit } from "../hooks/tui";
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
@@ -42,18 +33,6 @@ const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
  */
 const CODE_MIN = 4;
 const CODE_MAX = 12;
-
-/**
- * The spine a prompt hangs off, so the two questions sit inside the same frame
- * `intro`/`outro` draw. Empty when colour is off or output is piped: the frame
- * is decoration, and a log file should not collect box-drawing characters.
- */
-function spine(): string {
-  return colorsEnabled(process.stdout)
-    ? `${ANSI_DIM_BAR}${BAR}${ANSI_RESET}  `
-    : "";
-}
-const ANSI_DIM_BAR = "\x1B[2m";
 
 /**
  * Codes are numeric (`auth/otp.rs` generates digits only), so anything else in
@@ -93,10 +72,9 @@ export interface SignedIn {
 /**
  * Whether a sign-in flow actually ran.
  *
- * The caller uses it to decide whether its confirmation continues an open frame
- * or stands on its own: the `│` spine means "a flow is happening", so printing
- * one under a command that answered instantly from the session file would be a
- * frame with no beginning.
+ * The caller uses it to decide whether its confirmation continues an open
+ * screen or opens its own: a sign-in has already printed the `Audit` header, so
+ * a second one under it would read as a second command.
  */
 export interface EnsureSignedIn {
   user: SignedIn;
@@ -199,35 +177,40 @@ export function invalidEmail(address: string): string | null {
 }
 
 /**
- * The two prompts, inside the frame `failproofai config` uses.
+ * The sign-in screen: `failproofai audit --schedule`'s two prompts.
  *
- * Same logo, same `│` spine, same `◆ / ◇` step glyphs, same pink `└` close —
- * because this is the same product asking, and a sign-in that looked like a
- * different tool would be the one moment the seam showed. It is also the only
- * moment this command asks for something personal, which is the moment worth
- * spending the frame on.
+ * In the language every other screen speaks — the `Audit` header, an
+ * UPPERCASE heading, a field per question, and a `✓` or `✕` line for each
+ * outcome — so a sign-in reads as the same product asking. It used to open
+ * with the full logomark inside `config`'s step spine, on the argument that
+ * the one personal question deserved the frame; the redesign keeps the mark to
+ * bare `failproofai` and `config` (LAUNCH-10), and the wordmark in the header
+ * is what every screen shares.
  *
  * Exported so a test can drive it without the caller.
  */
 export async function runLogin(preset?: string): Promise<SignedIn> {
-  intro("scheduled audits need somewhere to send the report");
+  const k = screenKit(optsFor(process.stdout));
+  const say = (...lines: string[]) => process.stdout.write(`${lines.join("\n")}\n`);
+  say("", k.header("Audit"), "", k.head("Sign in"));
 
   let address: string;
   if (preset) {
     // Supplied on the command line, so the question is already answered — but
-    // it is still SHOWN, as a settled step, because it is the address a code is
-    // about to be sent to and the flag is exactly where a typo hides.
+    // it is still SHOWN, as the field it would have been typed into, because it
+    // is the address a code is about to be sent to and the flag is exactly
+    // where a typo hides.
     address = preset.trim().toLowerCase();
-    step("your email", address);
+    say(`${INDENT}${"email".padEnd(10)}${paint(optsFor(process.stdout).color).pink("›")} ${address}`);
   } else {
     const email = await promptText({
-      prefix: spine(),
-      message: "your email",
+      field: true,
+      message: "email",
       hint: "you@yourdomain.com",
-      validate: (v) => (EMAIL_RE.test(v.trim()) ? null : "that doesn't look like an email"),
+      validate: (v) => (EMAIL_RE.test(v.trim()) ? null : "That doesn't look like an email address."),
     });
     if (email === null) {
-      outro("Cancelled — nothing was changed.", { ok: false });
+      say("Cancelled. Nothing was changed.");
       throw new LoginError("Cancelled.");
     }
     address = email.trim().toLowerCase();
@@ -237,65 +220,62 @@ export async function runLogin(preset?: string): Promise<SignedIn> {
     const sent = await requestLoginCode(address);
     expiresInMin = Math.max(1, Math.ceil(sent.expires_in / 60));
   } catch (err) {
-    outro("Could not send a login code.", { ok: false });
+    say(k.fail("Could not send a login code."));
     throw new LoginError(describeAuthError(err, "Could not send a login code"));
   }
 
-  // The address is echoed back on the settled step rather than left to memory:
-  // a typo in it is the single most likely reason no code arrives, and this is
-  // the last place it can be noticed before somebody starts waiting.
-  step("code sent", `to ${address} · expires in ${expiresInMin} min`);
+  // The address is echoed back rather than left to memory: a typo in it is the
+  // single most likely reason no code arrives, and this is the last place it
+  // can be noticed before somebody starts waiting.
+  say(k.ok(`Sent a code to ${address}, valid for ${expiresInMin} minute${expiresInMin === 1 ? "" : "s"}.`));
 
   // Three attempts, matching the server's own per-code cap. Looping forever
   // would keep a person typing at a code the server stopped accepting after
   // the fifth try, and one attempt would punish a typo with a fresh email.
   const ATTEMPTS = 3;
   for (let attempt = 1; attempt <= ATTEMPTS; attempt += 1) {
-    stepOpen(attempt === 1 ? "the code from that email" : "try that code again");
     const typed = await promptText({
-      prefix: spine(),
+      field: true,
       message: "code",
       // Unmasked on purpose. A login code is single-use and expires in minutes,
       // so hiding it protects nothing and costs the one thing that matters at
       // this prompt: seeing your own typo before pressing enter.
       hint:
         attempt === 1
-          ? "123456 · paste the whole line if you like"
+          ? "123456  ·  paste the whole line if you like"
           : `attempt ${attempt} of ${ATTEMPTS}`,
       validate: (v) => {
         // No digits at all is not a mistyped code, it is not a code — caught
         // here rather than spent as one of the server's five attempts.
-        if (!/\d/.test(v)) return "a code is digits — paste the line from the email";
+        if (!/\d/.test(v)) return "A code is digits. Paste the line from the email.";
         const code = extractCode(v);
-        if (code.length < CODE_MIN) return "that looks too short to be the code";
-        if (code.length > CODE_MAX) return "that looks too long — paste just the code";
+        if (code.length < CODE_MIN) return "That looks too short to be the code.";
+        if (code.length > CODE_MAX) return "That looks too long. Paste just the code.";
         return null;
       },
     });
     if (typed === null) {
-      outro("Cancelled — nothing was changed.", { ok: false });
+      say("Cancelled. Nothing was changed.");
       throw new LoginError("Cancelled.");
     }
 
     try {
       const tokens = await verifyLoginCode(address, extractCode(typed));
       writeAuth(authFromTokenResponse(tokens));
-      step("signed in", tokens.user.email);
+      say(k.ok(`Signed in as ${tokens.user.email}.`));
       return { id: tokens.user.id, email: tokens.user.email };
     } catch (err) {
       const wrongCode = err instanceof AuthApiError && err.code === "invalid_code";
       if (wrongCode && attempt < ATTEMPTS) {
-        step(
-          "that code was wrong or expired",
-          `${ATTEMPTS - attempt} more ${ATTEMPTS - attempt === 1 ? "try" : "tries"} before it asks for a new one`,
-        );
+        // The tries left are on the next field's hint, `attempt 2 of 3`.
+        say(k.fail("That code was wrong or has expired."));
         continue;
       }
-      outro("Could not verify that code.", { ok: false });
+      say(k.fail("Could not verify that code."));
       throw new LoginError(describeAuthError(err, "Could not verify that code"));
     }
   }
-  outro("Too many wrong codes.", { ok: false });
+  say(k.fail("Too many wrong codes."));
   throw new LoginError("Too many wrong codes. Run the command again for a fresh one.");
 }
 

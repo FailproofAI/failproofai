@@ -72,7 +72,8 @@ export function getBaseDir(): string {
  * a first batch is written.
  */
 export function failproofaiCustomAgentsDir(): string {
-  const fpHome = process.env.FAILPROOFAI_HOME;
+  // Blank or whitespace-only means unset: otherwise it resolves against the cwd.
+  const fpHome = process.env.FAILPROOFAI_HOME?.trim();
   const base = fpHome ? expandUser(fpHome) : join(homedir(), ".failproofai");
   return join(base, "custom-agents");
 }

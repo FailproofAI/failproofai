@@ -585,6 +585,7 @@ fn spec(base: PathBuf, spool: PathBuf, state: PathBuf) -> Spec {
             max_read_bytes: 8 * 1024 * 1024,
             max_batch_bytes: 8 * 1024 * 1024,
             since_days: None,
+            sessions_resume_after: None,
             label: None,
         },
     }

@@ -417,7 +417,7 @@ def test_sandbox_fails_closed_when_kernel_resource_limits_are_unavailable(monkey
 def test_comprehension_body_can_read_session():
     # A list/set/dict comprehension resolves a free name like `session` from
     # GLOBALS. When `session` was only in eval locals, such a source raised
-    # NameError on CPython 3.10 (a supported version). Both sandbox paths must
+    # NameError on CPython 3.11 (a supported version). Both sandbox paths must
     # now evaluate a session-dependent comprehension (COR-001).
     assert (
         compile_condition("len([session.event_count for i in range(1)]) > 0")(Session())

@@ -80,6 +80,7 @@ async function loadShim(opts: { scope: "user" | "project"; binaryPath: string; c
         const projectSrc = readFileSync(pluginPath, "utf8");
         return projectSrc
           .replace("USE_NPX = true", "USE_NPX = false")
+          .replace('AGENT_SCOPE = "project"', 'AGENT_SCOPE = "user"')
           .replace('FAILPROOFAI_BIN = ""', `FAILPROOFAI_BIN = ${JSON.stringify(opts.binaryPath)}`);
       })();
 
@@ -143,7 +144,9 @@ describe("OpenCode plugin shim — translation of plugin events to binary stdin"
     const hooks = await plugin({ client: fakeClient(), directory: "/repo" });
     await hooks["tool.execute.before"]!({ tool: "bash", sessionID: "ses_1", callID: "c1" }, { args: { command: "ls" } });
     expect(calls).toHaveLength(1);
-    expect(calls[0].args).toEqual(["-y", "failproofai", "--hook", "PreToolUse", "--cli", "opencode"]);
+    expect(calls[0].args).toEqual([
+      "-y", "failproofai", "--hook", "PreToolUse", "--cli", "opencode", "--agent-scope", "project",
+    ]);
     const stdin = JSON.parse(calls[0].opts.input!);
     // Shim canonicalizes lowercase opencode tool IDs (`bash`) to Claude
     // PascalCase (`Bash`) before the JSON crosses to the binary, so builtin

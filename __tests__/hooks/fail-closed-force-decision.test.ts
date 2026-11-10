@@ -206,9 +206,8 @@ describe("the fail-closed verdict is enforcing on every supported CLI", () => {
  *
  * The logic lives in `bin/failproofai.mjs`, which cannot be imported by vitest
  * (a bare `package.json` import and extensionless TypeScript specifiers — see
- * CLAUDE.md), so its shape is asserted from source, the same way
- * `dogfood-configs.test.ts` guards the committed hook configs. Both properties
- * here regressed silently once already.
+ * CLAUDE.md), so its shape is asserted from source. Both properties here
+ * regressed silently once already.
  */
 describe("bin/failproofai.mjs --hook error boundary", () => {
   const source = readFileSync(

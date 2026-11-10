@@ -130,6 +130,15 @@ pub struct Settings {
     /// sending them.
     #[serde(default)]
     pub sessions: bool,
+    /// Absent per-agent override inherits the global sessions opt-in.
+    #[serde(default)]
+    pub agents: BTreeMap<String, AgentSettings>,
+    /// Raw OTLP relay is additive and disabled by default.
+    #[serde(default)]
+    pub otlp: OtlpSettings,
+    /// Non-secret token acknowledged by the deployment built from this config.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub config_generation: Option<String>,
     /// Ship hook activity. Defaults to TRUE once ingest is configured — it
     /// carries decisions and tool names, never file contents, and it is the
     /// capability that justifies collecting from inside failproofai at all.
@@ -175,6 +184,36 @@ pub struct SourceSettings {
     pub extra_paths: Vec<String>,
 }
 
+#[derive(Debug, Clone, Default, PartialEq, Eq, Deserialize, Serialize)]
+pub struct AgentSettings {
+    #[serde(default)]
+    pub sessions: Option<bool>,
+    /// Transcript delivery resumes after an OTEL handoff (epoch ms).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub sessions_resume_after: Option<u64>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
+pub struct OtlpSettings {
+    #[serde(default)]
+    pub enabled: bool,
+    #[serde(default = "default_otlp_port")]
+    pub port: u16,
+}
+
+fn default_otlp_port() -> u16 {
+    4318
+}
+
+impl Default for OtlpSettings {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            port: default_otlp_port(),
+        }
+    }
+}
+
 fn default_true() -> bool {
     true
 }
@@ -187,6 +226,9 @@ impl Default for Settings {
     fn default() -> Self {
         Settings {
             sessions: false,
+            config_generation: None,
+            agents: BTreeMap::new(),
+            otlp: OtlpSettings::default(),
             hooks: true,
             hooks_verbosity: HooksVerbosity::default(),
             redact: Redact::default(),
@@ -198,6 +240,18 @@ impl Default for Settings {
 }
 
 impl Settings {
+    pub fn sessions_for(&self, agent: &str) -> bool {
+        let agent = if agent == "claude-subagent" {
+            "claude"
+        } else {
+            agent
+        };
+        self.agents
+            .get(agent)
+            .and_then(|a| a.sessions)
+            .unwrap_or(self.sessions)
+    }
+
     /// Raw `extra_paths` entries for one source, env override winning whole.
     ///
     /// `FAILPROOFAI_<SOURCE>_EXTRA_PATHS`, comma-separated — the same
@@ -244,12 +298,116 @@ impl Settings {
     }
 }
 
+/// Which agents this machine traces: the `agents` object at the TOP LEVEL of
+/// `config.json` (beside `collector`, not inside it), written by
+/// `failproofai config`.
+///
+/// `selected` is an opt-in list of integration ids (`claude`, `codex`, …). A
+/// harness whose id is not in it starts no collector task at all: not its
+/// default roots, not its extra paths, and for Hermes not a single profile.
+/// ABSENT means every harness, which is what every config written before this
+/// existed says, so an old file keeps collecting exactly what it did.
+///
+/// Read the way `readAgents` in `src/hooks/fp-config.ts` reads it, because the
+/// CLI that writes this key and the daemon that obeys it have to agree on what a
+/// given file means: `config --status` saying one thing while the collector does
+/// another is the failure, whichever of the two is "right". So a value that is
+/// not usable reads as ABSENT, never as an error and never as "nothing". The CLI
+/// chose that direction so a broken file cannot quietly switch tracing off;
+/// `unusable` records it so the daemon can say so instead of widening silently.
+/// Within a usable list, non-strings and blank entries are dropped and repeats
+/// collapse, exactly as the CLI does. Names are otherwise kept as written: the
+/// daemon owns the list of real agents, and warns about one it does not know.
+///
+/// `seen` (what the CLI detected at its last run) is deliberately NOT read. It
+/// changes whenever a new agent is installed, and every field here is one the
+/// collector manager compares: a re-run of `config` that only noticed a new
+/// binary would cycle the collector for nothing.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct AgentSelection {
+    /// `None` = every harness. `Some(ids)` = only these, possibly none at all.
+    pub selected: Option<Vec<String>>,
+    /// `agents` was present but could not be read, so it was treated as absent.
+    pub unusable: bool,
+}
+
+impl AgentSelection {
+    /// Interpret the top-level `agents` value of `config.json`.
+    pub fn from_config_value(agents: Option<&serde_json::Value>) -> Self {
+        let absent = AgentSelection::default();
+        let unusable = AgentSelection {
+            selected: None,
+            unusable: true,
+        };
+        let Some(value) = agents.filter(|v| !v.is_null()) else {
+            return absent;
+        };
+        let Some(table) = value.as_object() else {
+            return unusable;
+        };
+        match table.get("selected") {
+            // `{ "seen": [...] }` alone, or a cleared selection: no selection.
+            None | Some(serde_json::Value::Null) => absent,
+            Some(serde_json::Value::Array(items)) => {
+                let mut ids: Vec<String> = Vec::new();
+                for id in items.iter().filter_map(serde_json::Value::as_str) {
+                    if !id.trim().is_empty() && !ids.iter().any(|kept| kept == id) {
+                        ids.push(id.to_string());
+                    }
+                }
+                AgentSelection {
+                    selected: Some(ids),
+                    unusable: false,
+                }
+            }
+            Some(_) => unusable,
+        }
+    }
+
+    /// Whether `agent` is traced. Every agent is, when nothing was selected.
+    pub fn traces(&self, agent: &str) -> bool {
+        self.selected
+            .as_ref()
+            .is_none_or(|ids| ids.iter().any(|id| id == agent))
+    }
+
+    /// Whether a selection is in force at all.
+    pub fn is_selective(&self) -> bool {
+        self.selected.is_some()
+    }
+
+    /// Selected names that are not in `known`, in the order they were written.
+    ///
+    /// Returned rather than warned about here, like [`Settings::unknown_sources`]:
+    /// the caller owns the real agent list. A misspelt id selects nothing and
+    /// collects nothing, and nothing else in the pipeline would ever mention it.
+    pub fn unknown(&self, known: &[&str]) -> Vec<String> {
+        self.selected
+            .iter()
+            .flatten()
+            .filter(|id| !known.contains(&id.as_str()))
+            .cloned()
+            .collect()
+    }
+}
+
 /// Everything the collector needs, resolved.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CollectorConfig {
+    /// Recording boundary shared by sources and delivery. A change cycles the
+    /// collector before any new key can consume the previous org's queues.
+    pub boundary: Option<OrgBoundary>,
     /// `None` means collection is off for this process.
     pub ingest: Option<Ingest>,
     pub settings: Settings,
+    /// The top-level `agents.selected`. Inside this struct, rather than read by
+    /// the daemon on its own, for the same reason `settings.sources` is: the
+    /// collector manager cycles the collector whenever the WHOLE value differs
+    /// from the one the running deployment was built from. A selection resolved
+    /// anywhere else would be written by `failproofai config`, reported as
+    /// applied, and ignored by a running daemon until some unrelated change or a
+    /// restart.
+    pub agents: AgentSelection,
     /// Directories watched for ready-to-upload event batches, in the order
     /// they are scanned.
     pub spool_dirs: Vec<PathBuf>,
@@ -258,6 +416,26 @@ pub struct CollectorConfig {
     pub own_spool_dir: PathBuf,
     /// Batches the server rejected, parked for retry.
     pub failed_dir: PathBuf,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
+pub struct OrgBoundary {
+    #[serde(default)]
+    pub id: Option<String>,
+    pub since: u64,
+}
+
+pub fn load_boundary(home: &Path) -> Result<Option<OrgBoundary>, ConfigError> {
+    let doc = read_credential_doc(home)?;
+    Ok(boundary_from(doc.as_ref()))
+}
+
+fn boundary_from(doc: Option<&serde_json::Value>) -> Option<OrgBoundary> {
+    let org = doc?.get("org")?;
+    Some(OrgBoundary {
+        id: org.get("id").and_then(|v| v.as_str()).map(str::to_string),
+        since: org.get("since")?.as_u64()?,
+    })
 }
 
 impl CollectorConfig {
@@ -327,8 +505,17 @@ impl From<io::Error> for ConfigError {
 /// local development against a stack on `localhost`, where writing a file to a
 /// real home directory would be the wrong shape.
 pub fn load(home: &Path) -> Result<CollectorConfig, ConfigError> {
-    let ingest = load_ingest(home)?;
-    let settings = load_settings(home)?;
+    // One snapshot: never pair a replacement key with the previous boundary.
+    let credentials = read_credential_doc(home)?;
+    let ingest = load_ingest(credentials.as_ref());
+    let boundary = boundary_from(credentials.as_ref());
+    // ONE read of config.json for both halves, so a file rewritten between two
+    // reads cannot yield the collector settings of one version and the agent
+    // selection of another.
+    let doc = read_config_doc(home)?;
+    let settings = settings_from(&doc)?;
+    let agents =
+        AgentSelection::from_config_value(doc.as_ref().and_then(|(_, root)| root.get("agents")));
 
     if settings.environment.contains(',') {
         // Fail here rather than let ingest silently skip every line. The
@@ -366,8 +553,10 @@ pub fn load(home: &Path) -> Result<CollectorConfig, ConfigError> {
     }
 
     Ok(CollectorConfig {
+        boundary,
         ingest,
         settings,
+        agents,
         spool_dirs,
         own_spool_dir,
         failed_dir,
@@ -393,10 +582,9 @@ fn agenteye_events_dir() -> PathBuf {
     base.join("events")
 }
 
-fn load_ingest(home: &Path) -> Result<Option<Ingest>, ConfigError> {
+fn read_credential_doc(home: &Path) -> Result<Option<serde_json::Value>, ConfigError> {
     let path = home.join(CREDENTIALS_FILE);
-
-    let from_file: Option<Ingest> = match fs::read_to_string(&path) {
+    match fs::read_to_string(&path) {
         Ok(text) => {
             warn_if_world_readable(&path);
             let doc: serde_json::Value =
@@ -404,27 +592,23 @@ fn load_ingest(home: &Path) -> Result<Option<Ingest>, ConfigError> {
                     path: path.clone(),
                     detail: e.to_string(),
                 })?;
-            // A credentials file with no `ingest` object is not malformed — it
-            // is a machine connected for policy but not reporting, which is a
-            // supported half-state.
-            //
-            // `url` DEFAULTS rather than being required: the wizard writes only
-            // a key when the user accepts the hosted endpoint, so requiring it
-            // would read a perfectly good credential as absent and silently
-            // disable collection. Only `key` makes the table meaningful.
-            doc.get("ingest").and_then(|t| {
-                let key = t.get("key")?.as_str()?.to_string();
-                let url = t
-                    .get("url")
-                    .and_then(|v| v.as_str())
-                    .map(str::to_string)
-                    .unwrap_or_else(default_url);
-                Some(Ingest { url, key })
-            })
+            Ok(Some(doc))
         }
-        Err(e) if e.kind() == io::ErrorKind::NotFound => None,
-        Err(e) => return Err(ConfigError::Io(e)),
-    };
+        Err(e) if e.kind() == io::ErrorKind::NotFound => Ok(None),
+        Err(e) => Err(ConfigError::Io(e)),
+    }
+}
+
+fn load_ingest(doc: Option<&serde_json::Value>) -> Option<Ingest> {
+    let from_file = doc.and_then(|doc| doc.get("ingest")).and_then(|t| {
+        let key = t.get("key")?.as_str()?.to_string();
+        let url = t
+            .get("url")
+            .and_then(|v| v.as_str())
+            .map(str::to_string)
+            .unwrap_or_else(default_url);
+        Some(Ingest { url, key })
+    });
 
     let key = env_nonempty("FAILPROOFAI_INGEST_KEY")
         .or_else(|| from_file.as_ref().map(|i| i.key.clone()));
@@ -435,16 +619,18 @@ fn load_ingest(home: &Path) -> Result<Option<Ingest>, ConfigError> {
     // A file with an empty key is "configured but not really" — treat it as
     // absent rather than sending `Authorization: Bearer ` and collecting 401s.
     match key {
-        Some(key) if !key.trim().is_empty() => Ok(Some(Ingest { url, key })),
-        _ => Ok(None),
+        Some(key) if !key.trim().is_empty() => Some(Ingest { url, key }),
+        _ => None,
     }
 }
 
-fn load_settings(home: &Path) -> Result<Settings, ConfigError> {
+/// `config.json`, parsed, with the path it came from. `None` when there is no
+/// file, which is every machine that has not been set up.
+fn read_config_doc(home: &Path) -> Result<Option<(PathBuf, serde_json::Value)>, ConfigError> {
     let path = home.join(CONFIG_FILE);
     let text = match fs::read_to_string(&path) {
         Ok(t) => t,
-        Err(e) if e.kind() == io::ErrorKind::NotFound => return Ok(Settings::default()),
+        Err(e) if e.kind() == io::ErrorKind::NotFound => return Ok(None),
         Err(e) => return Err(ConfigError::Io(e)),
     };
 
@@ -453,14 +639,26 @@ fn load_settings(home: &Path) -> Result<Settings, ConfigError> {
             path: path.clone(),
             detail: e.to_string(),
         })?;
+    Ok(Some((path, root)))
+}
 
+/// The `collector` object of a parsed `config.json`.
+fn settings_from(doc: &Option<(PathBuf, serde_json::Value)>) -> Result<Settings, ConfigError> {
+    let Some((path, root)) = doc else {
+        return Ok(Settings::default());
+    };
     match root.get("collector") {
         None => Ok(Settings::default()),
         Some(v) => serde_json::from_value(v.clone()).map_err(|e| ConfigError::Malformed {
-            path,
+            path: path.clone(),
             detail: format!("the collector object is not usable: {e}"),
         }),
     }
+}
+
+#[cfg(test)]
+fn load_settings(home: &Path) -> Result<Settings, ConfigError> {
+    settings_from(&read_config_doc(home)?)
 }
 
 fn env_nonempty(name: &str) -> Option<String> {
@@ -793,6 +991,116 @@ mod extra_path_settings_tests {
         );
 
         // ...and removing it changes back, so `remove-path` also takes effect.
+        fs::write(
+            d.path().join(CONFIG_FILE),
+            r#"{"collector":{"sessions":true}}"#,
+        )
+        .unwrap();
+        assert_eq!(load(d.path()).unwrap(), before);
+    }
+
+    // ── agents.selected ─────────────────────────────────────────────────────
+
+    fn selection_from(text: &str) -> AgentSelection {
+        let root: serde_json::Value = serde_json::from_str(text).unwrap();
+        AgentSelection::from_config_value(root.get("agents"))
+    }
+
+    #[test]
+    fn no_agents_key_means_every_agent_is_traced() {
+        // Every config written before the key existed, which must keep
+        // collecting exactly what it did.
+        for text in [
+            r#"{"collector":{"sessions":true}}"#,
+            r#"{"agents":null}"#,
+            // `seen` alone is the CLI's bookkeeping, not a selection.
+            r#"{"agents":{"seen":["claude"]}}"#,
+            r#"{"agents":{"selected":null,"seen":[]}}"#,
+        ] {
+            let s = selection_from(text);
+            assert_eq!(s, AgentSelection::default(), "{text}");
+            assert!(!s.is_selective());
+            assert!(s.traces("claude") && s.traces("hermes"), "{text}");
+        }
+    }
+
+    #[test]
+    fn a_selection_traces_only_what_it_names() {
+        let s = selection_from(r#"{"agents":{"selected":["claude","hermes"],"seen":["goose"]}}"#);
+        assert!(s.is_selective());
+        assert!(s.traces("claude") && s.traces("hermes"));
+        assert!(!s.traces("codex"));
+        assert!(!s.traces("goose"), "`seen` selects nothing");
+
+        let none = selection_from(r#"{"agents":{"selected":[]}}"#);
+        assert!(none.is_selective());
+        assert!(!none.traces("claude"), "an empty selection traces nothing");
+    }
+
+    /// The same reading `readAgents` in `src/hooks/fp-config.ts` gives, so the
+    /// CLI's "tracing every agent" and the collector cannot disagree about one
+    /// file: a garbage value is absent, never "nothing".
+    #[test]
+    fn a_selection_is_read_the_way_the_cli_reads_it() {
+        let s =
+            selection_from(r#"{"agents":{"selected":["claude",7,"","  ","claude",null,"codx"]}}"#);
+        assert_eq!(
+            s.selected,
+            Some(vec!["claude".to_string(), "codx".to_string()]),
+            "non-strings and blanks dropped, repeats collapsed, names kept as written"
+        );
+        assert!(!s.unusable);
+        assert_eq!(s.unknown(&["claude", "codex"]), vec!["codx".to_string()]);
+
+        for garbage in [
+            r#"{"agents":"claude"}"#,
+            r#"{"agents":["claude"]}"#,
+            r#"{"agents":{"selected":"claude"}}"#,
+            r#"{"agents":{"selected":{"claude":true}}}"#,
+        ] {
+            let s = selection_from(garbage);
+            assert_eq!(s.selected, None, "{garbage}");
+            assert!(
+                s.unusable,
+                "{garbage} must be reported, not silently widened"
+            );
+            assert!(s.traces("codex"), "{garbage}");
+        }
+    }
+
+    /// The selection must be INSIDE the compared `CollectorConfig`, or a
+    /// running daemon never notices `failproofai config` changed it — the same
+    /// dependency `collector_config_change_cycles_the_collector` pins for
+    /// `sources`.
+    #[test]
+    fn changing_the_selection_changes_the_collector_config_but_seen_does_not() {
+        let _env = crate::test_env::lock_env();
+        let d = home_with(r#"{"collector":{"sessions":true}}"#);
+        let before = load(d.path()).unwrap();
+        assert_eq!(before.agents, AgentSelection::default());
+
+        fs::write(
+            d.path().join(CONFIG_FILE),
+            r#"{"agents":{"selected":["claude"],"seen":["claude"]},"collector":{"sessions":true}}"#,
+        )
+        .unwrap();
+        let selected = load(d.path()).unwrap();
+        assert_ne!(
+            before, selected,
+            "selecting agents did not change CollectorConfig, so a running daemon would \
+             keep collecting every agent until an unrelated restart"
+        );
+        assert!(selected.agents.traces("claude") && !selected.agents.traces("codex"));
+
+        // A newly detected agent changes only `seen`: nothing to cycle for.
+        fs::write(
+            d.path().join(CONFIG_FILE),
+            r#"{"agents":{"selected":["claude"],"seen":["claude","goose"]},"collector":{"sessions":true}}"#,
+        )
+        .unwrap();
+        assert_eq!(load(d.path()).unwrap(), selected);
+
+        // ...and clearing the selection changes it back.
         fs::write(
             d.path().join(CONFIG_FILE),
             r#"{"collector":{"sessions":true}}"#,

@@ -10,6 +10,7 @@
  * The camelCase `toolCall:{name,args}` payload is normalized to snake_case by
  * the handler before policies run. hooks.json uses a NAMED-hook schema.
  */
+import { createHash } from "node:crypto";
 import { describe, it, expect } from "vitest";
 import { execSync } from "node:child_process";
 import { mkdtempSync, writeFileSync, readFileSync, existsSync, mkdirSync, rmSync } from "node:fs";
@@ -154,6 +155,134 @@ describe("E2E: Antigravity integration — hook protocol", () => {
       const last = JSON.parse(lines[lines.length - 1]) as Record<string, unknown>;
       expect(last.integration).toBe("antigravity");
       expect(last.decision).toBe("deny");
+    } finally {
+      env.cleanup();
+    }
+  });
+});
+
+// Payload shapes captured live from agy 1.4.9 and 1.4.12 with a recorder hook
+// (#961). Every case here was a silent allow before the maps learned this tool set.
+describe("E2E: Antigravity integration — native file tools", () => {
+  const deniedCases: Array<[string, string[], string, (cwd: string) => Record<string, unknown>]> = [
+    ["read_file .env", ["block-env-files"], "read_file", (cwd) => ({ Path: `${cwd}/.env` })],
+    ["read_file outside the project", ["block-read-outside-cwd"], "read_file", () => ({ Path: "/etc/passwd" })],
+    ["view_file with Path", ["block-env-files"], "view_file", (cwd) => ({ Path: `${cwd}/.env` })],
+    ["write_file .env", ["block-env-files"], "write_file", (cwd) => ({ Path: `${cwd}/.env`, Content: "X=1" })],
+    ["write_file a private key", ["block-secrets-write"], "write_file", (cwd) => ({ Path: `${cwd}/id_rsa`, Content: "k" })],
+    ["edit_file .env", ["block-env-files"], "edit_file", (cwd) => ({ Path: `${cwd}/.env`, Target: "a", Replacement: "b" })],
+    // No policy enabled at all: this one is the always-on guard, and writing this
+    // file is how an agent would switch every other policy off.
+    ["write_file over failproofai's own config", [], "write_file", (cwd) => ({ Path: `${cwd}/.failproofai/policies-config.json`, Content: "{}" })],
+    ["edit_file on failproofai's own config", [], "edit_file", (cwd) => ({ Path: `${cwd}/.failproofai/policies-config.json`, Target: "a", Replacement: "b" })],
+  ];
+
+  // A renamed path key: nothing can check the call, so the always-on guard refuses
+  // it with no policy enabled. This is how the bypass in #961 would look next time.
+  const noPathCases: Array<[string, string, Record<string, unknown>]> = [
+    ["read_file with an unknown path key", "read_file", { FilePath: "/etc/passwd" }],
+    ["write_file with an unknown path key", "write_file", { FilePath: "/tmp/x", Content: "x" }],
+    ["edit_file with no path", "edit_file", { Target: "a", Replacement: "b" }],
+    ["read_file with an empty Path", "read_file", { Path: "" }],
+    ["view_file with no arguments", "view_file", {}],
+  ];
+
+  it.each(noPathCases)("denies %s", (_label, tool, args) => {
+    const env = createAntigravityEnv();
+    try {
+      writeConfig(env.cwd, []);
+      const result = runHook("PreToolUse", AntigravityPayloads.preToolUse.tool(tool, args, env.cwd), {
+        homeDir: env.home,
+        cli: "antigravity",
+      });
+      assertAntigravityDeny(result);
+    } finally {
+      env.cleanup();
+    }
+  });
+
+  it("lifts the refusal during a session pause, the way through until failproofai is updated", () => {
+    const env = createAntigravityEnv();
+    try {
+      writeConfig(env.cwd, []);
+      const payload = AntigravityPayloads.preToolUse.tool("read_file", { FilePath: "/etc/passwd" }, env.cwd);
+      const sessionId = String((payload as { conversationId: string }).conversationId);
+      const dir = join(env.home, ".failproofai", "state", "sessions");
+      mkdirSync(dir, { recursive: true });
+      const digest = createHash("sha256").update(sessionId).digest("hex").slice(0, 32);
+      const now = Date.now();
+      writeFileSync(
+        join(dir, `${digest}.json`),
+        JSON.stringify({ schemaVersion: 1, sessionId, pausedAt: now, firstPausedAt: now, expiresAt: now + 60_000 }),
+      );
+      const result = runHook("PreToolUse", payload, { homeDir: env.home, cli: "antigravity" });
+      expect(result.stdout).not.toContain('"decision":"deny"');
+    } finally {
+      env.cleanup();
+    }
+  });
+
+  it("does not refuse a pathless call to a tool that is not a file tool", () => {
+    const env = createAntigravityEnv();
+    try {
+      writeConfig(env.cwd, []);
+      const result = runHook("PreToolUse", AntigravityPayloads.preToolUse.tool("ask_question", { Question: "ok?" }, env.cwd), {
+        homeDir: env.home,
+        cli: "antigravity",
+      });
+      expect(result.stdout).not.toContain('"decision":"deny"');
+    } finally {
+      env.cleanup();
+    }
+  });
+
+  it.each(deniedCases)("denies %s", (_label, policies, tool, args) => {
+    const env = createAntigravityEnv();
+    try {
+      writeConfig(env.cwd, policies);
+      const result = runHook(
+        "PreToolUse",
+        AntigravityPayloads.preToolUse.tool(tool, args(env.cwd), env.cwd),
+        { homeDir: env.home, cli: "antigravity" },
+      );
+      assertAntigravityDeny(result);
+    } finally {
+      env.cleanup();
+    }
+  });
+
+  // agy reads its own skills and artifacts with read_file. Those reads only became
+  // visible to block-read-outside-cwd once Path mapped, so the ~/.gemini allowlist
+  // now carries them.
+  it("still allows agy reading its own files under the user's ~/.gemini", () => {
+    const env = createAntigravityEnv();
+    try {
+      writeConfig(env.cwd, ["block-read-outside-cwd"]);
+      const result = runHook(
+        "PreToolUse",
+        AntigravityPayloads.preToolUse.tool(
+          "read_file",
+          { Path: `${env.home}/.gemini/antigravity-cli/builtin/skills/agy-customizations/docs/hooks.md` },
+          env.cwd,
+        ),
+        { homeDir: env.home, cli: "antigravity" },
+      );
+      assertAllow(result);
+    } finally {
+      env.cleanup();
+    }
+  });
+
+  it("still allows an ordinary read inside the project", () => {
+    const env = createAntigravityEnv();
+    try {
+      writeConfig(env.cwd, ["block-env-files", "block-read-outside-cwd"]);
+      const result = runHook(
+        "PreToolUse",
+        AntigravityPayloads.preToolUse.tool("read_file", { Path: `${env.cwd}/notes.txt` }, env.cwd),
+        { homeDir: env.home, cli: "antigravity" },
+      );
+      assertAllow(result);
     } finally {
       env.cleanup();
     }

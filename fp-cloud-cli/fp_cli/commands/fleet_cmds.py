@@ -32,8 +32,10 @@ from ..enforcement import (
     disabled_ids,
     latest_versions,
     plan_deploy,
+    version_kinds,
 )
-from ..errors import ApiError, NotFoundError
+from ..errors import ApiError, AuthError, FpCliError, NotFoundError
+from ..models import PolicyRef
 from . import _write
 
 _KEY_MODE_REASON = (
@@ -62,6 +64,8 @@ def fleet_list(ctx: typer.Context) -> None:
     `intended` is the generation deployed, `applied` is the one the machine last
     collected, and `seen` is when it last reported anything — a machine can be
     in sync and dead, or alive and behind, and those are different problems.
+    `state` reads `N errors` when the machine reported policies it could not
+    apply (`fp fleet show <machine>` lists them).
 
     A machine appears from its very first check-in, including the poll that
     finds nothing deployed — that is exactly the machine you are usually looking
@@ -101,10 +105,22 @@ def fleet_show(
     machine can be told to run a policy and not yet have it; the policy list
     alone cannot tell you which, and that is usually the question.
 
+    Shows the Jev mode FailproofAI Cloud sets on the machine (`local` when it
+    sets none) and the policy errors the machine last reported: a policy it
+    could not load, a Jev mode it cannot act on (`jev_unconfigured`: its key
+    does not carry Jev; `transcripts_disabled`: it was connected with
+    `--no-transcripts`), FailproofAI Cloud Jev refusing or failing its calls
+    (`jev_rate_limited`: over the organization's Jev rate limit;
+    `jev_unavailable`: it skips a failing Cloud Jev for a minute at a time), an
+    installed pack's check left out for the question budget (`jev_budget`) or
+    because an organization Cloud check has its name (`jev_name_clash`).
+    Anything listed there is not enforcing, whatever the deployment says.
+
     Needs `policies:read`. With `--json`: `{machine, deployment}` — the machine
-    record (including `appliedDeployment`, `drifted`, `lastSeen` and both label
-    fields, with raw timestamps) and the deployment, or `deployment: null` when
-    nothing is deployed.
+    record (including `appliedDeployment`, `drifted`, `lastSeen`, both label
+    fields, `jevMode` and `policyErrors`/`policyErrorsAt` when reported, with raw
+    timestamps) and the deployment, or `deployment: null` when nothing is
+    deployed.
 
     Example:
 
@@ -129,7 +145,8 @@ def fleet_show(
             "deployment": dep.to_dict() if dep else None,
         })
         return
-    output.render_machine_policies(machine_id, dep, machine)
+    output.render_machine_policies(machine_id, dep, machine,
+                                   agent_labels=api.agent_labels(cctx, machine_id))
 
 
 def fleet_deploy(
@@ -137,12 +154,21 @@ def fleet_deploy(
     machine_id: str = typer.Argument(..., help="Machine id."),
     add: Optional[List[str]] = typer.Option(
         None, "--add",
-        help="Add or update a policy: `id`, `id@version`, `id:effect` or `id@version:effect`.",
+        help="Add or update a policy: `id`, `id@version`, `id:effect` or `id@version:effect`. "
+             "`observe` records what the policy (its JavaScript and its Jev checks) would decide, and decides nothing.",
     ),
     remove: Optional[List[str]] = typer.Option(None, "--remove", help="Remove a policy by id."),
     replace: Optional[List[str]] = typer.Option(
         None, "--set",
         help="REPLACE the whole set with exactly these. Cannot be combined with --add/--remove.",
+    ),
+    targets: Optional[List[str]] = typer.Option(
+        None, "--target",
+        help="Scope one assigned policy: POLICY=INTEGRATION or POLICY=INTEGRATION/agt_ID. Repeat to OR selectors.",
+    ),
+    all_agents: Optional[List[str]] = typer.Option(
+        None, "--all-agents",
+        help="Clear one policy's targeting back to every agent on this machine.",
     ),
     create: bool = typer.Option(
         False, "--create",
@@ -159,6 +185,14 @@ def fleet_deploy(
 
     `--set` replaces everything — the only way to drop policies you do not name.
 
+    Any kind deploys the same way. Jev checks run on FailproofAI Cloud; nothing
+    is installed on the machine: a `both` policy sends the machine its
+    JavaScript, and the machine asks FailproofAI Cloud about each checked tool
+    call. An `observe` effect applies to every kind: the policy's JavaScript
+    and its Jev checks are evaluated and recorded, and decide nothing. There is
+    no Jev mode to set: FailproofAI Cloud turns Jev on for a machine while any
+    `jev` or `both` policy is deployed to it, and off when none is.
+
     **Concurrency.** The write is a full replace with no server-side lock, so the
     CLI records the generation it read and refuses if the result is not exactly
     one higher: that means somebody else deployed in between and a replace does
@@ -170,17 +204,18 @@ def fleet_deploy(
     * `fp fleet deploy ci-runner-01 --add no-force-push`
     * `fp fleet deploy ci-runner-01 --add prod-guard@1:observe --remove old-rule`
     * `fp fleet deploy ci-runner-01 --set no-force-push --set no-secret-echo`
+    * `fp fleet deploy ci-runner-01 --add prod-db-intent:observe`
     """
     state: AppState = ctx.obj
     deny_in_key_mode(state, "fleet deploy", _KEY_MODE_REASON)
     cctx = require_auth(state)
 
-    if not add and not remove and replace is None:
+    if not add and not remove and replace is None and not targets and not all_agents:
         # Exit 2 for the same reason `--set` with `--add` is: no flag
         # combination was given that this command can act on. Both are the
         # caller's command line, not the server's answer.
         raise click.UsageError(
-            "nothing to do — pass --add, --remove, or --set. "
+            "nothing to do — pass --add, --remove, --set, --target, or --all-agents. "
             "`fp fleet show <machine>` prints the current set."
         )
 
@@ -212,6 +247,9 @@ def fleet_deploy(
             replace=replace,
             latest=latest,
             disabled=disabled_ids(published),
+            kinds=version_kinds(published),
+            targets=targets or (),
+            all_agents=all_agents or (),
         )
     except RefUsageError as exc:
         # Exit 2, like every other bad flag value in this CLI (`--since`,
@@ -314,8 +352,11 @@ def fleet_history(
     """List a machine's deployment generations, newest first.
 
     A reissue — the server rewriting a deployment because a policy was disabled
-    — appears as an ordinary entry. Needs `policies:read`. With `--json`:
-    `{machineId, history:[{deployment, policies, updatedAt}]}`.
+    — appears as an ordinary entry, and so does a Jev mode change. Each
+    generation shows the Jev mode FailproofAI Cloud set with it (`local` when it
+    set none), which is the mode a rollback to it restores. Needs
+    `policies:read`. With `--json`: `{machineId, history:[{deployment, policies,
+    updatedAt, jevMode}]}`.
 
     Example:
 
@@ -329,7 +370,8 @@ def fleet_history(
     if output.is_json():
         output.emit_json({"machineId": machine_id, "history": entries})
         return
-    output.render_deployment_history(machine_id, entries)
+    output.render_deployment_history(machine_id, entries,
+                                     agent_labels=api.agent_labels(cctx, machine_id))
 
 
 def fleet_rollback(
@@ -344,8 +386,12 @@ def fleet_rollback(
     counter, so history stays append-only. A generation containing a policy that
     has since been disabled or deleted cannot be reinstated; the server says so.
 
-    Needs `policies:write`. With `--json`: the resulting deployment, or
-    `{"cancelled": true}` if you decline.
+    It restores that generation's Jev mode too, `local` included: the prompt
+    and the result say `jev mode <now> → <then>` when that changes it.
+
+    Needs `policies:write`. With `--json`: the resulting deployment plus
+    `jevModeBefore` (the mode it replaced), or `{"cancelled": true}` if you
+    decline.
 
     Example:
 
@@ -356,9 +402,22 @@ def fleet_rollback(
     cctx = require_auth(state)
     _require_machine(cctx, machine_id)
     current = api.get_deployment(cctx, machine_id)
+    # The mode that generation carried comes back with it, NULL (`local`)
+    # included, as the server reports it.
+    # Read it first, so the prompt says so rather than the fleet finding out.
+    target = next(
+        (e for e in api.deployment_history(cctx, machine_id) if e.get("deployment") == deployment), None)
+    mode_before = (current.jev_mode if current else None) or "local"
+    mode_target = (target.get("jevMode") or "local") if target is not None else None
+    consequence = "this REPLACES the machine's current set with the one from that generation"
+    if target is not None:
+        refs = [PolicyRef.from_dict(ref).label for ref in (target.get("policies") or [])]
+        consequence += "; assignments: " + ("; ".join(refs) if refs else "no policies")
+    if mode_target is not None and mode_target != mode_before:
+        consequence += f", and its Jev mode: jev mode {mode_before} → {mode_target}"
     if not _write.confirm_destructive(
         state, f"reinstate deployment #{deployment} on", machine_id,
-        consequence="this REPLACES the machine's current set with the one from that generation",
+        consequence=consequence,
         assume_yes=yes,
     ):
         if output.is_json():
@@ -369,9 +428,12 @@ def fleet_rollback(
     result = api.rollback_deployment(cctx, machine_id, deployment)
     check_race(current.deployment if current else None, result.deployment)
     if output.is_json():
-        output.emit_json(result.to_dict())
+        output.emit_json({**result.to_dict(), "jevModeBefore": mode_before})
         return
-    output.deployment_rolled_back(machine_id, deployment, result.deployment)
+    output.deployment_rolled_back(
+        machine_id, deployment, result.deployment,
+        jev_from=mode_before, jev_to=result.jev_mode or "local",
+    )
 
 
 def fleet_rename(

@@ -207,32 +207,27 @@ describe("config hardening", () => {
     chmodSync(jevConfigPath(), 0o600);
   };
 
-  describe("plain http to loopback is accepted in observe mode only", () => {
+  describe("plain http to loopback is accepted in every mode", () => {
     const problem = (obj: unknown) => {
       const r = validateJevConfig(obj);
       return r.ok ? null : r.problem;
     };
 
     it.each(["http://localhost:8787/v1", "http://127.0.0.1:8787", "http://[::1]:8787"])("%s", (baseUrl) => {
-      // enforce, explicit or by default: refused, and the reason says what to do.
-      expect(problem({ provider: "custom", apiKey: KEY, baseUrl })).toMatch(/observe/);
-      expect(problem({ provider: "custom", apiKey: KEY, baseUrl, mode: "enforce" })).toMatch(/https/);
-      expect(problem({ provider: "typesafe", apiKey: KEY, baseUrl })).toMatch(/observe/);
-      // observe: accepted; a forged answer there changes no decision.
+      expect(problem({ provider: "custom", apiKey: KEY, baseUrl })).toBeNull();
+      expect(problem({ provider: "custom", apiKey: KEY, baseUrl, mode: "enforce" })).toBeNull();
       expect(problem({ provider: "custom", apiKey: KEY, baseUrl, mode: "observe" })).toBeNull();
     });
 
-    it("https to loopback is fine in enforce mode: the agent cannot present a trusted certificate", () => {
-      expect(problem({ provider: "custom", apiKey: KEY, baseUrl: "https://localhost:8443/v1" })).toBeNull();
+    it("plain http to any other host is refused in every mode", () => {
+      for (const mode of ["enforce", "observe"]) {
+        expect(problem({ provider: "custom", apiKey: KEY, baseUrl: "http://jev.example.com/v1", mode })).toMatch(/https/);
+      }
     });
 
-    it("a file with loopback http in enforce mode switches Jev off rather than on", () => {
-      write(JSON.stringify({ provider: "custom", apiKey: KEY, baseUrl: "http://localhost:8787/v1" }));
-      expect(loadJevConfig()).toBeNull();
-      const r = inspectJevConfig();
-      expect(r.status === "refused" && r.reason).toBe("invalid");
-      write(JSON.stringify({ provider: "custom", apiKey: KEY, baseUrl: "http://localhost:8787/v1", mode: "observe" }));
-      expect(loadJevConfig()).toMatchObject({ provider: "custom", mode: "observe", baseUrl: "http://localhost:8787/v1" });
+    it("a file with loopback http in enforce mode loads", () => {
+      write(JSON.stringify({ provider: "custom", apiKey: KEY, baseUrl: "http://localhost:8787/v1", mode: "enforce" }));
+      expect(loadJevConfig()).toMatchObject({ provider: "custom", mode: "enforce", baseUrl: "http://localhost:8787/v1" });
     });
   });
 

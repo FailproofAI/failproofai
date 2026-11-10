@@ -13,6 +13,10 @@ import { join } from "node:path";
 import { tmpdir } from "node:os";
 import {
   JEV_ACTIVITY_KEYS,
+  JEV_CHECKS_MAX,
+  JEV_CHECK_PROBES_MAX,
+  JEV_CHECK_VERDICTS,
+  JEV_CHECK_WHY,
   JEV_CLEARED_MAX,
   JEV_FREE_TEXT_PREFIXES,
   JEV_REASON_MAX_CHARS,
@@ -48,6 +52,17 @@ describe("Jev activity fields: TypeScript and the collector agree", () => {
   it("the bounds are the same", () => {
     expect(RUST).toContain(`pub const JEV_REASON_MAX_CHARS: usize = ${JEV_REASON_MAX_CHARS};`);
     expect(RUST).toContain(`pub const JEV_CLEARED_MAX: usize = ${JEV_CLEARED_MAX};`);
+    expect(RUST).toContain(`pub const JEV_CHECKS_MAX: usize = ${JEV_CHECKS_MAX};`);
+    expect(RUST).toContain(`pub const JEV_CHECK_PROBES_MAX: usize = ${JEV_CHECK_PROBES_MAX};`);
+  });
+
+  it("a check record's closed codes are the same lists", () => {
+    const list = (name: string) => {
+      const m = new RegExp(`const ${name}: &\\[&str\\] = &\\[([^\\]]*)\\];`).exec(RUST);
+      return m ? [...m[1].matchAll(/"([^"]+)"/g)].map((x) => x[1]) : [];
+    };
+    expect(list("JEV_CHECK_VERDICTS")).toEqual([...JEV_CHECK_VERDICTS]);
+    expect(list("JEV_CHECK_WHY")).toEqual([...JEV_CHECK_WHY]);
   });
 
   it("the collector's golden rows are exactly what the store writes today", () => {

@@ -19,6 +19,7 @@
 import { existsSync, readFileSync, readdirSync } from "node:fs";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
+import { listIntegrations } from "../../src/hooks/integrations";
 
 const ROOT = path.join(__dirname, "../..");
 const SUITE = path.join(ROOT, "integration-suite");
@@ -356,6 +357,39 @@ describe("daemon-mode probe path", () => {
     expect(markerClear).toBeGreaterThan(0);
     expect(markerClear).toBeLessThan(wireCall);
     expect(markerSet).toBeGreaterThan(wireCall);
+  });
+
+  it("names exactly the integrations whose install requires a healthy daemon", () => {
+    // probe-cli.sh keeps its own list (it is shell); this keeps it honest.
+    const listed = /DAEMON_ONLY_CLIS="([^"]*)"/.exec(probeSh);
+    expect(listed).not.toBeNull();
+    const required = listIntegrations().filter((i) => i.requiresHealthyDaemon).map((i) => i.id);
+    expect(listed![1].split(/\s+/).filter(Boolean).sort()).toEqual([...required].sort());
+  });
+
+  it("starts the daemon before a daemon-only CLI's install, which refuses without one", () => {
+    const setupDaemon = probeSh.indexOf('[ "$DAEMON_ONLY" = 1 ] && daemon_cycle "$BASE/log-setup"');
+    const installCall = probeSh.indexOf("\ninstall_hooks\n");
+    expect(setupDaemon).toBeGreaterThan(0);
+    expect(setupDaemon).toBeLessThan(installCall);
+  });
+
+  it("never drives a daemon-only CLI unhooked on a leg without a live daemon", () => {
+    // Driving it would let the benign side effect score a silent-allow FAIL.
+    const skip = /if \[ "\$DAEMON_ONLY" = 1 \] && \{ \[ "\$\{CANARY_DAEMON:-0\}" != 1 \] \|\| \[ "\$\{CANARY_DAEMON_DEAD:-0\}" = 1 \]; \}; then([\s\S]*?)\nfi/.exec(probeSh);
+    expect(skip).not.toBeNull();
+    expect(skip![1]).toContain('"bash":"INCONCLUSIVE","read":"INCONCLUSIVE"');
+    expect(skip![1]).toContain("exit 0");
+    // …and it is decided before anything is installed or driven.
+    expect(probeSh.indexOf(skip![0])).toBeLessThan(probeSh.indexOf("\ninstall_hooks\n"));
+  });
+
+  it("reports a daemon-only install refusal instead of discarding it", () => {
+    expect(probeSh).toMatch(/INSTALL_FAILED="policies --install --cli \$CLI: /);
+    expect(probeSh).toMatch(/INSTALL_FAILED="policies --install --cli openclaw: /);
+    const report = probeSh.indexOf('if [ -n "$INSTALL_FAILED" ]; then');
+    expect(report).toBeGreaterThan(0);
+    expect(report).toBeLessThan(probeSh.lastIndexOf("printf 'VERDICT_JSON"));
   });
 
   it("a dead daemon cannot false-PASS either probe", () => {

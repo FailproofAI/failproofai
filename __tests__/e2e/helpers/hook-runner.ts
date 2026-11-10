@@ -40,7 +40,12 @@ export interface HookRunResult {
 export function runHook(
   event: string,
   payload: Record<string, unknown>,
-  opts?: { homeDir?: string; cli?: "claude" | "codex" | "copilot" | "cursor" | "opencode" | "pi" | "hermes" | "openclaw" | "factory" | "devin" | "antigravity" | "goose" },
+  opts?: {
+    homeDir?: string;
+    cwd?: string;
+    agentScope?: "user" | "project" | "local";
+    cli?: "claude" | "codex" | "copilot" | "cursor" | "opencode" | "pi" | "hermes" | "openclaw" | "factory" | "devin" | "antigravity" | "goose";
+  },
 ): HookRunResult {
   const binaryPath = getBinaryPath();
 
@@ -57,9 +62,11 @@ export function runHook(
 
   const args = [binaryPath, "--hook", event];
   if (opts?.cli) args.push("--cli", opts.cli);
+  if (opts?.agentScope) args.push("--agent-scope", opts.agentScope);
   const result = spawnSync("bun", args, {
     input: JSON.stringify(payload),
     env,
+    cwd: opts?.cwd,
     encoding: "utf8",
     timeout: 15_000,
   });

@@ -163,9 +163,9 @@ describe("sanitizeJevActivity", () => {
     expect(e.jevFallbackReason).toBe("prepare: boom");
   });
 
-  it("lists exactly the seven contract fields", () => {
+  it("lists exactly the eight contract fields", () => {
     expect([...JEV_ACTIVITY_KEYS].sort()).toEqual(
-      ["evaluator", "jevCleared", "jevDecision", "jevFallbackReason", "jevLatencyMs", "jevMode", "jevModel"].sort(),
+      ["evaluator", "jevChecks", "jevCleared", "jevDecision", "jevFallbackReason", "jevLatencyMs", "jevMode", "jevModel"].sort(),
     );
   });
 });

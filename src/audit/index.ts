@@ -11,7 +11,7 @@ import { batchAll } from "../../lib/concurrency";
 import { BUILTIN_POLICIES } from "../hooks/builtin-policies";
 import { readMergedHooksConfig } from "../hooks/hooks-config";
 import { readInstalledPacks } from "../hooks/pack-manifest";
-import { normalizePolicyName } from "../hooks/policy-registry";
+import { getAllPolicies, normalizePolicyName } from "../hooks/policy-registry";
 import { INTEGRATION_TYPES, type IntegrationType } from "../hooks/types";
 import { ADAPTERS } from "./cli-adapters";
 import { AUDIT_DETECTORS } from "./detectors";
@@ -22,6 +22,7 @@ import {
   AUDIT_EXAMPLE_MAX_CHARS,
   AUDIT_MAX_EXAMPLES_PER_NAME,
   type AuditCount,
+  type AuditProgress,
   type AuditResult,
   type DetectorSessionState,
   type NormalizedToolEvent,
@@ -443,6 +444,32 @@ async function runAuditInner(opts: RunAuditOptions, startedAt: number): Promise<
     allTranscripts.push(...list);
   }
 
+  // Progress is reported through this and nothing else, so a callback that
+  // throws can never reach the scan below — where a throw inside a task would
+  // count as a scan error and change the result.
+  const report = (progress: AuditProgress): void => {
+    try {
+      opts.onProgress?.(progress);
+    } catch {
+      // A progress display must never change what an audit finds.
+    }
+  };
+  if (opts.onProgress) {
+    const perAgent = new Map<IntegrationType, number>();
+    for (const meta of allTranscripts) perAgent.set(meta.cli, (perAgent.get(meta.cli) ?? 0) + 1);
+    report({
+      kind: "discovered",
+      agents: clis.map((cli) => ({ cli, transcripts: perAgent.get(cli) ?? 0 })),
+      // The builtins `initReplay` registered that can fire on a tool event. The
+      // require-*-before-stop policies match only Stop, which a replay never
+      // sends, so counting them would claim checks that never run.
+      policies: getAllPolicies().filter((p) => {
+        const events = p.match.events;
+        return !events || events.length === 0 || events.includes("PreToolUse") || events.includes("PostToolUse");
+      }).length,
+    });
+  }
+
   // 2. Scan each transcript (cache-aware), 8 in parallel.
   let skipped = 0;
   let errors = 0;
@@ -503,7 +530,23 @@ async function runAuditInner(opts: RunAuditOptions, startedAt: number): Promise<
     }
   });
 
-  const settled = await batchAll(tasks, TRANSCRIPT_CONCURRENCY);
+  // With a listener, each task reports when it finishes, however it finishes:
+  // a cache hit, a scan, a failed scan, or a task that threw and is counted as
+  // skipped below. Every transcript counts toward its agent's total, so a bar
+  // can always reach the end. Without one, the tasks run exactly as they are.
+  const run = opts.onProgress
+    ? tasks.map((task, i) => async (): Promise<TranscriptAuditResult> => {
+        let hitsByName: Record<string, number> = {};
+        try {
+          const done = await task();
+          hitsByName = done.hitsByName;
+          return done;
+        } finally {
+          report({ kind: "transcript", cli: allTranscripts[i].cli, hitsByName });
+        }
+      })
+    : tasks;
+  const settled = await batchAll(run, TRANSCRIPT_CONCURRENCY);
   const perTranscript: TranscriptAuditResult[] = [];
   for (const s of settled) {
     if (s.status === "fulfilled") perTranscript.push(s.value);

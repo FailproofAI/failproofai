@@ -42,6 +42,15 @@ import { notice } from "./notice.js";
 export { VERSION as version };
 
 export const DEFAULT_AGENT_ID = "main";
+/** File export is unavailable at the Edge, like the other telemetry surfaces. */
+export class OtelSpanExporter {
+  export(_spans: unknown[], callback: (result: { code: number }) => void): void {
+    notice();
+    callback({ code: 0 });
+  }
+  forceFlush(): Promise<void> { return Promise.resolve(); }
+  shutdown(): Promise<void> { return Promise.resolve(); }
+}
 /** The same registered symbol as the Node build's, so comparisons still hold. */
 export const AUTO: unique symbol = Symbol.for("failproofai.AUTO") as never;
 

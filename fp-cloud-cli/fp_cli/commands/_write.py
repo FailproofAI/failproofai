@@ -89,7 +89,9 @@ def read_text_arg(path: str, *, flag: str = "--file") -> str:
     if path == "-":
         return sys.stdin.read()
     try:
-        return Path(path).read_text()
+        return Path(path).read_text(encoding="utf-8")
+    except UnicodeError:
+        raise click.BadParameter(f"cannot read '{path}': expected UTF-8 text", param_hint=flag) from None
     except OSError as exc:
         raise click.BadParameter(
             f"cannot read '{path}': {exc.strerror or exc}", param_hint=flag

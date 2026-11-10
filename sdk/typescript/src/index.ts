@@ -88,6 +88,8 @@ export {
   uninstrument,
 } from "./integrations/index.js";
 export type { FrameworkName, InstrumentOptions } from "./integrations/index.js";
+export { OtelSpanExporter } from "./integrations/otel.js";
+export type { OtelReadableSpan, OtelSpanExporterOptions } from "./integrations/otel.js";
 
 export interface ConfigureOptions {
   /**

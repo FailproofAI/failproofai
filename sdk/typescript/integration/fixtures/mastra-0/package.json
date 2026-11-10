@@ -7,7 +7,7 @@
     "@mastra/core": "0.24.9",
     "@mastra/mcp": "0.14.5",
     "@mastra/memory": "0.15.13",
-    "zod": "4.6.5"
+    "zod": "4.6.7"
   },
   "devDependencies": {
     "@types/node": "22.20.4"
@@ -21,6 +21,8 @@
     "@opentelemetry/exporter-prometheus": "0.222.0",
     "@opentelemetry/auto-instrumentations-node": "0.80.0",
     "@ai-sdk/provider-utils@3": "3.0.28",
-    "@ai-sdk/provider-utils-v5": "npm:@ai-sdk/provider-utils@3.0.28"
+    "@ai-sdk/provider-utils-v5": "npm:@ai-sdk/provider-utils@3.0.28",
+    "gaxios": "7.3.1",
+    "zod": "$zod"
   }
 }

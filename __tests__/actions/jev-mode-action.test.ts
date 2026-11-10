@@ -50,9 +50,9 @@ function seed(obj: Record<string, unknown>, extra = ""): string {
 }
 const onDisk = () => JSON.parse(readFileSync(jevConfigFile(), "utf8")) as Record<string, unknown>;
 
-function connect(withJev = true) {
+function connect(withJev = true, policies = true) {
   writeCredentials({
-    cloud: { url: ORIGIN, machineId: "m-1", token: POLICY_KEY },
+    ...(policies ? { cloud: { url: ORIGIN, machineId: "m-1", token: POLICY_KEY } } : {}),
     // A Jev slot counts only beside a same-origin credential holding its key:
     // connecting a Jev key writes it to the reporting credential too.
     ingest: { url: `${ORIGIN}/v1/events`, key: withJev ? CLOUD_KEY : INGEST_KEY },
@@ -89,8 +89,19 @@ afterEach(() => {
 });
 
 describe("setJevModeAction", () => {
-  it("rewrites mode and nothing else, at 0600", async () => {
+  it("a machine connected for policies: FailproofAI Cloud sets the mode, nothing is written", async () => {
     connect();
+    const before = seed(CLOUD_FILE);
+    for (const mode of ["enforce", "off", "observe"] as const) {
+      const res = await setJevModeAction(mode);
+      expect(res.ok).toBe(false);
+      if (!res.ok) expect(res.problem).toContain("managed by FailproofAI Cloud");
+    }
+    expect(readFileSync(jevConfigFile(), "utf8")).toBe(before);
+  });
+
+  it("rewrites mode and nothing else, at 0600", async () => {
+    connect(true, false);
     // A field this build does not know, and one it does not show: both must survive.
     seed({ ...CLOUD_FILE, timeoutMs: 2500, fromANewerBuild: { x: 1 } });
     for (const mode of ["enforce", "off", "observe"] as const) {
@@ -103,7 +114,7 @@ describe("setJevModeAction", () => {
   });
 
   it("off keeps the file and runs no Jev; on again runs it with the Cloud key", async () => {
-    connect();
+    connect(true, false);
     seed(CLOUD_FILE);
     const off = await setJevModeAction("off");
     expect(existsSync(jevConfigFile())).toBe(true);
@@ -126,12 +137,12 @@ describe("setJevModeAction", () => {
     expect(loadJevConfig()?.apiKey).toBe(BYOK_KEY);
   });
 
-  it("refuses a mode the loader would refuse: enforce over plain http", async () => {
+  it("takes enforce over plain http to loopback, as the loader does", async () => {
     writeJevCloudCredential({ url: "http://localhost:8080", key: CLOUD_KEY });
-    const before = seed({ ...CLOUD_FILE, baseUrl: "http://localhost:8080/enforcement/v1/jev" });
+    seed({ ...CLOUD_FILE, baseUrl: "http://localhost:8080/enforcement/v1/jev" });
     const res = await setJevModeAction("enforce");
-    expect(res.ok).toBe(false);
-    expect(readFileSync(jevConfigFile(), "utf8")).toBe(before);
+    expect(res.ok).toBe(true);
+    expect(onDisk().mode).toBe("enforce");
   });
 
   it("refuses anything that is not a mode, and a missing file", async () => {

@@ -78,8 +78,10 @@ describe("the section's shape", () => {
   });
 
   it("heads the section with the count and what these rows are not", () => {
+    // An UPPERCASE heading with the count as its meta, like every section on
+    // the redesigned `policies show` (D13, D14). Same words as the old rule.
     const lines = section([policy("block-rm-rf", ["destructive-deletion"])], [check("destructive-deletion")]);
-    expect(lines[0]).toContain("Jev checks — 1 · not selectable · only where Jev is configured");
+    expect(lines[0]).toBe("JEV CHECKS  1 · not selectable · only where Jev is configured");
   });
 
   it("keeps saying that nothing toggles them, which no row can say", () => {
@@ -325,7 +327,7 @@ describe("failproofai policies show <pack>", () => {
     // The paragraph that used to carry this, gone: it named sixteen checks
     // comma-separated above a screen where everything else was a row.
     expect(text).not.toContain("It also carries");
-    expect(text).toContain("Jev checks — 2 · not selectable · only where Jev is configured");
+    expect(text).toContain("JEV CHECKS  2 · not selectable · only where Jev is configured");
     expect(rowFor(lines, "destructive-deletion").slice(2)).toEqual(["reviews", "block-rm-rf"]);
     expect(rowFor(lines, "external-data-egress").slice(2)).toEqual([
       "—",
@@ -333,15 +335,18 @@ describe("failproofai policies show <pack>", () => {
     ]);
   });
 
-  it("keeps the header count and the minCliVersion line as they were", async () => {
+  it("states the counts and the minimum CLI as rows at the top", async () => {
+    // Deliberately moved (D14): the counts were the title's meta and the
+    // minimum a sentence under it; the redesigned screen opens on kv rows.
     release({
       minCliVersion: "1.0.7-beta.0",
       policies: [policy("block-rm-rf", ["destructive-deletion"])],
       semantic: [check("destructive-deletion")],
     });
     const text = (await show()).join("\n");
-    expect(text).toContain("1 policies · 1 categories · 1 Jev check");
-    expect(text).toContain("Requires failproofai 1.0.7-beta.0 or newer.");
+    expect(text).toMatch(/^ {2}policies\s+1 in 1 category {2}■ on by default$/m);
+    expect(text).toMatch(/^ {2}jev checks\s+1$/m);
+    expect(text).toMatch(/^ {2}requires\s+failproofai 1\.0\.7-beta\.0 or newer$/m);
   });
 
   it("says a minimum it cannot compare was ignored, on show and on add", async () => {
@@ -360,6 +365,10 @@ describe("failproofai policies show <pack>", () => {
     const text = r.lines.join("\n");
     expect(text).toContain("1 Jev check, asked by Jev on every tool call they apply to.");
     expect(text).not.toContain("for Jev");
+    // A pack of checks alone has no policies to turn on, so it is installed —
+    // never "Turned on 0 policies" (D14).
+    expect(text).toContain("✓ Installed acme/guards@1.2.0.");
+    expect(text).not.toMatch(/Turned on/);
   });
 
   it("says an observe pack's checks are not asked, rather than added", async () => {
@@ -408,8 +417,9 @@ describe("failproofai policies show <pack>", () => {
 
   it("sits under the policy rows, since a check is read against what it can clear", async () => {
     const lines = await show();
-    const policyRow = lines.findIndex((l) => l.includes("block-rm-rf") && l.includes("default"));
-    const heading = lines.findIndex((l) => l.includes("Jev checks —"));
+    // ■ marks a policy that is on by default (D14).
+    const policyRow = lines.findIndex((l) => l.includes("■ block-rm-rf"));
+    const heading = lines.findIndex((l) => l.startsWith("JEV CHECKS"));
     expect(policyRow).toBeGreaterThan(-1);
     expect(heading).toBeGreaterThan(policyRow);
   });
@@ -418,6 +428,109 @@ describe("failproofai policies show <pack>", () => {
     release({ policies: [policy("block-rm-rf")] });
     const text = (await show()).join("\n");
     expect(text).not.toContain("Jev check");
+    expect(text).not.toContain("JEV CHECKS");
     expect(text).toContain("block-rm-rf");
+  });
+});
+
+/**
+ * The rest of the redesigned `policies show` (D14's policiesShow): the header,
+ * the kv rows, the categories as ■/□ rows and the install command.
+ */
+describe("failproofai policies show <pack> — the screen", () => {
+  const ENTRY = "export const hooks = [];\n";
+  const sha = (s: string) => createHash("sha256").update(s).digest("hex");
+
+  let server: Server;
+  let root: string;
+  let assets: Record<string, string>;
+  const saved: Record<string, string | undefined> = {};
+
+  function release(manifest: Record<string, unknown>): void {
+    const json = JSON.stringify({ id: "acme/guards", version: "1.2.0", ...manifest });
+    assets = {
+      "failproofai-pack.json": json,
+      "failproofai-pack.mjs": ENTRY,
+      SHA256SUMS: `${sha(json)}  failproofai-pack.json\n${sha(ENTRY)}  failproofai-pack.mjs\n`,
+    };
+  }
+
+  beforeEach(async () => {
+    root = mkdtempSync(join(tmpdir(), "fpai-show-screen-"));
+    for (const k of ["FAILPROOFAI_PACK_DIR", "FAILPROOFAI_PACK_BASE_URL", "FAILPROOFAI_NO_DOWNLOAD", "NO_COLOR"]) {
+      saved[k] = process.env[k];
+    }
+    delete process.env.FAILPROOFAI_NO_DOWNLOAD;
+    process.env.FAILPROOFAI_PACK_DIR = root;
+    process.env.NO_COLOR = "1";
+    release({
+      policies: [
+        policy("block-prod-deploy", undefined, { category: "Deploy", description: "Block deploys to production outside CI" }),
+        policy("warn-migration", undefined, { category: "Deploy", defaultEnabled: false, description: "Warn before running a database migration" }),
+        policy("block-vault-read", undefined, { category: "Secrets", defaultEnabled: false, description: "Block reading secrets from Vault" }),
+      ],
+    });
+    server = createServer((req, res) => {
+      const m = (req.url ?? "").match(/^\/acme\/guards\/releases\/download\/[^/]+\/([^/]+)$/);
+      const body = m ? assets[m[1]] : undefined;
+      if (body === undefined) {
+        res.writeHead(404).end("no such asset");
+        return;
+      }
+      res.writeHead(200).end(body);
+    });
+    await new Promise<void>((r) => server.listen(0, "127.0.0.1", r));
+    process.env.FAILPROOFAI_PACK_BASE_URL = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
+  });
+
+  afterEach(async () => {
+    await new Promise<void>((r) => server.close(() => r()));
+    for (const [k, v] of Object.entries(saved)) {
+      if (v === undefined) delete process.env[k];
+      else process.env[k] = v;
+    }
+    rmSync(root, { recursive: true, force: true });
+  });
+
+  const show = async (): Promise<string> => {
+    const r = await runPackCommand(["list", "acme/guards@v1.2.0"]);
+    expect(r.exitCode).toBe(0);
+    return r.lines.join("\n");
+  };
+
+  it("draws the design's screen, the defaults ■ and the rest □", async () => {
+    const text = await show();
+    expect(text).toMatch(/^failproof ai {2}v\S+ {2}· {2}acme\/guards@1\.2\.0$/m);
+    expect(text).toMatch(/^ {2}policies\s+3 in 2 categories {2}■ on by default$/m);
+    expect(text).toMatch(/^DEPLOY\n {2}■ block-prod-deploy {5}Block deploys to production outside CI\n {2}□ warn-migration {8}Warn before/m);
+    expect(text).toMatch(/^SECRETS\n {2}□ block-vault-read\s+Block reading secrets from Vault$/m);
+    expect(text).toMatch(/^Install with failproofai policies add acme\/guards@v1\.2\.0$/m);
+    // No release date: knowing one takes a GitHub API call this path does not
+    // make (D16).
+    expect(text).not.toMatch(/released/);
+  });
+
+  it("names the publisher from the source it was fetched from, never from the id", async () => {
+    // The id is whatever the manifest claims; the account the release came
+    // from is the provenance.
+    release({ id: "bob/tools", policies: [policy("block-prod-deploy")] });
+    const text = await show();
+    expect(text).toMatch(/^failproof ai {2}v\S+ {2}· {2}bob\/tools@1\.2\.0$/m);
+    expect(text).toMatch(/^ {2}publisher\s+acme$/m);
+    expect(text).not.toMatch(/publisher\s+bob/);
+  });
+
+  it("shows the commit when the publisher had one, and no commit row when not", async () => {
+    release({ commit: "a1b2c3d4e5f60718293a4b5c6d7e8f9012345678", policies: [policy("block-prod-deploy")] });
+    expect(await show()).toMatch(/^ {2}commit\s+a1b2c3d4e5f60718293a4b5c6d7e8f9012345678$/m);
+    release({ policies: [policy("block-prod-deploy")] });
+    const without = await show();
+    expect(without).toMatch(/^ {2}publisher\s+acme$/m);
+    expect(without).not.toMatch(/^ {2}commit/m);
+  });
+
+  it("says an observe pack blocks nothing", async () => {
+    release({ effect: "observe", policies: [policy("block-prod-deploy")] });
+    expect(await show()).toMatch(/^ {2}effect\s+observe, blocks nothing$/m);
   });
 });

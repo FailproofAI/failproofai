@@ -401,4 +401,18 @@ def register(app: typer.Typer) -> None:
     users_app.command("update", epilog=GLOBALS_EPILOG)(users_update)
     users_app.command("disable", epilog=GLOBALS_EPILOG)(users_disable)
     users_app.command("enable", epilog=GLOBALS_EPILOG)(users_enable)
+    users_app.command("delete", epilog=GLOBALS_EPILOG)(users_delete)
+    users_app.command("defaults", epilog=GLOBALS_EPILOG)(users_defaults)
     app.add_typer(users_app, name="users")
+
+
+def users_delete(ctx: typer.Context, id: str = typer.Argument(...)) -> None:
+    """Delete a member by id (not email)."""
+    from .account_cmds import request
+    request(ctx, "DELETE", f"/api/users/{id}")
+
+
+def users_defaults(ctx: typer.Context) -> None:
+    """Show defaults for new members."""
+    from .account_cmds import request
+    request(ctx, "GET", "/api/users/defaults")

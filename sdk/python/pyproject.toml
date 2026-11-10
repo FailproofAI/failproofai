@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "failproofai-sdk"
 dynamic = ["version"]
-requires-python = ">=3.10"
+requires-python = ">=3.11"
 description = "Emit agent telemetry to FailproofAI Cloud — zero-dependency, stdlib only"
 readme = "README.md"
 license = { file = "LICENSE" }
@@ -15,7 +15,6 @@ classifiers = [
     "Development Status :: 4 - Beta",
     "Intended Audience :: Developers",
     "Programming Language :: Python :: 3",
-    "Programming Language :: Python :: 3.10",
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
     "Programming Language :: Python :: 3.13",
@@ -47,10 +46,7 @@ Changelog = "https://github.com/FailproofAI/failproofai/blob/main/sdk/python/CHA
 [project.optional-dependencies]
 # Test-only, and it stays that way — `dependencies` above is empty and
 # `tests/test_zero_dependencies.py` fails if anything lands here without a reason.
-# `tomli` is `tomllib`'s backport: 3.10 has no stdlib TOML parser, and that test
-# reads this file to prove the promise, so on 3.10 it needs one rather than
-# skipping the check on the oldest interpreter we advertise.
-dev = ["pytest>=7", "tomli>=2; python_version<'3.11'", "pytest-asyncio>=1.3,<2"]
+dev = ["pytest>=7", "pytest-asyncio>=1.3,<2", "opentelemetry-sdk>=1.39,<2"]
 
 # Convenience aliases that pull the FRAMEWORK in. The adapter code always ships
 # in the base wheel and lazy-imports, so these gate nothing on our side — most
@@ -68,10 +64,29 @@ langchain = ["langchain-core>=1.4.7,<2"]        # langgraph 1.2's own floor
 langgraph = ["langgraph>=1.2,<2"]               # first release with GraphCallbackHandler
 crewai = [
     "crewai>=1.13,<2",                          # started_event_id + normalized usage
-    "onnxruntime>=1.14,<1.24; python_version < '3.11'",  # 1.24+ dropped CPython 3.10 wheels
 ]
 llamaindex = ["llama-index-core>=0.14.23,<0.15"]
 pydantic-ai = ["pydantic-ai-slim>=2.0,<3"]      # 2.0 removed Agent(instrument=...)
+otel = ["opentelemetry-sdk>=1.39,<2"]          # optional SpanExporter / processor APIs
+
+# Read by uv only when it resolves uv.lock, the dev/test lockfile. It is not package
+# metadata, so it never reaches anyone installing `failproofai-sdk[crewai]`.
+#
+# crewai pins `mcp~=1.28.1`, and mcp 1.8.0 through 1.29.1 carry GHSA-84m7-p3x7-pcfv
+# (unbounded Streamable HTTP sessions). The fix, 1.30.0, is outside that pin, so no
+# in-range update reaches it; this is the uv equivalent of an npm `overrides` entry.
+# The ceiling keeps crewai on the 1.x API it is written against. Delete this once a
+# crewai release allows 1.30: an override replaces crewai's own requirement outright,
+# so while it is here uv does not check the mcp version crewai asks for.
+#
+# The `uv` entry is the same case one level down. crewai depends on crewai-cli, which
+# pins `uv~=0.11.6`, and every uv before 0.13.4 carries GHSA-hq85-5cpj-mr62 (its
+# bundled CA store trusts an emSign root whose intermediate keys are compromised).
+# crewai-cli only shells out to `uv` from its own project commands, which no test here
+# runs. The ceiling keeps the CLI it calls on one minor. Delete it once a crewai-cli
+# release allows 0.13.4.
+[tool.uv]
+override-dependencies = ["mcp>=1.30.0,<2", "uv>=0.13.4,<0.14"]
 
 [tool.setuptools.dynamic]
 version = { attr = "failproofai_sdk._version.__version__" }

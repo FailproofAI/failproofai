@@ -1156,6 +1156,8 @@ describe("captureIntent", () => {
       transcriptPath: join(root, "t.jsonl"),
       cli: "claude",
       payload: expect.objectContaining({ prompt: "please tidy the build folder", transcript_path: join(root, "t.jsonl") }),
+      // Stored under this profile (no rostered identity here), read back under the same.
+      profile: { cli: "claude", agent: null },
     });
     expect(vi.mocked(captureIntent).mock.calls[1][0]).toMatchObject({ eventType: "UserPromptSubmit", cli: "cursor" });
   });
@@ -1642,8 +1644,9 @@ describe("what the handler hands Jev: this call's session id and cwd", () => {
       permissionMode: "acceptEdits",
       sessionId: SESSION,
       cli: "claude",
+      agent: null,
     });
-    expect(readIntent).toHaveBeenCalledWith(SESSION);
+    expect(readIntent).toHaveBeenCalledWith(SESSION, undefined, { cli: "claude", agent: null });
     expect(sentFacts()).toMatchObject({ cwd: project, project_root: project, permission_mode: "acceptEdits" });
   });
 
@@ -1684,7 +1687,7 @@ describe("what the handler hands Jev: this call's session id and cwd", () => {
     jevConfig = CFG;
     await evaluateHookEvent(event, cli, JSON.stringify(payload()), { awaitTelemetryFlush: false, ...opts?.() });
     expect(handed()).toMatchObject({ toolName: "Bash", sessionId: SESSION, cwd: project, cli });
-    expect(readIntent).toHaveBeenCalledWith(SESSION);
+    expect(readIntent).toHaveBeenCalledWith(SESSION, undefined, { cli, agent: null });
     expect(sentFacts().cwd).toBe(project);
   });
 
@@ -1740,7 +1743,7 @@ describe("what the handler hands Jev: this call's session id and cwd", () => {
       "PreToolUse",
       { session_id: "some-other-session", tool_name: "Read", tool_input: { file_path: join(home, "other", "notes.txt") } },
     );
-    expect(readIntent).toHaveBeenCalledWith("some-other-session");
+    expect(readIntent).toHaveBeenCalledWith("some-other-session", undefined, { cli: "claude", agent: null });
     // The task probes are what carry consent, and they are not asked.
     expect(asked()).not.toContain("op_requested");
     expect(asked()).not.toContain("task_step");

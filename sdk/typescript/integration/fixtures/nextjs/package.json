@@ -12,17 +12,20 @@
     "@langchain/langgraph": "1.4.17",
     "@llamaindex/core": "0.6.22",
     "@llamaindex/workflow": "1.1.24",
-    "@mastra/core": "1.68.0",
+    "@mastra/core": "1.81.0",
     "ai": "7.0.111",
     "llamaindex": "0.12.1",
-    "next": "16.3.6",
+    "next": "16.4.1",
     "react": "19.3.0",
     "react-dom": "19.3.0",
-    "zod": "4.6.5"
+    "zod": "4.6.7"
   },
   "devDependencies": {
     "@types/node": "22.20.4",
     "@types/react": "19.3.0",
     "typescript": "5.9.3"
+  },
+  "overrides": {
+    "html-to-text": "10.0.1"
   }
 }

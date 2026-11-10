@@ -56,8 +56,9 @@ The gate above scans the lockfiles it is *given* (the `--lockfile` list in the
 workflow). GitHub's dependency graph reads **every** lockfile in the repository, so
 Dependabot alerts cover trees the gate does not — in particular the TypeScript SDK's
 integration fixtures, `sdk/typescript/integration/fixtures/*/package-lock.json`.
-Those are not in the scanner's list and are not a Dependabot *update* ecosystem in
-[`.github/dependabot.yml`](.github/dependabot.yml) either, so an alert is the only
+Those are not in the scanner's list and get no Dependabot *version* updates either
+(the four floor fixtures have entries in [`.github/dependabot.yml`](.github/dependabot.yml),
+but only to restrain its security updates; see below), so an alert is the only
 thing that will ever mention them. Treat the alert list as authoritative for those
 paths, and see *Triaging a Dependabot alert in an integration fixture* below for how
 to resolve one.
@@ -111,6 +112,18 @@ That splits an alert in one of these lockfiles into two cases:
    what makes the lockfiles reproducible and an override the only lever. **Never**
    resolve one of these by moving the pinned framework — that deletes the fixture's
    reason to exist and silently drops a supported release from the matrix.
+
+   When no release fixes the package, or the fix is a major its parent cannot take,
+   look one level up before accepting it. An override can move the *parent* to a
+   release that no longer needs the package, which takes it out of the tree:
+   `html-to-text@10` replaced `deepmerge`, which has no patched release, and `gaxios`
+   after 7.1.3 dropped `rimraf`, and with it the `glob` and `minimatch` that only a
+   major of each would have fixed. A nested copy whose consumers do not need that
+   major can go the same way: `mastra-0` and `langchain-dup-core` override their
+   nested zod 3 to their own zod 4, because `@mastra/mcp` and `@mastra/schema-compat`
+   call `zod-from-json-schema-v3` only under a zod 3 root, and
+   `@langchain/core@0.3.80` imports only `zod/v3` and `zod/v4/core`, which zod 4 also
+   ships.
 2. **The advisory is against the pinned framework itself, or against a package whose
    only fix is a major that framework cannot take.** There is no fix that keeps the
    fixture, so record it in the table below rather than pretending it away. Unlike a
@@ -118,17 +131,35 @@ That splits an alert in one of these lockfiles into two cases:
    the scanner does not read these lockfiles, so an `[[IgnoredVulns]]` entry for one
    would filter nothing and be reported as an unused ignore.
 
+Dependabot's own security updates know neither case. Given a case-2 advisory they
+reach the fix by moving the framework, which is how #838, #931 and #935 happened
+(#935 opened three minutes after #934 put the pins back). So each floor fixture —
+`ai-4`, `langchain-0.3`, `llamaindex-0.11`, `mastra-0` — has a security-updates-only
+entry in [`.github/dependabot.yml`](.github/dependabot.yml)
+(`open-pull-requests-limit: 0`) whose `ignore` ranges hold its framework on its
+line, and zod on 3 where that framework requires it; a fix that stays on the line
+still arrives. A range is read only for the package being updated, not for a parent
+moved on its behalf, so a transitive package with an accepted advisory needs a range
+of its own: #955 moved `@mastra/core` to 1.80.0 to remove `@ai-sdk/provider-utils`
+2.x, with `@mastra/*` ignored. A new floor fixture needs its own entry, and
+`__tests__/ci/ts-sdk-fixture-pins.test.ts` fails without one. A Dependabot PR that
+moves a pin anyway fails that same test: close it rather than merge it.
+
 ### Accepted, with no fix available
 
 | Advisory | Package | Fixtures | Why it stays |
 |---|---|---|---|
 | [GHSA-rwvc-j5jr-mgvh](https://github.com/advisories/GHSA-rwvc-j5jr-mgvh) (low, CVSS 3.7) | `ai@4.3.19` | `ai-4`, `mastra-0` | A filetype-whitelist bypass on **file upload**. Fixed in `ai@5.0.52` — the major the `ai-4` fixture exists to stay below, and one `@mastra/core@0.24.9` cannot take either (it requires `ai@^4`). Neither fixture uploads a file or exposes an upload surface; each runs one scripted agent against an in-process model. |
 | [GHSA-866g-f22w-33x8](https://github.com/advisories/GHSA-866g-f22w-33x8) (low, CVSS 4.3) | `@ai-sdk/provider-utils@2.2.8` | `ai-4`, `mastra-0` | Unbounded response-body reads in `createJsonResponseHandler` and its siblings. Fixed in `3.0.28`; `2.2.8` ships *inside* `ai@4.3.19`, which uses the v2 API, so the fix is the same blocked major as the row above. Exploiting it needs a hostile **model-provider HTTP response**; these fixtures never call one. |
+| [GHSA-mrhx-c7xc-m3w5](https://github.com/advisories/GHSA-mrhx-c7xc-m3w5) (high, CVSS 7.5) | `zod@3.25.76` | `ai-4`, `langchain-0.3`, `llamaindex-0.11` | An array schema keeps every failing element's validation issues, uncapped, so one oversized input can exhaust memory. Fixed only in `4.6.6`: no zod 3 release carries the fix, and `3.25.76` is the newest. Each fixture's own zod is held to `^3` by the release it pins — `ai@4.3.19` and its `@ai-sdk/*` packages peer on `^3.23.8`, `@langchain/core@0.3.80` and `@langchain/langgraph@0.4.10` depend on `^3.25.32`, and `@llamaindex/core@0.6.8` and `@llamaindex/workflow@1.1.5` need `^3.23.8`. Exploiting it needs untrusted input validated against one of those schemas; each fixture validates only its own scripted tool arguments. |
 
-Both rows are bounded by the same facts: these are test fixtures — `"private": true`,
+Every row is bounded by the same facts: these are test fixtures — `"private": true`,
 never published, installed with `--ignore-scripts`, and run only in CI against
 scripted in-process models. Re-check them whenever the supported framework floor
-moves; dropping `ai` 4.x from the matrix is what actually retires them.
+moves. The first two rows retire once `ai` 4.x has left the matrix, which takes
+`mastra-0` as well as `ai-4`, because `@mastra/core@0.24.9` requires `ai@^4`. The
+zod row retires only once `ai` 4.x, LangChain 0.3 and LlamaIndex 0.11 have all left
+it.
 
 ## Maintainer setup (one-time)
 

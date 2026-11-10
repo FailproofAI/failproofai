@@ -85,6 +85,9 @@ class NotFoundError(FpCliError):
     """The requested resource does not exist."""
 
     exit_code = 6
+    # The HTTP response may explicitly distinguish an absent endpoint from a
+    # missing record. None means callers must fall back to the request shape.
+    route_unknown: Optional[bool] = None
 
 
 class ApiError(FpCliError):

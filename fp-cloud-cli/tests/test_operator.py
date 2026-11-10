@@ -388,7 +388,7 @@ def test_settings_list_human_boxed(logged_in, runner):
     result = runner.invoke(app, ["settings", "list"])
     assert result.exit_code == 0, result.output
     out = result.stdout + result.stderr
-    assert "settings · 3" in out
+    assert "SETTINGS · 3" in out
     for c in ("key", "value", "type", "updated"):
         assert c in out
     assert "session_ttl_secs" in out and "86400" in out and "integer" in out

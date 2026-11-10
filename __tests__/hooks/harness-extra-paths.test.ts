@@ -221,12 +221,12 @@ describe("harness extra paths", () => {
     addPath("claude", "work=/srv/team");
     addPath("hermes", "/srv/hermes-prod/state.db");
     const out = listPaths().lines.join("\n");
-    // A section rule now, not a `claude:` prose heading — the same shape every
-    // other listing uses.
-    expect(out).toContain("━━ claude");
+    // An UPPERCASE heading per agent with its count, the shape every listing
+    // has in the 2026-10 design (it was a `━━ claude` rule before that).
+    expect(out).toMatch(/^CLAUDE {2}1 extra path$/m);
     expect(out).toContain("/srv/team");
     expect(out).toContain("work-*");
-    expect(out).toContain("━━ hermes");
+    expect(out).toMatch(/^HERMES {2}1 extra path$/m);
     expect(out).toContain("derived from the folder name");
   });
 
@@ -383,5 +383,37 @@ describe("extra paths survive every config.json write that `config` and `update`
 
     expect(readConfig().collector.sources).toEqual(before);
     expect(readFileSync(configFile(), "utf-8")).toContain("/srv/hermes-prod/state.db");
+  });
+});
+
+describe("an agent that is not traced", () => {
+  // The daemon starts no task for an agent outside agents.selected, extra
+  // paths included, so a configured path would otherwise read as captured.
+  let home: string;
+  let prevHome: string | undefined;
+  beforeEach(() => {
+    prevHome = process.env.FAILPROOFAI_HOME;
+    home = mkdtempSync(join(tmpdir(), "fpai-hx-untraced-"));
+    process.env.FAILPROOFAI_HOME = home;
+  });
+  afterEach(() => {
+    if (prevHome === undefined) delete process.env.FAILPROOFAI_HOME;
+    else process.env.FAILPROOFAI_HOME = prevHome;
+    rmSync(home, { recursive: true, force: true });
+  });
+
+  it("is said next to its paths and when one is added", async () => {
+    const { updateConfig } = await import("../../src/hooks/fp-config");
+    updateConfig({ agents: { selected: ["codex"], seen: ["codex"] } });
+    const added = addPath("claude", "work=/srv/team").lines.join("\n");
+    expect(added).toContain("▲ Claude Code isn't traced, so nothing is captured from its paths until it is.");
+    expect(listPaths().lines.join("\n")).toContain("Claude Code isn't traced");
+    updateConfig({ agents: { selected: ["codex", "claude"], seen: ["codex"] } });
+    expect(listPaths().lines.join("\n")).not.toContain("isn't traced");
+  });
+
+  it("no longer claims harness list shows what is captured", () => {
+    const text = addPath("claude", "/srv/x").lines.join("\n");
+    expect(text).not.toContain("shows what is actually being captured");
   });
 });

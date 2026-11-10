@@ -57,6 +57,7 @@
 //! model snapshots) advance the session clock but emit nothing — they describe
 //! the harness, not the conversation.
 
+#[cfg(feature = "sqlite")]
 pub mod sqlite;
 pub mod transform;
 

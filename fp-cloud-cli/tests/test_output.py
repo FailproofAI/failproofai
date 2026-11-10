@@ -51,7 +51,7 @@ def test_print_table_writes_to_stdout(capsys):
     output.configure(no_color=True, quiet=False)
     output.print_table(["a", "b"], [["1", "2"]], title="Demo")
     out = capsys.readouterr().out
-    assert "Demo" in out
+    assert "DEMO" in out
     assert "1" in out and "2" in out
 
 
@@ -91,7 +91,7 @@ def test_render_events_box_to_stdout(capsys):
     output.render_events([_event("2026-06-22T12:21:54Z")], order="desc")
     captured = capsys.readouterr()
     # The box (human data view) goes to STDOUT; the title carries count, direction and date.
-    assert "events" in captured.out
+    assert "EVENTS" in captured.out
     assert "newest first" in captured.out
     assert "2026-06-22" in captured.out
     assert captured.err == ""
@@ -182,7 +182,7 @@ def test_status_color_enum():
 
 
 def test_short_session():
-    assert output._short_session("sess-20260615-fcf97e01") == "sess-…fcf97e01"
+    assert output._short_session("sess-20260615-fcf97e01") == "sess-20260615-fcf97e01"
     assert output._short_session("sess-20260615-fcf97e01", full=True) == "sess-20260615-fcf97e01"
     assert output._short_session("nonnum-3-b9d9de") == "nonnum-3-b9d9de"  # short → intact
     assert output._short_session("short") == "short"
@@ -208,9 +208,9 @@ def test_render_sessions_box_has_no_scores(capsys):
     _wide_stdout()
     output.render_sessions([_sample_eval()])
     out = capsys.readouterr().out
-    assert "sessions" in out and "newest first" in out and "2026-06-22" in out
+    assert "SESSIONS" in out and "newest first" in out and "2026-06-22" in out
     assert "agent-codegen" in out and "done" in out
-    assert "12:56:31" in out and "sess-…fcf97e01" in out
+    assert "12:56:31" in out and "sess-20260615-fcf97e01" in out
     assert "coherence" not in out and "scores" not in out  # scores moved to evals
     output.configure(no_color=True, quiet=False)
 
@@ -219,8 +219,8 @@ def test_render_evals_box_has_scores(capsys):
     _wide_stdout()
     output.render_evals([_sample_eval()])
     out = capsys.readouterr().out
-    assert "evals" in out and "scores" in out and "coherence" in out
-    assert "agent-codegen" in out and "sess-…fcf97e01" in out
+    assert "EVALS" in out and "scores" in out and "coherence" in out
+    assert "agent-codegen" in out and "sess-20260615-fcf97e01" in out
     output.configure(no_color=True, quiet=False)
 
 
@@ -296,7 +296,7 @@ def test_render_sessions_expanded_lists_full_roster(capsys):
     assert "agent-testgen" in out and "9 ev" in out
     assert "●" not in out                                  # uniform: no special "root" marker
     assert "├" in out and "└" in out                       # uniform tree glyphs, └ closes the list
-    assert "sessions · 1" in out                           # panel count = sessions, not rows
+    assert "SESSIONS · 1" in out                           # count = sessions, not rows
     output.configure(no_color=True, quiet=False)
 
 
@@ -403,8 +403,8 @@ def test_render_errors_box(capsys):
     _wide_stdout()
     output.render_errors([_errevent("error", "RateLimitError: upstream timed out")])
     out = capsys.readouterr().out
-    assert "errors" in out and "newest first" in out
-    assert "agent-orderbot" in out and "sess-…4b90b240" in out  # truncated session (shared last-8)
+    assert "ERRORS" in out and "newest first" in out
+    assert "agent-orderbot" in out and "sess-20260622-4b90b240" in out
     assert "RateLimitError: upstream timed out" in out          # server-computed summary field
     assert "17:51:34" in out
     output.configure(no_color=True, quiet=False)
@@ -479,7 +479,7 @@ def test_render_org_perms(capsys):
     out = capsys.readouterr().out
     # header leads with the org name + slug + role; the count moved into the box title
     assert "Globex Corp" in out and "globex" in out and "role admin" in out
-    assert "permissions · 5 · Globex Corp" in out
+    assert "PERMISSIONS · 5 · Globex Corp" in out
     assert "dashboards" in out and "keys" in out and "agent" in out
     output.configure(no_color=True, quiet=False)
 
@@ -549,7 +549,7 @@ def test_render_value_list_narrow_caps_columns(capsys):
 
 
 def test_short_id():
-    assert output._short_id("1f58376d-7947-9826") == "1f58…9826"
+    assert output._short_id("1f58376d-7947-9826") == "1f58376d-7947-9826"
     assert output._short_id("short") == "short"
 
 
@@ -585,7 +585,7 @@ def test_render_keys_box_and_footer(capsys):
 def test_render_keys_show_id(capsys):
     _wide_stdout()
     output.render_keys([ApiKey(id="1f58376d-7947-9826", name="admin", created_at="2026-06-18T05:14:00Z")], show_id=True)
-    assert "1f58…9826" in capsys.readouterr().out  # short id column when --show-id
+    assert "1f58376d-7947-9826" in capsys.readouterr().out
     output.configure(no_color=True, quiet=False)
 
 
@@ -659,7 +659,7 @@ def test_render_users_box_and_footer(capsys):
     output.users_footer(users)
     cap = capsys.readouterr()
     out, err = cap.out, cap.err
-    assert "users · 3" in out
+    assert "USERS · 3" in out
     for c in ("email", "access", "perms", "joined", "status"):
         assert c in out
     assert "root@test" in out and "admin" in out and "06-25" in out
@@ -695,7 +695,7 @@ def test_render_user_show_card_and_perms(capsys):
     out = capsys.readouterr().out  # show is a read view → stdout
     assert "user" in out and "dev@test" in out and "protected" in out
     assert "access admin" in out and "3 permissions" in out and "active" in out
-    assert "permissions · 3" in out and "keys" in out and "dashboards" in out
+    assert "PERMISSIONS · 3" in out and "keys" in out and "dashboards" in out
     output.configure(no_color=True, quiet=False)
 
 
@@ -706,7 +706,7 @@ def test_render_user_created_green_card(capsys):
     err = capsys.readouterr().err  # write result → stderr chrome
     assert "user created" in err and "new@test" in err
     assert "access read-only" in err and "2 permissions" in err and "active" in err
-    assert "permissions · 2 · read-only" in err  # suffix shows the set
+    assert "PERMISSIONS · 2 · read-only" in err  # suffix shows the set
     output.configure(no_color=True, quiet=False)
 
 
@@ -718,7 +718,7 @@ def test_render_user_updated_diff(capsys):
     err = capsys.readouterr().err
     assert "permissions updated · dev@test" in err
     assert "now 3" in err and "+1 added" in err and "−1 removed" in err
-    assert "permissions · 3" in err          # NEW set size (struck removal not counted)
+    assert "PERMISSIONS · 3" in err          # NEW set size (struck removal not counted)
     assert "+create" in err and "-write" in err  # added chip / removed ghost (no-color prefixes)
     assert "unchanged" in err                # legend
     output.configure(no_color=True, quiet=False)
@@ -1146,7 +1146,7 @@ def test_render_settings_box(capsys):
     output.render_settings(rows)
     cap = capsys.readouterr()
     out, err = cap.out, cap.err
-    assert "settings · 3" in out  # the count glows in the title
+    assert "SETTINGS · 3" in out
     for c in ("key", "value", "type", "updated"):
         assert c in out
     assert "session_ttl_secs" in out and "86400" in out and "integer" in out
@@ -1231,10 +1231,10 @@ def test_render_incidents_box_and_footer(capsys):
     output.incidents_footer(incs)
     cap = capsys.readouterr()
     out, err = cap.out, cap.err
-    assert "issues · 3" in out
+    assert "ISSUES · 3" in out
     for c in ("id", "alert", "severity", "state", "opened", "assignees"):
         assert c in out
-    assert "1f58…9826" in out                       # short id (the handle)
+    assert "1f5803aaaaaabbbbcccc000000009826" in out
     assert "—" in out                               # manual incident (no alert_name) + no assignees
     assert "firing" in out and "acknowledged" in out and "resolved" in out
     assert "3 issues" in err and "1 firing" in err and "1 resolved" in err  # footer distribution
@@ -1271,7 +1271,7 @@ def test_render_incident_show_sections(capsys):
     )
     output.render_incident_show(inc)
     out = capsys.readouterr().out
-    assert "p95 latency" in out and "1f58…9826" in out
+    assert "p95 latency" in out and "1f5803aaaaaabbbbcccc000000009826" in out
     assert "acknowledged by ops@example.com" in out and "assigned to a@example.com" in out
     assert "breach" in out and "1240ms" in out
     assert "comments · 2" in out and "on it" in out and "(deleted)" in out
@@ -1357,7 +1357,7 @@ def test_confirm_incident_resolve_headline(capsys, monkeypatch):
     monkeypatch.setattr(output.typer, "confirm", lambda *a, **k: False)
     assert output.confirm_incident_resolve("1f5803aaaaaabbbbcccc000000009826", "p95 latency") is False
     err = capsys.readouterr().err
-    assert "resolve issue" in err and "1f58…9826" in err and "(p95 latency)" in err and "this closes it" in err
+    assert "resolve issue" in err and "1f5803aaaaaabbbbcccc000000009826" in err and "(p95 latency)" in err and "this closes it" in err
 
 
 def test_incident_plain_feedback_lines(capsys):
@@ -1374,14 +1374,14 @@ def test_incident_plain_feedback_lines(capsys):
     output.incident_comment_not_found("c0ffee001111")
     output.incident_failed("a@x.com is not an operator")
     err = capsys.readouterr().err
-    assert "acknowledged issue 1f58…9826" in err
-    assert "resolved issue 1f58…9826" in err
-    assert "assigned 1f58…9826" in err and "a@example.com, b@example.com" in err
-    assert "cleared assignees on 1f58…9826" in err
+    assert f"acknowledged issue {iid}" in err
+    assert f"resolved issue {iid}" in err
+    assert f"assigned {iid}" in err and "a@example.com, b@example.com" in err
+    assert f"cleared assignees on {iid}" in err
     assert "subscribed you to issue" in err and "unsubscribed x@y.z from issue" in err
     assert "deleted comment" in err
-    assert "no issue 1f58…9826" in err and "fp issues list" in err
-    assert "no comment" in err and "c0ff…1111" in err
+    assert f"no issue {iid}" in err and "fp issues list" in err
+    assert "no comment" in err and "c0ffee001111" in err
     assert "a@x.com is not an operator" in err
 
 
@@ -1399,7 +1399,7 @@ def test_render_agent_health_configured(capsys):
     _wide_stdout()
     output.render_agent_health(configured=True, default_model="claude-x", model_count=3)
     out = capsys.readouterr().out  # data view → stdout
-    assert "assistant" in out and "configured" in out
+    assert "ASSISTANT" in out and "configured" in out
     assert "default model claude-x" in out and "3 models available" in out
     output.configure(no_color=True, quiet=False)
 
@@ -1417,7 +1417,7 @@ def test_render_agent_models_marks_default(capsys):
     _wide_stdout()
     output.render_agent_models(["m-default", "m-fast"], default_model="m-default")
     out = capsys.readouterr().out
-    assert "models · 2" in out and "m-default" in out and "m-fast" in out and "default" in out
+    assert "MODELS · 2" in out and "m-default" in out and "m-fast" in out and "default" in out
     output.configure(no_color=True, quiet=False)
 
 
@@ -1425,7 +1425,7 @@ def test_render_agent_models_empty(capsys):
     _wide_stdout()
     output.render_agent_models([], default_model=None)
     out = capsys.readouterr().out
-    assert "models · 0" in out and "no models reported" in out
+    assert "MODELS · 0" in out and "no models reported" in out
     output.configure(no_color=True, quiet=False)
 
 
@@ -1438,12 +1438,12 @@ def test_render_agent_chats_box(capsys):
     output.render_agent_chats(chats)
     cap = capsys.readouterr()
     out, err = cap.out, cap.err
-    assert "chats · 2" in out  # the count glows in the title
+    assert "CHATS · 2" in out
     for c in ("chat-id", "title", "messages", "updated"):
         assert c in out
     assert "older" in out and "newer" in out
     assert "07854990" in out and "17bf35c3" in out  # short copy-friendly handle (first 8)
-    assert "dade" not in out                          # the rest of the id is not shown
+    assert "07854990-dade-4dea-aaaa" in out
     assert out.index("newer") < out.index("older")   # newest first
     assert "open one with" not in err                 # the footer hint was removed
     output.configure(no_color=True, quiet=False)
@@ -1492,7 +1492,7 @@ def test_render_agent_delete_preview_and_feedback(capsys):
     output.print_cancelled("nothing deleted")  # boxed cancel, like the command uses
     err = capsys.readouterr().err
     assert "delete chat" in err and "perf review" in err and "4 messages" in err
-    assert "07854990" in err and "dade" not in err  # short id in the preview
+    assert "07854990-dade" in err  # full id in the preview
     assert "deleted chat" in err and "perf review" in err  # boxed deleted
     assert "cancelled" in err and "nothing deleted" in err  # boxed cancel
     output.configure(no_color=True, quiet=False)
@@ -1517,7 +1517,7 @@ def test_agent_ask_chrome_lines(capsys):
     output.agent_unconfigured_note()
     err = capsys.readouterr().err
     assert "used tool: run_query" in err
-    assert "new chat" in err and 'fp agent ask --chat 07854990 "…"' in err  # short id, positional msg
+    assert "new chat" in err and 'fp agent ask --chat 07854990-dade-4dea "…"' in err
     assert "assistant error: boom" in err
     assert "chat not found" in err and "fp agent chats" in err  # boxed not-found
     assert "isn't configured" in err and "fp agent health" in err
@@ -1590,6 +1590,29 @@ def test_history_says_no_change_only_when_nothing_moved(capsys):
     assert "no change" in capsys.readouterr().out
 
 
+def test_history_keeps_gen_when_and_jev_on_an_80_column_terminal(capsys):
+    """At 80 columns every no_wrap cell got shaved at once and `gen`, `when` and
+    `jev` vanished — but `gen` is what `fp fleet rollback` takes."""
+    _wide_stdout(80)
+    pols = [{"id": f"long-policy-name-{i:02d}", "version": 1, "effect": "enforce",
+             "agentTargets": [{"integration": "claude", "instanceId": "agt_" + "ab" * 16}]}
+            for i in range(4)]
+    entries = [{"deployment": g, "updatedAt": f"2026-08-{10 + g:02d}T13:49:00Z",
+                "jevMode": "observe" if g % 2 else None, "policies": pols[:g]}
+               for g in range(1, 5)]
+    output.render_deployment_history("m", entries)
+    out = capsys.readouterr().out
+    assert max(len(ln) for ln in out.splitlines()) <= 80
+    header = next(ln for ln in out.splitlines() if "change" in ln)
+    for col in ("gen", "when", "jev"):
+        assert col in header, (col, out)
+    for g in range(1, 5):
+        row = next((ln for ln in out.splitlines() if f"#{g} " in ln), None)
+        assert row is not None, (g, out)
+        assert f"08-{10 + g:02d} 13:49:00" in row, out
+        assert ("observe" if g % 2 else "local") in row, out
+
+
 def test_clearing_a_label_is_not_reported_as_renaming_to_blank(capsys):
     """`fp fleet rename m ""` clears the override server-side, and the card
     said `labelled m as ` — a sentence with a hole in it, describing neither
@@ -1619,7 +1642,7 @@ def test_policy_list_counts_policies_and_captions_versions(capsys):
     _wide_stdout()
     output.render_policies([pv("a", 1), pv("b", 2), pv("b", 1)])
     out = capsys.readouterr().out
-    assert "policies · 2 · 3 versions" in out
+    assert "POLICIES · 2 · 3 versions" in out
     # newest version of each policy first, rather than server order
     b_rows = [ln for ln in out.splitlines() if "b" in ln and "v" in ln
               and ("v1" in ln or "v2" in ln)]
@@ -1634,7 +1657,7 @@ def test_policy_list_omits_the_caption_when_each_policy_has_one_version(capsys):
                                           source=None, created_at="", created_by=None,
                                           disabled=False, archived=False)])
     out = capsys.readouterr().out
-    assert "policies · 1" in out and "versions" not in out
+    assert "POLICIES · 1" in out and "versions" not in out
 
 
 # ─────────────────────────────────────────────────────────────────────────────

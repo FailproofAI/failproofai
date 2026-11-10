@@ -87,9 +87,20 @@ def failproofai_custom_agents_dir() -> Path:
     into. An existence check here is what made the old opt-in dead — a spool
     root that must pre-exist can never be the place a first batch is written.
     """
-    fp_home = os.environ.get("FAILPROOFAI_HOME")
-    base = Path(fp_home) if fp_home else Path.home() / ".failproofai"
+    base = failproofai_home()
     return base / "custom-agents"
+
+
+def failproofai_home() -> Path:
+    """``$FAILPROOFAI_HOME``, or ``~/.failproofai`` when it is unset.
+
+    Empty or whitespace-only counts as unset: ``Path("")`` is the current
+    directory, so a blank variable (``FAILPROOFAI_HOME= python app.py``, an
+    unfilled template) would otherwise scatter spool files wherever the
+    process happened to start.
+    """
+    configured = (os.environ.get("FAILPROOFAI_HOME") or "").strip()
+    return Path(configured) if configured else Path.home() / ".failproofai"
 
 
 def legacy_agenteye_dir() -> Path:

@@ -87,7 +87,7 @@ def test_errors_list_table(logged_in, runner):
     result = runner.invoke(app, ["errors", "--since", "24h"])
     assert result.exit_code == 0, result.output
     # the 80-col CliRunner truncates cells; just assert the error-themed box rendered
-    assert "errors" in result.stdout and "newest first" in result.stdout
+    assert "ERRORS" in result.stdout and "newest first" in result.stdout
 
 
 @respx.mock

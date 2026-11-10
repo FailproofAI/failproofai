@@ -7,13 +7,14 @@
     "@langchain/core": "1.2.12",
     "@langchain/langgraph": "1.4.17",
     "lc-weather-provider": "file:vendor/lc-weather-provider",
-    "zod": "4.6.5"
+    "zod": "4.6.7"
   },
   "devDependencies": {
     "@types/node": "22.20.4"
   },
   "overrides": {
     "langsmith": "0.10.5",
-    "uuid": "11.1.1"
+    "uuid": "11.1.1",
+    "zod": "$zod"
   }
 }

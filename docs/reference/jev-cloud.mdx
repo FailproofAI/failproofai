@@ -32,13 +32,13 @@ Jev reviews named tool calls at the `PreToolUse` or `PermissionRequest` gate. It
 
    If your organization runs its own FailproofAI Cloud rather than the hosted one, add its address: `--url https://<your dashboard host>` (or export `FAILPROOFAI_CLOUD_URL`). Without it the key is checked against the hosted service and the connection fails. If that host's certificate comes from a private CA, install the CA in the machine's system trust store (for example with `update-ca-certificates`), not only in `NODE_EXTRA_CA_CERTS`: the daemon that sends events and pulls policies reads the system store. See [Troubleshooting](/reference/troubleshooting).
 
-That is all. Connecting stores the key and, when the machine has **no** Jev config yet, turns Jev on through FailproofAI Cloud in **observe** mode: once a pack gives it checks, Jev is asked about every gated tool call and its verdicts are recorded, but your policies' result is what is enforced. The output says so:
+That is all. Connecting stores the key and, when the machine has **no** Jev config yet, writes one for FailproofAI Cloud. From the machine's first deployment (within about 30 s) FailproofAI Cloud sets the mode: `enforce` while a Jev policy is deployed to it, `off` when none is (see [Who sets the mode](#who-sets-the-mode)). The output says so:
 
 ```text
-  Jev       on through FailproofAI Cloud, in observe mode: logged, not enforced (~/.failproofai/jev.json).
+  Jev       configured through FailproofAI Cloud; waiting for FailproofAI Cloud's Jev mode, which arrives with this machine's first deployment (within ~30 s) and decides.
 ```
 
-Jev still asks nothing until a pack gives it checks. Failproof AI ships none; while no installed pack declares any, the output adds a line saying so, and `failproofai jev status` repeats it. Install them with:
+Checks FailproofAI Cloud deploys run on Cloud. To add checks of your own on the machine, install a pack:
 
 ```bash
 failproofai policies add FailproofAI/jev-policies
@@ -50,23 +50,31 @@ failproofai policies add FailproofAI/jev-policies
 failproofai jev setup --provider failproofai
 ```
 
-It does not turn Jev **off** either. If the machine's `jev.json` already runs Jev through FailproofAI Cloud, it is left as it is, and the output says that Jev still sends each checked tool call and the recent prompt, and that `failproofai jev setup --mode off` switches it off.
+It also turns Jev through FailproofAI Cloud **off**. A `jev.json` that runs Jev through FailproofAI Cloud (left by an earlier connection with transcripts on) is removed, by the same rule `config --disconnect` uses, and the output says Jev via FailproofAI Cloud stays off on this machine. A `jev.json` for your own Jev endpoint is left as it is, and so is a FailproofAI Cloud one you switched off (`--mode off`).
 
 <Warning>
 Connecting **never overwrites** an existing `~/.failproofai/jev.json`. If you already use your own Jev endpoint, it keeps being used, and the output says the file was left as configured — and, when that file leaves Jev off (refused, or switched off), says so and how to fix it. To switch that machine to FailproofAI Cloud, run `failproofai jev setup --provider failproofai`.
 </Warning>
 
-## Observe, enforce or off
+## Who sets the mode
 
-Start in observe, watch what Jev would have done on the policy page, then let it act:
+On a machine connected to FailproofAI Cloud, **FailproofAI Cloud sets the Jev mode**; nothing on the machine does:
 
-```bash
-failproofai jev setup --mode enforce   # Jev's verdicts apply: it may clear a reviewable deny and add its own
-failproofai jev setup --mode observe    # Jev is asked and logged; your policies' result is enforced
-failproofai jev setup --mode off       # keep the config, stop asking Jev
-```
+- `enforce` while any Jev (or regex + Jev) policy is deployed to the machine: every checked tool call from an agent one of those policies targets goes to FailproofAI Cloud, which asks its checks together with the checks of the packs installed there. A call from an agent no Cloud Jev policy targets, with no pack check of its own, is not sent at all. In `enforce`, Jev's own deny checks block calls as well as clearing the regex verdicts they review.
+- `off` when none is: no Jev at all, whatever `jev.json` says.
 
-The same switch is in the local dashboard: **Settings → Jev** has an on/off switch and observe/enforce. It rewrites the mode and nothing else. Hooks read the config on every tool call, so a change applies from the next one, with no restart.
+To try a Jev policy before it acts, deploy it with effect **observe**: its checks are still asked, and what they would have done is recorded as a **would-have** on the policy page, but it never blocks a call and never clears one. `failproofai jev setup --mode` and the dashboard's **Settings → Jev** switch say the mode is managed by FailproofAI Cloud and change nothing. `jev.json` is not used for Cloud's checks, even if it names another provider. `failproofai config --disconnect` hands Jev back to the machine's own `jev.json`.
+
+`failproofai jev status` then says `Jev checks run on FailproofAI Cloud (mode: enforce)`. It also names the checks that review each `both` policy. The fleet page shows why a machine with a mode cannot ask:
+
+- `transcripts_disabled`: the machine was connected with `--no-transcripts`, which never switches Jev on.
+- `jev_unconfigured`: the machine's key does not carry `jev:evaluate`.
+- `jev_rate_limited`: FailproofAI Cloud refused some of the machine's calls for the organization's Jev rate limit, and those calls were decided by the regex policies alone.
+- `jev_unavailable`: several calls in a row failed, so the machine skips FailproofAI Cloud's Jev for a minute at a time. It retries on its own.
+
+If FailproofAI Cloud does not answer within 5 seconds, the regex policies decide alone, as for any Jev outage. After 3 failures in a row the machine stops asking for a minute at a time, so a Cloud outage does not slow every tool call.
+
+A session pause (`failproofai config --pause`) does not stop FailproofAI Cloud's Jev checks, just as it does not stop Cloud-managed policies. It does pause the Jev checks of packs installed on the machine.
 
 ## Check what it is doing
 
@@ -97,6 +105,7 @@ The machine already sends its hook activity to FailproofAI Cloud (`events:add`).
 - a call Jev's own verdict decided (enforce mode) is attributed to **Jev**, and when the deciding check came from a pack, the record also names that pack and its version;
 - in observe mode, Jev's deny or warning appears as a **would-have**, next to the rollouts you are observing;
 - the policies Jev cleared, or would have cleared in observe mode, are counted per policy.
+- a decision Jev took part in (a block, a warning, a clear, or a would-have in observe mode) lists each check it asked and what that check concluded: verdict, why (`not-detected`, `exempt`, `fired`, `op-requested`, …), its evidence `p`, the `exempt` answer and each probe's answer. A check of a policy deployed to watch (observe) is listed too, marked watched; it never blocks. Jev answers with probabilities, not prose, so there is no free-text reason. Plain allows roll up into counts and do not carry this list.
 
 ## When Jev cannot answer
 
@@ -112,7 +121,7 @@ Every one of these falls back to your policies' result for that call, and is rec
 | `http-502` | Jev is unavailable right now. |
 | `http-503` | This Cloud cannot serve Jev for your org: no model gateway, an org not provisioned yet, or the gateway is down. Ask your admin; hooks ask again at most once a minute. |
 | `http-404` | This FailproofAI Cloud does not serve Jev yet. |
-| `timeout` | No answer within `timeoutMs` (default 3000). |
+| `timeout` | No answer within `timeoutMs` (default 3000). While FailproofAI Cloud sets the machine's Jev mode, the wait is 5000 ms and `jev.json`'s `timeoutMs` is not used. |
 | `model-mismatch` | A Jev version other than 1.13 answered. |
 
 ## Where the key lives, and where it goes
@@ -127,10 +136,11 @@ Every one of these falls back to your policies' result for that call, and is rec
 
 ## Turn it off
 
+On a connected machine, Jev is off when FailproofAI Cloud deploys no Jev policy to it: remove or archive the Jev policies there.
+
 | Command | Outcome |
 | --- | --- |
-| `failproofai jev setup --mode off` | Keep the config; Jev is not asked. **This is the switch that lasts:** connecting again never rewrites an existing `jev.json`, so Jev stays off until you switch it back with `--mode observe`. |
-| `failproofai jev remove` | Delete `~/.failproofai/jev.json`; Jev is off — until the next `failproofai config --token` with a key that carries `jev:evaluate`, which finds no `jev.json` and turns Jev on again in observe mode (unless it runs with `--no-transcripts`). To keep it off, use `--mode off`. |
-| `failproofai config --disconnect` | Disconnect the machine: the key is removed, and so is `jev.json` when it names FailproofAI Cloud and is not switched off. A `jev.json` for your own endpoint stays, and so does one switched off, so Jev stays off when you connect again. |
+| Remove the machine's Jev policies in FailproofAI Cloud | Cloud's mode becomes `off` at the next poll (about 30 s): no Jev at all, whatever `jev.json` says. |
+| `failproofai config --disconnect` | Disconnect the machine: the key is removed, and so is `jev.json` when it names FailproofAI Cloud and is not switched off. A `jev.json` for your own endpoint stays. |
 
 From the next tool call, hooks run the regex policies exactly as before.

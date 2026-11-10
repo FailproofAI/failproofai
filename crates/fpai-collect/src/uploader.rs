@@ -188,6 +188,29 @@ pub struct Uploader {
     redact: Redact,
     machine_id: String,
     metrics: Arc<UploadMetrics>,
+    since_ms: Option<u64>,
+    /// Set when `failed/` may hold batches refused for a credential (401/403):
+    /// at construction (a new collector is a new or reconfigured key, and the
+    /// batches an earlier key had refused are waiting for it) and whenever
+    /// this uploader parks one. Taken by `Delivery` after a delivery the
+    /// server accepted, which proves the key in use now works.
+    credential_refusals: std::sync::atomic::AtomicBool,
+}
+
+/// Credential-refusal policy. Both variants preserve the entire source batch.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum OnCredentialRefusal {
+    /// Park it as a definitive refusal (`.c401`). A fresh batch.
+    Park,
+    /// Legacy redrive policy, retained for caller compatibility. Like `Park`,
+    /// reparks the original: a refusal of one chunk says nothing about chunks
+    /// not yet sent, even when the key accepted a different batch.
+    Drop,
+}
+
+/// Whether a client status is a credential refusal.
+pub fn is_credential_status(status: u16) -> bool {
+    status == 401 || status == 403
 }
 
 impl Uploader {
@@ -222,7 +245,14 @@ impl Uploader {
             redact: Redact::default(),
             machine_id: UNKNOWN_MACHINE_ID.to_string(),
             metrics: Arc::new(UploadMetrics::default()),
+            since_ms: None,
+            credential_refusals: std::sync::atomic::AtomicBool::new(true),
         })
+    }
+
+    pub fn with_boundary(mut self, since_ms: Option<u64>) -> Self {
+        self.since_ms = since_ms;
+        self
     }
 
     pub fn with_redact(mut self, redact: Redact) -> Self {
@@ -255,6 +285,23 @@ impl Uploader {
         self.metrics.clone()
     }
 
+    /// The directory batches are parked in.
+    pub fn failed_dir(&self) -> &Path {
+        &self.failed_dir
+    }
+
+    /// Whether `failed/` may hold credential refusals to re-send, clearing the
+    /// flag. See the field.
+    pub fn take_credential_refusals(&self) -> bool {
+        self.credential_refusals.swap(false, Ordering::SeqCst)
+    }
+
+    /// Ask for another re-send pass after the next accepted delivery: one
+    /// re-send could not reach a verdict, or a bounded pass left a remainder.
+    pub fn note_credential_refusals(&self) {
+        self.credential_refusals.store(true, Ordering::SeqCst);
+    }
+
     /// Upload one batch file, deleting it once every chunk has landed.
     ///
     /// A `NotFound` on read is `Ok`: another task already handled this file.
@@ -262,12 +309,24 @@ impl Uploader {
     /// leaves the original intact and the worst case is re-sending chunks the
     /// server already has — byte-identical, so it dedups them.
     pub async fn upload_file(&self, path: &Path) -> Result<(), UploadError> {
+        self.upload_file_with(path, OnCredentialRefusal::Park).await
+    }
+
+    /// [`Self::upload_file`], accepting the legacy credential-refusal policy.
+    pub async fn upload_file_with(
+        &self,
+        path: &Path,
+        _on_refusal: OnCredentialRefusal,
+    ) -> Result<(), UploadError> {
         let bytes = match tokio::fs::read(path).await {
             Ok(b) => b,
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(()),
             Err(e) => return Err(UploadError::Io(e)),
         };
 
+        // SDK batches bypass SpoolWriter. Filter them at delivery as well,
+        // preserving the exact retained bytes for server-side deduplication.
+        let bytes = filter_boundary(&bytes, self.since_ms, crate::org_boundary::mtime_ms(path));
         let bytes = redact_batch(&bytes, self.redact);
         for chunk in split_lines(&bytes, self.max_upload_bytes) {
             self.post_batch(path, chunk).await?;
@@ -366,6 +425,9 @@ impl Uploader {
                     // park a batch the server explicitly asked us to resend.
                     let retryable = status.is_server_error() || code == 408 || code == 429;
                     if !retryable {
+                        if is_credential_status(code) {
+                            self.credential_refusals.store(true, Ordering::SeqCst);
+                        }
                         self.park(path, Some(code), &request_id).await;
                         return Err(UploadError::Client { status: code });
                     }
@@ -566,6 +628,22 @@ impl Uploader {
         );
         move_file(path, &dest).await
     }
+}
+
+fn filter_boundary(bytes: &[u8], since: Option<u64>, fallback: Option<i64>) -> Vec<u8> {
+    if since.is_none() {
+        return bytes.to_vec();
+    }
+    bytes
+        .split_inclusive(|b| *b == b'\n')
+        .filter(|line| {
+            serde_json::from_slice::<serde_json::Value>(line)
+                .ok()
+                .is_some_and(|event| crate::org_boundary::allowed(&event, since, fallback))
+        })
+        .flatten()
+        .copied()
+        .collect()
 }
 
 /// `rename`, or copy-then-remove when the two paths are on different
@@ -1060,5 +1138,21 @@ mod tests {
             "no .partial may remain"
         );
         std::fs::remove_dir_all(&root).ok();
+    }
+    #[test]
+    fn sdk_delivery_filters_old_events_without_changing_retained_bytes() {
+        let bytes = b"{\"timestamp\":1791935999999,\"type\":\"old\"}\n{ \"timestamp\":1791936000000,\"type\":\"new\" }\n";
+        assert_eq!(
+            filter_boundary(bytes, Some(1_791_936_000_000), None),
+            b"{ \"timestamp\":1791936000000,\"type\":\"new\" }\n"
+        );
+        assert_eq!(
+            filter_boundary(b"{\"type\":\"unknown\"}\n", Some(100), Some(99)),
+            b""
+        );
+        assert_eq!(
+            filter_boundary(b"{\"type\":\"unknown\"}\n", Some(100), Some(100)),
+            b"{\"type\":\"unknown\"}\n"
+        );
     }
 }

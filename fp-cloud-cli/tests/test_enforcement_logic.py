@@ -141,6 +141,52 @@ def test_set_replaces_the_whole_set():
     assert plan.result[0].version == 5
 
 
+def test_agent_targets_round_trip_and_survive_an_unrelated_add():
+    scoped = PolicyRef.from_dict({
+        "id": "guard", "version": 2, "effect": "enforce",
+        "agentTargets": [{"integration": "hermes", "instanceId": "agt_1234567890abcdef"}],
+    })
+    assert scoped.to_dict()["agentTargets"] == [
+        {"integration": "hermes", "instanceId": "agt_1234567890abcdef"},
+    ]
+    plan = plan_deploy("machine", current=[scoped], base=2, add=["guard@3"], latest={"guard": 3})
+    assert plan.result[0].agent_targets == scoped.agent_targets
+    assert plan.result[0].version == 3
+    assert scoped.version == 2
+
+
+def test_target_changes_are_a_diff_and_clearing_is_explicit():
+    initial = ref("guard")
+    narrowed = plan_deploy(
+        "machine", current=[initial], base=1,
+        targets=["guard=hermes/agt_1234567890abcdef", "guard=codex"],
+    )
+    assert narrowed.changed == [(initial, narrowed.result[0])]
+    assert narrowed.result[0].agent_targets == [
+        {"integration": "hermes", "instanceId": "agt_1234567890abcdef"},
+        {"integration": "codex"},
+    ]
+    cleared = plan_deploy(
+        "machine", current=narrowed.result, base=2, all_agents=["guard"],
+    )
+    assert cleared.result[0].agent_targets is None
+    assert cleared.set_changes
+
+
+@pytest.mark.parametrize("targets,clears", [
+    (["guard=stranger"], []),
+    (["guard=hermes/bad"], []),
+    (["guard=hermes", "guard=hermes"], []),
+    (["guard=hermes"], ["guard"]),
+    (["missing=codex"], []),
+    (["guard@1=codex"], []),
+])
+def test_invalid_agent_target_request_cannot_write(targets, clears):
+    with pytest.raises(RefError):
+        plan_deploy("machine", current=[ref("guard")], base=1,
+                    targets=targets, all_agents=clears)
+
+
 def test_set_cannot_be_mixed_with_add_or_remove():
     """"exactly these" and "these as well" have no single reading."""
     with pytest.raises(RefError, match="cannot be combined"):

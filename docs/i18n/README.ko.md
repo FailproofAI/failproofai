@@ -257,11 +257,6 @@ customPolicies.add({
 
 [CONTRIBUTING.md](../../CONTRIBUTING.md)를 참조하세요. 새로운 정책, 엣지 케이스, 번역 모두 환영합니다.
 
-> **시작 전에 빌드하세요.** 먼저 `bun install && bun run build`를 실행하세요. 이 저장소는
-> failproofai 자체 훅을 자기 자신에게 적용하며, 훅은 컴파일된 `dist/` 번들에서 `failproofai` 임포트를 해석합니다 — 빌드 없이는 `Cannot find package 'failproofai'`
-> 훅 오류가 발생합니다. `src/` 변경 후에는 다시 빌드하세요. 자세한 내용은
-> [Build before the in-repo dev hooks will work](../../CONTRIBUTING.md#build-before-the-in-repo-dev-hooks-will-work)를 참조하세요.
-
 ---
 
 SF와 벵갈루루에서 ❤️를 담아 [befailproof.ai](https://befailproof.ai)가 만들었습니다.

@@ -107,6 +107,8 @@ pub struct HealthFile {
     /// is not configured" are different facts and must not render the same.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub delivery: Option<DeliveryHealth>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub config_generation: Option<String>,
 }
 
 /// Shared, cheap-to-update health state.
@@ -121,9 +123,14 @@ pub struct Health {
     /// Set once at startup when there is an uploader. Read, never written, so
     /// the counters stay owned by the `Uploader` that survives a task restart.
     delivery: Mutex<Option<std::sync::Arc<crate::UploadMetrics>>>,
+    config_generation: Option<String>,
 }
 
 impl Health {
+    pub fn with_config_generation(mut self, generation: Option<String>) -> Self {
+        self.config_generation = generation;
+        self
+    }
     pub fn new() -> Self {
         Self::default()
     }
@@ -179,6 +186,7 @@ impl Health {
             ts: now_secs(),
             sources,
             delivery,
+            config_generation: self.config_generation.clone(),
         }
     }
 

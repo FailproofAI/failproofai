@@ -60,6 +60,72 @@ fn parked(dir: &Path) -> Vec<String> {
 }
 
 #[tokio::test]
+async fn a_later_chunk_credential_refusal_preserves_all_bytes_and_can_be_resent() {
+    use fpai_collect::uploader::OnCredentialRefusal;
+    use wiremock::matchers::body_string;
+
+    for status in [401, 403] {
+        for policy in [OnCredentialRefusal::Park, OnCredentialRefusal::Drop] {
+            let server = MockServer::start().await;
+            Mock::given(method("POST"))
+                .and(body_string("{ \"n\": 2 }\n"))
+                .respond_with(ResponseTemplate::new(status))
+                .mount(&server)
+                .await;
+            Mock::given(method("POST"))
+                .respond_with(
+                    ResponseTemplate::new(200)
+                        .set_body_json(serde_json::json!({"accepted": 1, "skipped": 0})),
+                )
+                .mount(&server)
+                .await;
+            let failed = tmpdir("later-credential");
+            let batch = failed.join("original.a1.c401.jsonl");
+            let original = b"{ \"n\": 1 }\n{ \"n\": 2 }\n{ \"n\": 3 }\n";
+            fs::write(&batch, original).unwrap();
+            let up = uploader(&server, &failed).with_max_upload_bytes(11);
+
+            let result = up.upload_file_with(&batch, policy).await;
+            assert!(matches!(result, Err(UploadError::Client { status: s }) if s == status));
+            let requests = server.received_requests().await.unwrap();
+            assert_eq!(requests.len(), 2, "the third chunk was never sent");
+            assert_eq!(requests[0].body, b"{ \"n\": 1 }\n");
+            assert_eq!(requests[1].body, b"{ \"n\": 2 }\n");
+            let names = parked(&failed);
+            assert_eq!(names, [format!("original.a2.c{status}.jsonl")]);
+            let retained = failed.join(&names[0]);
+            assert_eq!(
+                fs::read(&retained).unwrap(),
+                original,
+                "{policy:?}/{status}"
+            );
+
+            server.reset().await;
+            Mock::given(method("POST"))
+                .respond_with(
+                    ResponseTemplate::new(200)
+                        .set_body_json(serde_json::json!({"accepted": 1, "skipped": 0})),
+                )
+                .expect(3)
+                .mount(&server)
+                .await;
+            up.upload_file_with(&retained, policy).await.unwrap();
+            assert!(parked(&failed).is_empty());
+            let resent: Vec<u8> = server
+                .received_requests()
+                .await
+                .unwrap()
+                .into_iter()
+                .flat_map(|request| request.body)
+                .collect();
+            assert_eq!(resent, original, "accepted and unsent chunks all survive");
+            server.verify().await;
+            fs::remove_dir_all(failed).unwrap();
+        }
+    }
+}
+
+#[tokio::test]
 async fn a_2xx_with_an_accepting_ack_deletes_the_batch() {
     let server = MockServer::start().await;
     Mock::given(method("POST"))

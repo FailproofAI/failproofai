@@ -23,7 +23,7 @@ import re
 import uuid
 from dataclasses import dataclass
 from enum import Enum
-from typing import Any, Callable, Dict, Iterator, List, Optional, Sequence, Union
+from typing import Any, Callable, Dict, Iterator, List, Optional, Sequence, Tuple, Union
 
 import httpx
 
@@ -31,6 +31,7 @@ from .errors import (
     ApiError,
     AuthError,
     ForbiddenError,
+    FpCliError,
     KeyModeUnsupportedError,
     NetworkError,
     NotFoundError,
@@ -134,6 +135,14 @@ _V1_MECHANICAL_FAMILIES = frozenset(
         "alerts",
         "audits",
         "evaluations",
+        "evaluator-definitions",
+        "evaluator-instances",
+        "evaluator-schema-profile",
+        "evaluation-jobs",
+        "dashboards",
+        "otel",
+        "offers",
+        "team-trial",
         "events",
         "issues",
         "keys",
@@ -152,6 +161,7 @@ _V1_MECHANICAL_FAMILIES = frozenset(
 # family rule, which is why this must stay exact-match.
 _V1_RENAMED = {
     "/api/evaluations/score-keys": "/v1/evaluations/score_keys",
+    "/api/evaluations/metric-keys": "/v1/evaluations/metric_keys",
 }
 
 # Families with no `/v1` route, and why — the message a user actually sees.
@@ -173,6 +183,8 @@ _V1_NO_EQUIVALENT = {
         "cloud-managed policies are an operator surface — the fleet routes are "
         "deliberately absent from /v1, which is internet-facing"
     ),
+    "integrations": "dashboard integration routes need a signed-in session",
+    "orgs": "organization creation needs a signed-in user",
 }
 
 
@@ -375,6 +387,40 @@ def _required_permission(response: httpx.Response) -> Optional[str]:
     return None
 
 
+def _unknown_route_response(response: httpx.Response) -> Optional[bool]:
+    """Use explicit 404 details first; an empty/generic reply is ambiguous."""
+    try:
+        data = response.json()
+    except ValueError:
+        return None
+    if not isinstance(data, dict):
+        return None
+    code = data.get("code") or data.get("error_code") or data.get("error") or ""
+    if isinstance(code, dict):
+        code = code.get("code", "")
+    code = str(code).lower()
+    if code in ("unknown_route", "route_not_found", "unknown_endpoint", "endpoint_not_found"):
+        return True
+    if code in ("record_not_found", "resource_not_found", "entity_not_found", "session_not_found", "query_not_found"):
+        return False
+    message = _extract_error(response)
+    if not message:
+        return None
+    lower = message.lower().strip().rstrip(".")
+    if re.search(
+        r"\b(?:unknown|unrecognized|unsupported|missing|no such)\s+(?:api\s+)?(?:route|endpoint)\b"
+        r"|\b(?:route|endpoint)\b.*\b(?:not found|not available|does not exist|absent|unknown)\b"
+        r"|\bcannot (?:get|post|put|patch|delete)\s+/",
+        lower,
+    ):
+        return True
+    if lower in ("not found", "not_found", "404", "404 not found"):
+        return None
+    # A specific response ("session not found", "offer expired", etc.) came
+    # from a handler, rather than the router. Do not replace its useful detail.
+    return False
+
+
 def _raise_for_status(response: httpx.Response, ctx: ClientContext) -> None:
     key_mode = ctx.auth_mode is AuthMode.API_KEY
     if response.status_code < 400:
@@ -474,7 +520,9 @@ def _raise_for_status(response: httpx.Response, ctx: ClientContext) -> None:
                     request_id=request_id,
                     hint="point --base-url at the server itself, e.g. http://localhost:8080",
                 )
-        raise NotFoundError(message or "Not found.", request_id=request_id)
+        error = NotFoundError(message or "Not found.", request_id=request_id)
+        error.route_unknown = _unknown_route_response(response)
+        raise error
     if response.status_code == 429:
         retry_after = response.headers.get("retry-after")
         wait = f" Retry after {retry_after}s." if retry_after else " Please wait a moment and try again."
@@ -487,7 +535,37 @@ def _raise_for_status(response: httpx.Response, ctx: ClientContext) -> None:
         message or f"Request failed with status {response.status_code}.",
         status=response.status_code,
         request_id=request_id,
+        hint=_jev_budget_breakdown(response),
     )
+
+
+def _jev_budget_breakdown(response: httpx.Response) -> Optional[str]:
+    """The per-policy breakdown of a deploy's ``jev_budget_exceeded`` refusal.
+
+    The message carries only the total (``used``/``budget``); the body also lists
+    every Jev policy version the machine would carry with its question
+    characters (``policies: [{id, version, chars}]``), which is what tells an
+    operator WHICH policy to leave off. Largest first. ``None`` for any other
+    error, and for a publish refusal, which names no other policies.
+    """
+    try:
+        data = response.json()
+    except Exception:
+        return None
+    if not isinstance(data, dict) or data.get("code") != "jev_budget_exceeded":
+        return None
+    rows = [
+        (str(p.get("id", "")), p.get("version"), p["chars"])
+        for p in data.get("policies") or []
+        if isinstance(p, dict) and isinstance(p.get("chars"), int)
+    ]
+    if not rows:
+        return None
+    rows.sort(key=lambda row: -row[2])
+    parts = [f"{pid}@{version} {chars:,}" if version is not None else f"{pid} {chars:,}"
+             for pid, version, chars in rows]
+    return ("Jev question characters per policy: " + " · ".join(parts)
+            + " — deploy fewer of these Jev policies to this machine")
 
 
 def _get_json(ctx: ClientContext, path: str, params: Optional[Dict[str, Any]] = None) -> Any:
@@ -574,6 +652,121 @@ def _patch_json(ctx: ClientContext, path: str, json_body: Any = None) -> Any:
 
 def _delete(ctx: ClientContext, path: str) -> Any:
     return _request_json(ctx, "DELETE", path)
+
+
+def cloud_request(
+    ctx: ClientContext, method: str, path: str, *,
+    body: Any = None, params: Optional[Dict[str, Any]] = None,
+) -> Any:
+    """New Cloud capabilities, with a predictable older-deployment failure.
+
+    Existing callers retain their response and error contracts. Paths still pass
+    through the credential and identifier guards; this is not a second transport.
+    """
+    try:
+        if method == "GET":
+            return _get_json(ctx, path, params)
+        return _request_json(ctx, method, path, json_body=body, params=params)
+    except (NotFoundError, ApiError) as exc:
+        if isinstance(exc, ApiError) and exc.status != 404:
+            raise
+        raise _cloud_not_found(exc, path, body=body, params=params) from exc
+
+
+def _cloud_not_found(exc: FpCliError, path: str, *, body=None, params=None) -> NotFoundError:
+    """Classify ambiguous 404s from the request; never claim a record is a route.
+
+    Top-level collections and named capability endpoints have no record segment.
+    Scoped collections (/dashboards/ID/tiles) and actions on records default to a
+    missing record unless the response explicitly says the route is unknown.
+    """
+    route_unknown = getattr(exc, "route_unknown", None)
+    if isinstance(exc, ApiError):
+        # The transport only raises HTTP 404 ApiError for an HTML front door.
+        route_unknown = True
+    if route_unknown is None:
+        segments = path.removeprefix("/api/").split("/")
+        family = segments[0]
+        capability = len(segments) == 1 or (
+            family == "agent" and len(segments) == 2
+            or family == "otel" and segments == ["otel", "status"]
+            or family == "offers" and segments[1:] in (["me"], ["claim"])
+            or family == "team-trial" and segments == ["team-trial", "me"]
+            or family == "integrations" and segments == ["integrations", "slack"]
+            or family == "events" and segments in (
+                ["events", "summary"], ["events", "latency_aggregate"],
+                ["events", "sentiment"], ["events", "sentiment", "messages"],
+                ["events", "sentiment", "sessions"],
+            )
+            or family == "evaluator-definitions" and segments == ["evaluator-definitions", "dry-run"]
+            or family == "evaluations" and segments == ["evaluations", "backfill"]
+            or family == "queries" and segments[1:] in (["run"], ["schema"])
+            or family == "audits" and segments == ["audits", "contracts"]
+            or family == "alerts" and segments == ["alerts", "recipients"]
+            or family == "users" and segments == ["users", "defaults"]
+            or family == "usage" and segments == ["usage", "windows"]
+            or family == "settings" and segments == ["settings", "model-context-windows"]
+            or family == "settings" and len(segments) == 2
+        )
+        # Some collection operations name their target in a query or body.
+        request_body = body if isinstance(body, dict) else {}
+        record_selected = (
+            (params or {}).get("session_id") or (params or {}).get("model")
+            or request_body.get("query_id") or request_body.get("callId")
+            or request_body.get("session_ids") or request_body.get("offer_key")
+            or request_body.get("conversationId")
+        )
+        route_unknown = capability and not record_selected
+    if route_unknown:
+        return NotFoundError(
+            "not available on this FailproofAI Cloud yet",
+            hint="upgrade your Cloud deployment to use this route",
+            request_id=exc.request_id,
+        )
+    message = exc.message
+    if message.lower().strip().rstrip(".") in (
+        "not found", "not_found", "record_not_found", "resource_not_found",
+        "entity_not_found", "session_not_found", "query_not_found",
+    ):
+        message = f"Record not found at {path}"
+    return NotFoundError(message, request_id=exc.request_id)
+
+
+def import_events_file(
+    ctx: ClientContext, data: bytes, params: Dict[str, Any],
+) -> Any:
+    """POST /api/events/import — one file's bytes (gzip accepted), as the dashboard's
+    import dialog sends it. ``params``: format, path, environment, dry_run, existing_before."""
+    clean = {k: v for k, v in params.items() if v is not None} or None
+    url = _path(ctx, "/api/events/import")
+    try:
+        with _client(ctx) as client:
+            response = client.request(
+                "POST", url, content=data, params=clean,
+                headers={"Content-Type": "application/octet-stream"},
+            )
+    except httpx.RequestError as exc:
+        raise NetworkError(
+            f"Cannot reach FailproofAI Cloud at {ctx.base_url}: {exc}",
+            request_id=_sent_request_id(exc),
+        )
+    _raise_for_status(response, ctx)
+    if not response.content:
+        return {}
+    try:
+        return response.json()
+    except ValueError:
+        raise ApiError("The dashboard returned an invalid import response.")
+
+
+def cloud_stream(ctx: ClientContext, path: str, body: Dict[str, Any]) -> Iterator[Dict[str, Any]]:
+    """Dashboard SSE with the same additive-capability 404 contract."""
+    try:
+        yield from _stream_sse(ctx, path, body)
+    except (NotFoundError, ApiError) as exc:
+        if isinstance(exc, ApiError) and exc.status != 404:
+            raise
+        raise _cloud_not_found(exc, path, body=body) from exc
 
 
 # --- Auth / identity --------------------------------------------------------
@@ -763,6 +956,10 @@ _FACET_PATHS = {
     # Evaluation score keys (a distinct endpoint, not /api/events) — the source for
     # the sessions-page score-filter dropdown; needs `evaluations:read`.
     "score_filters": "/api/evaluations/score-keys",
+    # Evaluation-side facets: environments with evaluation results, and metric
+    # keys (the server returns {name, unit, count}; `list` shows the names).
+    "eval_environments": "/api/evaluations/environments",
+    "metric_keys": "/api/evaluations/metric-keys",
 }
 FACET_KINDS = tuple(_FACET_PATHS.keys())
 
@@ -770,7 +967,9 @@ FACET_KINDS = tuple(_FACET_PATHS.keys())
 def list_facet(ctx: ClientContext, kind: str) -> List[str]:
     """GET /api/events/<kind> — distinct facet values (a bare JSON array)."""
     data = _get_json(ctx, _FACET_PATHS[kind])
-    return [str(x) for x in data] if isinstance(data, list) else []
+    if not isinstance(data, list):
+        return []
+    return [str(x.get("name", "")) if isinstance(x, dict) else str(x) for x in data]
 
 
 def get_usage(ctx: ClientContext) -> Dict[str, Any]:
@@ -1165,20 +1364,28 @@ def list_incidents(
     state: Optional[str] = None,
     alert_id: Optional[str] = None,
     limit: Optional[int] = None,
+    filters: Optional[Dict[str, Any]] = None,
 ) -> List[Incident]:
     """GET /api/issues (or /api/alerts/{id}/issues when alert_id given). The
     alert-scoped path honours ``state``/``limit`` too — pass them so the filters aren't silently
     dropped on that path (``_get_json`` omits None params)."""
-    if alert_id:
+    extra = {k: v for k, v in (filters or {}).items() if v is not None}
+    if alert_id and not extra:
         data = _get_json(ctx, f"/api/alerts/{alert_id}/issues", {"state": state, "limit": limit})
+    elif alert_id:
+        # The board's own filters live on /issues, which takes alert_id as one of them.
+        data = _get_json(ctx, "/api/issues", {"state": state, "limit": limit, "alert_id": alert_id, **extra})
     else:
-        data = _get_json(ctx, "/api/issues", {"state": state, "limit": limit})
+        data = _get_json(ctx, "/api/issues", {"state": state, "limit": limit, **extra})
     return [Incident.from_dict(i) for i in (data if isinstance(data, list) else [])]
 
 
-def count_incidents(ctx: ClientContext, *, state: Optional[str] = None) -> int:
+def count_incidents(
+    ctx: ClientContext, *, state: Optional[str] = None, filters: Optional[Dict[str, Any]] = None,
+) -> int:
     """GET /api/issues/count — {count}."""
-    data = _get_json(ctx, "/api/issues/count", {"state": state})
+    extra = {k: v for k, v in (filters or {}).items() if v is not None}
+    data = _get_json(ctx, "/api/issues/count", {"state": state, **extra})
     if not isinstance(data, dict):
         return 0
     try:
@@ -1502,6 +1709,8 @@ def agent_chat_oneshot(
     conversation_id: Optional[str] = None,
     page_context: Optional[str] = None,
     model: Optional[str] = None,
+    on_ask_user: Optional[Callable[[Dict[str, Any]], None]] = None,
+    on_artifact: Optional[Callable[[Dict[str, Any]], None]] = None,
 ) -> Dict[str, Any]:
     """POST /api/agent/chat — accumulate the streamed answer.
 
@@ -1521,20 +1730,32 @@ def agent_chat_oneshot(
         body["pageContext"] = page_context
     if model:
         body["model"] = model
+    if on_artifact:
+        body["pageActions"] = [{"action": "open_artifact"}, {"action": "home"}]
     parts: List[str] = []
     tools: List[str] = []
     interrupted = False
     error: Optional[str] = None
-    for ev in _stream_sse(ctx, "/api/agent/chat", body):
+    for ev in cloud_stream(ctx, "/api/agent/chat", body):
         kind = ev.get("type")
         if kind == "text-delta":
             parts.append(str(ev.get("text", "")))
         elif kind == "tool-start":
             tools.append(str(ev.get("tool", "")))
         elif kind == "ask-user":
+            if on_ask_user and ev.get("callId"):
+                on_ask_user(ev)
+                continue
             interrupted = True
             error = str(ev.get("question") or "the assistant needs interactive input")
             break
+        elif kind == "ui-action" and on_artifact:
+            if ev.get("action") == "open_artifact" and isinstance(ev.get("artifact"), dict):
+                on_artifact(ev["artifact"])
+            elif ev.get("action") == "home" and isinstance(ev.get("home"), dict):
+                for block in ev["home"].get("blocks", []):
+                    if isinstance(block, dict):
+                        on_artifact(block)
         elif kind == "error":
             error = str(ev.get("message", "assistant error"))
         elif kind == "done":
@@ -1643,22 +1864,43 @@ def list_policies(ctx: ClientContext) -> List[PolicyVersion]:
 
 
 def publish_policy(
-    ctx: ClientContext, policy_id: str, source: str, description: str = ""
+    ctx: ClientContext,
+    policy_id: str,
+    source: Optional[str],
+    description: str = "",
+    *,
+    kind: Optional[str] = None,
+    semantic: Optional[List[Any]] = None,
 ) -> PolicyVersion:
     """POST /api/enforcement/policies — mints a NEW VERSION; never edits in place.
 
-    Refuses Jev fields a cloud policy never reads before anything is sent, here
-    because `policies publish` and `policies compose --publish` both route through
-    it — and regardless of `--no-verify`, which only skips the syntax check.
+    ``kind`` is ``regex`` (JavaScript ``source`` only — what an omitted kind
+    means to the server), ``jev`` (Jev declarations in ``semantic``, no
+    ``source``) or ``both`` (the two together: the JavaScript is reviewable by
+    exactly its own checks). ``authority``/``reviewedBy`` are derived by the
+    server from the kind and are never sent.
+
+    Refuses Jev fields in the JAVASCRIPT before anything is sent, here because
+    `policies publish` and `policies compose --publish` both route through it —
+    and regardless of `--no-verify`, which only skips the syntax check. Jev
+    checks belong in ``semantic``, where they take effect.
     """
-    problem = cloud_publish_problem(source)
+    problem = cloud_publish_problem(source or "")
     if problem:
         raise ApiError(
             f"{policy_id} cannot be published as a cloud policy: {problem}",
-            hint=("Jev checks ship in a failproofai pack — `failproofai publish` — where "
-                  "semanticPolicies.add and authority: \"reviewable\" take effect"),
+            hint=("put Jev checks in the policy's Jev declarations — `--kind both --semantic "
+                  "checks.json` — or ship them in a failproofai pack with `failproofai publish`"),
         )
-    body = {"id": policy_id, "source": source, "description": description}
+    body: Dict[str, Any] = {"id": policy_id, "description": description}
+    # `source` is omitted for a Jev-only policy: the server takes absent (or
+    # empty) as "no JavaScript", which is what a `jev` version is.
+    if source:
+        body["source"] = source
+    if kind is not None:
+        body["kind"] = kind
+    if semantic is not None:
+        body["semantic"] = semantic
     return PolicyVersion.from_dict(_post_json(ctx, "/api/enforcement/policies", body) or {})
 
 
@@ -1679,6 +1921,29 @@ def list_machines(ctx: ClientContext) -> List[Machine]:
     data = _get_json(ctx, "/api/enforcement/machines")
     items = data if isinstance(data, list) else data.get("machines", [])
     return [Machine.from_dict(m) for m in items]
+
+
+def machine_agents(ctx: ClientContext, machine_id: str) -> List[Dict[str, Any]]:
+    """GET /api/enforcement/machines/{id}/agents — the agent profiles the daemon
+    last reported: `[{instanceId, integration, profileLabel, scope, ...}]`."""
+    data = _get_json(ctx, f"/api/enforcement/machines/{machine_id}/agents")
+    items = data if isinstance(data, list) else (data or {}).get("agents", [])
+    return [a for a in items if isinstance(a, dict)]
+
+
+def agent_labels(ctx: ClientContext, machine_id: str) -> Dict[str, str]:
+    """`{instanceId: profileLabel}` for one machine, or `{}` when unavailable.
+
+    Best effort on purpose: it only names the `agt_…` ids an exact-profile
+    assignment carries. A server without the roster route, or a machine that
+    never reported one, falls back to the bare id rather than failing the view.
+    """
+    try:
+        agents = machine_agents(ctx, machine_id)
+    except Exception:  # noqa: BLE001 — a missing label must never fail the read
+        return {}
+    return {str(a["instanceId"]): str(a["profileLabel"])
+            for a in agents if a.get("instanceId") and a.get("profileLabel")}
 
 
 def rename_machine(ctx: ClientContext, machine_id: str, label: str) -> Dict[str, Any]:
@@ -1708,11 +1973,16 @@ def get_deployment(ctx: ClientContext, machine_id: str) -> Optional[Deployment]:
 
 
 def deploy_policies(
-    ctx: ClientContext, machine_id: str, policies: Sequence[PolicyRef]
+    ctx: ClientContext,
+    machine_id: str,
+    policies: Sequence[PolicyRef],
 ) -> Deployment:
-    """PUT /api/enforcement/deployments/{id} — REPLACES the machine's whole set."""
+    """PUT /api/enforcement/deployments/{id} — REPLACES the machine's whole set.
+
+    Never carries a Jev mode: FailproofAI Cloud derives it from the set.
+    """
     path = f"/api/enforcement/deployments/{machine_id}"
-    body = {"policies": [p.to_dict() for p in policies]}
+    body: Dict[str, Any] = {"policies": [p.to_dict() for p in policies]}
     return Deployment.from_dict(_request_json(ctx, "PUT", path, json_body=body) or {})
 
 

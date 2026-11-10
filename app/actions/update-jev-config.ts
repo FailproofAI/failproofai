@@ -10,7 +10,7 @@
  * `writeJsonAtomically` the CLI's `jev setup` calls, with the same
  * `{ mode: 0o600, dirMode: 0o700 }`, after the same `validateJevConfig` the
  * loader itself runs. Nothing here re-states a rule that lives in
- * `jev-config.ts`: not the URL scheme, not "plain http only in observe mode",
+ * `jev-config.ts`: not the URL scheme, not "plain http to loopback only",
  * not "cloudflare needs an account id". A second copy of those rules is how the
  * dashboard ends up writing a file the hooks then refuse — the exact failure
  * mode this module exists to avoid.
@@ -101,6 +101,7 @@ import { chmodSync, existsSync, statSync, unlinkSync } from "node:fs";
 import { dirname } from "node:path";
 import { headers } from "next/headers";
 import { writeJsonAtomically } from "@/lib/atomic-write";
+import { CLOUD_MANAGED_JEV_MODE, cloudManagesJevMode } from "@/src/hooks/fp-config";
 import {
   hostnameFromHostHeader,
   isLoopbackHostname,
@@ -475,8 +476,8 @@ export async function saveJevConfigAction(input: JevConfigInput): Promise<JevWri
  * endpoint and the provider are exactly what they were. It is written the way
  * every other write here is (`writeJsonAtomically`, 0600, owner-only
  * directory), after the loader's own validator has checked the result with
- * stand-ins in the key slots, so `enforce` is refused where the loader would
- * refuse it (plain http to localhost) rather than written and then ignored.
+ * stand-ins in the key slots, so a mode the loader would refuse is refused
+ * here rather than written and then ignored.
  *
  * Refused for a file the loader calls too open: someone else may have written
  * the endpoint it names, and re-saving it at 0600 would start trusting that
@@ -489,6 +490,7 @@ export async function setJevModeAction(requested: string): Promise<JevWriteResul
   if (mode === null) {
     return { ok: false, problem: 'mode must be "off", "observe" or "enforce".' };
   }
+  if (cloudManagesJevMode()) return { ok: false, problem: CLOUD_MANAGED_JEV_MODE };
 
   const existingFile = readJevConfigFileForUpdate();
   if (existingFile === null) {

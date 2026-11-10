@@ -188,7 +188,8 @@ describe("a server with no introspect endpoint", () => {
   it("omits the org rather than guessing one from the URL", async () => {
     // One deployment hosts many orgs — the host says nothing about which.
     await connect(introspecting({ kind: "unsupported" }));
-    expect(readCredentials().org).toBeUndefined();
+    expect(readCredentials().org?.id).toBeUndefined();
+    expect(readCredentials().org?.since).toBeUndefined();
   });
 
   it("also falls back when introspect is unreachable", async () => {

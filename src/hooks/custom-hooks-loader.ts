@@ -176,7 +176,7 @@ async function importWithDeadline(fileUrl: string): Promise<void> {
  * Does NOT clear the registry — caller is responsible for that.
  */
 export interface PolicyLoadFailure {
-  type: "module_not_found" | "syntax_error" | "load_timeout" | "runtime_error" | "path_missing";
+  type: "module_not_found" | "file_not_found" | "syntax_error" | "load_timeout" | "runtime_error" | "path_missing";
   reason: string;
 }
 
@@ -250,8 +250,13 @@ async function loadSingleFile(
     return null;
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
-    const errorType = /Cannot find module|MODULE_NOT_FOUND|ENOENT/i.test(msg)
+    // An import that names no module, apart from a file the policy itself
+    // reads at load (a `readFileSync` of its data): both are ENOENT underneath,
+    // but "module not found" sent people looking for a missing package (B13).
+    const errorType = /Cannot find module|MODULE_NOT_FOUND|Cannot find package/i.test(msg)
       ? "module_not_found"
+      : /ENOENT/i.test(msg)
+        ? "file_not_found"
       : /SyntaxError|Unexpected token/i.test(msg)
         ? "syntax_error"
         : /timed out loading module/i.test(msg)
@@ -334,6 +339,13 @@ export interface LoadAllResult {
    * Only present for a path more than one pack resolved to.
    */
   packAliases: Map<string, string[]>;
+  /**
+   * Import failures of FailproofAI Cloud JS policies, keyed by Cloud policy id
+   * (every id behind a shared artifact). Fail-open like the rest of the Cloud
+   * read — nothing denies over them — but reported to Cloud in `errors.json`,
+   * so a deployment that is not actually enforcing says so.
+   */
+  cloudFailures?: Map<string, PolicyLoadFailure>;
 }
 
 export function customPolicyId(file: string, name: string): string {
@@ -456,8 +468,12 @@ export async function loadAllCustomHooks(
   // codebase exists to remove. It is also announced, so an operator can give the
   // two policies distinguishable source instead of living with the merge.
   const cloudManagedByPath = new Map<string, CloudManagedPolicyArtifact>();
+  /** Every Cloud policy id behind each artifact path, for `cloudFailures`. */
+  const cloudIdsByPath = new Map<string, string[]>();
+  const cloudFailures = new Map<string, PolicyLoadFailure>();
   for (const policy of opts?.cloudManagedPolicies ?? []) {
     const key = resolve(policy.path);
+    cloudIdsByPath.set(key, [...(cloudIdsByPath.get(key) ?? []), policy.id]);
     const existing = cloudManagedByPath.get(key);
     if (!existing) {
       cloudManagedByPath.set(key, policy);
@@ -660,6 +676,9 @@ export async function loadAllCustomHooks(
         if (failure && pack) {
           for (const id of packIdsByPath.get(absPath) ?? [pack.id]) packFailures.set(id, failure);
         }
+        if (failure && cloudManaged) {
+          for (const id of cloudIdsByPath.get(absPath) ?? [cloudManaged.id]) cloudFailures.set(id, failure);
+        }
         for (const hook of getCustomHooks().slice(hooksBefore)) {
           const tagged = hook as CustomHook & {
             __policyId?: string;
@@ -680,6 +699,10 @@ export async function loadAllCustomHooks(
       }
     } else {
       hookLogWarn(`custom policy path not found: ${absPath}`);
+      if (cloudManaged) {
+        const missing = { type: "path_missing", reason: `path missing: ${absPath}` } as const;
+        for (const id of cloudIdsByPath.get(absPath) ?? [cloudManaged.id]) cloudFailures.set(id, missing);
+      }
       if (pack) {
         const missing = { type: "path_missing", reason: `path missing: ${absPath}` } as const;
         for (const id of packIdsByPath.get(absPath) ?? [pack.id]) packFailures.set(id, missing);
@@ -830,5 +853,5 @@ export async function loadAllCustomHooks(
     const winner = packByPath.get(path);
     if (winner && ids.length > 1) packAliases.set(winner.id, ids);
   }
-  return { hooks: allHooks, conventionSources, packFailures, packAliases };
+  return { hooks: allHooks, conventionSources, packFailures, packAliases, cloudFailures };
 }

@@ -13,18 +13,35 @@ import { spawn } from "node:child_process";
 const POLL_INTERVAL_MS = 150;
 const POLL_TIMEOUT_MS = 30_000;
 
+/**
+ * Whether opening a browser here can put a page in front of the person.
+ *
+ * False over SSH — `xdg-open` would start a browser on the REMOTE machine, or
+ * fail, while the person is looking at their own screen — and on a Linux box
+ * with no display at all (a container, a server). Callers then print the link,
+ * which works from any device. A guess, not a promise: a false positive costs a
+ * browser that does not appear next to a link that is printed anyway.
+ */
+export function canOpenBrowser(
+  env: NodeJS.ProcessEnv = process.env,
+  platform: NodeJS.Platform = process.platform,
+): boolean {
+  if (env.SSH_CONNECTION || env.SSH_CLIENT || env.SSH_TTY) return false;
+  if (platform === "linux" && !env.DISPLAY && !env.WAYLAND_DISPLAY) return false;
+  return true;
+}
+
 /** Open a URL with the platform's default handler. Never throws. */
-function openUrl(url: string): void {
+export function openUrl(url: string, platform: NodeJS.Platform = process.platform): void {
   let cmd: string;
   let args: string[];
-  if (process.platform === "darwin") {
+  if (platform === "darwin") {
     cmd = "open";
     args = [url];
-  } else if (process.platform === "win32") {
-    // `start` is a cmd builtin; the empty "" is the (required) window-title arg
-    // so a URL containing `&` or spaces isn't mis-parsed as the title.
-    cmd = "cmd";
-    args = ["/c", "start", "", url];
+  } else if (platform === "win32") {
+    // ShellExecute via rundll32 avoids interpreting URL characters as cmd.exe syntax.
+    cmd = "rundll32.exe";
+    args = ["url.dll,FileProtocolHandler", url];
   } else {
     cmd = "xdg-open";
     args = [url];

@@ -252,9 +252,6 @@ MIT עם [Commons Clause](https://commonsclause.com/) — חינם לשימוש 
 
 ראה [CONTRIBUTING.md](../../CONTRIBUTING.md). מדיניויות חדשות, מקרי קצה, ותרגומים כולם מוזמנים.
 
-> **בנה לפני שתתחיל.** הרץ `bun install && bun run build` קודם. מחסן זה מריץ את הווי שלו failproofai על עצמו, והם פותרים את `failproofai` import כנגד ה-bundle המתורגל `dist/` — ללא בנייה תיפגע `Cannot find package 'failproofai'` שגיאות ווי. בנייה מחדש לאחר שינוי `src/`. ראה
-> [בנה לפני שהווי התוך-מחסן יעבדו](../../CONTRIBUTING.md#build-before-the-in-repo-dev-hooks-will-work).
-
 ---
 
 בנוי עם ❤️ על ידי [befailproof.ai](https://befailproof.ai) ב-SF ובנגלור.

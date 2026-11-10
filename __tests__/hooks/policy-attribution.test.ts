@@ -19,7 +19,15 @@ vi.mock("../../src/hooks/policy-registry", () => ({
   getPoliciesForEvent: vi.fn(() => []),
 }));
 vi.mock("../../src/hooks/custom-hooks-loader", () => ({ loadAllCustomHooks: vi.fn() }));
-vi.mock("../../src/hooks/cloud-managed-policies", () => ({ readActiveCloudManagedPolicies: vi.fn(() => []) }));
+// Every reader of `active.json` stubbed, for the same isolation reason as
+// `pack-manifest` below; the pure helpers stay real.
+vi.mock("../../src/hooks/cloud-managed-policies", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../../src/hooks/cloud-managed-policies")>()),
+  readActiveCloudManagedPolicies: vi.fn(() => []),
+  readCloudJevMode: vi.fn(() => null),
+  readCloudJevState: vi.fn(() => ({ jevMode: null, deployment: null, errors: [] })),
+  readCloudAuthorityInputs: vi.fn(() => []),
+}));
 vi.mock("../../src/hooks/hook-activity-store", () => ({ persistHookActivity: vi.fn() }));
 vi.mock("../../src/hooks/policy-evaluator", () => ({ evaluatePolicies: vi.fn() }));
 vi.mock("../../src/hooks/hook-telemetry", () => ({
@@ -29,6 +37,13 @@ vi.mock("../../src/hooks/hook-telemetry", () => ({
 vi.mock("../../lib/telemetry-id", () => ({ getInstanceId: vi.fn(() => "test-id") }));
 vi.mock("../../src/hooks/hook-logger", () => ({
   hookLogInfo: vi.fn(), hookLogWarn: vi.fn(), hookLogError: vi.fn(),
+}));
+vi.mock("../../src/hooks/untraced-note", () => ({
+  // Unmocked, the handler's once-per-session note reads the REAL
+  // ~/.failproofai/config.json and, when it leaves this agent untraced, writes
+  // state/untraced-notes.json there. The note decides nothing, so mocking it
+  // changes no outcome here.
+  noteUntracedAgent: vi.fn(() => false),
 }));
 vi.mock("../../src/hooks/pack-manifest", () => ({
   // Isolation, not convenience: unmocked, `readInstalledPacks` reads the REAL

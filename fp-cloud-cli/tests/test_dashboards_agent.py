@@ -171,7 +171,7 @@ def test_agent_health_renders_configured_card(logged_in, runner):
     result = runner.invoke(app, ["agent", "health"])
     assert result.exit_code == 0, result.output
     out = result.stdout
-    assert "assistant" in out and "configured" in out and "claude-x" in out
+    assert "ASSISTANT" in out and "configured" in out and "claude-x" in out
 
 
 @respx.mock
@@ -192,7 +192,7 @@ def test_agent_models_renders_default_marker(logged_in, runner):
     result = runner.invoke(app, ["agent", "models"])
     assert result.exit_code == 0, result.output
     out = result.stdout
-    assert "models" in out and "m-default" in out and "m-fast" in out and "default" in out
+    assert "MODELS" in out and "m-default" in out and "m-fast" in out and "default" in out
 
 
 @respx.mock
@@ -213,7 +213,7 @@ def test_agent_chats_renders_table(logged_in, runner):
     )
     result = runner.invoke(app, ["agent", "chats"])
     assert result.exit_code == 0, result.output
-    assert "chats" in result.stdout and "perf review" in result.stdout
+    assert "CHATS" in result.stdout and "perf review" in result.stdout
     assert "chat-id" in result.stdout and "c1" in result.stdout  # full chat-id column by default
     assert "open one with" not in (result.stderr or "")           # footer removed
 

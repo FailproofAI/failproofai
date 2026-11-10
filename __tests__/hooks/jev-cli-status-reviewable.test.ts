@@ -134,7 +134,8 @@ describe("failproofai jev status — what Jev may clear", () => {
     const r = await runJevCommand(["status"], RENDER);
     expect(r.exitCode).toBe(0);
     const out = text(r);
-    expect(out).toContain("Jev is off");
+    // The status row says it, in the redesign's `label  ○ value` shape.
+    expect(out).toContain("status ○ off: there is no");
     expect(out).not.toContain("reviewable");
     expect(out).not.toContain(RETAKE_PACK_COMMAND);
 

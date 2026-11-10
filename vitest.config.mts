@@ -41,6 +41,10 @@ export default defineConfig({
     css: false,
     env: {
       FAILPROOFAI_TELEMETRY_DISABLED: "1",
+      // Never Codex's real system config (/etc/codex/config.toml): a machine
+      // with passwordless sudo and codex on PATH would have it rewritten by any
+      // test that installs Codex hooks. Tests that exercise it set a temp path.
+      FAILPROOFAI_CODEX_SYSTEM_CONFIG: "off",
     },
     projects: [
       {

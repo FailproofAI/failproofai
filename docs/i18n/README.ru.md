@@ -252,8 +252,6 @@ MIT с [Commons Clause](https://commonsclause.com/) — бесплатно дл�
 
 См. [CONTRIBUTING.md](../../CONTRIBUTING.md). Новые политики, граничные случаи и переводы приветствуются.
 
-> **Постройте перед началом.** Сначала запустите `bun install && bun run build`. Этот репозиторий запускает собственные подключения failproofai на себя, и они разрешают импорт `failproofai` против скомпилированного пакета `dist/` — без сборки вы получите ошибки подключений `Cannot find package 'failproofai'`. Пересоберите после изменения `src/`. См. [Постройте перед тем, как внутрирепозиторные подключения девелопмента будут работать](../../CONTRIBUTING.md#build-before-the-in-repo-dev-hooks-will-work).
-
 ---
 
 Создано с ❤️ от [befailproof.ai](https://befailproof.ai) в Сан-Франциско и Бенгалуру.

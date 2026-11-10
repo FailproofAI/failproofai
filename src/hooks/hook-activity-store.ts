@@ -24,7 +24,7 @@ import {
 import { join } from "node:path";
 import type { IntegrationType } from "./types";
 import { hookActivityDir } from "./fp-home";
-import { sanitizeJevActivity } from "./jev-activity";
+import { sanitizeJevActivity, type JevCheckRecord } from "./jev-activity";
 
 export const PAGE_SIZE = 25;
 
@@ -107,6 +107,12 @@ export interface HookActivityEntry {
   jevModel?: string;
   /** `observe` logs Jev but enforces the regex result; `enforce` applies the combine rules. */
   jevMode?: "observe" | "enforce";
+  /**
+   * Every Jev check asked on an answered call and what it concluded (verdict,
+   * why, evidence, exempt and probe answers) — names, codes and numbers only.
+   * `[]`: the request carried no check, so Jev decided nothing (`no-request`).
+   */
+  jevChecks?: JevCheckRecord[];
   durationMs: number;
   sessionId?: string;
   transcriptPath?: string;

@@ -17,9 +17,12 @@ pub mod delivery;
 pub mod extra_paths;
 pub mod filetail;
 pub mod health;
+pub mod org_boundary;
+pub mod otlp;
 pub mod redact;
 pub mod sources;
 pub mod spool;
+#[cfg(feature = "sqlite")]
 pub mod sqlitepoll;
 pub mod supervisor;
 #[cfg(test)]
@@ -27,7 +30,8 @@ mod test_env;
 pub mod uploader;
 
 pub use config::{
-    CollectorConfig, DEFAULT_INGEST_URL, HooksVerbosity, Ingest, Redact, Settings, SourceSettings,
+    AgentSelection, CollectorConfig, DEFAULT_INGEST_URL, HooksVerbosity, Ingest, Redact, Settings,
+    SourceSettings,
 };
 pub use delivery::Delivery;
 pub use extra_paths::{ExtraPath, Resolved as ResolvedExtraPaths};

@@ -13,9 +13,7 @@
  * This is not hypothetical. Before this file existed, README.md advertised "30
  * built-in policies" in three places and the landing site's schema.org block said
  * 39 — while the real count was 40, and had been for some time. Both were
- * hand-maintained, nothing read them, so both rotted silently. Same failure mode
- * __tests__/hooks/dogfood-configs.test.ts was written to catch for the dogfood
- * configs.
+ * hand-maintained, nothing read them, so both rotted silently.
  *
  * It also guards the two claims most likely to be caught out by a reader: that
  * the twelve are TWO classes (ten coding CLIs, two gateways) with the Python SDK

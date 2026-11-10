@@ -81,6 +81,26 @@
  * Known limits.)
  *
  * Text inside a tool call claiming "the user approved this" is never consulted.
+ *
+ * WHOSE SESSION IT IS. Prompts are stored per AGENT PROFILE and session id
+ * (`sessions/<profile>/<sessionId>.json`), the profile being the runtime agent
+ * identity FailproofAI Cloud's agent targeting uses (`AgentIdentity`, read by
+ * the handler from the daemon's roster) — `<integration>.<instanceId>`, or the
+ * bare integration name when the profile has no rostered identity. Session ids
+ * are chosen by the harness, not by us, so two profiles can submit the same
+ * one; keyed by session id alone, a prompt typed into a profile a Cloud Jev
+ * deployment does NOT target could be read back as the stated intent of one it
+ * does, and clear a reviewable deny there. The hook path always names the
+ * profile on both sides (`captureIntent`'s `profile`, `readIntent`'s), so a
+ * prompt is only ever read by the profile it was typed into.
+ *
+ * The flat `sessions/<sessionId>.json` layout that came before is the store a
+ * caller that names NO profile still reads and writes (library and test use).
+ * The hook path never reads it: such a file cannot say which profile wrote it,
+ * so a pre-upgrade entry is ignored rather than guessed at, and expires under
+ * the six-hour sweep like any other. The cost is bounded and fail-closed: a
+ * session in flight across the upgrade judges with no stated intent until its
+ * next prompt is recorded.
  */
 import {
   chmodSync,
@@ -99,6 +119,7 @@ import { dirname, resolve } from "node:path";
 import { failproofaiHome, semanticDir } from "../fp-home";
 import type { IntegrationType } from "../types";
 import { MAX_USER_MESSAGE_CHARS, redactSecrets } from "./envelope";
+import { validAgentIdentity, type AgentIdentity } from "../agent-targets";
 
 export const MAX_RECORDED_PROMPTS = 5;
 /** Older than this and a prompt no longer describes what the agent is doing. */
@@ -109,7 +130,51 @@ const MAX_CLOCK_SKEW_MS = 5 * 60 * 1000;
 const SESSION_ID_RE = /^[A-Za-z0-9._-]{1,128}$/;
 
 const sessionsDir = (): string => resolve(semanticDir(), "sessions");
-const intentFile = (sessionId: string): string => resolve(sessionsDir(), `${sessionId}.json`);
+
+/**
+ * The agent profile a prompt belongs to: the harness, and the runtime agent
+ * identity the handler resolved for it (`readRuntimeAgentIdentity`) — the same
+ * identity Cloud Jev's agent targeting matches on. `agent` null or absent is a
+ * profile with no rostered identity, which targeting treats as "unknown" and
+ * which is kept apart from every rostered one.
+ */
+export interface IntentProfile {
+  cli: string;
+  agent?: AgentIdentity | null;
+}
+
+/** A profile directory's name: `<integration>` or `<integration>.agt_<hex>`. */
+const PROFILE_DIR_RE = /^[a-z]+(?:\.agt_[0-9a-f]{16,32})?$/;
+
+/**
+ * The directory name a profile's prompts live under, or null when the profile
+ * cannot be named (an unknown harness): nothing is then recorded or read.
+ * Injective: integration names are lowercase letters and instance ids carry
+ * their own `agt_` prefix, so no two profiles share a directory.
+ */
+export function intentProfileKey(profile: IntentProfile): string | null {
+  if (validAgentIdentity(profile.agent)) return `${profile.agent.integration}.${profile.agent.instanceId}`;
+  return isKnownCli(profile.cli) ? profile.cli : null;
+}
+
+/** Where one session's prompts are kept: the directory and the file in it. */
+interface StoreSlot {
+  dir: string;
+  file: string;
+}
+
+/**
+ * The slot for `sessionId` under `profile`. No profile at all (`undefined`) is
+ * the flat, pre-profile layout — never used by the hook path (see the header).
+ * A profile that cannot be named has no slot.
+ */
+function storeSlot(sessionId: string, profile: IntentProfile | undefined): StoreSlot | null {
+  if (profile === undefined) return { dir: sessionsDir(), file: resolve(sessionsDir(), `${sessionId}.json`) };
+  const key = intentProfileKey(profile);
+  if (key === null || !PROFILE_DIR_RE.test(key)) return null;
+  const dir = resolve(sessionsDir(), key);
+  return { dir, file: resolve(dir, `${sessionId}.json`) };
+}
 
 /**
  * Group- or world-WRITE bits on a directory the store sits under. Anyone who
@@ -140,11 +205,11 @@ function modesAreMeaningful(): boolean {
  * (`fpai-collect`'s `create_dir_all`) and arrives at the umask, which on a
  * umask-002 box is 0775.
  */
-function storeDirChain(): string[] {
+function storeDirChain(innermost: string = sessionsDir()): string[] {
   const home = resolve(failproofaiHome());
   const chain: string[] = [];
-  let dir = sessionsDir();
-  // Bounded: the chain is four deep, and a home that is not an ancestor (a
+  let dir = innermost;
+  // Bounded: the chain is five deep, and a home that is not an ancestor (a
   // layout change, a symlink) must not walk to the filesystem root.
   for (let i = 0; i < 8; i++) {
     chain.push(dir);
@@ -172,11 +237,12 @@ function storeDirChain(): string[] {
  * human's and could clear the four reviewable BLOCKING policies.
  *
  * Exported so `failproofai jev status` can report it the way it reports a
- * refused config.
+ * refused config. `innermost` is a profile's directory when the read is for
+ * one, so that directory is held to the same rule.
  */
-export function looseIntentStoreDir(): string | null {
+export function looseIntentStoreDir(innermost?: string): string | null {
   if (!modesAreMeaningful()) return null;
-  for (const dir of storeDirChain()) {
+  for (const dir of storeDirChain(innermost)) {
     let mode: number;
     try {
       mode = statSync(dir).mode & 0o777;
@@ -207,9 +273,9 @@ interface IntentFile {
   prompts: RecordedPrompt[];
 }
 
-function readIntentFile(sessionId: string): IntentFile {
+function readIntentFile(slot: StoreSlot): IntentFile {
   try {
-    const parsed = JSON.parse(readFileSync(intentFile(sessionId), "utf8")) as IntentFile;
+    const parsed = JSON.parse(readFileSync(slot.file, "utf8")) as IntentFile;
     return Array.isArray(parsed?.prompts) ? parsed : { prompts: [] };
   } catch {
     return { prompts: [] };
@@ -228,15 +294,14 @@ function readIntentFile(sessionId: string): IntentFile {
  * copies of one line. The replacement carries the new timestamp and the new
  * agent snapshot, so the entry stays the latest thing the human said.
  */
-function appendPrompt(sessionId: string, entry: RecordedPrompt): boolean {
+function appendPrompt(slot: StoreSlot, entry: RecordedPrompt): boolean {
   try {
-    const file = readIntentFile(sessionId);
+    const file = readIntentFile(slot);
     const last = file.prompts[file.prompts.length - 1];
     const kept = last && last.text === entry.text ? file.prompts.slice(0, -1) : file.prompts;
     file.prompts = [...kept, entry].slice(-MAX_RECORDED_PROMPTS);
-    const dir = sessionsDir();
-    mkdirSync(dir, { recursive: true, mode: 0o700 });
-    const target = intentFile(sessionId);
+    mkdirSync(slot.dir, { recursive: true, mode: 0o700 });
+    const target = slot.file;
     const isNew = !fileExists(target);
     const tmp = `${target}.${process.pid}.tmp`;
     writeFileSync(tmp, JSON.stringify(file), { mode: 0o600 });
@@ -265,12 +330,31 @@ const SESSION_FILE_RE = /^[A-Za-z0-9._-]{1,128}\.json(?:\.\d+\.tmp)?$/;
  * file's mtime is its newest recorded prompt's, so every prompt in such a
  * file is already outside the window every read filters by and can never be
  * read again. Removing it loses nothing and keeps one-file-per-session from
- * growing without bound.
+ * growing without bound. Swept: the flat layout's files (pre-profile entries
+ * among them) and every profile directory's, one level down.
  */
 export function pruneExpiredSessions(now: number = Date.now()): number {
+  const root = sessionsDir();
+  let removed = pruneDir(root, now);
+  try {
+    for (const name of readdirSync(root)) {
+      if (!PROFILE_DIR_RE.test(name)) continue;
+      const dir = resolve(root, name);
+      try {
+        if (statSync(dir).isDirectory()) removed += pruneDir(dir, now);
+      } catch {
+        // Raced with something else: nothing to do.
+      }
+    }
+  } catch {
+    // No directory yet.
+  }
+  return removed;
+}
+
+function pruneDir(dir: string, now: number): number {
   let removed = 0;
   try {
-    const dir = sessionsDir();
     for (const name of readdirSync(dir)) {
       if (!SESSION_FILE_RE.test(name)) continue;
       const path = resolve(dir, name);
@@ -301,11 +385,19 @@ export function pruneExpiredSessions(now: number = Date.now()): number {
  * leave half a secret the patterns no longer match. Never throws: losing intent
  * only means no override.
  */
-function recordPrompt(sessionId: string, prompt: string, agent: string | null, now: number): boolean {
+function recordPrompt(
+  sessionId: string,
+  profile: IntentProfile | undefined,
+  prompt: string,
+  agent: string | null,
+  now: number,
+): boolean {
   if (!SESSION_ID_RE.test(sessionId)) return false;
   if (prompt.trim().length === 0) return false;
+  const slot = storeSlot(sessionId, profile);
+  if (!slot) return false;
   try {
-    return appendPrompt(sessionId, { at: now, text: storable(prompt.trim()), agent: agent === null ? null : storable(agent) });
+    return appendPrompt(slot, { at: now, text: storable(prompt.trim()), agent: agent === null ? null : storable(agent) });
   } catch {
     return false;
   }
@@ -319,10 +411,12 @@ function recordPrompt(sessionId: string, prompt: string, agent: string | null, n
  * still asked, and judges with no stated intent, so no reviewable deny is
  * cleared on a prompt we cannot say is the owner's.
  */
-function livePrompts(sessionId: string | undefined, now: number): RecordedPrompt[] {
+function livePrompts(sessionId: string | undefined, now: number, profile: IntentProfile | undefined): RecordedPrompt[] {
   if (!sessionId || !SESSION_ID_RE.test(sessionId)) return [];
-  if (looseIntentStoreDir() !== null) return [];
-  return readIntentFile(sessionId).prompts.filter(
+  const slot = storeSlot(sessionId, profile);
+  if (!slot) return [];
+  if (looseIntentStoreDir(slot.dir) !== null) return [];
+  return readIntentFile(slot).prompts.filter(
     (p) =>
       typeof p?.text === "string" &&
       typeof p.at === "number" &&
@@ -839,6 +933,13 @@ export interface CaptureEvent {
   cli: string;
   /** The stdin payload after `normalizeCliPayload`: the handler's `parsed`. */
   payload: Record<string, unknown>;
+  /**
+   * The agent profile the prompt was typed into. The hook path always sets it
+   * (the agent null when the profile has no rostered identity), and the prompt
+   * is then readable only under that same profile. Absent is the flat layout
+   * (see the header).
+   */
+  profile?: IntentProfile;
 }
 
 function isKnownCli(cli: string): cli is IntegrationType {
@@ -1167,7 +1268,7 @@ export function captureIntent(ev: CaptureEvent, now: number = Date.now()): void 
     if (raw === null) return;
     const cleaned = cleanHumanTurn(raw);
     if (cleaned === null) return;
-    recordPrompt(sessionId, cleaned, lastAgentMessage(ev.transcriptPath), now);
+    recordPrompt(sessionId, ev.profile, cleaned, lastAgentMessage(ev.transcriptPath), now);
   } catch {
     // Losing intent only means Jev judges without it.
   }
@@ -1177,13 +1278,15 @@ export function captureIntent(ev: CaptureEvent, now: number = Date.now()): void 
  * What the human asked for recently (oldest first, at most
  * `MAX_RECORDED_PROMPTS`, none older than `INTENT_MAX_AGE_MS`) and the agent
  * message their latest prompt replied to — null when that prompt had none or
- * nothing is recorded.
+ * nothing is recorded. Read under `profile`, the one the prompts were captured
+ * under; the hook path always passes it (see the header).
  */
 export function readIntent(
   sessionId?: string,
   now: number = Date.now(),
+  profile?: IntentProfile,
 ): { userSaid: string[]; agentLastMessage: string | null } {
-  const prompts = livePrompts(sessionId, now);
+  const prompts = livePrompts(sessionId, now, profile);
   const latest = prompts[prompts.length - 1];
   const agent = latest && typeof latest.agent === "string" && latest.agent.length > 0 ? latest.agent : null;
   return { userSaid: prompts.map((p) => p.text), agentLastMessage: agent };

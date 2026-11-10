@@ -10,7 +10,7 @@ on:
   # it produced was the daemon cross-compile, and only because it touched
   # `crates/`. A PR that cannot go red is not a reviewed PR.
   pull_request:
-    branches: [main, feat/fp-cli]
+    branches: [main, staging, feat/fp-cli, feat/tui-ux]
 
 concurrency:
   group: ci-${{ github.ref }}
@@ -266,6 +266,13 @@ jobs:
         if: steps.crates.outputs.present == 'true'
         run: cargo clippy --workspace --all-targets -- -D warnings
 
+      # AgentEye's server depends on fpai-collect WITHOUT the `sqlite` feature
+      # (its sqlx links a different libsqlite3-sys). The workspace build always
+      # has the feature on, so nothing else here would notice that shape break.
+      - name: cargo clippy (fpai-collect without sqlite)
+        if: steps.crates.outputs.present == 'true'
+        run: cargo clippy -p fpai-collect --no-default-features --all-targets -- -D warnings
+
       - name: cargo test
         if: steps.crates.outputs.present == 'true'
         run: cargo test --workspace
@@ -350,14 +357,14 @@ jobs:
   # component, sibling of fp-cloud-cli above, and deliberately its own job: it shares no
   # lockfile, no dependencies and no release cadence with the CLI.
   #
-  # The matrix is wider than fp-cloud-cli's two versions on purpose. This package declares
+  # The matrix spans the whole supported range on purpose. This package declares
   # no dependencies at all, so it has no third-party floor quietly constraining which
   # interpreters it is really exercised on — and it is installed into other people's
   # agent processes, whose Python version we do not choose. Every version
   # requires-python advertises is tested.
   failproofai-sdk:
     runs-on: ubuntu-latest
-    # the same, across five — every version requires-python advertises; the bound exists so a stalled
+    # the same, across four — every version requires-python advertises; the bound exists so a stalled
     # package mirror cannot hold a release for six hours (#726).
     timeout-minutes: 10
     defaults:
@@ -366,7 +373,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        python-version: ["3.10", "3.11", "3.12", "3.13", "3.14"]
+        python-version: ["3.11", "3.12", "3.13", "3.14"]
     steps:
       - uses: actions/checkout@v7.0.1
 

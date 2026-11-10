@@ -236,7 +236,7 @@ import type { PolicyAuthority } from "../policy-types";
 // shape check the row's own `jevModel` does. Importing them makes a rename a
 // compile error here. `jev-activity.ts` is pure (no node imports, no semantic
 // modules), so this costs the hook path nothing.
-import { JEV_MODEL_RE, JEV_REASON_REQUEST_CUT } from "../jev-activity";
+import { JEV_MODEL_RE, JEV_REASON_REQUEST_CUT, type JevCheckRecord } from "../jev-activity";
 
 export type Decision = "allow" | "deny" | "instruct";
 export type JevMode = "observe" | "enforce";
@@ -288,6 +288,11 @@ export type JevReview =
       /** Semantic policies whose questions were in the request that was answered. */
       asked: readonly string[];
       /**
+       * What each asked check concluded (`jevChecks` on the activity row).
+       * Recorded only; nothing here decides from it. Absent: not recorded.
+       */
+      checks?: readonly JevCheckRecord[];
+      /**
        * Of `asked`, the ones whose answer lets a reviewable regex verdict be
        * cleared: `none`, `overridden`, or a deny the human's task softened to
        * an instruct. Neither a `deny` nor a warning nobody consented to is in
@@ -331,6 +336,14 @@ export type JevReview =
        */
       requestCut: boolean;
       /**
+       * What the checks of an `observe` FailproofAI Cloud assignment would have
+       * done. Recorded on the row's `observed` list, never applied: they are in
+       * neither `asked` nor `notDenied`, so they clear nothing either.
+       */
+      observedCloud?: ReadonlyArray<ObservedCloudVerdict>;
+      /** The `observe` Cloud assignments' checks that were asked (names); never in `asked`. */
+      observedAsked?: readonly string[];
+      /**
        * Null when nothing had to be sent (no semantic policy applied), or when
        * the answer came from the throttle's cache: a hit's ~0 ms is not a
        * provider latency.
@@ -358,6 +371,8 @@ export interface TwoTierReview {
    * network instead of holding every hook on the machine behind it.
    */
   releaseRegistry?: () => void;
+  /** The review goes to FailproofAI Cloud (its Jev mode asked), not a local `jev.json`. */
+  cloud?: boolean;
   /** Effective authority + the reviewing semantic policies (empty unless reviewable). */
   authorityOf(p: { name: string; authority?: PolicyAuthority; reviewedBy?: string[] }): {
     authority: PolicyAuthority;
@@ -380,6 +395,7 @@ export interface JevActivityFields {
   jevLatencyMs?: number;
   jevModel?: string;
   jevMode: JevMode;
+  jevChecks?: JevCheckRecord[];
 }
 
 /**
@@ -389,6 +405,14 @@ export interface JevActivityFields {
  * and pack policies already use, so FailproofAI Cloud's policy page counts it
  * with no change on its side.
  */
+/** One observe Cloud assignment's would-have (see `JevReview.observedCloud`). */
+export interface ObservedCloudVerdict {
+  cloudPolicyId: string;
+  cloudVersion: number;
+  decision: "deny" | "instruct";
+  reason: string;
+}
+
 export interface ObserveVerdict {
   /** `semantic/<check>` — the name enforce mode would have attributed it to. */
   policyName: string;
@@ -518,6 +542,7 @@ export function combineTwoTier(
     ...(review.latencyMs !== null ? { jevLatencyMs: review.latencyMs } : {}),
     ...(review.model ? { jevModel: review.model } : {}),
     jevMode: mode,
+    ...(review.checks ? { jevChecks: [...review.checks] } : {}),
   };
 
   if (mode === "observe") {

@@ -13,7 +13,7 @@
  * any machine where the daemon is required, while `systemctl status`, the
  * journal, and a hand-fired hook all said the daemon was fine.
  */
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, afterEach } from "vitest";
 import net from "node:net";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -59,8 +59,22 @@ describe("the worker accepts what the daemon sends", () => {
   let server: ReturnType<typeof startWorkerServer> | null = null;
   let sock: string;
 
+  // The worker runs the REAL handler in-process. On the default home every
+  // SessionStart below appended to the developer's real hook-activity log (the
+  // dashboard's decision history) and could write state/untraced-notes.json, so
+  // point both HOME and the failproofai home at the per-test directory.
+  const prior = { HOME: process.env.HOME, FAILPROOFAI_HOME: process.env.FAILPROOFAI_HOME };
+  afterEach(() => {
+    for (const [k, v] of Object.entries(prior)) {
+      if (v === undefined) delete process.env[k];
+      else process.env[k] = v;
+    }
+  });
+
   async function serve() {
     dir = mkdtempSync(resolve(tmpdir(), "fpai-wsock-"));
+    process.env.HOME = resolve(dir, "home");
+    process.env.FAILPROOFAI_HOME = resolve(dir, "home", ".failproofai");
     sock = resolve(dir, "worker.sock");
     server = startWorkerServer(sock);
     // `listen` is async; wait for the socket to exist before dialling it.

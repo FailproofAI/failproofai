@@ -4,7 +4,7 @@ import {
   multiSelect,
   ellipsize,
   summarize,
-  renderBrandLogo,
+
   promptText,
   type TTYIn,
   type TTYOut,
@@ -93,51 +93,6 @@ describe("tui text helpers", () => {
   it("summarize collapses many labels to a count plus a head", () => {
     const out = summarize(["A", "B", "C", "D", "E"], "assistants");
     expect(out).toBe("5 assistants · A, B, C +2");
-  });
-});
-
-describe("brand logomark", () => {
-  // The logo lines are the ones before the blank separator that precedes the
-  // wordmark. Colours are off here (not a TTY), so each cell is a bare block
-  // glyph and a run of them measures the mark's width in columns.
-  const logoRows = (cols = 80): string[][] => {
-    const lines = renderBrandLogo({
-      isTTY: false,
-      write: vi.fn(() => true),
-      columns: cols,
-    } as unknown as TTYOut);
-    const art = lines.slice(0, lines.indexOf(""));
-    return art.map((l) => l.match(/[█▀▄]+/g) ?? []);
-  };
-
-  // Regression: the right-hand bar once shipped a column narrower than the
-  // left, which read as a drawing mistake at every terminal size. In the source
-  // artwork both bars are the same width, so the narrowest left-hand run (the
-  // upright, excluding the wider cross) must equal the right-hand run.
-  it("draws both uprights the same width", () => {
-    const twoRun = logoRows().filter((runs) => runs.length === 2);
-    expect(twoRun.length).toBeGreaterThan(0);
-
-    const rightWidths = new Set(twoRun.map((r) => r[1].length));
-    expect(rightWidths.size).toBe(1); // the tall bar is a constant width
-
-    const leftUpright = Math.min(...twoRun.map((r) => r[0].length));
-    expect(leftUpright).toBe([...rightWidths][0]);
-  });
-
-  it("draws the cross wider than the upright it sits on", () => {
-    const twoRun = logoRows().filter((runs) => runs.length === 2);
-    const lefts = twoRun.map((r) => r[0].length);
-    expect(Math.max(...lefts)).toBeGreaterThan(Math.min(...lefts));
-  });
-
-  it("collapses to a single line on a narrow terminal", () => {
-    const lines = renderBrandLogo({
-      isTTY: false,
-      write: vi.fn(() => true),
-      columns: 21,
-    } as unknown as TTYOut);
-    expect(lines).toHaveLength(1);
   });
 });
 
@@ -358,5 +313,93 @@ describe("promptText validation errors stay within the terminal", () => {
   it("actually rendered an error row (the test would pass vacuously otherwise)", () => {
     const rows = rowsFor(80, "API key", "nope");
     expect(rows.length).toBeGreaterThan(1);
+  });
+});
+
+// ── the 2026-10 field ────────────────────────────────────────────────────────
+//
+// `field: true` draws `  <label>  › <value>`, the shape the redesign's text
+// fields take, with a refusal as a `✕` line under the field. Drawn in ONE write
+// per keystroke, ending on the field so the cursor sits where the typing is.
+describe("promptText as a 2026-10 field", () => {
+  const drive = (opts: { message: string; hint?: string; validate?: (v: string) => string | null }) => {
+    const writes: string[] = [];
+    const stdout = {
+      isTTY: true,
+      columns: 80,
+      write: vi.fn((s: string) => { writes.push(s); return true; }),
+    } as unknown as TTYOut;
+    let onKey: ((s: string | undefined, k: unknown) => void) | undefined;
+    const stdin = {
+      isTTY: true,
+      isRaw: false,
+      setRawMode: vi.fn(),
+      resume: vi.fn(),
+      pause: vi.fn(),
+      on: vi.fn((ev: string, fn: never) => { if (ev === "keypress") onKey = fn; }),
+      removeListener: vi.fn(),
+      listenerCount: vi.fn(() => 0),
+      once: vi.fn(),
+      off: vi.fn(),
+      emit: vi.fn(),
+      addListener: vi.fn(),
+    } as unknown as TTYIn;
+    const result = promptText({ ...opts, field: true, stdin, stdout });
+    const type = (text: string) => {
+      for (const ch of text) onKey?.(ch, { name: ch });
+    };
+    const press = (name: string) => onKey?.(undefined, { name });
+    return { writes, result, type, press };
+  };
+  const plain = (s: string) => s.replace(/\x1b\[[0-9;]*m/g, "");
+
+  it("draws the label on a ten-column field with a › before the value", () => {
+    const { writes, type } = drive({ message: "email" });
+    type("you@x.io");
+    expect(plain(writes[writes.length - 1])).toBe("\r\x1b[2K  email     › you@x.io");
+  });
+
+  it("shows the hint as a placeholder only while the field is empty", () => {
+    const { writes, type } = drive({ message: "email", hint: "you@yourdomain.com" });
+    expect(plain(writes[0])).toBe("\r\x1b[2K  email     ›   you@yourdomain.com");
+    type("a");
+    expect(plain(writes[writes.length - 1])).not.toContain("yourdomain");
+  });
+
+  it("puts a refusal under the field as a ✕ line, in the same write, and ends on the field", () => {
+    const { writes, type, press } = drive({
+      message: "email",
+      validate: () => "That doesn't look like an email address.",
+    });
+    type("nope");
+    press("return");
+    expect(plain(writes[writes.length - 1])).toBe(
+      "\n\x1b[2K✕ That doesn't look like an email address.\x1b[1A\r\x1b[2K  email     › nope",
+    );
+  });
+
+  it("clears the refusal as soon as the value changes", () => {
+    const { writes, type, press } = drive({ message: "email", validate: (v) => (v.includes("@") ? null : "No.") });
+    type("nope");
+    press("return");
+    type("@");
+    // Down to the refusal's row, clear it, back up, then the field.
+    expect(plain(writes[writes.length - 1])).toBe("\x1b[1B\x1b[2K\x1b[1A\r\x1b[2K  email     › nope@");
+  });
+
+  it("moves past a refusal still showing when cancelled, so the next line starts clean", async () => {
+    const { writes, type, press, result } = drive({ message: "email", validate: () => "No." });
+    type("x");
+    press("return");
+    press("escape");
+    await expect(result).resolves.toBeNull();
+    expect(writes[writes.length - 1]).toBe("\n\n");
+  });
+
+  it("returns what was typed, as the spine form does", async () => {
+    const { type, press, result } = drive({ message: "code" });
+    type("123456");
+    press("return");
+    await expect(result).resolves.toBe("123456");
   });
 });

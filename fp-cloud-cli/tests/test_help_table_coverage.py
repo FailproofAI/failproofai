@@ -125,3 +125,18 @@ def test_every_subcommand_the_hint_column_advertises_actually_exists():
                     bad.append(f"{name}: '{token}' is not a subcommand of `fp {name}`")
 
     assert not bad, "the help screen advertises commands that do not exist:\n  " + "\n  ".join(bad)
+
+
+def test_group_hints_cover_all_registered_subcommands():
+    """New commands must not silently disappear from the hand-maintained index."""
+    cli = get_command(app)
+    missing = []
+    for _section, entries in output._TOP_LEVEL_GROUPS:
+        for name, _description, hint in entries:
+            registered = set(getattr(cli.commands[name], "commands", {}) or {})
+            advertised = {
+                sub for sub in registered
+                if any(sub == token or token.endswith("*") and sub.startswith(token[:-1]) for token in hint.split())
+            }
+            missing.extend(f"{name} {sub}" for sub in sorted(registered - advertised))
+    assert not missing, f"subcommands missing from the top-level help hints: {missing}"

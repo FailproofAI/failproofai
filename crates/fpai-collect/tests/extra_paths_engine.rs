@@ -60,6 +60,7 @@ fn spec(roots: Vec<PathBuf>, spool: PathBuf, state: PathBuf, label: Option<&str>
             max_read_bytes: 8 * 1024 * 1024,
             max_batch_bytes: 8 * 1024 * 1024,
             since_days: None,
+            sessions_resume_after: None,
             label: label.map(str::to_string),
         },
     }

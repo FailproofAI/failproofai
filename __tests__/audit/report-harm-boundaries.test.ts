@@ -24,7 +24,7 @@ describe("only a SCHEDULED audit can report harm", () => {
   // a dashboard server and scans the real machine, so the honest way to pin
   // "this call site is unreachable from the manual path" is to assert where the
   // call site IS. The repo already reads committed sources this way for the
-  // dogfood configs and for the Rust/TS harness-key pair.
+  // Rust/TS harness-key pair.
   const source = readFileSync(resolve(__dirname, "../../src/audit/cli.ts"), "utf8");
 
   it("calls reportHarm from exactly one place", () => {

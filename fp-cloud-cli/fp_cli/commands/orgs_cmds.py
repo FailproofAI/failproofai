@@ -316,4 +316,21 @@ def register(app: typer.Typer) -> None:
     orgs_app.command("switch", epilog=GLOBALS_EPILOG)(org_switch)
     orgs_app.command("current", epilog=GLOBALS_EPILOG)(org_current)
     orgs_app.command("perms", epilog=GLOBALS_EPILOG)(org_perms)
+    orgs_app.command("create", epilog=GLOBALS_EPILOG)(org_create)
     app.add_typer(orgs_app, name="orgs")
+
+
+def org_create(ctx: typer.Context, name: str = typer.Option(..., "--name"),
+               slug: Optional[str] = typer.Option(None, "--slug")) -> None:
+    """Create an organization (session only; does not switch the saved org)."""
+    from . import _cloud
+    from .account_cmds import request
+    from .. import _click_compat as click
+    _cloud.session_only(ctx.obj, "orgs create")
+    if not name.strip():
+        raise click.UsageError("--name cannot be empty")
+    import re
+    slug = slug or re.sub(r"[^a-z0-9]+", "-", name.lower()).strip("-")
+    if not re.fullmatch(r"[a-z0-9]+(?:-[a-z0-9]+)*", slug):
+        raise click.UsageError("--slug must be lowercase letters/digits separated by hyphens")
+    request(ctx, "POST", "/api/orgs", {"name": name, "slug": slug})

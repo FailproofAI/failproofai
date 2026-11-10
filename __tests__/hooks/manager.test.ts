@@ -33,12 +33,6 @@ vi.mock("../../src/hooks/safe-config-write", async () => {
   };
 });
 
-vi.mock("../../src/hooks/install-prompt", () => ({
-  promptPolicySelection: vi.fn(() =>
-    Promise.resolve(["block-sudo", "block-env-files", "sanitize-jwt"]),
-  ),
-}));
-
 vi.mock("../../src/hooks/hooks-config", () => ({
   readHooksConfig: vi.fn(() => ({ enabledPolicies: [] })),
   // listHooks resolves the project root by walking up to the nearest
@@ -175,7 +169,7 @@ describe("hooks/manager", () => {
         expect(hook.__failproofai_hook__).toBe(true);
         expect(hook.type).toBe("command");
         expect(hook.timeout).toBe(60);
-        expect(hook.command).toBe(`"/usr/local/bin/failproofai" --hook ${eventType}`);
+        expect(hook.command).toBe(`"/usr/local/bin/failproofai" --hook ${eventType} --agent-scope user`);
       }
     });
 
@@ -194,12 +188,10 @@ describe("hooks/manager", () => {
       vi.mocked(readScopedHooksConfig).mockReturnValue({ enabledPolicies: ["block-sudo"] });
 
       const { installHooks } = await import("../../src/hooks/manager");
-      const { promptPolicySelection } = await import("../../src/hooks/install-prompt");
       const { writeScopedHooksConfig } = await import("../../src/hooks/hooks-config");
 
       await installHooks();
 
-      expect(promptPolicySelection).not.toHaveBeenCalled();
       // Written back UNCHANGED — not re-derived, not defaulted, not widened.
       expect(writeScopedHooksConfig).toHaveBeenCalledWith(
         { enabledPolicies: ["block-sudo"] },
@@ -214,11 +206,9 @@ describe("hooks/manager", () => {
 
       const { installHooks } = await import("../../src/hooks/manager");
       const { writeScopedHooksConfig } = await import("../../src/hooks/hooks-config");
-      const { promptPolicySelection } = await import("../../src/hooks/install-prompt");
 
       await installHooks(["all"]);
 
-      expect(promptPolicySelection).not.toHaveBeenCalled();
       expect(writeScopedHooksConfig).toHaveBeenCalledWith(
         { enabledPolicies: expect.arrayContaining(["block-sudo", "block-rm-rf", "sanitize-jwt"]) },
         "user",
@@ -327,7 +317,7 @@ describe("hooks/manager", () => {
 
       expect(written.hooks.PreToolUse).toHaveLength(1);
       expect(written.hooks.PreToolUse[0].hooks[0].command).toBe(
-        '"/usr/local/bin/failproofai" --hook PreToolUse',
+        '"/usr/local/bin/failproofai" --hook PreToolUse --agent-scope user',
       );
     });
 
@@ -358,7 +348,7 @@ describe("hooks/manager", () => {
       const [, content] = vi.mocked(writeFileSync).mock.calls[0];
       const written = JSON.parse(content as string);
       const hook = written.hooks.PreToolUse[0].hooks[0];
-      expect(hook.command).toBe('"C:\\Program Files\\failproofai\\failproofai.exe" --hook PreToolUse');
+      expect(hook.command).toBe('"C:\\Program Files\\failproofai\\failproofai.exe" --hook PreToolUse --agent-scope user');
 
       Object.defineProperty(process, "platform", { value: originalPlatform, configurable: true });
     });
@@ -406,7 +396,7 @@ describe("hooks/manager", () => {
 
       for (const [eventType, matchers] of Object.entries(written.hooks)) {
         const hook = (matchers as Array<{ hooks: Array<Record<string, unknown>> }>)[0].hooks[0];
-        expect(hook.command).toBe(`npx -y failproofai --hook ${eventType}`);
+        expect(hook.command).toBe(`npx -y failproofai --hook ${eventType} --agent-scope project`);
       }
     });
 
@@ -421,7 +411,7 @@ describe("hooks/manager", () => {
       const written = JSON.parse(content as string);
 
       const hook = written.hooks.PreToolUse[0].hooks[0];
-      expect(hook.command).toBe('"/usr/local/bin/failproofai" --hook PreToolUse');
+      expect(hook.command).toBe('"/usr/local/bin/failproofai" --hook PreToolUse --agent-scope user');
     });
 
     it("local scope uses absolute binary path, not npx", async () => {
@@ -435,7 +425,7 @@ describe("hooks/manager", () => {
       const written = JSON.parse(content as string);
 
       const hook = written.hooks.PreToolUse[0].hooks[0];
-      expect(hook.command).toBe('"/usr/local/bin/failproofai" --hook PreToolUse');
+      expect(hook.command).toBe('"/usr/local/bin/failproofai" --hook PreToolUse --agent-scope local');
     });
 
     it("re-install on project scope migrates absolute-path hooks to npx format", async () => {
@@ -465,7 +455,7 @@ describe("hooks/manager", () => {
       const written = JSON.parse(content as string);
 
       expect(written.hooks.PreToolUse[0].hooks[0].command).toBe(
-        "npx -y failproofai --hook PreToolUse",
+        "npx -y failproofai --hook PreToolUse --agent-scope project",
       );
     });
 
@@ -498,7 +488,7 @@ describe("hooks/manager", () => {
       const logs = vi.mocked(console.log).mock.calls.map((c) => c[0]);
       expect(logs.some((l: unknown) => typeof l === "string" && (l as string).includes("npx -y failproofai"))).toBe(true);
       expect(logs.some((l: unknown) => typeof l === "string" && (l as string).includes("committed to git"))).toBe(true);
-      expect(logs.some((l: unknown) => typeof l === "string" && (l as string).includes("Binary:"))).toBe(false);
+      expect(logs.some((l: unknown) => typeof l === "string" && /^ {2}binary +\S/.test(l as string))).toBe(false);
     });
 
     it("install at local scope writes to {cwd}/.claude/settings.local.json", async () => {
@@ -566,7 +556,7 @@ describe("hooks/manager", () => {
       await installHooks(["all"], "user");
 
       expect(console.log).toHaveBeenCalledWith(
-        expect.stringContaining("Warning: Failproof AI hooks are also installed"),
+        expect.stringContaining("Hooks are also installed at"),
       );
     });
 
@@ -1179,7 +1169,9 @@ describe("hooks/manager", () => {
     // it off. What the listing renders now — packs, convention files, cloud —
     // is covered against real files in `policies-listing.test.ts`; these keep
     // the mock-level contract that survived.
-    it("says nothing is installed, without naming policies this build no longer runs", async () => {
+    it("says nothing is enforcing on an empty machine, without naming policies this build no longer runs", async () => {
+      // "nothing installed" became the redesign's generic line and next step
+      // (D14, D18) — deliberately; the half that matters here is unchanged.
       const { readMergedHooksConfig } = await import("../../src/hooks/hooks-config");
       vi.mocked(readMergedHooksConfig).mockReturnValue({ enabledPolicies: [] });
       vi.mocked(existsSync).mockReturnValue(false);
@@ -1188,15 +1180,38 @@ describe("hooks/manager", () => {
       await listHooks();
       const output = vi.mocked(console.log).mock.calls.map((c) => c[0]).join("\n");
 
-      expect(output).toContain("nothing installed");
+      expect(output).toContain("Policies are not enforcing yet.");
+      expect(output).toContain("Turn on ours:  failproofai policies add FailproofAI/policies");
       // Naming a builtin here would advertise enforcement that is not happening.
       expect(output).not.toContain("sanitize-jwt");
       expect(output).not.toContain("block-sudo");
     });
 
     it("warns when hooks exist in multiple scopes", async () => {
+      // The screen has one attention line (D14), and "not enforcing" outranks
+      // this one — so the machine gets a pack with a policy on, which leaves the
+      // scopes as the most severe thing to say.
       const { readMergedHooksConfig } = await import("../../src/hooks/hooks-config");
+      const { readInstalledPacks } = await import("../../src/hooks/pack-manifest");
       vi.mocked(readMergedHooksConfig).mockReturnValue({ enabledPolicies: [] });
+      vi.mocked(readInstalledPacks).mockReturnValue({
+        packs: [
+          {
+            id: "acme/ops",
+            version: "1.0.0",
+            source: "github:acme/ops@v1.0.0",
+            path: "/tmp/none.mjs",
+            sha256: "0".repeat(64),
+            effect: "enforce",
+            enabled: null,
+            clis: null,
+            policies: [
+              { name: "block-prod-deploy", description: "d", category: "Ops", defaultEnabled: true, match: {} },
+            ],
+          },
+        ],
+        errors: [],
+      } as never);
       vi.mocked(existsSync).mockReturnValue(true);
       vi.mocked(readFileSync).mockReturnValue(
         JSON.stringify({ hooks: { PreToolUse: [{ hooks: [{ command: "failproofai --hook PreToolUse" }] }] } }),
@@ -1207,6 +1222,7 @@ describe("hooks/manager", () => {
       const output = vi.mocked(console.log).mock.calls.map((c) => c[0]).join("\n");
 
       expect(output).toMatch(/multiple scopes/i);
+      expect(output).toContain("failproofai policies --uninstall --scope <scope>");
     });
   });
 });

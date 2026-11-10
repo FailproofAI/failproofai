@@ -158,7 +158,8 @@ describe("the request", () => {
     // What the human typed, and the agent message they replied to, are in the state.
     expect(JSON.stringify(request.state)).toContain("please clean the build folder");
     expect(JSON.stringify(request.state)).toContain("Shall I delete build/?");
-    expect(readIntent).toHaveBeenCalledWith("sess-1");
+    // Read under this call's agent profile (none rostered here), never the flat store.
+    expect(readIntent).toHaveBeenCalledWith("sess-1", undefined, { cli: "claude", agent: null });
 
     expect(review.kind).toBe("answered");
     if (review.kind !== "answered") return;

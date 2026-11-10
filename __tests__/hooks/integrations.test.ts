@@ -129,6 +129,7 @@ describe("integrations registry", () => {
   it("declares daemon-only installation requirements in registry metadata", () => {
     expect(listIntegrations().filter((integration) => integration.requiresHealthyDaemon)).toEqual([
       hermes,
+      openclaw,
     ]);
   });
 
@@ -175,7 +176,7 @@ describe("Claude Code integration", () => {
 
   it("buildHookEntry omits --cli for back-compat", () => {
     const entry = claudeCode.buildHookEntry("/usr/bin/failproofai", "PreToolUse", "user");
-    expect(entry.command).toBe('"/usr/bin/failproofai" --hook PreToolUse');
+    expect(entry.command).toBe('"/usr/bin/failproofai" --hook PreToolUse --agent-scope user');
     expect(entry.command).not.toContain("--cli");
     expect(entry.timeout).toBe(60);
     expect(entry[FAILPROOFAI_HOOK_MARKER]).toBe(true);
@@ -183,7 +184,7 @@ describe("Claude Code integration", () => {
 
   it("project scope uses npx -y failproofai (portable)", () => {
     const entry = claudeCode.buildHookEntry("/usr/bin/failproofai", "PreToolUse", "project");
-    expect(entry.command).toBe("npx -y failproofai --hook PreToolUse");
+    expect(entry.command).toBe("npx -y failproofai --hook PreToolUse --agent-scope project");
   });
 
   // Installed events are HOOK_EVENT_TYPES minus WorktreeCreate, which is a
@@ -267,7 +268,7 @@ describe("OpenAI Codex integration", () => {
 
   it("project scope uses npx -y failproofai", () => {
     const entry = codex.buildHookEntry("/usr/bin/failproofai", "pre_tool_use", "project");
-    expect(entry.command).toBe("npx -y failproofai --hook pre_tool_use --cli codex");
+    expect(entry.command).toBe("npx -y failproofai --hook pre_tool_use --cli codex --agent-scope project");
   });
 
   it("writeHookEntries stores keys in PascalCase via CODEX_EVENT_MAP", () => {
@@ -370,8 +371,8 @@ describe("GitHub Copilot integration", () => {
   it("buildHookEntry uses bash + powershell keys with --cli copilot", () => {
     const entry = copilot.buildHookEntry("/usr/bin/failproofai", "PreToolUse", "user") as Record<string, unknown>;
     expect(entry.type).toBe("command");
-    expect(entry.bash).toBe('"/usr/bin/failproofai" --hook PreToolUse --cli copilot');
-    expect(entry.powershell).toBe('"/usr/bin/failproofai" --hook PreToolUse --cli copilot');
+    expect(entry.bash).toBe('"/usr/bin/failproofai" --hook PreToolUse --cli copilot --agent-scope user');
+    expect(entry.powershell).toBe('"/usr/bin/failproofai" --hook PreToolUse --cli copilot --agent-scope user');
     expect(entry.timeoutSec).toBe(60);
     expect(entry[FAILPROOFAI_HOOK_MARKER]).toBe(true);
     // Copilot entries do NOT use the Claude-style `command` field
@@ -381,8 +382,8 @@ describe("GitHub Copilot integration", () => {
 
   it("project scope uses npx -y failproofai (portable)", () => {
     const entry = copilot.buildHookEntry("/usr/bin/failproofai", "PreToolUse", "project") as Record<string, unknown>;
-    expect(entry.bash).toBe("npx -y failproofai --hook PreToolUse --cli copilot");
-    expect(entry.powershell).toBe("npx -y failproofai --hook PreToolUse --cli copilot");
+    expect(entry.bash).toBe("npx -y failproofai --hook PreToolUse --cli copilot --agent-scope project");
+    expect(entry.powershell).toBe("npx -y failproofai --hook PreToolUse --cli copilot --agent-scope project");
   });
 
   it("writeHookEntries stores PascalCase event keys and version: 1", () => {
@@ -468,7 +469,7 @@ describe("Cursor Agent integration", () => {
   it("buildHookEntry uses Claude-shaped {command,timeout} with --cli cursor", () => {
     const entry = cursor.buildHookEntry("/usr/bin/failproofai", "preToolUse", "user") as Record<string, unknown>;
     expect(entry.type).toBe("command");
-    expect(entry.command).toBe('"/usr/bin/failproofai" --hook preToolUse --cli cursor');
+    expect(entry.command).toBe('"/usr/bin/failproofai" --hook preToolUse --cli cursor --agent-scope user');
     expect(entry.timeout).toBe(60);
     expect(entry[FAILPROOFAI_HOOK_MARKER]).toBe(true);
     // Cursor entries use the Claude-style `command` field, not Copilot's bash/powershell split.
@@ -478,7 +479,7 @@ describe("Cursor Agent integration", () => {
 
   it("project scope uses npx -y failproofai (portable)", () => {
     const entry = cursor.buildHookEntry("/usr/bin/failproofai", "preToolUse", "project") as Record<string, unknown>;
-    expect(entry.command).toBe("npx -y failproofai --hook preToolUse --cli cursor");
+    expect(entry.command).toBe("npx -y failproofai --hook preToolUse --cli cursor --agent-scope project");
   });
 
   it("writeHookEntries stores camelCase event keys with version: 1 in a FLAT array (no matcher wrapper)", () => {
@@ -512,7 +513,7 @@ describe("Cursor Agent integration", () => {
     const hooks = settings.hooks as Record<string, Array<Record<string, unknown>>>;
     expect(hooks.preToolUse).toHaveLength(1);
     // Second call's binary path should win.
-    expect(hooks.preToolUse[0].command).toBe('"/different/path/failproofai" --hook preToolUse --cli cursor');
+    expect(hooks.preToolUse[0].command).toBe('"/different/path/failproofai" --hook preToolUse --cli cursor --agent-scope user');
   });
 
   it("removeHooksFromFile clears all failproofai entries (returns count)", () => {
@@ -1611,7 +1612,7 @@ describe("Factory Droid integration", () => {
 
   it("project scope uses npx -y failproofai", () => {
     const entry = factory.buildHookEntry("/usr/bin/failproofai", "PreToolUse", "project");
-    expect(entry.command).toBe("npx -y failproofai --hook PreToolUse --cli factory");
+    expect(entry.command).toBe("npx -y failproofai --hook PreToolUse --cli factory --agent-scope project");
   });
 
   it("writeHookEntries stores event names at the TOP LEVEL (no `hooks` wrapper)", () => {
@@ -1721,14 +1722,14 @@ describe("Devin CLI integration", () => {
     const entry = devin.buildHookEntry("/usr/bin/failproofai", "PreToolUse", "user");
     expect(entry.command).toContain("--cli devin");
     expect(entry.command).toContain("--hook PreToolUse");
-    expect(entry.command).toBe(`"/usr/bin/failproofai" --hook PreToolUse --cli devin`);
+    expect(entry.command).toBe(`"/usr/bin/failproofai" --hook PreToolUse --cli devin --agent-scope user`);
     expect(entry.timeout).toBe(60);
     expect(entry[FAILPROOFAI_HOOK_MARKER]).toBe(true);
   });
 
   it("project scope uses npx -y failproofai", () => {
     const entry = devin.buildHookEntry("/usr/bin/failproofai", "PreToolUse", "project");
-    expect(entry.command).toBe("npx -y failproofai --hook PreToolUse --cli devin");
+    expect(entry.command).toBe("npx -y failproofai --hook PreToolUse --cli devin --agent-scope project");
   });
 
   it("writeHookEntries stores events under a Claude-style `hooks` wrapper", () => {
@@ -1831,7 +1832,7 @@ describe("Antigravity CLI integration", () => {
 
   it("project scope uses npx -y failproofai", () => {
     const entry = antigravity.buildHookEntry("/usr/bin/failproofai", "PreToolUse", "project");
-    expect(entry.command).toBe("npx -y failproofai --hook PreToolUse --cli antigravity");
+    expect(entry.command).toBe("npx -y failproofai --hook PreToolUse --cli antigravity --agent-scope project");
   });
 
   it("writeHookEntries nests events under a named 'failproofai' hook key", () => {
@@ -1959,7 +1960,7 @@ describe("Goose integration", () => {
 
   it("project scope uses npx -y failproofai", () => {
     const entry = goose.buildHookEntry("/usr/bin/failproofai", "PreToolUse", "project");
-    expect(entry.command).toBe("npx -y failproofai --hook PreToolUse --cli goose");
+    expect(entry.command).toBe("npx -y failproofai --hook PreToolUse --cli goose --agent-scope project");
   });
 
   it("writeHookEntries writes the Open Plugins schema (top-level 'hooks' wrapper, matcher OMITTED)", () => {

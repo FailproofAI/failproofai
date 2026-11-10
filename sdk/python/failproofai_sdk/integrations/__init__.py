@@ -58,6 +58,7 @@ _REGISTRY: dict[str, str] = {
     "crewai": "failproofai_sdk.integrations.crewai",
     "llama_index": "failproofai_sdk.integrations.llama_index",
     "pydantic_ai": "failproofai_sdk.integrations.pydantic_ai",
+    "otel": "failproofai_sdk.integrations.otel",
 }
 
 # Spellings people actually type. LangGraph is served by the LangChain adapter
@@ -79,6 +80,8 @@ _DETECT: dict[str, tuple[str, ...]] = {
     "crewai": ("crewai",),
     "llama_index": ("llama_index", "llama_index.core"),
     "pydantic_ai": ("pydantic_ai",),
+    # OTEL is explicit-only: installing it must not duplicate existing adapters.
+    "otel": (),
 }
 
 # Guards _ACTIVE and every install/uninstall. `instrument()` is called from

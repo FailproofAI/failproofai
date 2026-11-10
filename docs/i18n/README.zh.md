@@ -252,8 +252,6 @@ MIT 附加 [Commons Clause](https://commonsclause.com/)——个人及内部使�
 
 请参阅 [CONTRIBUTING.md](../../CONTRIBUTING.md)。欢迎贡献新策略、边界情况修复以及翻译。
 
-> **开始前请先构建项目。** 首先运行 `bun install && bun run build`。本仓库会对自身运行 failproofai 的 hook，而这些 hook 需要从编译后的 `dist/` 包中解析 `failproofai` 导入——如果未构建，你会遇到 `Cannot find package 'failproofai'` 的 hook 错误。修改 `src/` 后请重新构建。详见 [构建后才能使用仓库内开发 hook](../../CONTRIBUTING.md#build-before-the-in-repo-dev-hooks-will-work)。
-
 ---
 
 由 [befailproof.ai](https://befailproof.ai) 团队在旧金山和班加罗尔用 ❤️ 打造。

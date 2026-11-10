@@ -8,9 +8,130 @@ Headings are `## <version> — <YYYY-MM-DD>`, and the section matching the versi
 in `src/version.ts` becomes that release's GitHub Release body. A release whose
 section is missing or empty is refused before anything is built.
 
-## 0.0.1-beta.1 — 2026-09-24
+## 0.0.1-beta.2 — 2026-10-16
 
 ### Fixes
+
+- **`mastra-1` tests the current Mastra 1.x, on the fixed MCP packages.**
+  `@mastra/core` 1.68.0 → 1.81.0, `@mastra/mcp` 2.0.0 → 2.7.0 and `@mastra/memory`
+  1.31.0 → 1.40.0. That takes `@modelcontextprotocol/node` to 2.1.2
+  (GHSA-f897-62hf-6gxq) and `@hono/node-server` to 2.1.6 (GHSA-rmxm-3fg6-px4f, and
+  the fixes 2.1.6 itself ships: GHSA-jpvv-r467-5p4w, GHSA-7v5p-43qr-wch5,
+  GHSA-qv5m-9pm6-hqp3). Dependabot's #965 moved `@mastra/mcp` alone, which peers on
+  `@mastra/core >=1.79.0`, so `npm ci` failed `ERESOLVE` and every shard that
+  installs the fixture failed with it. The `@modelcontextprotocol/client` and
+  `@modelcontextprotocol/server` overrides from #934 retire, because `@mastra/mcp`
+  2.7.0 pins fixed releases of both. The `argparse` override from #904 retires too:
+  `@mastra/core` no longer reaches `gray-matter`, so neither this fixture nor
+  `nextjs` installs `argparse` 1 or `sprintf-js`. `nextjs` moves `@mastra/core` to
+  1.81.0 with it, because it compares each route's trace with this fixture's;
+  `__tests__/ci/ts-sdk-fixture-pins.test.ts` now fails when any `nextjs` framework
+  pin leaves its twin. (#966)
+
+- **`mastra-0` clears its transitive advisories and stays on Mastra 0.x.**
+  `@hono/node-server` 2.1.1 → 2.1.6 and `systeminformation` 5.33.13 → 5.33.19 are
+  in range (GHSA-rmxm-3fg6-px4f, GHSA-3f7j-7jwc-fxfj, GHSA-4vjg-vx72-qq4g). A
+  fixture-local override moves `gaxios` 7.1.3 → 7.3.1, which `gcp-metadata` pins
+  exactly and which no longer depends on `rimraf`, so `rimraf`, `glob`
+  (GHSA-3g3m-2fjr-6pw4), `minimatch` (GHSA-g3hv-75wg-m249) and 21 more packages leave
+  the tree. `@mastra/core`, `@mastra/mcp`, `@mastra/memory` and `ai` resolve exactly
+  as before. Dependabot's #955 reached the same alerts by moving `@mastra/core` to
+  1.80.0, off the floor this fixture holds, and `@mastra/mcp@0.14.5` cannot install
+  beside it. `.github/dependabot.yml` now gives `@ai-sdk/provider-utils`, the package
+  #955 was updating, its own range on `ai-4` and `mastra-0`: a range is read only for
+  the package being updated, so `@mastra/*` being ignored did not hold a parent moved
+  on its behalf. (#966)
+
+- **`deepmerge` leaves `llamaindex-0.11`, `llamaindex-0.12` and `nextjs`.**
+  GHSA-gcqx-w48m-w2h4 has no patched release, so the fix is to take it out of the
+  tree. Each fixture reached it only through `@llamaindex/node-parser` →
+  `html-to-text@9.0.5`, and a fixture-local override moves `html-to-text` to 10.0.1,
+  which replaced it with `deepmerge-ts`. `@llamaindex/node-parser` imports only
+  `htmlToText`, which 10.x still exports, from an HTML parser no fixture runs. (#966)
+
+- **`mastra-0` and `langchain-dup-core` drop their nested zod 3.** Both override zod
+  to their own zod 4 (GHSA-mrhx-c7xc-m3w5). `@mastra/mcp` and `@mastra/schema-compat`
+  call `zod-from-json-schema-v3` only when the root zod has no `toJSONSchema`, which
+  a zod 4 root does, and `@langchain/core@0.3.80` imports only `zod/v3` and
+  `zod/v4/core`, which zod 4 also ships. `langchain-dup-core` still nests its second
+  `@langchain/core`, which is what that fixture exists to test. `mastra-0` also moves
+  its own zod 4.6.6 → 4.6.7, the release every other fixture on zod 4 pins. (#966)
+
+- **`nextjs` and `mastra-1` drop `sprintf-js`.** Every release through `1.1.3`
+  carries GHSA-hp3w-g68c-fv3c and none fixes it, so the fix is to take it out of
+  the tree. Both fixtures reached it only through `@mastra/core@1.68.0` →
+  `gray-matter@4.0.3` → `js-yaml@3.15.2` → `argparse@1.0.10`, and js-yaml 3 loads
+  `argparse` from its `js-yaml` CLI alone, never from the library `gray-matter`
+  calls. A fixture-local `overrides` entry moves `argparse` to `2.0.1`, which has no
+  dependencies. Each lockfile changes by those two packages and nothing else, and
+  `npm audit` on both now reports no findings. (#904)
+
+- **`ai-4`, `langchain-0.3` and `llamaindex-0.11` test their own releases again.**
+  Dependabot's grouped security update (#931) reached the zod fix by moving all
+  three off the release they exist to hold: `ai@4.3.19` → `7.0.152`,
+  `@langchain/core@0.3.80` → `1.3.0` (with `@langchain/langgraph@0.4.10` →
+  `1.5.2`) and `llamaindex@0.11.4` → `0.12.1`, each with `zod@3.25.76` → `4.6.7`.
+  `ai-4` and `langchain-0.3` still installed and passed while testing a
+  different major, so the matrix silently lost two supported floors. `llamaindex-0.11`
+  did not install: `@llamaindex/workflow@1.1.5` peers on `zod@^3.23.8`, so
+  `npm ci` failed `ERESOLVE`, and because the global setup installs every fixture
+  before any test runs, the `frameworks` and `runtimes` shards failed on `main`.
+  All three are back on their pre-#931 manifests and lockfiles. #931 also moved
+  the `runtimes` fixture to `zod@4.6.7` while `deno-npm.ts` still imported
+  `npm:zod@4.6.5`, which Deno resolves against the fixture's `node_modules` and
+  could no longer find; it imports `4.6.7` now. A root CI test,
+  `__tests__/ci/ts-sdk-fixture-pins.test.ts`, fails on either move: a fixture named
+  for a release line pinning its framework off that line, or an `npm:` specifier
+  naming a version the fixture does not install. (#934)
+
+- **The four framework floors stay put.** Dependabot's grouped security update
+  #935, opened three minutes after #934 merged, moved `ai-4`, `langchain-0.3` and
+  `llamaindex-0.11` off their releases again (`ai@4.3.19` → `5.0.52`,
+  `@langchain/core@0.3.80` → `1.3.0` with `@langchain/langgraph@0.4.10` →
+  `1.5.2`, `llamaindex@0.11.4` → `0.12.1`, each with `zod@3.25.76` → `4.6.7`), and
+  `mastra-0` too (`@mastra/core@0.24.9` → `1.79.0`, `@mastra/memory@0.15.13` →
+  `1.39.0`). All four are back on their #934 manifests and lockfiles. So that the
+  move stops being proposed rather than being undone a fourth time,
+  `.github/dependabot.yml` gives each floor a security-updates-only entry
+  (`open-pull-requests-limit: 0`) whose `ignore` ranges hold its framework on its
+  line, and zod on 3 where that framework requires it; a fix that stays on the
+  line still arrives. `__tests__/ci/ts-sdk-fixture-pins.test.ts` now also fails
+  when a floor has no such entry, or one that would let the framework leave its
+  line. (#950)
+
+- **The remaining fixable fixture advisories clear, each with an override.** `ai-5`
+  moves `undici` 7.29.1 → 7.30.1 (GHSA-xjj6-f33q-929c, GHSA-4qv8-2p9j-2685,
+  GHSA-f72v-6w45-q472) and `llamaindex-0.11` moves `fast-uri` 3.1.8 → 3.1.9
+  (GHSA-w74x-v6f9-j3xg, GHSA-wjr9-j795-jxcr, GHSA-xhq7-xmqj-769h,
+  GHSA-333x-w4r6-6crp). In `mastra-1`, `@mastra/mcp@2.0.0` pins
+  `@modelcontextprotocol/server` and `@modelcontextprotocol/client` exactly, so the
+  fixture overrides both to `2.3.0` (GHSA-jm63-cq47-j5jp, GHSA-46jr-4wx8-v453,
+  GHSA-rvq5-wwqv-78pq, GHSA-6prh-2h8m-c8cw); each brings its own
+  `@modelcontextprotocol/core@2.3.0` nested under it, as the client's earlier
+  `2.2.0` override did. Each lockfile changes by those packages alone, and
+  `npm audit` reports no findings in `ai-5` or `mastra-1`. (#934)
+
+- **zod GHSA-mrhx-c7xc-m3w5 stays in the three fixtures held to zod 3.** It is fixed
+  only in `zod@4.6.6`, and no zod 3 release carries the fix. `ai-4`, `langchain-0.3`
+  and `llamaindex-0.11` pin `zod@3.25.76` beside frameworks that require `^3`.
+  `SECURITY.md` records it with the two `ai@4` advisories. (#934, #966)
+
+## 0.0.1-beta.1 — 2026-10-15
+
+### Features
+
+- **OpenTelemetry spans to FailproofAI Cloud, without a network call in your
+  process.** `OtelSpanExporter`, or `instrument("otel", { spanProcessors })` before
+  you construct your provider, writes each finished batch of spans as OTLP/JSON to
+  the local spool (`~/.failproofai/state/spool-otlp`); the failproofai daemon
+  delivers it to Cloud with the machine's key and retries if Cloud is unreachable.
+  `@opentelemetry/sdk-trace-base` is only loaded when you call it.
+
+### Fixes
+
+- **A blank `FAILPROOFAI_HOME` no longer means the current directory.** An empty or
+  whitespace-only value made the exporter and the custom-agents resolver write
+  under the working directory, where the daemon never reads. Blank now means unset.
 
 - **The integration fixtures stop carrying 32 open security advisories.** Nothing
   the published package ships changed — every fixture under `integration/fixtures/`
@@ -83,6 +204,29 @@ section is missing or empty is refused before anything is built.
   `ERESOLVE` on the same `@mastra/mcp` peer as #838. `ai-4` needed no change: both
   advisories still open against it are the accepted kind, and the table above
   already carries them. (#869)
+
+- **`mastra-1` clears its one fixture advisory without moving a pin.**
+  GHSA-6qxp-vccf-f47h (high) is against `@modelcontextprotocol/client@2.0.0`,
+  which `@mastra/mcp@2.0.0` pins exactly. The fixture now carries an `overrides`
+  entry for the patched `2.2.0`. That release brings its own
+  `@modelcontextprotocol/core@2.2.0`, nested under it, and every other package
+  resolves as before. Dependabot's fix (#884) moved `@mastra/mcp` to `2.3.0`
+  instead. That release peers on `@mastra/core >=1.75.0-0`, so it cannot install
+  beside the fixture's `1.68.0`. The `mcp` and `mcp-toolsets` scenarios pass
+  against the override. This package's own dev lockfile also moves
+  `source-map-js` to `1.2.2` (GHSA-68fv-2mgg-jv7q). (#901)
+
+- **`nextjs` and `mastra-0` clear their fixable advisories, again without moving
+  a pin.** `nextjs` moves `next` to `16.4.1` (six advisories, fixed in `16.3.8`),
+  `sharp` to `0.35.5` (GHSA-wq5f-xc86-pv6w) and `source-map-js` to `1.2.2`
+  (GHSA-68fv-2mgg-jv7q). `mastra-0` moves `@modelcontextprotocol/sdk` from
+  `1.30.1` to `1.32.1` (GHSA-6qxp-vccf-f47h), inside the `^1.17.5` range
+  `@mastra/mcp@0.14.5` declares, so only the lockfile changes. Dependabot's
+  version of this PR also moved `ai-4` to `ai@5.0.52` and `mastra-0` to
+  `@mastra/core@1.77.0`, which cannot install beside `@mastra/mcp@0.14.5` and
+  failed every integration shard, and `nextjs`'s `ai` to `7.0.141`, off the
+  `ai-7` twin its routes' traces are compared against. None of those are
+  applied. (#902)
 
 ## 0.0.1-beta.0 — 2026-09-23
 

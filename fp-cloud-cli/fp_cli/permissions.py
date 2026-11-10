@@ -47,7 +47,13 @@ ALL_PERMISSIONS: List[str] = [
     "policies:read",
     "policies:write",
     "policies:pull",
+    # Code fixes (GitHub issues and pull requests raised from insights). Separate from
+    # policies:*; read-only and standard get code_fixes:read through the ":read" suffix.
+    "code_fixes:read",
+    "code_fixes:write",
     "usage:read",
+    # Billing (plan, checkout, top-ups). Members only: the server refuses it on a key.
+    "billing:manage",
     # Jev through FailproofAI Cloud, charged to the org's plan. The built-in
     # admin set carries it, so PRESETS["admin"] below does too. The server
     # refuses a KEY that carries it without both events:add and policies:pull
@@ -71,6 +77,9 @@ RETIRED_PERMISSION_ALIASES = {
     "incidents:write": ["issues:create"],
     "incidents:ack": ["issues:read", "issues:create", "issues:close"],
     "alerts:ack": ["issues:read", "issues:create", "issues:close"],
+    # Briefly spelled `fixes:*`; the server still parses them as policies:*.
+    "fixes:read": ["policies:read"],
+    "fixes:write": ["policies:write"],
 }
 
 
@@ -132,7 +141,7 @@ _ASSIGNABLE_SET = frozenset(ASSIGNABLE_PERMISSIONS)
 # `keys:update` is human-only (a bearer key can create keys but never edit them). The key flows
 # strip these from a permission-set seed (silently, like the dashboard's keyAssignableOnly-strip)
 # and reject them from an explicit `--add` (so the user gets a clean message, not a server 422).
-KEY_NON_ASSIGNABLE = frozenset({"orgs:admin", "keys:update"})
+KEY_NON_ASSIGNABLE = frozenset({"orgs:admin", "keys:update", "billing:manage"})
 KEY_ASSIGNABLE_PERMISSIONS: List[str] = [p for p in ASSIGNABLE_PERMISSIONS if p not in KEY_NON_ASSIGNABLE]
 
 

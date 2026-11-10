@@ -412,5 +412,5 @@ structures. CSV query export remains pipeable CSV.
 | `users delete ID` / `users defaults` | deletion is by id, not email |
 | `usage windows` / `plan` / `plan claim OFFER` | usage windows is API-key only; plan (offers + trial) and claim are session-only — each refuses the other mode before HTTP |
 | `settings context-windows list\|set MODEL TOKENS\|delete MODEL` | tokens 0–1000000; model names may contain `/` |
-| `otel status\|enable\|disable` | Cloud org switch `otel.ingest_enabled`, not local collector configuration |
+| `otel status` | Cloud OTLP ingest status (always on): events in 24h, last received, services. Not local collector configuration |
 | `slack status\|disconnect` | session only |

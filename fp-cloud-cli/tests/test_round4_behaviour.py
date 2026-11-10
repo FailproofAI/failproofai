@@ -138,7 +138,8 @@ def test_plan_needs_signed_in_person_before_http(logged_in, runner, command, jso
 def test_setting_key_404_on_older_cloud(logged_in, runner, key_mode, body, expected):
     prefix = "/v1" if key_mode else "/api"
     with respx.mock as mock:
-        mock.put(BASE + prefix + "/settings/otel.ingest_enabled").respond(404, json=body)
-        result = runner.invoke(app, ["--json", *(["--api-key", "key"] if key_mode else []), "otel", "enable"])
+        mock.put(BASE + prefix + "/settings/model-context-windows").respond(404, json=body)
+        result = runner.invoke(app, ["--json", *(["--api-key", "key"] if key_mode else []),
+                                     "settings", "context-windows", "set", "provider/model", "64000"])
     assert result.exit_code == 6, result.output
     assert json.loads(result.stdout)["error"] == expected

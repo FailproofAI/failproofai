@@ -587,7 +587,7 @@ _TOP_LEVEL_GROUPS = [
         ("settings", "View and change org settings.", "list schema set context-windows"),
         ("roles", "Manage permission sets.", "list show create update delete"),
         ("plan", "Inspect offers and team trial.", "claim"),
-        ("otel", "Control Cloud OTEL ingestion.", "status enable disable"),
+        ("otel", "Control Cloud OTEL ingestion.", "status"),
         ("slack", "Manage Slack integration.", "status disconnect"),
     ]),
     ("TOOLS", [

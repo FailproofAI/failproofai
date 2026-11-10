@@ -22,8 +22,6 @@ CASES = [
     (["settings", "context-windows", "set", "provider/model", "64000"], "PUT", "/settings/model-context-windows", {}),
     (["settings", "context-windows", "delete", "provider/model"], "DELETE", "/settings/model-context-windows", {}),
     (["otel", "status"], "GET", "/otel/status", {}),
-    (["otel", "enable"], "PUT", "/settings/otel.ingest_enabled", {"value": True}),
-    (["otel", "disable"], "PUT", "/settings/otel.ingest_enabled", {"value": False}),
     (["alerts", "recipients"], "GET", "/alerts/recipients", []),
     (["alerts", "issues", "a1"], "GET", "/alerts/a1/issues", []),
     (["alerts", "issues", "a1", "--create", "--title", "Failure"], "POST", "/alerts/a1/issues", {"id": "i1"}),

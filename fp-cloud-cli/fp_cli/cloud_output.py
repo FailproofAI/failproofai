@@ -351,14 +351,15 @@ def resource(path: str, method: str, data: Any, body=None, params=None) -> None:
                        tile_view="tiles" in parts, dashboard_id=parts[1] if len(parts) > 1 else None)
     elif family == "otel" or family == "settings" and parts[-1] == "otel.ingest_enabled":
         begin("OTEL")
-        kv([("ingest", state(row.get("enabled", row.get("value", body.get("value"))))),
+        # OTLP ingest is always on now; a server that still reports the old switch is honoured.
+        kv([("ingest", state(row.get("enabled", row.get("value", body.get("value", True))))),
             ("events 24h", row.get("events_24h")), ("last received", row.get("last_received_at")),
             ("content missing", row.get("content_missing"))])
         services = collection(row, "services")
         table(["service", "events", "last received"], [
             [r.get("name", r.get("service_name")), r.get("event_count", r.get("events")), r.get("last_received_at")]
             if isinstance(r, dict) else [r, "—", "—"] for r in services
-        ], empty_message="no OTEL services yet", command="fp otel enable")
+        ], empty_message="no OTEL services yet", command="fp otel status")
     elif family == "integrations":
         begin("Slack")
         connection = row.get("integration", row.get("connection", row))

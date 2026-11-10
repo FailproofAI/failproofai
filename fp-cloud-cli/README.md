@@ -313,7 +313,7 @@ fp usage windows
 fp plan                                           # session
 fp plan claim <offer>                             # session
 fp settings context-windows list|set <model> <tokens>|delete <model>
-fp otel status|enable|disable
+fp otel status
 fp slack status|disconnect                          # session
 ```
 

@@ -172,7 +172,7 @@ State-changing commands: `keys create/update/disable/regenerate`,
 `audits create/edit/delete/run`, `audits contracts create/update` and the finding-triage verbs
 (`ack/mute/dismiss/resolve/reopen/assign`),
 `query create/update/delete`, `dashboards create/update/delete` and `dashboards tiles add/update/remove/layout`,
-`roles create/update/delete`, `users delete`, `settings context-windows set/delete`, `otel enable/disable`,
+`roles create/update/delete`, `users delete`, `settings context-windows set/delete`,
 `slack disconnect`, `orgs create`, `plan claim`, `sessions re-evaluate` and `sessions import`,
 `evaluators create/deploy/enable/disable/label/backfill` (an enabled evaluator scores every
 new session; judge/Jev evaluators and Jev dry-runs spend model budget),

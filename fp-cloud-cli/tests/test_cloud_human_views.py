@@ -210,8 +210,6 @@ CASES = [
     (["plan"], "team_offer"),
     (["plan", "claim", "team_offer"], "team_offer"),
     (["otel", "status"], "support-service"),
-    (["otel", "enable"], "● enabled"),
-    (["otel", "disable"], "○ disabled"),
     (["slack", "status"], "Reliability"),
     (["slack", "disconnect"], "disconnected"),
     (["settings", "context-windows", "list"], "64000"),

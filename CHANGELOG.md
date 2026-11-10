@@ -6,6 +6,10 @@
 
 - Keep telemetry retryable through prolonged network and server outages, retain interrupted acknowledgements, and preserve permanent rejections for inspection. (#997)
 
+### Dependencies
+
+- Update the Python SDK test dependency oauthlib to 4.0.1 to fix GHSA-3jp2-3mrg-2vxc and unblock the security gate. (#997)
+
 ## 1.0.14-beta.0 — 2026-11-02
 
 ### Docs

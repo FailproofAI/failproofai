@@ -4,6 +4,8 @@
 
 ### Docs
 
+- Document automatic Cloud model selection and hosted LLM judge retirement, preserving Jev and custom worker guidance (#pending).
+
 - Add public pages for the MCP server, the Slack app and product analytics, which the assistant and MCP server can now answer from (#982).
 
 ### Dependencies

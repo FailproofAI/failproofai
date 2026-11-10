@@ -119,6 +119,11 @@ For an agent you configure manually, use its own content-capture controls:
 
 ## Check or undo setup
 
+The relay retains telemetry through temporary network and server failures and
+retries after recovery. A permanent `400` rejection, including an event that is
+too large to store, requires correcting the payload. The relay keeps the
+rejected batch for inspection rather than repeatedly sending it.
+
 ```bash
 failproofai otel status
 failproofai otel disable all

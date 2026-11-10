@@ -69,6 +69,15 @@ The current specification has complete route, method, parameter, permission, and
 
 Use `Content-Type: application/json` for JSON writes. Treat `401` as missing or invalid authentication, `403` as a valid identity without the required permission, `404` as a missing or organization-inaccessible resource, `409` as a state conflict, and `422` as an invalid field or permission value. Error responses include a human-readable message; permission failures also name the required grant.
 
+Event ingestion uses newline-delimited JSON: one complete object per line. Check
+both `accepted` and `skipped` in a successful response. Retry the entire batch
+after a temporary server failure; replaying the same events is safe. Historical
+batches can span many months. If ingestion returns `422` with
+`error: "event_too_large"`, reduce the offending event's payload before retrying.
+Splitting a batch into smaller requests does not shrink an individual event.
+For file imports, reuse the original `existing_before` cutoff on retries so a
+partially stored session can finish.
+
 ## Request IDs
 
 Every response carries an `X-Request-Id` header, and every JSON error body includes the same value as `request_id`. Quote it when you contact support: it identifies that one request.

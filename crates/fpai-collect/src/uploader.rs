@@ -21,8 +21,8 @@
 //!
 //! **`failed/` is a retry queue, not a graveyard.** A batch there is data the
 //! server does not have, and it is the last copy. Batches are retried in place
-//! with the attempt count encoded in the filename, and only ever parked as
-//! `.poison` — never deleted.
+//! with the attempt count encoded in the filename. Temporary failures never
+//! exhaust into `.poison`; rejected batches are retained, never deleted.
 //!
 //! **Every attempt says who it is.** Three headers go with each POST so a
 //! failure can be found in the server's logs: `x-request-id` (new per attempt,
@@ -59,7 +59,7 @@ pub const DEFAULT_MAX_RETRIES: u32 = 5;
 pub const DEFAULT_RETRY_BASE: Duration = Duration::from_millis(1000);
 /// Per-read timeout. Bounds progress, not total transfer size.
 pub const DEFAULT_READ_TIMEOUT: Duration = Duration::from_secs(120);
-/// Attempts a parked batch gets before it is marked poison.
+/// Attempts an ambiguous skipped-ack batch gets before it is marked poison.
 pub const DEFAULT_FAILED_RETRIES_MAX: u32 = 3;
 /// Header names. The server validates the request id as a W3C trace id (32
 /// lowercase hex) and mints its own when it is not one.
@@ -379,7 +379,17 @@ impl Uploader {
                         // and returning Ok here deletes the spool file behind it.
                         // Park instead, non-retryable — it will parse-fail
                         // identically until the URL is fixed.
-                        match resp.json::<IngestAck>().await {
+                        let ack_bytes = match resp.bytes().await {
+                            Ok(bytes) => bytes,
+                            Err(error) => {
+                                self.park(path, None, &request_id, true).await;
+                                return Err(UploadError::Network {
+                                    attempts: attempt,
+                                    detail: error_chain(&error),
+                                });
+                            }
+                        };
+                        match serde_json::from_slice::<IngestAck>(&ack_bytes) {
                             Ok(ack) => {
                                 // `record_ack`'s own contract: "A 200 that stored
                                 // nothing is an error, not a success." It said so
@@ -397,7 +407,7 @@ impl Uploader {
                                 // `.poison` at `failed_retries_max`, after which it
                                 // is kept forever and never retried again.
                                 if self.record_ack(path, &ack, attempt, &request_id) {
-                                    self.park(path, None, &request_id).await;
+                                    self.park(path, None, &request_id, false).await;
                                     return Err(if ack.accepted == 0 {
                                         UploadError::StoredNothing {
                                             skipped: ack.skipped,
@@ -413,7 +423,7 @@ impl Uploader {
                             }
                             Err(_) => {
                                 let code = status.as_u16();
-                                self.park(path, Some(code), &request_id).await;
+                                self.park(path, Some(code), &request_id, false).await;
                                 return Err(UploadError::Client { status: code });
                             }
                         }
@@ -428,11 +438,11 @@ impl Uploader {
                         if is_credential_status(code) {
                             self.credential_refusals.store(true, Ordering::SeqCst);
                         }
-                        self.park(path, Some(code), &request_id).await;
+                        self.park(path, Some(code), &request_id, false).await;
                         return Err(UploadError::Client { status: code });
                     }
                     if attempt >= self.max_retries {
-                        self.park(path, None, &request_id).await;
+                        self.park(path, None, &request_id, true).await;
                         return Err(UploadError::Server {
                             status: code,
                             attempts: attempt,
@@ -455,7 +465,7 @@ impl Uploader {
                 }
                 Err(err) => {
                     if attempt >= self.max_retries {
-                        self.park(path, None, &request_id).await;
+                        self.park(path, None, &request_id, true).await;
                         return Err(UploadError::Network {
                             attempts: attempt,
                             detail: error_chain(&err),
@@ -586,8 +596,17 @@ impl Uploader {
     /// not written beside the batch: the filename is this module's only
     /// metadata store (see `ParkedName`), and a sidecar is exactly what that
     /// design rejects.
-    async fn park(&self, path: &Path, client_status: Option<u16>, request_id: &str) {
-        if let Err(err) = self.park_inner(path, client_status, request_id).await {
+    async fn park(
+        &self,
+        path: &Path,
+        client_status: Option<u16>,
+        request_id: &str,
+        retryable: bool,
+    ) {
+        if let Err(err) = self
+            .park_inner(path, client_status, request_id, retryable)
+            .await
+        {
             tracing::error!(
                 file = %path.display(),
                 request_id,
@@ -602,6 +621,7 @@ impl Uploader {
         path: &Path,
         client_status: Option<u16>,
         request_id: &str,
+        retryable: bool,
     ) -> Result<(), std::io::Error> {
         tokio::fs::create_dir_all(&self.failed_dir).await?;
         let name = path
@@ -610,11 +630,10 @@ impl Uploader {
             .unwrap_or("batch.jsonl");
 
         let mut parked = ParkedName::parse(name);
-        parked.attempt += 1;
-        if client_status.is_some() {
-            parked.client_status = client_status;
-        }
-        parked.poison = parked.attempt >= self.failed_retries_max.max(1);
+        parked.attempt = parked.attempt.saturating_add(1);
+        parked.client_status = client_status;
+        // An outage says nothing about the bytes; retain them for the next sweep.
+        parked.poison = !retryable && parked.attempt >= self.failed_retries_max.max(1);
 
         let dest = unique_destination(&self.failed_dir, &parked.render()).await;
         tracing::warn!(

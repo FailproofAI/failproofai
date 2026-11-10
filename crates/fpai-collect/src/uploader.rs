@@ -59,7 +59,7 @@ pub const DEFAULT_MAX_RETRIES: u32 = 5;
 pub const DEFAULT_RETRY_BASE: Duration = Duration::from_millis(1000);
 /// Per-read timeout. Bounds progress, not total transfer size.
 pub const DEFAULT_READ_TIMEOUT: Duration = Duration::from_secs(120);
-/// Attempts an ambiguous skipped-ack batch gets before it is marked poison.
+/// Separate budgets for skipped acknowledgements and definitive client rejections.
 pub const DEFAULT_FAILED_RETRIES_MAX: u32 = 3;
 /// Header names. The server validates the request id as a W3C trace id (32
 /// lowercase hex) and mints its own when it is not one.
@@ -635,13 +635,16 @@ impl Uploader {
         if !retryable && client_status.is_none() {
             parked.skipped_attempts = parked.skipped_attempts.saturating_add(1);
         }
-        // An outage says nothing about the bytes; retain them for the next sweep.
-        let rejection_attempts = if client_status.is_none() {
-            parked.skipped_attempts
+        if !retryable && client_status.is_some() {
+            parked.client_attempts = parked.client_attempts.saturating_add(1);
+        }
+        // Outages spend neither rejection budget; repeated credential refusals stay bounded.
+        let rejections = if client_status.is_some() {
+            parked.client_attempts
         } else {
-            parked.attempt
+            parked.skipped_attempts
         };
-        parked.poison = !retryable && rejection_attempts >= self.failed_retries_max.max(1);
+        parked.poison = !retryable && rejections >= self.failed_retries_max.max(1);
 
         let dest = unique_destination(&self.failed_dir, &parked.render()).await;
         tracing::warn!(
@@ -850,7 +853,7 @@ pub fn error_chain(err: &dyn std::error::Error) -> String {
 }
 
 /// Retry state carried in a parked batch's filename:
-/// `<base>.a<N>[.s<SKIPPED_ACKS>][.c<STATUS>].jsonl[.poison]`.
+/// `<base>.a<N>[.s<SKIPPED_ACKS>][.r<CLIENT_REJECTIONS>][.c<STATUS>].jsonl[.poison]`.
 ///
 /// The filename IS the database. A sidecar would need its own atomicity story
 /// and could desynchronise from the batch it describes; a rename cannot.
@@ -859,6 +862,7 @@ pub struct ParkedName {
     pub base: String,
     pub attempt: u32,
     pub skipped_attempts: u32,
+    pub client_attempts: u32,
     pub client_status: Option<u16>,
     pub poison: bool,
 }
@@ -874,9 +878,10 @@ impl ParkedName {
         let mut base = stem.to_string();
         let mut attempt = 0;
         let mut skipped_attempts = 0;
+        let mut client_attempts = 0;
         let mut client_status = None;
 
-        // Suffixes are stripped right to left: `.cNNN`, `.sN`, then `.aN`. Parsing
+        // Suffixes are stripped right to left: `.cNNN`, `.rN`, `.sN`, `.aN`. Parsing
         // rather than merely matching the prefix is what keeps a real spool
         // name safe — `claude-...-0` has no `.c`/`.a` to find, and anything
         // that does but is not numeric is left as part of the base.
@@ -884,6 +889,12 @@ impl ParkedName {
             && let Ok(code) = base[idx + 2..].parse::<u16>()
         {
             client_status = Some(code);
+            base.truncate(idx);
+        }
+        if let Some(idx) = base.rfind(".r")
+            && let Ok(n) = base[idx + 2..].parse::<u32>()
+        {
+            client_attempts = n;
             base.truncate(idx);
         }
         if let Some(idx) = base.rfind(".s")
@@ -903,6 +914,7 @@ impl ParkedName {
             base,
             attempt,
             skipped_attempts,
+            client_attempts,
             client_status,
             poison,
         }
@@ -912,6 +924,9 @@ impl ParkedName {
         let mut s = format!("{}.a{}", self.base, self.attempt);
         if self.skipped_attempts > 0 {
             s.push_str(&format!(".s{}", self.skipped_attempts));
+        }
+        if self.client_attempts > 0 {
+            s.push_str(&format!(".r{}", self.client_attempts));
         }
         if let Some(code) = self.client_status {
             s.push_str(&format!(".c{code}"));
@@ -1002,6 +1017,7 @@ mod tests {
             base: "hooks-s1-123-0".into(),
             attempt: 2,
             skipped_attempts: 0,
+            client_attempts: 0,
             client_status: Some(404),
             poison: false,
         };
@@ -1015,6 +1031,7 @@ mod tests {
             base: "claude-s-1-0".into(),
             attempt: 3,
             skipped_attempts: 0,
+            client_attempts: 0,
             client_status: None,
             poison: true,
         };

@@ -233,7 +233,10 @@ impl Relay {
         let mut parked = ParkedName::parse(name);
         parked.attempt = parked.attempt.saturating_add(1);
         parked.client_status = status.filter(|c| !retryable_status(*c));
-        parked.poison = !status.is_some_and(retryable_status) && parked.attempt >= 3;
+        if !status.is_some_and(retryable_status) {
+            parked.client_attempts = parked.client_attempts.saturating_add(1);
+        }
+        parked.poison = !status.is_some_and(retryable_status) && parked.client_attempts >= 3;
         let target = self.failed.join(parked.render());
         if tokio::fs::rename(path, target).await.is_ok() {
             let _ = File::open(&self.failed).and_then(|f| f.sync_all());
@@ -698,7 +701,7 @@ mod tests {
                 parked
                     .to_str()
                     .unwrap()
-                    .contains(&format!(".a1.c{code}.jsonl"))
+                    .contains(&format!(".a1.r1.c{code}.jsonl"))
             );
             assert_eq!(fs::read(&parked).unwrap(), original);
             assert!(
@@ -744,6 +747,25 @@ mod tests {
                 );
                 assert_eq!(fs::read(&file).unwrap(), original);
             }
+            server.verify().await;
+            server.reset().await;
+            Mock::given(method("POST"))
+                .respond_with(ResponseTemplate::new(401))
+                .expect(1)
+                .mount(&server)
+                .await;
+            relay.deliver(&file, &shutdown()).await;
+            file = fs::read_dir(&relay.failed)
+                .unwrap()
+                .next()
+                .unwrap()
+                .unwrap()
+                .path();
+            let state = ParkedName::parse(file.file_name().unwrap().to_str().unwrap());
+            assert_eq!(state.client_status, Some(401));
+            assert!(!state.poison);
+            assert!(!state.is_auto_retryable());
+            assert_eq!(fs::read(&file).unwrap(), original);
             server.verify().await;
             server.reset().await;
             Mock::given(method("POST"))

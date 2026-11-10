@@ -7,6 +7,7 @@
 - Keep telemetry retryable through prolonged network and server outages, retain interrupted acknowledgements, and preserve permanent rejections for inspection. (#997)
 - Build the macOS ARM daemon on the supported macos-15 hosted runner. (#997)
 - Count partial acknowledgements separately from outage attempts so a recovered endpoint can finish delivery. (#997)
+- Keep credential-refused batches recoverable after an outage without exhausting the skipped-acknowledgement budget. (#997)
 - Run the ARM installation check on macos-15 so a release can complete. (#997)
 
 ### Docs

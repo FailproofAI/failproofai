@@ -92,7 +92,7 @@ async fn a_later_chunk_credential_refusal_preserves_all_bytes_and_can_be_resent(
             assert_eq!(requests[0].body, b"{ \"n\": 1 }\n");
             assert_eq!(requests[1].body, b"{ \"n\": 2 }\n");
             let names = parked(&failed);
-            assert_eq!(names, [format!("original.a2.c{status}.jsonl")]);
+            assert_eq!(names, [format!("original.a2.r1.c{status}.jsonl")]);
             let retained = failed.join(&names[0]);
             assert_eq!(
                 fs::read(&retained).unwrap(),
@@ -1038,6 +1038,50 @@ async fn outages_do_not_spend_the_partial_ack_budget() {
             }
         }
         fs::remove_dir_all(spool).unwrap();
+        fs::remove_dir_all(failed).unwrap();
+    }
+}
+
+#[tokio::test]
+async fn outages_followed_by_a_client_rejection_keep_credential_recovery_available() {
+    use fpai_collect::uploader::ParkedName;
+    for status in [401, 403, 422] {
+        let server = MockServer::start().await;
+        let failed = tmpdir("outage-client");
+        // Legacy outage state has no skipped-ack history, even at saturation.
+        let file = write_batch(&failed, "mixed.a4294967295.jsonl", 2);
+        let original = fs::read(&file).unwrap();
+        let up = uploader(&server, &failed);
+        Mock::given(method("POST"))
+            .respond_with(ResponseTemplate::new(status))
+            .expect(1)
+            .mount(&server)
+            .await;
+        assert!(
+            matches!(up.upload_file(&file).await, Err(UploadError::Client { status: s }) if s == status)
+        );
+        let names = parked(&failed);
+        assert_eq!(names.len(), 1);
+        let state = ParkedName::parse(&names[0]);
+        assert_eq!(state.attempt, u32::MAX);
+        assert_eq!(state.client_status, Some(status));
+        assert_eq!(state.client_attempts, 1);
+        assert!(!state.poison);
+        assert!(!state.is_auto_retryable());
+        assert_eq!(fs::read(failed.join(&names[0])).unwrap(), original);
+        server.verify().await;
+        server.reset().await;
+        Mock::given(method("POST"))
+            .respond_with(
+                ResponseTemplate::new(200)
+                    .set_body_json(serde_json::json!({"accepted": 2, "skipped": 0})),
+            )
+            .expect(1)
+            .mount(&server)
+            .await;
+        up.upload_file(&failed.join(&names[0])).await.unwrap();
+        assert!(parked(&failed).is_empty());
+        server.verify().await;
         fs::remove_dir_all(failed).unwrap();
     }
 }

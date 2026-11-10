@@ -237,11 +237,16 @@ const agentOpts = (): MultiSelectOptions<IntegrationType> =>
 // otherwise lose their real cloud key to the first test.
 let fileHome: string;
 let realHome: string | undefined;
+let realUserProfile: string | undefined;
 let realFpHome: string | undefined;
 /** Must match the path built inside the hooks-config mock factory above. */
 const WIZARD_TEST_CONFIG_DIR = resolve(tmpdir(), `fpai-wizard-cfg-${process.pid}`);
 beforeAll(() => {
   realHome = process.env.HOME;
+  realUserProfile = process.env.USERPROFILE;
+  fileHome = mkdtempSync(resolve(tmpdir(), "fpai-cfg-"));
+  process.env.HOME = fileHome;
+  process.env.USERPROFILE = fileHome;
   realFpHome = process.env.FAILPROOFAI_HOME;
   fileHome = mkdtempSync(resolve(tmpdir(), "fpai-cfg-"));
   process.env.HOME = fileHome;
@@ -250,6 +255,18 @@ beforeAll(() => {
 afterAll(() => {
   if (realHome === undefined) delete process.env.HOME;
   else process.env.HOME = realHome;
+  if (realUserProfile === undefined) delete process.env.USERPROFILE;
+  else process.env.USERPROFILE = realUserProfile;
+  try {
+    rmSync(fileHome, { recursive: true, force: true });
+  } catch {
+    /* ignore */
+  }
+  try {
+    rmSync(WIZARD_TEST_CONFIG_DIR, { recursive: true, force: true });
+  } catch {
+    /* ignore */
+  }
   if (realFpHome === undefined) delete process.env.FAILPROOFAI_HOME;
   else process.env.FAILPROOFAI_HOME = realFpHome;
   rmSync(fileHome, { recursive: true, force: true });
@@ -602,6 +619,10 @@ describe("doneLines — Codex trust", () => {
   });
 });
 
+describe("first-run redirect", () => {
+  let origHome: string | undefined;
+  let origUserProfile: string | undefined;
+  let tmp: string;
 describe("doneLines — custom policy files", () => {
   it("names a policy file that will not load, which the review step used to", () => {
     const dir = mkdtempSync(resolve(tmpdir(), "fpai-done-"));
@@ -620,11 +641,26 @@ describe("doneLines — custom policy files", () => {
 describe("hookedAtUserScope — Hermes", () => {
   let hermes: string;
   beforeEach(() => {
+    origHome = process.env.HOME;
+    origUserProfile = process.env.USERPROFILE;
+    delete process.env.FAILPROOFAI_NO_FIRST_RUN;
+    tmp = mkdtempSync(resolve(tmpdir(), "fpai-firstrun-"));
+    process.env.HOME = tmp;
+    process.env.USERPROFILE = tmp;
     hermes = resolve(fileHome, ".hermes");
     mkdirSync(hermes, { recursive: true });
     vi.stubEnv("HERMES_HOME", hermes);
   });
   afterEach(() => {
+    if (origHome === undefined) delete process.env.HOME;
+    else process.env.HOME = origHome;
+    if (origUserProfile === undefined) delete process.env.USERPROFILE;
+    else process.env.USERPROFILE = origUserProfile;
+    try {
+      rmSync(tmp, { recursive: true, force: true });
+    } catch {
+      /* ignore */
+    }
     vi.unstubAllEnvs();
     rmSync(hermes, { recursive: true, force: true });
   });
@@ -1146,6 +1182,80 @@ describe("daemon step", () => {
     expect(printed(io.stdout)).toContain("✕ Couldn't get root, so setup stopped before changing anything.");
   });
 
+  // ── --no-daemon ───────────────────────────────────────────────────────────
+
+  it("--no-daemon: skips installDaemonService and primeElevation, applies successfully", async () => {
+    // Container / rootless-CI path: the caller knows no service manager is
+    // available and opts out of daemon installation. Hooks still write and
+    // policies still enforce in-process.
+    vi.mocked(isDaemonSupportedPlatform).mockReturnValue(true);
+    vi.mocked(daemonServiceStatus).mockReturnValue("not-installed");
+    drive(HAPPY);
+
+    const result = await runConfigureWizard(ttyIO(), { noDaemon: true });
+
+    expect(result.applied).toBe(true);
+    expect(installDaemonService).not.toHaveBeenCalled();
+    expect(primeElevation).not.toHaveBeenCalled();
+    expect(installHooks).toHaveBeenCalledTimes(1);
+  });
+
+  it("--no-daemon: sets daemonConfigured=false so hooks enforce in-process", async () => {
+    vi.mocked(isDaemonSupportedPlatform).mockReturnValue(true);
+    vi.mocked(daemonServiceStatus).mockReturnValue("not-installed");
+    drive(HAPPY);
+
+    const result = await runConfigureWizard(ttyIO(), { noDaemon: true });
+
+    expect(result.applied).toBe(true);
+    expect(result.daemonInstalled).toBeFalsy();
+    expect(readGlobalConfig().daemonConfigured).toBeUndefined();
+    expect(readFpConfig().daemon.configured).toBe(false);
+  });
+
+  it("--no-daemon: leaves an already-running daemon untouched", async () => {
+    // \"don't install\" is not \"tear down what is there\": a machine that
+    // already has failproofaid should keep it. Only the INSTALL step is
+    // skipped, not the detection of a healthy existing service.
+    vi.mocked(isDaemonSupportedPlatform).mockReturnValue(true);
+    vi.mocked(daemonServiceStatus).mockReturnValue("running");
+    vi.mocked(probeDaemonEndToEnd).mockResolvedValue(true);
+    drive(HAPPY);
+
+    const result = await runConfigureWizard(ttyIO(), { noDaemon: true });
+
+    expect(result.applied).toBe(true);
+    // Already-running daemon: daemonInstalled should be true (it was already there)
+    expect(result.daemonInstalled).toBe(true);
+    expect(installDaemonService).not.toHaveBeenCalled();
+    expect(uninstallDaemonService).not.toHaveBeenCalled();
+  });
+
+  it("--no-daemon: needs_root abort text mentions --no-daemon as an alternative", async () => {
+    vi.mocked(isDaemonSupportedPlatform).mockReturnValue(true);
+    vi.mocked(primeElevation).mockReturnValue(false);
+    const stdout = mkTtyStdout();
+    drive(HAPPY);
+
+    await runConfigureWizard({ stdin: mkTtyStdin(), stdout });
+
+    const written = vi.mocked(stdout.write).mock.calls.map((c) => String(c[0])).join("");
+    expect(written).toContain("--no-daemon");
+  });
+});
+describe("scope", () => {
+  // The wizard can no longer produce "project" or "both": scope was a fork, and
+  // the fork is gone. What used to be tested here — the union across scopes, the
+  // per-scope filtering of a user-scope-only gateway like Hermes — is still real
+  // in `installHooks`, but it is no longer REACHABLE from setup, so asserting
+  // the wizard does it would be asserting a path nobody can take. Those live on
+  // in `manager`'s own tests, against the function that still has them.
+  it("installs exactly once, at user scope", async () => {
+    drive(HAPPY);
+    const result = await runConfigureWizard(ttyIO());
+    expect(result.scopes).toEqual(["user"]);
+    expect(installHooks).toHaveBeenCalledTimes(1);
+    expect(vi.mocked(installHooks).mock.calls[0][1]).toBe("user");
   it("uses sudo -n, never a prompt, without a terminal", async () => {
     vi.mocked(daemonServiceStatus).mockReturnValue("not-installed");
     await runConfigureWizard(headlessIO());

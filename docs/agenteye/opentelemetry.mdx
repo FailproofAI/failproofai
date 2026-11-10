@@ -124,6 +124,11 @@ retries after recovery. A permanent `400` rejection, including an event that is
 too large to store, requires correcting the payload. The relay keeps the
 rejected batch for inspection rather than repeatedly sending it.
 
+After a `401` or `403`, replace the credential with a key granting `events:add`
+for the same organisation. Reconnecting does not automatically resend retained
+OTLP exports refused for credentials; ask your operator to recover those batches.
+Keep them in their original organisation.
+
 ```bash
 failproofai otel status
 failproofai otel disable all

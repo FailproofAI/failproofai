@@ -1,6 +1,14 @@
 //! Opaque OTLP/HTTP relay. No translation, decompression or event-uploader reuse.
 //! Each batch is a JSON metadata line followed by the exact request bytes.
 //! SDK exporters publish the same format; only atomic .jsonl files are read.
+//!
+//! Manual recovery of credential refusals (401/403): stop the daemon and verify
+//! a working `events:add` key for the SAME Cloud origin and organization. Back up
+//! the affected files under `<FAILPROOFAI_HOME>/state/failed/otlp/`, then move only
+//! those batches into `state/spool-otlp/` with fresh `otlp-<unique>.jsonl` names,
+//! never overwriting another file or changing their metadata/body bytes. Restart
+//! the daemon and confirm delivery before removing the backup. Never recover
+//! queues archived by `org_boundary` into a different organization's spool.
 use std::fs::{self, File, OpenOptions};
 use std::io::{self, Write};
 use std::net::{Ipv4Addr, SocketAddr};
@@ -769,10 +777,21 @@ mod tests {
             server.verify().await;
             server.reset().await;
             Mock::given(method("POST"))
+                .and(header("authorization", "Bearer replacement"))
                 .respond_with(ResponseTemplate::new(200))
                 .expect(1)
                 .mount(&server)
                 .await;
+            // Follow the documented manual requeue after fixing same-org credentials.
+            relay.key = "replacement".into();
+            let requeued = relay.spool.join(format!("otlp-{}.jsonl", new_request_id()));
+            fs::rename(&file, &requeued).unwrap();
+            assert_eq!(fs::read(&requeued).unwrap(), original);
+            assert!(
+                ParkedName::parse(requeued.file_name().unwrap().to_str().unwrap())
+                    .is_auto_retryable()
+            );
+            file = requeued;
             relay.deliver(&file, &shutdown()).await;
             assert!(!file.exists());
             server.verify().await;

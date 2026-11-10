@@ -65,6 +65,23 @@ describe("hooks/delivery-health parseParkedName", () => {
     expect(parsed.base).toBe("claude-0");
   });
 
+  it.each([
+    ["claude-0.a99.s1.r2.c401.jsonl", 99, 401, false],
+    ["claude-0.a5.s1.jsonl", 5, undefined, false],
+    ["claude-0.a2.r1.c403.jsonl", 2, 403, false],
+    ["claude-0.a9.s3.r2.c422.jsonl.poison", 9, 422, true],
+  ])("reads independent retry budgets in %s", (name, attempt, clientStatus, poison) => {
+    expect(parseParkedName(name as string)).toEqual({ base: "claude-0", attempt, clientStatus, poison });
+  });
+
+  it.each(["claude-0.a5.soon.jsonl", "claude-0.a5.r-1.jsonl", "claude-0.a5.r4294967296.jsonl"])(
+    "leaves an invalid retry suffix in %s alone",
+    (name) => {
+      expect(parseParkedName(name).base).toBe(name.slice(0, -".jsonl".length));
+      expect(parseParkedName(name).attempt).toBe(0);
+    },
+  );
+
   it("leaves a non-numeric .c/.a in the base alone", () => {
     // Mirrors the Rust comment: parsing rather than merely matching the prefix
     // is what keeps a real spool name safe.

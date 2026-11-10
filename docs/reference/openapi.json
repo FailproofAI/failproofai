@@ -2241,6 +2241,9 @@
           },
           "500": {
             "description": "Storage write failed — retry the batch."
+          },
+          "422": {
+            "description": "An event exceeds the storage JSON row limit; reduce its payload."
           }
         },
         "security": [
@@ -4938,6 +4941,103 @@
           },
           "409": {
             "description": "The user is not disabled."
+          }
+        },
+        "security": [
+          {
+            "api_key": []
+          }
+        ]
+      }
+    },
+    "/events/import": {
+      "post": {
+        "tags": [
+          "Events"
+        ],
+        "summary": "Import one file of agent events into the caller's organization.",
+        "description": "The body is the file itself, optionally gzipped (detected from its bytes).\nThe format is detected from the content unless `format` names it: our event\nJSONL, a Claude Code transcript, or a Codex rollout. Transcripts are\nconverted exactly as the failproofaid collector converts them live, secrets\nare redacted, and every event is stamped `ingest_source: \"upload\"` and\n`uploaded_by: <who>`. Sessions already present in the organization are\nskipped whole. `dry_run=true` reports what would happen and stores nothing.",
+        "operationId": "handler",
+        "parameters": [
+          {
+            "name": "format",
+            "in": "query",
+            "description": "`auto` (default), `agenteye`, `claude` or `codex`.",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "path",
+            "in": "query",
+            "description": "The file's path relative to what was dropped, e.g.\n`-home-me-repo/0b5c….jsonl`. Claude and Codex take the session id from\nit, and a Claude subagent its parent session. A trailing `.gz` is ignored.",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "environment",
+            "in": "query",
+            "description": "Environment for events that do not name one. Default `upload`.",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "dry_run",
+            "in": "query",
+            "description": "Convert and report; store nothing.",
+            "required": false,
+            "schema": {
+              "type": "boolean"
+            }
+          },
+          {
+            "name": "existing_before",
+            "in": "query",
+            "description": "Unix milliseconds. A session counts as already present only when it has\nrows ingested before this. Pass the dry run's `checked_at`, so the later\nfiles of a session this import created are not skipped as \"existing\".\nDefault: now.",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          }
+        ],
+        "requestBody": {
+          "description": "One file: event JSONL, a Claude Code transcript or a Codex rollout. Gzip is accepted.",
+          "content": {
+            "application/octet-stream": {
+              "schema": {
+                "type": "string"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "File processed (or, with `dry_run`, previewed)."
+          },
+          "400": {
+            "description": "Bad `format`, `path` or `environment`."
+          },
+          "401": {
+            "description": "Missing, unknown, or disabled key."
+          },
+          "403": {
+            "description": "The key lacks `events:add`."
+          },
+          "413": {
+            "description": "The file exceeds MAX_BODY_BYTES after decompression."
+          },
+          "422": {
+            "description": "Unrecognized file format, or a converted event exceeds the storage JSON row limit."
+          },
+          "500": {
+            "description": "Storage failed — retry the file."
           }
         },
         "security": [

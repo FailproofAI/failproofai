@@ -5,6 +5,7 @@
 ### Fixes
 
 - Keep telemetry retryable through prolonged network and server outages, retain interrupted acknowledgements, and preserve permanent rejections for inspection. (#997)
+- Build the macOS ARM daemon on the supported macos-15 hosted runner. (#997)
 
 ### Dependencies
 

@@ -94,7 +94,7 @@ jobs:
             os: macos-15-intel
             platform: darwin-x64
           - target: aarch64-apple-darwin
-            os: macos-14
+            os: macos-15
             platform: darwin-arm64
     runs-on: ${{ matrix.os }}
     # Nothing in this job has a bounded runtime of its own, and GitHub's default

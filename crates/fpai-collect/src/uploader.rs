@@ -513,11 +513,11 @@ impl Uploader {
         // Keyed on the FILE NAME, not the retry counter: `upload_file`'s own
         // `attempt` restarts at 1 for every call, including each call made from
         // `retry_parked`. The parked name is where the batch's history actually
-        // lives (`.aN`), so a file already carrying one has been counted.
+        // lives (`.sN`); outage attempts must not hide the first skipped ack.
         let first_attempt = path
             .file_name()
             .and_then(|n| n.to_str())
-            .map(|n| ParkedName::parse(n).attempt == 0)
+            .map(|n| ParkedName::parse(n).skipped_attempts == 0)
             .unwrap_or(true);
         if first_attempt {
             self.metrics
@@ -632,8 +632,16 @@ impl Uploader {
         let mut parked = ParkedName::parse(name);
         parked.attempt = parked.attempt.saturating_add(1);
         parked.client_status = client_status;
+        if !retryable && client_status.is_none() {
+            parked.skipped_attempts = parked.skipped_attempts.saturating_add(1);
+        }
         // An outage says nothing about the bytes; retain them for the next sweep.
-        parked.poison = !retryable && parked.attempt >= self.failed_retries_max.max(1);
+        let rejection_attempts = if client_status.is_none() {
+            parked.skipped_attempts
+        } else {
+            parked.attempt
+        };
+        parked.poison = !retryable && rejection_attempts >= self.failed_retries_max.max(1);
 
         let dest = unique_destination(&self.failed_dir, &parked.render()).await;
         tracing::warn!(
@@ -842,7 +850,7 @@ pub fn error_chain(err: &dyn std::error::Error) -> String {
 }
 
 /// Retry state carried in a parked batch's filename:
-/// `<base>.a<N>[.c<STATUS>].jsonl[.poison]`.
+/// `<base>.a<N>[.s<SKIPPED_ACKS>][.c<STATUS>].jsonl[.poison]`.
 ///
 /// The filename IS the database. A sidecar would need its own atomicity story
 /// and could desynchronise from the batch it describes; a rename cannot.
@@ -850,6 +858,7 @@ pub fn error_chain(err: &dyn std::error::Error) -> String {
 pub struct ParkedName {
     pub base: String,
     pub attempt: u32,
+    pub skipped_attempts: u32,
     pub client_status: Option<u16>,
     pub poison: bool,
 }
@@ -864,9 +873,10 @@ impl ParkedName {
 
         let mut base = stem.to_string();
         let mut attempt = 0;
+        let mut skipped_attempts = 0;
         let mut client_status = None;
 
-        // Suffixes are stripped right to left: `.cNNN` then `.aN`. Parsing
+        // Suffixes are stripped right to left: `.cNNN`, `.sN`, then `.aN`. Parsing
         // rather than merely matching the prefix is what keeps a real spool
         // name safe — `claude-...-0` has no `.c`/`.a` to find, and anything
         // that does but is not numeric is left as part of the base.
@@ -874,6 +884,12 @@ impl ParkedName {
             && let Ok(code) = base[idx + 2..].parse::<u16>()
         {
             client_status = Some(code);
+            base.truncate(idx);
+        }
+        if let Some(idx) = base.rfind(".s")
+            && let Ok(n) = base[idx + 2..].parse::<u32>()
+        {
+            skipped_attempts = n;
             base.truncate(idx);
         }
         if let Some(idx) = base.rfind(".a")
@@ -886,6 +902,7 @@ impl ParkedName {
         ParkedName {
             base,
             attempt,
+            skipped_attempts,
             client_status,
             poison,
         }
@@ -893,6 +910,9 @@ impl ParkedName {
 
     pub fn render(&self) -> String {
         let mut s = format!("{}.a{}", self.base, self.attempt);
+        if self.skipped_attempts > 0 {
+            s.push_str(&format!(".s{}", self.skipped_attempts));
+        }
         if let Some(code) = self.client_status {
             s.push_str(&format!(".c{code}"));
         }
@@ -981,6 +1001,7 @@ mod tests {
         let p = ParkedName {
             base: "hooks-s1-123-0".into(),
             attempt: 2,
+            skipped_attempts: 0,
             client_status: Some(404),
             poison: false,
         };
@@ -993,6 +1014,7 @@ mod tests {
         let p = ParkedName {
             base: "claude-s-1-0".into(),
             attempt: 3,
+            skipped_attempts: 0,
             client_status: None,
             poison: true,
         };
@@ -1011,9 +1033,20 @@ mod tests {
         // one that has already been retried.
         let p = ParkedName::parse("claude-3ee9c788-1785741108180149712-0.jsonl");
         assert_eq!(p.attempt, 0);
+        assert_eq!(p.skipped_attempts, 0);
         assert_eq!(p.client_status, None);
         assert!(!p.poison);
         assert_eq!(p.base, "claude-3ee9c788-1785741108180149712-0");
+    }
+
+    #[test]
+    fn skipped_ack_state_survives_renames_and_old_names_start_with_no_skips() {
+        let old = ParkedName::parse("batch.a99.jsonl");
+        assert_eq!(old.skipped_attempts, 0);
+        let mixed = ParkedName::parse("batch.a99.s2.c422.jsonl");
+        assert_eq!(mixed.base, "batch");
+        assert_eq!((mixed.attempt, mixed.skipped_attempts), (99, 2));
+        assert_eq!(mixed.render(), "batch.a99.s2.c422.jsonl");
     }
 
     #[test]

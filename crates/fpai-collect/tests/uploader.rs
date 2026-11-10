@@ -972,6 +972,77 @@ async fn temporary_rejections_outlive_the_old_poison_budget_and_recover() {
 }
 
 #[tokio::test]
+async fn outages_do_not_spend_the_partial_ack_budget() {
+    use fpai_collect::uploader::ParkedName;
+    for recover in [true, false] {
+        let server = MockServer::start().await;
+        let spool = tmpdir("outage-partial");
+        let failed = tmpdir("outage-partial-failed");
+        let mut file = write_batch(&spool, "mixed.jsonl", 2);
+        let original = fs::read(&file).unwrap();
+        let up = uploader(&server, &failed);
+        for skipped in 1..=3 {
+            Mock::given(method("POST"))
+                .respond_with(ResponseTemplate::new(500))
+                .expect(20)
+                .mount(&server)
+                .await;
+            for _ in 0..4 {
+                up.upload_file(&file).await.unwrap_err();
+                let names = parked(&failed);
+                assert_eq!(names.len(), 1);
+                file = failed.join(&names[0]);
+                let state = ParkedName::parse(&names[0]);
+                assert!(state.is_auto_retryable());
+                assert_eq!(state.skipped_attempts, skipped - 1);
+                assert_eq!(fs::read(&file).unwrap(), original);
+            }
+            server.verify().await;
+            server.reset().await;
+            Mock::given(method("POST"))
+                .respond_with(
+                    ResponseTemplate::new(200)
+                        .set_body_json(serde_json::json!({"accepted": 1, "skipped": 1})),
+                )
+                .expect(1)
+                .mount(&server)
+                .await;
+            assert!(matches!(
+                up.upload_file(&file).await,
+                Err(UploadError::PartiallySkipped { .. })
+            ));
+            let names = parked(&failed);
+            assert_eq!(names.len(), 1);
+            file = failed.join(&names[0]);
+            let state = ParkedName::parse(&names[0]);
+            assert_eq!(state.skipped_attempts, skipped);
+            assert_eq!(state.poison, skipped == 3);
+            assert_eq!(fs::read(&file).unwrap(), original);
+            assert_eq!(up.metrics().skipped_total.load(Ordering::Relaxed), 1);
+            server.verify().await;
+            server.reset().await;
+            if recover {
+                assert!(state.is_auto_retryable());
+                Mock::given(method("POST"))
+                    .respond_with(
+                        ResponseTemplate::new(200)
+                            .set_body_json(serde_json::json!({"accepted": 2, "skipped": 0})),
+                    )
+                    .expect(1)
+                    .mount(&server)
+                    .await;
+                up.upload_file(&file).await.unwrap();
+                assert!(!file.exists());
+                server.verify().await;
+                break;
+            }
+        }
+        fs::remove_dir_all(spool).unwrap();
+        fs::remove_dir_all(failed).unwrap();
+    }
+}
+
+#[tokio::test]
 async fn network_failures_outlive_the_poison_budget_without_losing_bytes() {
     use fpai_collect::uploader::ParkedName;
     let spool = tmpdir("network-outage");

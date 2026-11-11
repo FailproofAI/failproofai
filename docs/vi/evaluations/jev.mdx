@@ -1,28 +1,28 @@
 ---
 title: "Jev evaluations"
-description: "Sử dụng Jev để chấm điểm một phiên làm việc đã hoàn thành dựa trên một câu hỏi có câu trả lời đã biết."
+description: "Use Jev to score a finished session against a question with known answers."
 icon: "list-checks"
 ---
 
-Một Jev evaluation đọc một **phiên làm việc đã hoàn thành** và cho một điểm từ 0 đến 1. Sử dụng nó khi câu trả lời đã biết trước, chẳng hạn như "Khách hàng có thể hiện sự khẩn cấp không?" hoặc "Khách hàng bực bội đến mức nào?" Nó giúp bạn tìm ra các mẫu hình trên nhiều lần chạy; nó không dừng lệnh gọi công cụ. Để đưa ra quyết định **trước khi** một công cụ chạy, sử dụng [Jev policies](/vi/policies/jev).
+A Jev evaluation reads a **finished session** and gives a score from 0 to 1. Use it when the answer is known in advance, such as "Did the customer express urgency?" or "How frustrated was the customer?" It helps you find patterns across runs; it does not stop a tool call. For decisions made **before** a tool runs, use [Jev policies](/vi/policies/jev).
 
-## Tạo một trong bảng điều khiển
+## Create one in the dashboard
 
-1. Mở **Analyze → eval authoring** và chọn **new eval**.
-2. Mô tả một câu hỏi và các câu trả lời khả thi của nó. Ví dụ: "Tác nhân có hứa hoàn tiền trước khi kiểm tra chính sách hoàn tiền không? Trả lời có hoặc không." Chọn **draft** và xem lại rằng kết quả là một điểm phân loại.
-3. [Kiểm tra nó](/vi/evaluations/test) trên các phiên gần đây, sau đó [triển khai nó](/vi/evaluations/deploy). Các phiên đã hoàn thành mới sẽ được chấm điểm; [backfill](/vi/evaluations/deploy#score-sessions-you-already-have) nếu bạn cũng cần lịch sử.
+1. Open **Analyze → eval authoring** and select **new eval**.
+2. Describe one question and its possible answers. For example: "Did the agent promise a refund before checking the refund policy? Answer yes or no." Select **draft** and review that the result is a classifier score.
+3. [Test it](/vi/evaluations/test) on recent sessions, then [deploy it](/vi/evaluations/deploy). New completed sessions are scored; [backfill](/vi/evaluations/deploy#score-sessions-you-already-have) if you also need history.
 
-![Biểu mẫu eval authoring được chia sẻ, nơi bạn mô tả một câu hỏi có câu trả lời cố định, xem lại bản nháp và triển khai sau khi kiểm tra. Ví dụ hiển thị là một đánh giá mã; một câu hỏi Jev sử dụng cùng luồng authoring.](/images/dashboard/eval-authoring-draft.png)
+![The shared eval authoring form, where you describe a fixed-answer question, review the draft, and deploy after testing. The example shown is a code evaluation; a Jev question uses the same authoring flow.](/images/dashboard/eval-authoring-draft.png)
 
-Trợ lý có thể chọn giữa mã, phân loại Jev và một [judge](/vi/evaluations/judge). Kiểm tra lựa chọn của nó trước khi triển khai. Jev cho một điểm mà không cần lý do bằng văn bản; chọn một judge khi bạn cần một giải thích. Xem [Jev evaluation reference](/vi/reference/jev-evaluations) để biết các loại câu hỏi và giới hạn điểm.
+The assistant can choose between code, Jev classification, and a [judge](/vi/evaluations/judge). Check its choice before deploying. Jev gives a score without prose reasoning; choose a judge when you need an explanation. See the [Jev evaluation reference](/vi/reference/jev-evaluations) for question types and score limits.
 
-## Đọc các điểm
+## Read the scores
 
-Mở **Observe → Evaluations** để biểu đồ kết quả theo tác nhân và thời gian. Từ terminal, Cloud CLI có thể đọc cùng kết quả:
+Open **Observe → Evaluations** to chart the result by agent and time. From a terminal, the Cloud CLI can read the same results:
 
 ```bash
 fp evals --since 7d
 fp evals --aggregate --since 7d
 ```
 
-Cloud CLI đọc kết quả; authoring và triển khai diễn ra trong bảng điều khiển. Xem [Cloud CLI reference](/vi/reference/cloud-cli#evaluations) để biết các bộ lọc.
+The Cloud CLI reads results; authoring and deployment happen in the dashboard. See the [Cloud CLI reference](/vi/reference/cloud-cli#evaluations) for filters.

@@ -1,0 +1,61 @@
+---
+title: "Produktanalysen"
+description: "Die Nutzungstelemetrie, die Failproof AI Cloud über sich selbst sendet, was niemals erfasst wird und wie sie deaktiviert werden kann."
+icon: "chart-no-axes-column"
+---
+
+Failproof AI Cloud sendet Nutzungstelemetrie **über die Software selbst** an ihre Maintainer. Dabei werden niemals Daten Ihrer Agenten übermittelt. Bei einer selbst gehosteten Installation ist die Telemetrie standardmäßig aktiviert und kann deaktiviert werden.
+
+## Was erfasst wird
+
+Jedes Ereignis enthält fünf Dimensionen – keine davon identifiziert eine Person:
+
+| Dimension | Beispiel | Bedeutung |
+| --- | --- | --- |
+| `product` | `agenteye` | Welches Produkt das Ereignis gesendet hat |
+| `component` | `dashboard`, `server`, `cli` | Welcher Teil des Produkts das Ereignis gesendet hat |
+| `app_version` | `0.0.1-beta.81` | Der ausgeführte Build |
+| `deployment_kind` | `self_hosted` | Ob es sich um eine Kundeninstallation, unsere Demo, unser QA oder eine Entwicklermaschine handelt |
+| `org_id` | eine UUID | Die Organisation, in der die Aktion stattfand – als opakes Bezeichner |
+
+Darüber hinaus erfassen Ereignisse **was genutzt wurde, niemals den Inhalt**: welche Seite aufgerufen wurde (als Routenmuster wie `/:org/sessions/:id`, nie die echte URL), wie viele Filter welcher Art angewendet wurden, ob eine Aktion erfolgreich war und wie lange sie gedauert hat.
+
+Die Slack-App erfasst Workspace-Verbindungen und -Trennungen, Kontoverknüpfungen, gestellte Fragen, gepostete Diagramme, Genehmigungsentscheidungen und Fehler nach einer festgelegten Kategorie. Slack-Workspace-, Benutzer- oder Kanal-IDs, E-Mail-Adressen, Fragen, Antworten, SQL oder Tokens werden niemals erfasst.
+
+### Der Name Ihrer Organisation
+
+Neben der opaken `org_id` erfassen wir den Namen Ihrer Organisation, den URL-Slug und die Dashboard-Adresse einmalig – auf einem Organisationsdatensatz, nicht bei jedem Ereignis. Das ermöglicht uns, einem Muster den zugehörigen Account zuzuordnen, wenn wir die Nutzung analysieren oder ein gemeldetes Problem untersuchen. Dies ist die einzige identifizierende Information, die das Produkt über Sie sendet.
+
+### Ihre Nutzungsgesamtwerte
+
+Der Server meldet die abgerechneten Nutzungsgesamtwerte jeder Organisation – dieselben Zahlen, die Sie auf der Seite „Nutzung" sehen. Es handelt sich ausschließlich um Zählwerte: Ereignisse, Sitzungen, Agenten, Umgebungen, Evaluierungsläufe, Scores, Audit-Läufe, gespeicherte Abfragen, Dashboards, Benachrichtigungen, Issues, API-Schlüssel und Mitglieder, sowie die Datumsangaben des Abrechnungszeitraums. Sie enthalten keine Bezeichner, Namen oder Abfragetexte und werden unabhängig davon übermittelt, ob jemand angemeldet ist.
+
+## Was niemals erfasst wird
+
+- **Keine Prompts, Modellantworten oder Ereignisinhalte** – weder als Text, Präfix noch als Hash
+- **Keine Sitzungs-, Agenten- oder Trace-Bezeichner**
+- **Keine Evaluator-Score-Namen**
+- **Keine Fehlermeldungen, Exception-Texte oder Response-Bodies** – nur ein Statuscode und eine Kategorie aus einer festen Liste
+- **Keine Tool-Argumente, SQL oder Abfragetexte**
+- **Keine Details zu verbundenen Apps.** Das Verbinden oder Widerrufen eines MCP-Clients sendet höchstens eine Anzahl von Berechtigungen, niemals den Namen der App oder einen Token
+- **Keine E-Mail-Adressen**
+- **Keine Referrer-URLs oder Query-Strings**
+- **Keine Bildschirmaufzeichnung, kein DOM-Capturing und kein Klick- oder Cursor-Tracking**
+
+## Deaktivierung bei einer selbst gehosteten Installation
+
+Setzen Sie `DO_NOT_TRACK=1` sowohl auf dem Dashboard als auch auf dem Server. Da beide unabhängig voneinander entscheiden, führt das Setzen des Werts auf nur einer Seite dazu, dass die andere weiterhin Telemetrie sendet. Starten Sie den Server neu, damit die Änderung wirksam wird.
+
+Die README Ihres Releases beschreibt die weiteren Opt-out-Einstellungen und erklärt, wie Sie überprüfen können, ob die Telemetrie deaktiviert ist.
+
+## Ein einzelner Ping beim Opt-out
+
+Wenn Sie die Telemetrie über eine Produkteinstellung – und nicht über `DO_NOT_TRACK` – deaktivieren, sendet das Dashboard möglicherweise **einen einzelnen anonymen Ping**, der dies mit einer Wahrscheinlichkeit von 1 zu 1000 pro Prozessstart erfasst. Damit erfahren wir, wie viele Betreiber die Telemetrie deaktivieren. Der Ping enthält keine Bezeichner: keine Organisation, keinen Benutzer, keinen Hostnamen, keine URL und keine IP – nur Produkt, Komponente, Version, Deployment-Art und Grund. Ein abgemeldeter Server sendet nichts.
+
+Dieser Ping wird niemals gesendet, wenn Sie `DO_NOT_TRACK` verwenden – weshalb dies die empfohlene Einstellung ist, wenn Ihre Richtlinien jegliche ausgehende Telemetrie untersagen.
+
+## Wohin die Daten gehen
+
+An PostHog (`us.i.posthog.com`) über TLS auf Port 443. Da es sich um einen einzigen Hostnamen handelt, können Sie ihn auch mit einer einzelnen Egress-Regel blockieren.
+
+Informationen zum allgemeinen Umgang mit personenbezogenen Daten finden Sie in der [Datenschutzrichtlinie](https://befailproof.ai/privacy/).

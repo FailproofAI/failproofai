@@ -1,21 +1,25 @@
 ---
 title: "Custom agents"
-description: "Cấu hình, danh mục sự kiện, quy tắc tương quan và phân phối cho failproofai-sdk."
+description: "Configuration, the event catalog, correlation rules, and delivery for failproofai-sdk."
 icon: "python"
 ---
 
-Mỗi cài đặt, phương thức và trường làm gì. Nếu bạn lần đầu tiên cấu hình, hãy bắt đầu bằng hướng dẫn — trang này dành cho việc tra cứu.
+Hiểu rõ từng cài đặt, phương thức và trường. Nếu bạn đang tiến hành thiết lập lần đầu tiên, hãy bắt đầu với hướng dẫn — trang này dùng để tra cứu.
 
 <Columns cols={2}>
-  <Card title="Hướng dẫn custom agents" icon="code" href="/vi/start/integrations/custom-agents">
-    Cài đặt, cấu hình, các phương thức sự kiện, một ví dụ chi tiết và các vấn đề thường gặp.
+  <Card title="Custom agents guide" icon="code" href="/vi/start/integrations/custom-agents">
+    Cài đặt, thiết lập, các phương thức sự kiện, một ví dụ thực tế và các vấn đề thường gặp.
   </Card>
-  <Card title="Đang dùng framework?" icon="plug" href="/vi/start/integrations">
-    LangChain, CrewAI, LlamaIndex và Pydantic AI tự cấu hình với một lệnh gọi.
+  <Card title="Using TypeScript?" icon="square-js" href="/vi/reference/custom-agents-typescript">
+    Các sự kiện giống nhau, định dạng dây truyền giống nhau, spool giống nhau — từ Node.
   </Card>
 </Columns>
 
-Python 3.10 hoặc mới hơn. Không có phụ thuộc thời gian chạy.
+Python 3.11 trở lên. Không có phụ thuộc thời gian chạy. Sử dụng một framework? [LangChain, CrewAI, LlamaIndex và Pydantic AI](/vi/start/integrations) tự động thiết lập với một lệnh gọi.
+
+<Note>
+  Cũng có một **TypeScript SDK**, và cả hai ghi các sự kiện giống nhau vào cùng một spool. Một fleet với các agent Node và các agent Python tạo ra một tập phiên, không phải hai. Chọn theo từng dịch vụ, không phải theo công ty.
+</Note>
 
 ## Cài đặt
 
@@ -23,21 +27,21 @@ Python 3.10 hoặc mới hơn. Không có phụ thuộc thời gian chạy.
 pip install failproofai-sdk
 ```
 
-Gói được cài đặt dưới dạng `failproofai-sdk` và nhập trong Python dưới dạng `failproofai_sdk`. Các tính năng bổ sung của framework như `failproofai-sdk[langgraph]` cài đặt framework; các adapter luôn được đi kèm trong wheel cơ bản.
+Gói được cài đặt dưới tên `failproofai-sdk` và được nhập trong Python dưới tên `failproofai_sdk`. Các bổ sung framework như `failproofai-sdk[langgraph]` cài đặt chính framework; các bộ điều hợp luôn được gửi trong wheel cơ sở.
 
 ## Kết nối daemon Failproof
 
 <Tabs>
   <Tab title="Dashboard">
     1. Đi tới **Admin → Keys** và tạo một khóa với `events:add`.
-    2. [Kết nối daemon Failproof với Cloud](/vi/start/setup#kết-nối-máy-đến-cloud) trên máy agent.
-    3. Chạy một phiên cấu hình, sau đó tìm ID chính xác của nó trong **Observe → Events**.
-    4. Đi tới **Observe → Sessions**, chọn cùng một environment, và mở trace được tái tạo.
+    2. [Kết nối daemon Failproof tới Cloud](/vi/start/setup#connect-a-machine-to-cloud) trên máy agent.
+    3. Chạy một phiên được thiết lập, sau đó tìm ID chính xác của nó dưới **Observe → Events**.
+    4. Đi tới **Observe → Sessions**, chọn cùng một môi trường và mở trace được tái tạo.
 
-    ![Một phiên custom Python agent được tái tạo dưới dạng biểu đồ thực thi và trace sự kiện theo thứ tự.](/images/dashboard/session-detail.png)
+    ![A custom Python agent session reconstructed as an execution graph and ordered event trace.](/images/dashboard/session-detail.png)
   </Tab>
   <Tab title="CLI">
-    Đọc khóa `events:add` vào shell. `read -s` nhận nó ở một lời nhắc không được hiển thị, do đó nó không bao giờ xuất hiện trong lệnh hoặc lịch sử shell:
+    Đọc khóa `events:add` vào shell. `read -s` lấy nó ở một lời nhắc không được lặp lại, vì vậy nó không bao giờ xuất hiện trong một lệnh hoặc trong lịch sử shell:
 
     ```bash
     read -rs FAILPROOFAI_CLOUD_TOKEN && export FAILPROOFAI_CLOUD_TOKEN
@@ -54,6 +58,34 @@ Gói được cài đặt dưới dạng `failproofai-sdk` và nhập trong Pyth
 
 ## Cấu hình
 
+### OpenTelemetry spans (opt in)
+
+Cài đặt `opentelemetry-sdk` riêng biệt, sau đó gắn bộ xuất tùy chọn:
+
+```python
+import failproofai_sdk
+from opentelemetry.sdk.trace import TracerProvider
+
+provider = TracerProvider()
+failproofai_sdk.instrument("otel", provider=provider)
+with provider.get_tracer("my-agent").start_as_current_span(
+    "agent", attributes={"gen_ai.operation.name": "invoke_agent"}
+):
+    pass
+provider.force_flush()
+```
+
+Thiết lập sử dụng nhà cung cấp đã đăng ký của bạn nếu bạn bỏ qua `provider`, chỉ tạo một nhà cung cấp
+khi không có nhà cung cấp nào được đăng ký. Bạn cũng có thể chuyển `failproofai_sdk.OtelSpanExporter()`
+trực tiếp tới bộ xử lý span của riêng bạn. Các bộ xuất khác vẫn không thay đổi.
+
+Daemon FailproofAI đã kết nối cung cấp các bản xuất; SDK không cần thiết lập mạng,
+khóa hoặc trình nghe cục bộ. Một quản trị viên phải bật
+[OpenTelemetry ingest](/vi/agenteye/opentelemetry). Một `instrument()` đơn thuần không bao giờ
+bật OTEL. `uninstrument("otel")` chỉ vô hiệu hóa bộ xử lý của nó. Thiết lập của bạn
+kiểm soát bắt nhận nội dung. Xóa nhà cung cấp trước khi thoát. SDK vẫn khai báo
+không có phụ thuộc thời gian chạy cứng và chỉ nhập OpenTelemetry khi được yêu cầu.
+
 ```python
 import failproofai_sdk
 
@@ -64,32 +96,32 @@ failproofai_sdk.configure(
 )
 ```
 
-| Tham số | Chức năng |
+| Đối số | Công dụng |
 | --- | --- |
 | `environment` | Nhãn trên mọi sự kiện — `production`, `staging`, `prod-eu`. Mặc định là `dev`. |
-| `flush_interval` | Tần suất luồng nền ghi vào đĩa, tính bằng giây. Mặc định là `0.5`. |
-| `base_dir` | Nơi ghi. Mặc định là spool của daemon, đó là những gì bạn muốn trừ khi bạn biết cách khác. |
+| `flush_interval` | Tần suất mà luồng nền ghi vào đĩa, tính bằng giây. Mặc định là `0.5`. |
+| `base_dir` | Nơi để ghi. Mặc định là spool của daemon, đó là thứ bạn muốn trừ khi bạn biết rõ hơn. |
 
-Đặt theo biến môi trường thay thế:
+Đặt bằng biến môi trường thay thế:
 
-| Biến | Chức năng |
+| Biến | Công dụng |
 | --- | --- |
-| `AGENTEYE_ENVIRONMENT` | Đặt `environment` mà không thay đổi mã, cho trường hợp nhãn thuộc về triển khai chứ không phải ứng dụng. Tham số `configure()` sẽ được ưu tiên. |
+| `AGENTEYE_ENVIRONMENT` | Đặt `environment` mà không cần thay đổi mã, khi nhãn thuộc về việc triển khai chứ không phải ứng dụng. Một đối số `configure()` có ưu tiên hơn nó. |
 | `FAILPROOFAI_HOME` | Di chuyển gốc Failproof AI chứa spool. |
-| `FAILPROOFAI_SDK_STRICT` | `1` làm cho lỗi cấu hình tăng thay vì được ghi lại. |
+| `FAILPROOFAI_SDK_STRICT` | `1` làm cho lỗi thiết lập tăng thay vì được ghi nhật ký. |
 | `FAILPROOFAI_SDK_STRICT_INTEGRATIONS` | `1` làm cho vấn đề tương thích framework tăng thay vì cảnh báo và tiếp tục. |
 
 <Warning>
-  **Không có dấu phẩy trong `environment`.** Ingest chia trường đó trên dấu phẩy để xây dựng các bộ lọc và bỏ qua bất kỳ sự kiện nào có nhãn chứa một — vì vậy toàn bộ lần chạy biến mất âm thầm. Viết `prod-eu`, không phải `prod,eu`.
+  **Không có dấu phẩy trong `environment`.** Ingest chia trường đó trên dấu phẩy để xây dựng các bộ lọc của nó, và bỏ qua bất kỳ sự kiện nào có nhãn chứa một — vì vậy toàn bộ chạy biến mất im lặng. Viết `prod-eu`, không phải `prod,eu`.
 
-  `configure(environment="prod,eu")` tăng để bạn tìm ra ngay lập tức. `AGENTEYE_ENVIRONMENT` không thể tăng — không có gì gọi bạn — vì vậy nó cảnh báo một lần và quay lại `dev`.
+  `configure(environment="prod,eu")` tăng để bạn phát hiện ra ngay lập tức. `AGENTEYE_ENVIRONMENT` không thể tăng — không có gì gọi bạn — vì vậy nó cảnh báo một lần và quay lại `dev`.
 </Warning>
 
-Các sự kiện được xếp hàng trong bộ nhớ và được ghi ở chế độ nền mỗi `flush_interval` giây, với một lần xóa cuối cùng khi thoát thông dịch viên. Một quy trình bị giết hoàn toàn mất bất cứ điều gì chưa được ghi.
+Các sự kiện được xếp hàng trong bộ nhớ và được ghi trong nền mỗi `flush_interval` giây, với một flush cuối cùng khi thoát trình thông dịch. Một quy trình bị giết hoàn toàn sẽ mất bất cứ điều gì chưa được ghi.
 
-## Danh tính
+## Nhận dạng
 
-Mỗi sự kiện thuộc về một phiên và một agent. **Các phạm vi điền cả hai**, vì vậy bạn hiếm khi chuyển chúng:
+Mọi sự kiện đều thuộc về một phiên và một agent. **Các phạm vi điền cả hai**, vì vậy bạn hiếm khi chuyển chúng:
 
 ```python
 with failproofai_sdk.session():
@@ -97,15 +129,15 @@ with failproofai_sdk.session():
         failproofai_sdk.event.tool_use(tool_name="search", tool_call_id="c1")
 ```
 
-Chuyển `session_id` hoặc `agent_id` một cách rõ ràng vẫn hoạt động và thắng. Không có cả ràng buộc lẫn được truyền, cuộc gọi tăng `TypeError` chứ không phải phát thải một sự kiện Cloud sẽ yên lặng loại bỏ.
+Chuyển `session_id` hoặc `agent_id` một cách rõ ràng vẫn hoạt động và chiến thắng. Nếu không có phạm vi hoặc chuyển, cuộc gọi sẽ tăng `TypeError` chứ không phải phát ra một sự kiện Cloud sẽ yên tĩnh loại bỏ.
 
 <Note>
-  Danh tính di trên các biến ngữ cảnh. Nó theo `asyncio` tự động, nhưng **không** các luồng mới — bao quanh công nhân trong `failproofai_sdk.propagate()` hoặc sự kiện của nó hạ cánh không được gắn.
+  Nhận dạng ghi trên các biến bối cảnh. Nó tự động theo các tác vụ `asyncio`, nhưng **không** các luồng mới — bọc một worker trong `failproofai_sdk.propagate()` hoặc các sự kiện của nó hạ cánh không được gắn.
 </Note>
 
 ## Danh mục sự kiện
 
-Mười lăm phương thức. Hầu hết đi theo **cặp** — bạn gọi bộ mở, sau đó bộ đóng, và SDK đo khoảng thời gian.
+Mười lăm phương thức. Hầu hết đều có **cặp** — bạn gọi bộ mở, sau đó gọi bộ đóng, và SDK sẽ tính thời gian khoảng cách.
 
 | | Mở | Đóng |
 | --- | --- | --- |
@@ -116,11 +148,11 @@ Mười lăm phương thức. Hầu hết đi theo **cặp** — bạn gọi b�
 | **Hooks** | `hook_triggered` | `hook_completed` |
 | **Humans** | `human_wait` | `human_input` |
 
-Ba tự đứng: `error`, `human_pause`, `human_interrupt`.
+Ba đứng riêng: `error`, `human_pause`, `human_interrupt`.
 
-<Accordion title="Mỗi trường, theo phương thức" icon="table">
+<Accordion title="Every field, per method" icon="table">
 
-Mỗi phương thức cũng có `session_id` và `agent_id`, mà các phạm vi điền cho bạn. Bất cứ điều gì để lại là `None` được thả ra chứ không phải được gửi dưới dạng JSON `null`, và mỗi phương thức trả về `None`.
+Mọi phương thức cũng nhận `session_id` và `agent_id`, mà các phạm vi điền vào cho bạn. Bất cứ thứ gì còn lại là `None` bị loại bỏ thay vì được gửi dưới dạng JSON `null`, và mọi phương thức đều trả về `None`.
 
 | Phương thức | Bắt buộc | Tùy chọn |
 | --- | --- | --- |
@@ -143,14 +175,14 @@ Mỗi phương thức cũng có `session_id` và `agent_id`, mà các phạm vi 
 </Accordion>
 
 <Warning>
-  Để đánh dấu một lần chạy là thất bại, `outcome` phải là một trong số `failed`, `error`, `timeout` hoặc `rejected`. Bất cứ điều gì khác — kể cả gần như thất bại `"failure"` — đếm là thành công.
+  Để đánh dấu một chạy là không thành công, `outcome` phải là một trong `failed`, `error`, `timeout` hoặc `rejected`. Bất cứ điều gì khác — bao gồm cả gần nhầm `failure` — được tính là một thành công.
 </Warning>
 
-## Ghép đôi và thời lượng
+## Ghép nối và thời lượng
 
-**Một quy tắc: cho sự kiện đóng cùng id với bộ mở của nó.** Đó là những gì ghép đôi chúng, và những gì cho phép SDK đo khoảng thời gian.
+**Một quy tắc: cung cấp cho sự kiện đóng cùng id với bộ mở của nó.** Đó là điều ghép nối chúng, và điều cho phép SDK tính thời gian khoảng cách.
 
-| Cặp | Khớp với |
+| Cặp | Khớp trên |
 | --- | --- |
 | `tool_use` → `tool_result` | `tool_call_id` |
 | `hook_triggered` → `hook_completed` | `hook_id` |
@@ -158,46 +190,46 @@ Mỗi phương thức cũng có `session_id` và `agent_id`, mà các phạm vi 
 | `human_wait` → `human_input` | `input_id` |
 | `model_request` → `model_response` | `request_id` |
 
-**Không tự truyền `duration_ms`.** SDK đo nó, và truyền nó tăng `ValueError`.
+**Không chuyển `duration_ms` tự mình.** SDK đo nó, và chuyển nó tăng `ValueError`.
 
-Ngoại lệ duy nhất là `model_response`, nơi chỉ bạn biết độ trễ nhà cung cấp thực. Chuyển một số nguyên của mili giây — một float tăng, bởi vì cột là một số nguyên 32-bit và sẽ hạ cánh trống.
+Một ngoại lệ là `model_response`, nơi chỉ bạn biết độ trễ nhà cung cấp thực. Chuyển một số nguyên toàn bộ milliseconds — một float tăng, bởi vì cột là một số nguyên 32-bit và sẽ hạ cánh trống.
 
-<Accordion title="Các trường hợp cạnh" icon="circle-help">
+<Accordion title="Edge cases" icon="circle-help">
 
-- **Id chỉ cần phải là duy nhất cho mỗi loại, mỗi phiên.** Một lệnh gọi công cụ và một móc có thể chia một; hai phiên chạy cùng lúc có thể tái sử dụng cùng các id mà không va chạm.
-- **Chúng không được phạm vi vào một agent.** Một cặp mở dưới một agent và đóng dưới một agent khác vẫn khớp — đó là trường hợp bình thường trong mã đa agent.
-- **`request_id` là tùy chọn nhưng được khuyến khích.** Không có nó, các sự kiện mô hình ghép đôi theo thứ tự họ tới, vì vậy hai lệnh gọi đồng thời trong cùng một agent có thể sai lệch.
-- **Một cặp chia tách trên các quy trình** vẫn khớp trong Cloud, nhưng SDK không thể đo nó — không có gì trong quy trình nào thấy cả hai nửa.
-- **Nhiều nhất 10,000 bộ mở chờ một bộ đóng cùng một lúc.** Quá điều đó, bộ cũ nhất bị thả, vì vậy rò rỉ không thể phát triển mà không bị ràng buộc.
+- **Ids chỉ cần duy nhất cho mỗi loại, mỗi phiên.** Một lệnh gọi công cụ và một hook có thể chia sẻ một; hai phiên chạy cùng một lúc có thể sử dụng lại cùng một ids mà không va chạm.
+- **Chúng không được phạm vi cho một agent.** Một cặp được mở dưới một agent và đóng dưới một agent khác vẫn khớp — đó là trường hợp bình thường trong mã nhiều agent.
+- **`request_id` là tùy chọn nhưng được khuyến cáo.** Nếu không có nó, các sự kiện mô hình ghép nối theo thứ tự chúng đến, vì vậy hai lệnh gọi đồng thời trong cùng một agent có thể mispair.
+- **Một cặp chia cắt giữa các quy trình** vẫn khớp trong Cloud, nhưng SDK không thể tính thời gian nó — không có gì trong cả hai quy trình đã thấy cả hai nửa.
+- **Tối đa 10,000 bộ mở chờ một bộ đóng cùng một lúc.** Quá điểm đó là bộ cũ nhất bị loại bỏ, vì vậy một rò rỉ không thể phát triển mà không có ràng buộc.
 
 </Accordion>
 
-## Trường của riêng bạn
+## Các trường của riêng bạn
 
 Bất kỳ từ khóa bổ sung nào bạn chuyển được lưu trữ với sự kiện:
 
 ```python
 failproofai_sdk.event.tool_use(
     tool_name="search", tool_call_id="c1",
-    fw_tenant="acme", fw_region="eu-west-1",     # của bạn
+    fw_tenant="acme", fw_region="eu-west-1",     # your own
 )
 ```
 
-Ưu tiên các loại JSON nếu bạn muốn truy vấn chúng sau này. Bất cứ điều gì khác — một UUID, một datetime, một `Decimal`, một tập hợp, byte, một đối tượng mô hình — được lưu trữ dưới dạng chuỗi.
+Ưu tiên các loại JSON nếu bạn muốn truy vấn chúng sau này. Bất cứ điều gì khác — một UUID, một datetime, một `Decimal`, một tập hợp, bytes, một đối tượng mô hình — được lưu trữ dưới dạng chuỗi.
 
 <Warning>
-  **Tiền tố tên trường của bạn.** Các cái bổ sung được áp dụng cuối cùng, vì vậy một trường được gọi là `model`, `tool_name` hoặc `outcome` yên lặng ghi đè trường thực. Các adapter framework sử dụng `fw_`; làm như vậy và không có gì có thể va chạm.
+  **Tiền tố tên trường của bạn.** Các bổ sung được áp dụng cuối cùng, vì vậy một trường được gọi là `model`, `tool_name` hoặc `outcome` yên tĩnh ghi đè trường thực. Các bộ điều hợp framework sử dụng `fw_`; làm tương tự và không có gì có thể va chạm.
 
-  Đây cũng là lý do tại sao một trường tùy chọn sai chính tả không bao giờ xảy ra lỗi — nó chỉ trở thành một trường tùy chỉnh mới. Nếu một trường tiêu chuẩn bị thiếu trong Cloud, kiểm tra chính tả trước tiên.
+  Đây cũng là lý do tại sao một trường tùy chọn bị đánh vần sai không bao giờ lỗi — nó chỉ trở thành một trường tùy chỉnh mới. Nếu một trường tiêu chuẩn bị thiếu trong Cloud, trước tiên hãy kiểm tra chính tả.
 </Warning>
 
 Năm tên này được dành riêng và bị từ chối hoàn toàn: `timestamp`, `session_id`, `agent_id`, `type`, `environment`.
 
-## Phân phối và xác minh
+## Gửi và xác minh
 
 <Tabs>
   <Tab title="Dashboard">
-    Trong **Observe → Events**, xác minh `agent_start` tồn tại trước tiên và `agent_end` tồn tại cuối cùng. Sau đó mở **Observe → Sessions** và xác nhận các sự kiện mô hình, công cụ, con người, móc và lỗi xuất hiện theo thứ tự dự định. Sử dụng ID phiên làm khóa khắc phục sự cố chính.
+    Trong **Observe → Events**, xác minh `agent_start` tồn tại trước tiên và `agent_end` tồn tại cuối cùng. Sau đó mở **Observe → Sessions** và xác nhận các sự kiện mô hình, công cụ, con người, hook và lỗi xuất hiện theo thứ tự dự định. Sử dụng ID phiên làm khóa khắc phục sự cố chính.
   </Tab>
   <Tab title="CLI">
     ```bash
@@ -209,14 +241,14 @@ Năm tên này được dành riêng và bị từ chối hoàn toàn: `timestam
   </Tab>
 </Tabs>
 
-Nếu Cloud trống, kiểm tra `$FAILPROOFAI_HOME/custom-agents/events`, nếu không `~/.failproofai/custom-agents/events`. Các tệp JSONL chứng minh phát thải SDK; một spool phát triển trỏ đến cấu hình daemon hoặc phân phối, trong khi một spool trống trỏ đến cấu hình hoặc thời lượng quá trình.
+Nếu Cloud trống, hãy kiểm tra `$FAILPROOFAI_HOME/custom-agents/events`, nếu không `~/.failproofai/custom-agents/events`. Các tệp JSONL chứng minh phát thải SDK; một spool phát triển chỉ đến cấu hình hoặc giao hàng daemon, trong khi một spool trống chỉ đến thiết lập hoặc vòng đời quy trình.
 
 <Note>
-  Chỉ kiểm tra spool khi daemon được dừng. Khi nó chạy, nó thu thập và xóa mỗi lô trong vài mili giây, vì vậy danh sách thư mục đua với bộ sưu tập và hiển thị ít sự kiện hơn nhiều so với sự kiện được phát thải.
+  Chỉ kiểm tra spool khi daemon bị dừng. Trong khi nó chạy, nó thu thập và xóa mỗi lô trong vài mili giây, vì vậy danh sách thư mục đua với bộ sưu tập và hiển thị ít sự kiện hơn nhiều so với được phát thải.
 </Note>
 
-## Ngăn ngừa lỗi trong thời gian chạy tùy chỉnh
+## Ngăn ngừa lỗi trong một thời gian chạy tùy chỉnh
 
-Sử dụng các phát hiện kiểm toán và các trace được liên kết để xác định hành động không an toàn, bằng chứng bắt buộc và phản ứng dự định. Một tích hợp thực thi tùy chỉnh phải hiển thị hành động trước khi thực thi, chuyển đầu vào có cấu trúc của nó đến công cụ chính sách và áp dụng quyết định cho phép, hướng dẫn hoặc từ chối kết quả.
+Sử dụng phát hiện kiểm toán và các dấu vết được liên kết để xác định hành động không an toàn, bằng chứng bắt buộc và phản hồi dự định. Một tích hợp thực thi tùy chỉnh phải để lộ hành động trước khi thực hiện, chuyển đầu vào có cấu trúc của nó cho công cụ chính sách và áp dụng quyết định cho phép, hướng dẫn hoặc từ chối kết quả.
 
-[Liên hệ Failproof AI](mailto:support@befailproof.ai) và chúng tôi sẽ giúp bạn ánh xạ các ranh giới mô hình, công cụ và vòng đời của thời gian chạy của bạn tới các móc chính sách, sau đó xác thực tích hợp với bạn.
+[Liên hệ với Failproof AI](mailto:support@befailproof.ai) và chúng tôi sẽ giúp ánh xạ giới hạn mô hình, công cụ và vòng đời thời gian chạy của bạn với các hook chính sách, sau đó xác nhận tích hợp với bạn.

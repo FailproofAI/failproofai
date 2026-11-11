@@ -26,26 +26,31 @@ This quickstart gets one machine reporting sessions, runs an audit, and deploys 
     </Steps>
   </Tab>
   <Tab title="Manual setup">
-    ## Before you start
-
-1. Open the [Failproof AI dashboard](https://app.befailproof.ai) and create an account or sign in with your work email.
-2. Go to **Administration → Keys** and create a key with `events:add` and `policies:pull`. If you plan to use [Jev through FailproofAI Cloud](/reference/jev-cloud), choose the **machine** preset, which also grants `jev:evaluate`.
-3. Copy the one-time secret, then read it into a shell on the target machine. `read -s` takes it at a prompt that does not echo, so it never appears in a command:
-
-```bash
-read -rs FAILPROOFAI_KEY && export FAILPROOFAI_KEY
-```
-
     ## Install
 
 <Steps>
   <Step title="Install and connect Failproof AI">
     ```bash
     npm install -g failproofai
-    FAILPROOFAI_CLOUD_TOKEN="$FAILPROOFAI_KEY" failproofai config
+    failproofai config
     ```
 
-    That one command is the whole of setup: it installs the local daemon (root once), wires hooks into every agent CLI it finds, and connects this machine to Cloud. Passing the key through the environment rather than `--token` keeps it out of `ps`, where every user on the machine can read a command's arguments. It does not keep it out of shell history — reading it with `read -s` is what does that. In CI, inject it as a masked secret and keep shell tracing (`set -x`) off, or the trace prints it.
+    That one command is the whole of setup: it installs the local daemon (root once), wires hooks into every agent CLI it finds, and connects this machine to Cloud.
+
+    At **Connect to cloud**, setup starts logging you in to FailproofAI Cloud straight away (press Tab for the other options: paste an API key, or use open source). It opens a link in your browser (over SSH, or on a machine with no display, it prints the link so you can open it on any device). Sign up or sign in, confirm the org — or create one right there — and click **Authorize**. The key's name and permissions are set for you. You do not need an account beforehand.
+
+    The terminal notices on its own and shows who approved it and for which org. Confirm the agents to trace, and setup finishes. The machine's key is created only at that point, after the daemon is installed, so a run you abandon leaves no key behind; it appears under **Administration → Keys** marked **cli login**, where you can revoke it.
+
+    <Accordion title="No browser or terminal at hand? Use a key (CI, containers, provisioning scripts)">
+      In the [Failproof AI dashboard](https://app.befailproof.ai), go to **Administration → Keys** and create a key with `events:add` and `policies:pull`. If you plan to use [Jev through FailproofAI Cloud](/reference/jev-cloud), choose the **machine** preset, which also grants `jev:evaluate`. Copy the one-time secret and read it into a shell on the target machine — `read -s` takes it at a prompt that does not echo:
+
+      ```bash
+      read -rs FAILPROOFAI_KEY && export FAILPROOFAI_KEY
+      FAILPROOFAI_CLOUD_TOKEN="$FAILPROOFAI_KEY" failproofai config
+      ```
+
+      Passing the key through the environment rather than `--token` keeps it out of `ps`, where every user on the machine can read a command's arguments. It does not keep it out of shell history — reading it with `read -s` is what does that. In CI, inject it as a masked secret and keep shell tracing (`set -x`) off, or the trace prints it. In an interactive run you can also pick **Paste an API key** at **Connect to cloud** instead.
+    </Accordion>
 
     Session transcripts are sent by default. Add `--no-transcripts` to report hook activity and policy decisions without transcript content.
 

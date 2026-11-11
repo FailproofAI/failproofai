@@ -1,44 +1,44 @@
 ---
-title: "Jev Kullan"
-description: "Tamamlanmış oturumlar için Jev değerlendirmeleri ayarlayın veya canlı araç çağrısı incelemesi için Jev politikaları kurun."
+title: "Jev Kullanın"
+description: "Tamamlanan oturumlar için Jev değerlendirmelerini ayarlayın veya canlı araç çağrısı incelemesi için Jev ilkelerini kullanın."
 icon: "sparkles"
 ---
 
-Jev, bir aracı çalışmasında iki noktada yardımcı olur: tamamlanmış bir oturumu bilinen yanıtlara karşı puanlandırın veya bir araç çağrısını aracıdan istediğiniz şey bağlamında inceleyin.
+Jev, bir aracı çalıştırmasının iki noktasında yardımcı olur: tamamlanan bir oturumu bilinen yanıtlara karşı puanlandırın veya bir araç çağrısını aracıya ne yapmasını istediğiniz bağlamında inceleyin.
 
 <Tabs>
   <Tab title="Jev evals">
-    Jev eval'ını, tamamlanmış bir oturumun "Müşteri iade talep etti mi? Evet veya hayır cevap verin." gibi birkaç bilinen yanıta sahip bir soruya karşı puanlanabileceği durumlarda kullanın. Oturumlar arasında desenleri bulmanıza yardımcı olur.
+    Tamamlanan bir oturumu birkaç bilinen yanıtı olan bir soru için puanlandırabileceğiniz zaman Jev eval kullanın; örneğin "Müşteri geri ödeme talep etti mi? Evet veya hayır ile cevap verin." Bu, oturumlar arasında desenleri bulmanıza yardımcı olur.
 
-    ## Eval oluşturun
+    ## Bir eval oluşturun
 
-    Cloud panosunda, **Analyze → eval authoring → new eval** öğesini açın. Tek bir sabit cevaplı soru girin, **draft** öğesini seçin ve sınıflandırıcı puan seçip seçmediğini kontrol edin. Bunu gerçek oturumlarda [test edin](/tr/evaluations/test), ardından yayınlayın.
+    Cloud panosunda **Analyze → eval authoring → new eval** sayfasını açın. Bir sabit yanıt sorusu girin, **draft** seçin ve sınıflandırıcı puanı seçtiğini kontrol edin. Gerçek oturumlar üzerinde [test edin](/tr/evaluations/test), ardından yayınlayın.
 
-    ![Bir soru açıkladığınız, taslağı incelediğiniz ve yayınladığınız paylaşılan eval yazma formu. Bu ekran görüntüsü bir kod taslağı göstermektedir; Jev için sabit cevaplı bir soru kullanın.](/images/dashboard/eval-authoring-draft.png)
+    ![Bir soruyu açıkladığınız, taslağı gözden geçirdiğiniz ve yayınladığınız paylaşılan eval yazarlık formu. Bu ekran görüntüsü bir kod taslağı gösterir; Jev için sabit yanıt bir soru kullanın.](/images/dashboard/eval-authoring-draft.png)
 
     ## Puanları okuyun
 
-    Yeni bir oturum tamamlandıktan sonra, **Observe → Evaluations** öğesini açın veya Cloud CLI'yi kullanın:
+    Yeni bir oturum tamamlandıktan sonra **Observe → Evaluations** sayfasını açın veya Cloud CLI'yi kullanın:
 
     ```bash
     fp evals --since 7d
     fp evals --aggregate --since 7d
     ```
 
-    CLI puanları okur; bir Jev eval oluşturmak şu anda panoyu kullanır. Soru türleri ve örnekler için [Jev evaluations](/tr/evaluations/jev) öğesine bakın.
+    CLI puanları okur; Jev eval oluşturmak şu anda panoyu kullanır. Soru türleri ve örnekler için [Jev evaluations](/tr/evaluations/jev) sayfasına bakın.
   </Tab>
   <Tab title="Jev policies">
-    Bir dize eşleştirme politikasının bir araç çağrısının güvenli olup olmadığına karar vermek için isteğinizin bağlamına ihtiyacı olduğunda Jev politika incelemesini kullanın. **observe** modunda başlayın, böylece kurulu politikalarınız yine de her çağrıya karar verirken Jev'in yanıtlarını inceleyebilirsiniz.
+    Dize eşleştirmesi ilkesinin bir araç çağrısının güvenli olup olmadığına karar vermek için isteğinizin bağlamına ihtiyacı olduğunda Jev ilkesi incelemesi kullanın. **observe** modunda başlayın, böylece yüklü ilkeleriniz hala her çağrıya karar verirken Jev'in yanıtlarını inceleyebilirsiniz.
 
-    Jev'in kontrolleri bir paketten gelir; Failproof AI hiçbirini göndermez. Bunları yükleyene kadar, Jev yapılandırılmış olsa da hiçbir şey sormaz:
+    Jev'in kontrolleri bir paketten gelir; Failproof AI hiç birini göndermez. Bunları yükleyene kadar, yapılandırılmış olsa bile Jev hiçbir şey sormaz:
 
     ```bash
     failproofai policies add FailproofAI/jev-policies
     ```
 
-    ## Cloud Jev'i kurun
+    ## Cloud Jev'i ayarlayın
 
-    Cloud panosunda, **Administration → Keys** öğesini açın ve **machine** ön ayarıyla bir anahtar oluşturun. Bunu [quickstart](/tr/start/quickstart) öğesinde gösterildiği gibi `failproofai config` ile kullanın. Mevcut bir Jev yapılandırması olmayan bir makinede, bu Cloud Jev'i observe modunda etkinleştirir. Bağlantıyı kontrol edin:
+    Cloud panosunda **Administration → Keys** sayfasını açın ve **machine** ön ayarı ile bir anahtar oluşturun. Bunu [quickstart](/tr/start/quickstart) başlığında gösterilen `failproofai config` komutuyla kullanın. Mevcut bir Jev yapılandırması olmayan bir makinede, bu Cloud Jev'i observe modunda etkinleştirir. Bağlantıyı şu komutla kontrol edin:
 
     ```bash
     failproofai jev status
@@ -47,9 +47,9 @@ Jev, bir aracı çalışmasında iki noktada yardımcı olur: tamamlanmış bir 
 
     ## Kendi uç noktanızı kullanın
 
-    Yerel panoda, **Settings → Jev** öğesini açın. Sağlayıcıyı seçin, belirtecini yapıştırın, **observe** öğesini seçin ve Jev'i açın.
+    Yerel panoda **Settings → Jev** sayfasını açın. Sağlayıcıyı seçin, jetonunu yapıştırın, **observe** seçin ve Jev'i açın.
 
-    ![Bir sağlayıcı, belirteç alanı ve seçili observe moduna sahip yerel Jev ayarları paneli.](/images/dashboard/jev-settings.png)
+    ![Bir sağlayıcı, jeton alanı ve observe modu seçili olan yerel Jev ayarları paneli.](/images/dashboard/jev-settings.png)
 
     Veya uç noktanızı bir terminalden yapılandırın ve test edin:
 
@@ -58,6 +58,6 @@ Jev, bir aracı çalışmasında iki noktada yardımcı olur: tamamlanmış bir 
     failproofai jev test
     ```
 
-    Hooked bir aracıdan `README.md` dosyasında dosya okuma aracını kullanmasını isteyin. Bu araç çağrısının oturumda göründüğünü doğrulayın, ardından yerel panoda **Policies → Activity** öğesinin altında bunu inceleyin. Observe sonuçları doğru göründükten sonra, [Jev policies](/tr/policies/jev) ne zaman uygulanacağını açıklar. Sağlayıcı ayrıntıları ve yapılandırma için [integration reference](/tr/reference/jev) öğesine bakın.
+    Kancalı bir aracıdan `README.md` dosyasını okumak için dosya okuma aracını kullanmasını isteyin. Bu araç çağrısının oturumda görüntülendiğini doğrulayın, ardından yerel panoda **Policies → Activity** altında inceleyin. Observe sonuçları doğru görüldükten sonra, ne zaman uygulanacağını [Jev policies](/tr/policies/jev) başlığında öğrenin. Sağlayıcı ayrıntıları ve yapılandırması için [integration reference](/tr/reference/jev) sayfasına bakın.
   </Tab>
 </Tabs>

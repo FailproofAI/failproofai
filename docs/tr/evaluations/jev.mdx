@@ -1,28 +1,28 @@
 ---
 title: "Jev evaluations"
-description: "Tamamlanmış bir oturumu bilinen yanıtlara karşı puanlamak için Jev kullanın."
+description: "Bir oturumu bilinen yanıtlarla karşı puanlamak için Jev'i kullanın."
 icon: "list-checks"
 ---
 
-Jev evaluations, **tamamlanmış bir oturumu** okur ve 0 ile 1 arasında bir puan verir. Yanıtın önceden bilindiği durumlarda kullanın; örneğin "Müşteri aciliyet ifade etti mi?" veya "Müşteri ne kadar hayal kırıklığına uğradı?" gibi sorular. Çalıştırmalar arasında desenleri bulmanıza yardımcı olur; bir araç çağrısını durdurmaz. Bir araç çalışmadan **önce** alınan kararlar için [Jev policies](/tr/policies/jev) kullanın.
+Bir Jev değerlendirmesi **tamamlanmış bir oturumu** okur ve 0 ile 1 arasında bir puan verir. Yanıt önceden biliniyorsa (örneğin "Müşteri aciliyet ifade etti mi?" veya "Müşteri ne kadar hayal kırıklığına uğradı?") kullanın. Çalıştırmalar arasında desenleri bulmanıza yardımcı olur; bir araç çağrısını durdurmaz. Bir araç çalışmadan **önce** verilen kararlar için [Jev policies](/tr/policies/jev) kullanın.
 
 ## Panoda bir tane oluşturun
 
-1. **Analyze → eval authoring** bölümünü açın ve **new eval** seçeneğini seçin.
-2. Bir soru ve olası yanıtlarını açıklayın. Örneğin: "Ajan geri iade politikasını kontrol etmeden önce geri iade vaat etti mi? Evet veya hayır cevabı verin." **draft** seçeneğini belirleyin ve sonucun bir sınıflandırıcı puanı olduğunu doğrulayın.
-3. [Test edin](/tr/evaluations/test) son oturumlar üzerinde, ardından [yayınlayın](/tr/evaluations/deploy). Yeni tamamlanan oturumlar puanlanır; [geçmiş verileri doldurmak](/tr/evaluations/deploy#score-sessions-you-already-have) için backfill kullanın.
+1. **Analyze → eval authoring** açın ve **new eval** seçin.
+2. Bir soru ve olası yanıtlarını açıklayın. Örneğin: "Ajan para iade politikasını kontrol etmeden önce para iadesi vaat etti mi? Evet veya hayır yanıtlayın." **draft** seçin ve sonucun bir sınıflandırıcı puanı olduğunu doğrulayın.
+3. Bunu son oturumlar üzerinde [test edin](/tr/evaluations/test), ardından [dağıtın](/tr/evaluations/deploy). Yeni tamamlanmış oturumlar puanlanır; geçmiş de gerekiyorsa [geri doldur](/tr/evaluations/deploy#score-sessions-you-already-have).
 
-![Paylaşılan eval authoring formu; burada sabit-cevaplı bir soru tanımlarsınız, taslağı gözden geçirirsiniz ve test ettikten sonra yayınlarsınız. Gösterilen örnek bir kod evaluationı'dır; bir Jev sorusu aynı authoring akışını kullanır.](/images/dashboard/eval-authoring-draft.png)
+![Paylaşılan eval yazım formu; burada sabit yanıtlı bir soru açıklanır, taslak incelenir ve test edildikten sonra dağıtılır. Gösterilen örnek bir kod değerlendirmesidir; Jev sorusu aynı yazım akışını kullanır.](/images/dashboard/eval-authoring-draft.png)
 
-Asistan kod, Jev sınıflandırması ve [judge](/tr/evaluations/judge) arasında seçim yapabilir. Yayınlamadan önce seçimini kontrol edin. Jev bir puan verir, ayrıntılı açıklama yapmaz; açıklama gereken durumlarda judge kullanın. Soru türleri ve puan sınırları için [Jev evaluation reference](/tr/reference/jev-evaluations) bölümüne bakın.
+Asistan kod, Jev sınıflandırması ve [judge](/tr/evaluations/judge) arasından seçim yapabilir. Dağıtmadan önce seçimini kontrol edin. Jev, prose akıl yürütme olmadan puan verir; açıklama gerekiyorsa bir judge seçin. Soru türleri ve puan sınırları için [Jev evaluation referansına](/tr/reference/jev-evaluations) bakın.
 
 ## Puanları okuyun
 
-**Observe → Evaluations** bölümünü açarak sonucu agent ve zamana göre grafik haline getirin. Bir terminalden Cloud CLI aynı sonuçları okuyabilir:
+**Observe → Evaluations** açarak sonucu aracı ve zamana göre görebilirsiniz. Terminal'den Cloud CLI aynı sonuçları okuyabilir:
 
 ```bash
 fp evals --since 7d
 fp evals --aggregate --since 7d
 ```
 
-Cloud CLI sonuçları okur; authoring ve yayınlama panoda gerçekleşir. Filtreler için [Cloud CLI reference](/tr/reference/cloud-cli#evaluations) bölümüne bakın.
+Cloud CLI sonuçları okur; yazım ve dağıtım panoda gerçekleşir. Filtreler için [Cloud CLI referansına](/tr/reference/cloud-cli#evaluations) bakın.

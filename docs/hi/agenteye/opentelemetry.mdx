@@ -1,0 +1,131 @@
+---
+title: "OpenTelemetry"
+description: "FailproofAI Cloud को OTLP के साथ coding-agent और application telemetry भेजें।"
+icon: "radio"
+---
+
+OpenTelemetry आपको standard OTLP/HTTP protocol का उपयोग करके agent traces, logs, और metrics को FailproofAI Cloud में भेजने देता है। यह वैकल्पिक है। आपके existing FailproofAI integrations इसे enable किए बिना काम करते रहेंगे।
+
+## अपने organisation के लिए ingest चालू करें
+
+एक organisation admin **Settings → OpenTelemetry** खोलता है और ingest को चालू करता है। `events:add` permission वाली Cloud API key का उपयोग करें, वही permission जो agent reporting के लिए उपयोग किया जाता है।
+
+यदि ingest बंद है, तो Cloud OTLP exports को अस्वीकार करता है, इसलिए `failproofai otel enable` कोई परिवर्तन नहीं करता है और आपके agents सामान्य तरीके से sessions भेजते रहते हैं। organisation switch को जांचने के लिए `failproofai otel status` चलाएं, और एक admin से इसे चालू करने के लिए कहें।
+
+## एक coding agent को जोड़ें
+
+`failproofai config` के साथ अपनी machine को जोड़ें, फिर एक agent चुनें:
+
+```bash
+failproofai otel enable claude
+failproofai otel enable codex
+failproofai otel enable copilot
+```
+
+setup command Claude Code, Codex, और Copilot का समर्थन करता है और आवश्यकतानुसार Cloud या एक local authenticated relay चुनता है। Copilot स्वचालित रूप से local relay का उपयोग करता है। relay का उपयोग करने से पहले अपने configured FailproofAI daemon को start करें।
+
+यदि FailproofAI पहले से ही एक agent की session transcripts भेज रहा है, तो setup पूछता है कि क्या उस agent को OTEL में switch करना है। डिफ़ॉल्ट No है। स्वीकार करने से उस agent के लिए transcript uploads बंद हो जाते हैं; यह policy enforcement या अन्य agents से reporting को नहीं बदलता है।
+
+## एक application को जोड़ें
+
+अपने application के OpenTelemetry instrumentation को इन environment variables के साथ उपयोग करें:
+
+```bash
+export OTEL_EXPORTER_OTLP_ENDPOINT=https://app.befailproof.ai/otel
+export OTEL_EXPORTER_OTLP_PROTOCOL=http/protobuf
+export OTEL_EXPORTER_OTLP_HEADERS='Authorization=Bearer%20<key>'
+export OTEL_SERVICE_NAME=my-agent
+```
+
+endpoint Cloud का OTLP base है, `https://app.befailproof.ai/otel`; आपका exporter स्वयं `/v1/traces`, `/v1/logs`, या `/v1/metrics` जोड़ता है। Per-signal variables जैसे `OTEL_EXPORTER_OTLP_LOGS_ENDPOINT` का उपयोग जैसा है किया जाता है, इसलिए उन्हें full path की जरूरत है, उदाहरण के लिए `https://app.befailproof.ai/otel/v1/logs`।
+
+`<key>` को अपनी API key से replace करें। secret को shell history, screen recordings, और committed configuration से दूर रखें। एक configured machine के लिए, `failproofai otel env --service my-agent` block को अपनी existing key के साथ print करता है। इसके आउटपुट में एक credential होता है।
+
+Cloud traces, logs, और metrics के लिए OTLP/HTTP exports को protobuf या JSON के रूप में स्वीकार करता है, जिसमें gzip-compressed requests भी शामिल हैं। यह OTLP/gRPC को स्वीकार नहीं करता है।
+
+Metrics को exporter compatibility के लिए स्वीकृत किया जाता है लेकिन store या display नहीं किए जाते हैं। Supported agent traces और coding-agent logs sessions बन जाते हैं; fields जो agent export नहीं करता है वह absent रहते हैं।
+
+## Prompt text को capture करें
+
+<Warning>
+Text capture में prompts, tool arguments, और अन्य sensitive content शामिल हो सकता है। `failproofai otel enable` इसे चालू करता है। Prompt और tool-detail capture को बंद रखने के लिए `--no-content` जोड़ें।
+</Warning>
+
+```bash
+failproofai otel enable claude --no-content
+failproofai otel enable codex --no-content
+```
+
+एक agent के लिए जिसे आप manually configure करते हैं, इसके own content-capture controls का उपयोग करें:
+
+<Tabs>
+  <Tab title="Claude Code">
+    इन variables को अपने agent के environment में ऊपर दिए गए application block के साथ जोड़ें:
+
+    ```bash
+    export CLAUDE_CODE_ENABLE_TELEMETRY=1
+    export OTEL_LOGS_EXPORTER=otlp
+    export OTEL_METRICS_EXPORTER=otlp
+    export OTEL_LOG_USER_PROMPTS=1
+    export OTEL_LOG_TOOL_DETAILS=1
+    ```
+
+    Prompts और tool details को capture करने से बचने के लिए दोनों content variables को `0` पर सेट करें।
+  </Tab>
+  <Tab title="Codex">
+    Codex के user configuration में, इसके OTEL settings का उपयोग करें:
+
+    ```toml
+    [otel]
+    log_user_prompt = true
+    exporter = { otlp-http = { endpoint = "https://app.befailproof.ai/otel/v1/logs", protocol = "json", headers = { Authorization = "Bearer <key>" } } }
+    ```
+
+    Codex conversation content logs में है; internal runtime traces और metrics को disabled रखें। Codex आपके द्वारा प्रदान किए गए complete endpoint का उपयोग करता है। Prompts को छोड़ने के लिए `log_user_prompt` को `false` पर सेट करें; setup command एक explicit `false` को preserve करता है।
+  </Tab>
+  <Tab title="Gemini CLI">
+    Local relay के साथ Gemini की telemetry settings का उपयोग करें:
+
+    ```json
+    {
+      "telemetry": {
+        "enabled": true,
+        "target": "local",
+        "otlpEndpoint": "http://127.0.0.1:4318",
+        "otlpProtocol": "http",
+        "useCollector": true,
+        "logPrompts": true
+      }
+    }
+    ```
+
+    Gemini CLI को `failproofai otel enable` द्वारा support नहीं किया जाता है। इसे manually अपने authenticated collector के साथ configure करें। Prompt capture के लिए नहीं के लिए `logPrompts` को `false` पर सेट करें।
+  </Tab>
+  <Tab title="Copilot in VS Code">
+    इन VS Code user settings का उपयोग करें:
+
+    ```json
+    {
+      "github.copilot.chat.otel.enabled": true,
+      "github.copilot.chat.otel.exporterType": "otlp-http",
+      "github.copilot.chat.otel.otlpEndpoint": "http://127.0.0.1:4318",
+      "github.copilot.chat.otel.captureContent": true
+    }
+    ```
+
+    Authenticated relay को enable करने के लिए `failproofai otel enable copilot` चलाएं। Content को छोड़ने के लिए `captureContent` को `false` पर सेट करें।
+  </Tab>
+</Tabs>
+
+## Setup को check या undo करें
+
+```bash
+failproofai otel status
+failproofai otel disable all
+```
+
+Status FailproofAI द्वारा managed settings को telemetry से अलग करता है जिसे आपने कहीं और configure किया है। Disable पिछली managed settings और agent की पिछली transcript-upload choice को restore करता है।
+
+<Card title="OpenTelemetry CLI" href="/hi/reference/otel" icon="terminal">
+  Command options, local relay setup, और troubleshooting।
+</Card>

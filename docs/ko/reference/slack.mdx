@@ -1,0 +1,111 @@
+---
+title: "Slack 앱"
+description: "Slack에서 Failproof Assistant에게 질문하고, 스레드에서 차트를 받아보고, 버튼으로 변경 사항을 승인하세요."
+icon: "slack"
+---
+
+[Failproof Assistant](/ko/sessions/assistant)에게 Slack에서 질문하세요. 채널에서 앱을 멘션하거나, 다이렉트 메시지를 보내거나, `/failproof <질문>`을 사용하세요. 답변은 **본인의** Failproof AI 권한을 사용하고, 차트는 스레드에 전달되며, 무언가를 변경하는 경우에는 먼저 승인을 요청합니다.
+
+공식 앱은 하나입니다. Failproof AI Cloud가 호스팅 방식이든 자체 호스팅 방식이든 동일하게 작동합니다.
+
+<Note>
+  답변은 AI 모델이 생성하며 부정확할 수 있습니다. 중요한 내용은 연결된 소스 데이터와 대조하여 확인하세요.
+</Note>
+
+## 워크스페이스 연결
+
+Failproof AI에서 `settings:write` 권한이 필요하며, Slack에서는 워크스페이스 관리자 또는 소유자이거나 앱을 추가하는 사람이어야 합니다.
+
+<Tabs>
+  <Tab title="Failproof AI에서">
+    1. **Settings → Integrations**으로 이동하여 **Add to Slack**을 선택합니다.
+    2. Slack에서 앱을 승인합니다.
+    3. Failproof AI로 돌아가 워크스페이스를 조직에 연결할지 확인합니다.
+  </Tab>
+  <Tab title="Slack에서">
+    1. 앱을 추가한 후 **Home** 탭을 엽니다.
+    2. **Continue with FailproofAI Cloud**를 선택하거나, **Use my own URL**을 선택하고 로그인에 사용하는 주소를 입력합니다.
+    3. 계속 버튼을 선택하고, 로그인한 뒤 조직을 선택하고 확인합니다. 링크는 한 번만 사용할 수 있으며 10분 후 만료됩니다.
+  </Tab>
+</Tabs>
+
+하나의 워크스페이스는 하나의 조직에, 하나의 조직은 하나의 워크스페이스에 연결됩니다.
+
+계정이 없으신가요? 먼저 [계정을 생성](https://app.befailproof.ai/login)한 후 연결하세요.
+
+## Slack에서 나의 신원
+
+처음 질문할 때, 앱이 어떤 멤버인지 파악합니다.
+
+- **이메일로 자동 식별**: 연결된 워크스페이스의 정규 멤버이고, Slack 이메일이 인증되어 있으며, 조직 내 해당 이메일을 사용하는 멤버가 정확히 한 명인 경우.
+- **그 외의 경우**: Failproof AI를 열어 Slack 사용자를 계정과 연결하는 개인용 **Link your account** 버튼이 제공됩니다.
+
+## 질문하기
+
+| 위치 | 방법 |
+| --- | --- |
+| 채널 | 앱을 멘션합니다. 스레드에서 계속 답글을 달 때는 멘션 불필요 |
+| 다이렉트 메시지 | 앱에게 메시지를 보냅니다 |
+| 앱이 포함된 그룹 다이렉트 메시지 | 앱을 멘션한 후, 스레드에서 계속 답글을 달아 대화 이어가기 |
+| Slack Connect 채널 | 앱을 멘션합니다 |
+| 앱이 참여한 모든 대화 | `/failproof <질문>`으로 답변이 담긴 스레드를 시작합니다 |
+| `/failproof help` | 앱이 할 수 있는 일 확인 |
+| `/failproof status` | 연결된 조직과 연결된 사용자 계정 확인 |
+| `/failproof link` | 연결된 Failproof AI 계정 확인 |
+
+하나의 스레드는 하나의 대화입니다. 동료들이 같은 스레드에서 앱을 멘션하면 각자의 권한으로 답변을 받습니다. 스레드를 시작한 사람만 멘션 없이 대화를 이어갈 수 있습니다.
+
+답변이 데이터인 경우, 앱은 차트나 표를 게시하고 Failproof AI에서 열 수 있는 링크를 함께 제공합니다.
+
+## 변경 사항 승인
+
+어시스턴트가 수행하는 모든 변경 사항은 먼저 **Approve** 및 **Cancel** 버튼을 표시하며, **Approve** 전에 Slack이 한 번 더 확인합니다. 질문한 사람만 버튼에 응답할 수 있고, 버튼은 5분 후 만료되며, 변경은 해당 사람의 권한으로 이루어집니다.
+
+Slack에서 어시스턴트는 저장된 쿼리와 대시보드, 평가, 알림, 감사, 이슈, 정책을 변경하고 코드 수정을 제안할 수 있으며, 각각 해당 권한을 보유한 경우에만 가능합니다. API 키, 사용자, 설정은 변경할 수 없습니다.
+
+## 링크 미리보기
+
+Slack에 붙여넣은 Failproof AI 이슈, 세션, 평가 링크는 호스팅된 Failproof AI Cloud에서 카드로 펼쳐집니다. 카드에는 링크를 트리거한 사람이 볼 수 있는 내용만 표시됩니다. 자체 호스팅 주소로의 링크는 펼쳐지지 않지만, 어시스턴트의 답변 내 카드는 계속 표시됩니다.
+
+## Slack Connect 채널
+
+다른 워크스페이스의 사람들도 조직의 멤버이고 계정을 연결한 경우 앱을 사용할 수 있습니다. 답변은 조직의 멤버가 아닌 사람을 포함하여 대화의 모든 참여자에게 표시되므로, 모두가 볼 수 있는 곳에서 질문하세요.
+
+앱은 채널에 있는 다른 모든 워크스페이스에서 누군가가 조직에 계정을 연결한 후에만 답변합니다. 그 전까지는 질문하는 사람에게 이유를 알려줍니다.
+
+## 앱이 요청하는 권한
+
+| Slack 권한 | 이유 |
+| --- | --- |
+| `app_mentions:read` | 누군가 앱을 멘션할 때 인식 |
+| `channels:history`, `groups:history`, `im:history`, `mpim:history` | 다이렉트 메시지 및 앱 스레드의 답글 수신. 앱은 다른 메시지를 무시하며, 대화의 과거 메시지는 읽지 않음 |
+| `channels:read`, `groups:read`, `im:read`, `mpim:read` | 어떤 종류의 대화인지 확인하여 답변을 볼 수 있는 사람 파악 |
+| `chat:write` | 답변 및 승인 버튼 게시 |
+| `commands` | `/failproof` 제공 |
+| `files:write` | 차트 게시 |
+| `links:read`, `links:write` | 붙여넣은 Failproof AI 링크의 미리보기 표시 |
+| `users:read`, `users:read.email` | Failproof AI 계정과 매칭 및 이름 표시 |
+
+## 연결 해제
+
+**Settings → Integrations**으로 이동하여 **Disconnect**를 선택하거나, 앱의 **Home** 탭에서 **Disconnect**를 사용하거나, Slack에서 앱을 제거하세요.
+
+이 중 하나를 수행하면 워크스페이스의 연결, 봇 토큰, 연결된 계정, 스레드 기록이 삭제됩니다. 과거 Slack 대화는 대시보드에서 계속 읽을 수 있습니다. 이후 조직은 즉시 다른 워크스페이스를 연결할 수 있습니다.
+
+## 데이터 및 개인정보 보호
+
+질문과 답변은 스레드를 시작한 사람의 이름으로 조직 대시보드에 대화 형태로 저장됩니다. Slack 데이터는 AI 모델 학습에 사용되지 않습니다. 앱이 수신하는 정보와 보관 기간에 대해서는 [개인정보 처리방침](https://befailproof.ai/privacy/)을 참조하세요.
+
+## 문제 해결
+
+| 표시되는 내용 | 해결 방법 |
+| --- | --- |
+| "This workspace isn't connected to a FailproofAI Cloud yet." | 워크스페이스 관리자가 앱의 **Home** 탭을 열고 하나를 선택합니다 |
+| "This link expired or was already used." | **Home** 탭에서 Cloud를 다시 선택하여 새 링크를 받으세요 |
+| "This org is already connected to a Slack workspace." | 설정에서 먼저 연결을 해제하세요 |
+| "That Slack workspace is connected to another org." | 해당 조직에서 먼저 연결을 해제하세요 |
+| "Link your account to use the assistant." | 버튼을 선택하고 Failproof AI에서 확인하세요 |
+| 그룹 다이렉트 메시지에서 앱이 답변하지 않음 | 그룹 권한 부여를 위해 Slack에 앱을 다시 추가하세요. 기존 연결은 유지됩니다 |
+| "I won't post answers from your organization here" | 해당 워크스페이스에서 조직의 멤버인 누군가가 앱을 멘션하고 계정을 연결합니다 |
+
+여전히 문제가 있으신가요? [support@befailproof.ai](mailto:support@befailproof.ai)로 이메일을 보내세요.

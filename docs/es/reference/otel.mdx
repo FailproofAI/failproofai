@@ -1,0 +1,77 @@
+---
+title: "OpenTelemetry CLI"
+description: "Activa OTEL para agentes de codificación, inspecciona la entrega y restaura tu configuración anterior."
+icon: "radio"
+---
+
+`failproofai otel` configura el reporte opcional de OpenTelemetry hacia FailproofAI Cloud. Primero conecta tu máquina con `failproofai config` y solicita a un administrador de la organización que habilite **Settings → OpenTelemetry**.
+
+La configuración interactiva pregunta sobre OpenTelemetry después del campo de clave Cloud y el selector de agentes. El paso opcional tiene como valor predeterminado No. Elige Sí para seleccionar agentes OTEL; el mismo código de habilitación se ejecuta después de que se escribe la conexión. Salir con Esc antes de completar la configuración no aplica ningún cambio. La configuración desatendida, una clave proporcionada, el modo de código abierto y mantener una conexión guardada no te inscriben automáticamente.
+
+## Habilitar un agente
+
+```bash
+failproofai otel enable claude
+failproofai otel enable codex --local
+failproofai otel enable codex --no-content
+failproofai otel enable copilot
+failproofai otel enable all --yes
+```
+
+Los agentes compatibles son `claude`, `codex` y `copilot` (VS Code). La configuración de Copilot requiere un ejecutable de VS Code o una extensión de Copilot instalada. Un directorio de configuración residual por sí solo no es suficiente; la configuración omite Copilot cuando no se encuentra ninguno de los dos.
+
+`--local` envía al relay local en lugar de directamente a Cloud. Copilot usa el relay automáticamente porque su configuración no puede almacenar el encabezado de autenticación.
+
+El relay escucha únicamente en tu máquina. El daemon de FailproofAI que hayas configurado recoge el cambio en cuestión de segundos; no necesitas reiniciarlo. Si otra aplicación ocupa el puerto del relay, el estado lo reporta como desactivado y el daemon continúa en ejecución.
+
+<Warning>
+La captura de texto está activada por defecto. Añade `--no-content` para omitir prompts y detalles de herramientas. Las versiones de los agentes pueden exponer diferentes controles de contenido; revisa qué exporta tu agente antes de usarlo con datos sensibles.
+</Warning>
+
+Codex exporta únicamente registros de conversación, no trazas internas de ejecución ni métricas. Un `log_user_prompt = false` explícito en tu configuración de Codex permanece desactivado; enable muestra una nota cuando preserva esa elección.
+
+### Elegir una ruta de reporte
+
+Si el reporte de transcripciones está activado para un agente, la configuración pregunta:
+
+> failproofai ya envía sesiones de Claude Code a Cloud. ¿Enviarlas con OTEL en su lugar? La carga de transcripciones para Claude Code se detendrá.
+
+El valor predeterminado es No. `--yes` acepta el cambio sin solicitar confirmación. Los demás agentes y la aplicación de políticas no se ven afectados.
+
+La configuración de Codex espera a que el daemon confirme el cambio de colector antes de escribir su configuración del exportador. Si la confirmación agota el tiempo de espera, la configuración te advierte que esperes antes de iniciar Codex.
+
+Config v2 mantiene la lista de trazado recordada en `agents.selected` (y el historial de detección en `agents.seen`). La preferencia de transcripción por agente permanece en `collector.agents.<agent>.sessions`, la propiedad OTEL en `otel.agents`, y la configuración del relay en `collector.otlp.enabled` / `collector.otlp.port`. Estas claves separadas mantienen las configuraciones OTEL antiguas legibles: la configuración puede cambiar la lista de trazado sin perder la preferencia de transporte ni el estado necesario para restaurar la configuración de los agentes.
+
+## Inspeccionar la configuración
+
+```bash
+failproofai otel status
+```
+
+El estado muestra cada agente, si su configuración está gestionada por FailproofAI, su destino, el interruptor de ingesta de la organización, el estado del relay y el último resultado de carga del relay.
+
+`unknown` para el interruptor de la organización significa que el servidor no lo proporcionó o no pudo ser contactado. No es un error y no impide la configuración en una versión anterior de Cloud.
+
+Si Cloud aún no admite OTEL, el relay retiene las exportaciones rechazadas en lugar de descartarlas. Si la ingesta de la organización está desactivada, `enable` no escribe nada y termina con un error; solicita a un administrador que la active primero.
+
+## Imprimir la configuración para una aplicación
+
+```bash
+failproofai otel env --service my-agent
+failproofai otel env --service my-agent --local
+```
+
+La salida es un bloque de entorno shell para un exportador OTLP/HTTP. La salida de Cloud establece `OTEL_EXPORTER_OTLP_ENDPOINT` como la base OTLP de Cloud, `https://<cloud>/otel`, y el exportador agrega `/v1/<signal>`; una variable por señal como `OTEL_EXPORTER_OTLP_LOGS_ENDPOINT` necesita la URL completa `https://<cloud>/otel/v1/logs`. La salida local apunta al relay, `http://127.0.0.1:<port>`. La salida de Cloud incluye la clave API configurada; trátala como un secreto. La salida local omite la clave. Para usar la salida local, primero habilita un agente local para que el relay esté en ejecución.
+
+## Restaurar la configuración anterior
+
+```bash
+failproofai otel disable claude
+failproofai otel disable all
+```
+
+Disable restaura únicamente la configuración que escribió FailproofAI, conserva los cambios no relacionados y restaura la elección anterior de reporte de transcripciones de cada agente. Cuando se deshabilita el último agente local gestionado, el relay deja de aceptar exportaciones.
+
+Para Codex, disable también registra `collector.agents.codex.sessions_resume_after` (milisegundos epoch). Los bytes de rollout existentes se tratan como entregados para que las sesiones capturadas con OTEL no se vuelvan a cargar; las adiciones posteriores continúan fluyendo a través del reporte de transcripciones.
+
+Todos los comandos admiten `--help`. Consulta [OpenTelemetry en Cloud](/es/agenteye/opentelemetry) para ver ejemplos de aplicaciones y agentes de codificación.

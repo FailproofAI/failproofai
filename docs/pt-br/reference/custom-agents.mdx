@@ -4,18 +4,22 @@ description: "Configuração, catálogo de eventos, regras de correlação e ent
 icon: "python"
 ---
 
-O que cada configuração, método e campo faz. Se você está instrumentando pela primeira vez, comece pelo guia — esta página serve como referência.
+O que cada configuração, método e campo faz. Se você está instrumentando pela primeira vez, comece pelo guia — esta página é para consulta.
 
 <Columns cols={2}>
   <Card title="Guia de agentes personalizados" icon="code" href="/pt-br/start/integrations/custom-agents">
-    Instalação, instrumentação, métodos de evento, exemplo prático e problemas comuns.
+    Instalação, instrumentação, métodos de eventos, um exemplo prático e problemas comuns.
   </Card>
-  <Card title="Usando um framework?" icon="plug" href="/pt-br/start/integrations">
-    LangChain, CrewAI, LlamaIndex e Pydantic AI se instrumentam automaticamente com uma única chamada.
+  <Card title="Usando TypeScript?" icon="square-js" href="/pt-br/reference/custom-agents-typescript">
+    Os mesmos eventos, o mesmo formato de dados, o mesmo spool — em Node.
   </Card>
 </Columns>
 
-Python 3.10 ou superior. Sem dependências em tempo de execução.
+Python 3.11 ou superior. Sem dependências em tempo de execução. Usando um framework? [LangChain, CrewAI, LlamaIndex e Pydantic AI](/pt-br/start/integrations) se instrumentam automaticamente com uma única chamada.
+
+<Note>
+  Há também um **TypeScript SDK**, e os dois gravam os mesmos eventos no mesmo spool. Uma frota com agentes Node e agentes Python produz um único conjunto de sessões, não dois. Escolha por serviço, não por empresa.
+</Note>
 
 ## Instalação
 
@@ -23,27 +27,27 @@ Python 3.10 ou superior. Sem dependências em tempo de execução.
 pip install failproofai-sdk
 ```
 
-O pacote é instalado como `failproofai-sdk` e importado no Python como `failproofai_sdk`. Extras de framework como `failproofai-sdk[langgraph]` instalam o próprio framework; os adaptadores sempre vêm incluídos no pacote base.
+O pacote é instalado como `failproofai-sdk` e importado em Python como `failproofai_sdk`. Extras de framework como `failproofai-sdk[langgraph]` instalam o próprio framework; os adaptadores sempre vêm incluídos no pacote base.
 
-## Conectar o daemon do Failproof
+## Conectar o daemon Failproof
 
 <Tabs>
   <Tab title="Dashboard">
     1. Acesse **Admin → Keys** e crie uma chave com `events:add`.
-    2. [Conecte o daemon do Failproof à nuvem](/pt-br/start/setup#conectar-uma-máquina-à-cloud) na máquina do agente.
+    2. [Conecte o daemon Failproof à Cloud](/pt-br/start/setup#connect-a-machine-to-cloud) na máquina do agente.
     3. Execute uma sessão instrumentada e encontre o ID exato em **Observe → Events**.
     4. Acesse **Observe → Sessions**, selecione o mesmo ambiente e abra o trace reconstruído.
 
-    ![Uma sessão de agente Python personalizado reconstruída como grafo de execução e trace de eventos ordenados.](/images/dashboard/session-detail.png)
+    ![Uma sessão de agente Python personalizado reconstruída como grafo de execução e trace de eventos ordenado.](/images/dashboard/session-detail.png)
   </Tab>
   <Tab title="CLI">
-    Leia a chave `events:add` para o shell. `read -s` captura a entrada em um prompt sem eco, de forma que ela nunca aparece em um comando nem no histórico do shell:
+    Leia a chave `events:add` no shell. `read -s` solicita sem ecoar, para que ela nunca apareça em um comando ou no histórico do shell:
 
     ```bash
     read -rs FAILPROOFAI_CLOUD_TOKEN && export FAILPROOFAI_CLOUD_TOKEN
     ```
 
-    Em seguida, configure a máquina e verifique se a conexão foi estabelecida:
+    Em seguida, configure a máquina e verifique a conexão:
 
     ```bash
     failproofai config
@@ -53,6 +57,27 @@ O pacote é instalado como `failproofai-sdk` e importado no Python como `failpro
 </Tabs>
 
 ## Configuração
+
+### Spans OpenTelemetry (opt in)
+
+Instale `opentelemetry-sdk` separadamente e depois anexe o exportador opcional:
+
+```python
+import failproofai_sdk
+from opentelemetry.sdk.trace import TracerProvider
+
+provider = TracerProvider()
+failproofai_sdk.instrument("otel", provider=provider)
+with provider.get_tracer("my-agent").start_as_current_span(
+    "agent", attributes={"gen_ai.operation.name": "invoke_agent"}
+):
+    pass
+provider.force_flush()
+```
+
+A configuração usa seu provider registrado se você omitir `provider`, criando um apenas quando nenhum estiver registrado. Você também pode passar `failproofai_sdk.OtelSpanExporter()` diretamente para seu próprio span processor. Os demais exportadores permanecem inalterados.
+
+O daemon FailproofAI conectado realiza as exportações; o SDK não precisa de configuração de rede, chave ou listener local. Um administrador deve habilitar o [ingest OpenTelemetry](/pt-br/agenteye/opentelemetry). Um `instrument()` simples nunca habilita OTEL. `uninstrument("otel")` desabilita apenas seu próprio processor. Sua instrumentação controla a captura de conteúdo. Faça flush do provider antes de encerrar. O SDK ainda declara zero dependências em tempo de execução e importa OpenTelemetry apenas quando solicitado.
 
 ```python
 import failproofai_sdk
@@ -67,29 +92,29 @@ failproofai_sdk.configure(
 | Argumento | O que faz |
 | --- | --- |
 | `environment` | O rótulo em cada evento — `production`, `staging`, `prod-eu`. Padrão: `dev`. |
-| `flush_interval` | Com que frequência a thread em segundo plano grava no disco, em segundos. Padrão: `0.5`. |
-| `base_dir` | Onde gravar. Padrão: o spool do daemon, que é o valor correto na maioria dos casos. |
+| `flush_interval` | Com que frequência a thread em background grava no disco, em segundos. Padrão: `0.5`. |
+| `base_dir` | Onde gravar. Padrão: o spool do daemon, que é o que você quer a menos que saiba o contrário. |
 
-Configuração via variável de ambiente:
+Configure por variável de ambiente:
 
 | Variável | O que faz |
 | --- | --- |
-| `AGENTEYE_ENVIRONMENT` | Define `environment` sem alteração de código, para quando o rótulo pertence ao deployment e não à aplicação. Um argumento de `configure()` tem precedência sobre ela. |
-| `FAILPROOFAI_HOME` | Move o diretório raiz do Failproof AI que armazena o spool. |
-| `FAILPROOFAI_SDK_STRICT` | `1` faz erros de instrumentação lançar exceção em vez de apenas registrar no log. |
-| `FAILPROOFAI_SDK_STRICT_INTEGRATIONS` | `1` faz um problema de compatibilidade com o framework lançar exceção em vez de apenas exibir um aviso e continuar. |
+| `AGENTEYE_ENVIRONMENT` | Define `environment` sem alterar o código, para quando o rótulo pertence ao deploy e não ao app. Um argumento `configure()` tem precedência sobre ela. |
+| `FAILPROOFAI_HOME` | Move a raiz do Failproof AI que contém o spool. |
+| `FAILPROOFAI_SDK_STRICT` | `1` faz erros de instrumentação lançar exceções em vez de serem registrados. |
+| `FAILPROOFAI_SDK_STRICT_INTEGRATIONS` | `1` faz um problema de compatibilidade com framework lançar exceção em vez de apenas avisar e continuar. |
 
 <Warning>
-  **Sem vírgulas em `environment`.** O sistema de ingestão divide esse campo por vírgulas para construir seus filtros e ignora qualquer evento cujo rótulo contenha uma — fazendo uma execução inteira desaparecer silenciosamente. Use `prod-eu`, não `prod,eu`.
+  **Sem vírgulas em `environment`.** O ingest divide esse campo por vírgulas para construir seus filtros e ignora qualquer evento cujo rótulo contenha uma — fazendo uma execução inteira desaparecer silenciosamente. Escreva `prod-eu`, não `prod,eu`.
 
-  `configure(environment="prod,eu")` lança uma exceção para que você perceba imediatamente. `AGENTEYE_ENVIRONMENT` não pode lançar exceção — nada está te chamando — então ela emite um aviso uma vez e usa `dev` como fallback.
+  `configure(environment="prod,eu")` lança exceção para que você descubra imediatamente. `AGENTEYE_ENVIRONMENT` não pode lançar — nada está te chamando — então avisa uma vez e volta ao padrão `dev`.
 </Warning>
 
-Os eventos são enfileirados na memória e gravados em segundo plano a cada `flush_interval` segundos, com um flush final na saída do interpretador. Um processo encerrado abruptamente perde tudo o que ainda não foi gravado.
+Os eventos são enfileirados na memória e gravados em background a cada `flush_interval` segundos, com um flush final na saída do interpretador. Um processo encerrado abruptamente perde o que ainda não havia sido gravado.
 
 ## Identidade
 
-Todo evento pertence a uma sessão e a um agente. **Os escopos preenchem ambos automaticamente**, então raramente é necessário passá-los:
+Todo evento pertence a uma sessão e a um agente. **Os escopos preenchem ambos automaticamente**, então raramente você precisa passá-los:
 
 ```python
 with failproofai_sdk.session():
@@ -97,15 +122,15 @@ with failproofai_sdk.session():
         failproofai_sdk.event.tool_use(tool_name="search", tool_call_id="c1")
 ```
 
-Passar `session_id` ou `agent_id` explicitamente ainda funciona e tem precedência. Se nenhum estiver vinculado nem passado, a chamada lança `TypeError` em vez de emitir um evento que a nuvem descartaria silenciosamente.
+Passar `session_id` ou `agent_id` explicitamente ainda funciona e tem precedência. Se nenhum estiver vinculado nem passado, a chamada lança `TypeError` em vez de emitir um evento que a Cloud descartaria silenciosamente.
 
 <Note>
-  A identidade é transportada por variáveis de contexto. Ela segue tarefas `asyncio` automaticamente, mas **não** novas threads — encapsule um worker com `failproofai_sdk.propagate()` ou os eventos dele ficarão sem associação.
+  A identidade fica em variáveis de contexto. Ela segue tarefas `asyncio` automaticamente, mas **não** novas threads — envolva um worker com `failproofai_sdk.propagate()` ou seus eventos ficarão sem vinculação.
 </Note>
 
 ## Catálogo de eventos
 
-Quinze métodos. A maioria vem em **pares** — você chama o abridor e depois o fechador, e o SDK mede o intervalo entre eles.
+Quinze métodos. A maioria vem em **pares** — você chama o que abre, depois o que fecha, e o SDK mede o intervalo.
 
 | | Abre | Fecha |
 | --- | --- | --- |
@@ -120,7 +145,7 @@ Três são independentes: `error`, `human_pause`, `human_interrupt`.
 
 <Accordion title="Todos os campos, por método" icon="table">
 
-Cada método também aceita `session_id` e `agent_id`, que os escopos preenchem automaticamente. Qualquer campo deixado como `None` é descartado em vez de enviado como `null` no JSON, e todos os métodos retornam `None`.
+Cada método também aceita `session_id` e `agent_id`, que os escopos preenchem automaticamente. Qualquer campo deixado como `None` é descartado em vez de ser enviado como `null` JSON, e todo método retorna `None`.
 
 | Método | Obrigatório | Opcional |
 | --- | --- | --- |
@@ -143,12 +168,12 @@ Cada método também aceita `session_id` e `agent_id`, que os escopos preenchem 
 </Accordion>
 
 <Warning>
-  Para marcar uma execução como falha, `outcome` deve ser um dos valores: `failed`, `error`, `timeout` ou `rejected`. Qualquer outro valor — incluindo o quase-correto `"failure"` — é contado como sucesso.
+  Para marcar uma execução como falha, `outcome` deve ser um dos valores: `failed`, `error`, `timeout` ou `rejected`. Qualquer outro valor — incluindo o quase-certo `"failure"` — é contado como sucesso.
 </Warning>
 
 ## Pareamento e duração
 
-**Uma regra: dê ao evento de fechamento o mesmo id do seu abridor.** É isso que os emparelha e permite ao SDK medir o intervalo.
+**Uma regra: passe ao evento de fechamento o mesmo id do seu abridor.** É isso que os vincula e permite ao SDK medir o intervalo.
 
 | Par | Correspondência por |
 | --- | --- |
@@ -158,37 +183,37 @@ Cada método também aceita `session_id` e `agent_id`, que os escopos preenchem 
 | `human_wait` → `human_input` | `input_id` |
 | `model_request` → `model_response` | `request_id` |
 
-**Não passe `duration_ms` manualmente.** O SDK o mede automaticamente, e passá-lo lança `ValueError`.
+**Não passe `duration_ms` você mesmo.** O SDK mede, e passá-lo lança `ValueError`.
 
-A única exceção é `model_response`, onde somente você conhece a latência real do provedor. Passe um número inteiro de milissegundos — um float lança exceção, pois a coluna é um inteiro de 32 bits e ficaria vazia caso contrário.
+A única exceção é `model_response`, onde só você conhece a latência real do provedor. Passe um número inteiro de milissegundos — um float lança exceção, pois a coluna é um inteiro de 32 bits e ficaria vazia caso contrário.
 
-<Accordion title="Casos extremos" icon="circle-help">
+<Accordion title="Casos especiais" icon="circle-help">
 
-- **Os ids precisam ser únicos apenas por tipo e por sessão.** Uma chamada de ferramenta e um hook podem compartilhar o mesmo id; duas sessões em execução simultânea podem reutilizar os mesmos ids sem conflito.
-- **Eles não são escopados por agente.** Um par aberto sob um agente e fechado sob outro ainda é emparelhado corretamente — o que é o caso normal em código multi-agente.
-- **`request_id` é opcional, mas recomendado.** Sem ele, eventos de modelo são emparelhados na ordem de chegada, então duas chamadas concorrentes no mesmo agente podem ser emparelhadas incorretamente.
-- **Um par dividido entre processos** ainda é emparelhado na nuvem, mas o SDK não consegue medir o tempo — nenhum dos processos viu as duas metades.
-- **No máximo 10.000 abridores aguardam um fechador ao mesmo tempo.** Além disso, o mais antigo é descartado, então um vazamento não pode crescer indefinidamente.
+- **Os ids precisam ser únicos apenas por tipo e por sessão.** Uma chamada de ferramenta e um hook podem compartilhar o mesmo id; duas sessões rodando ao mesmo tempo podem reutilizar os mesmos ids sem colisão.
+- **Eles não têm escopo de agente.** Um par aberto em um agente e fechado em outro ainda é vinculado — o que é o caso normal em código multi-agente.
+- **`request_id` é opcional, mas recomendado.** Sem ele, os eventos de modelo são pareados na ordem de chegada, então duas chamadas concorrentes no mesmo agente podem ser pareadas incorretamente.
+- **Um par dividido entre processos** ainda é vinculado na Cloud, mas o SDK não consegue medi-lo — nenhum dos processos viu as duas metades.
+- **No máximo 10.000 abridores aguardam um fechador por vez.** Além disso, o mais antigo é descartado, evitando que um vazamento cresça indefinidamente.
 
 </Accordion>
 
-## Seus próprios campos
+## Campos personalizados
 
-Qualquer palavra-chave extra que você passar é armazenada junto ao evento:
+Qualquer palavra-chave extra que você passe é armazenada com o evento:
 
 ```python
 failproofai_sdk.event.tool_use(
     tool_name="search", tool_call_id="c1",
-    fw_tenant="acme", fw_region="eu-west-1",     # seus próprios campos
+    fw_tenant="acme", fw_region="eu-west-1",     # seus próprios
 )
 ```
 
-Prefira tipos JSON se quiser consultá-los posteriormente. Qualquer outro tipo — UUID, datetime, `Decimal`, set, bytes, objeto de modelo — é armazenado como string.
+Prefira tipos JSON se quiser consultá-los depois. Qualquer outro tipo — um UUID, um datetime, um `Decimal`, um set, bytes, um objeto de modelo — é armazenado como string.
 
 <Warning>
-  **Use prefixo nos nomes dos seus campos.** Os extras são aplicados por último, então um campo chamado `model`, `tool_name` ou `outcome` sobrescreve silenciosamente o campo original. Os adaptadores de framework usam `fw_`; faça o mesmo e não haverá conflito.
+  **Use prefixo nos nomes dos seus campos.** Os extras são aplicados por último, então um campo chamado `model`, `tool_name` ou `outcome` sobrescreve silenciosamente o campo real. Os adaptadores de framework usam `fw_`; faça o mesmo e nada irá colidir.
 
-  É também por isso que um campo opcional com erro de ortografia nunca gera erro — ele simplesmente se torna um novo campo personalizado. Se um campo padrão estiver ausente na nuvem, verifique a ortografia primeiro.
+  É também por isso que um campo opcional com erro de digitação nunca gera erro — ele apenas se torna um novo campo personalizado. Se um campo padrão estiver ausente na Cloud, verifique a ortografia primeiro.
 </Warning>
 
 Estes cinco nomes são reservados e rejeitados diretamente: `timestamp`, `session_id`, `agent_id`, `type`, `environment`.
@@ -197,7 +222,7 @@ Estes cinco nomes são reservados e rejeitados diretamente: `timestamp`, `sessio
 
 <Tabs>
   <Tab title="Dashboard">
-    Em **Observe → Events**, verifique se `agent_start` existe primeiro e `agent_end` existe por último. Em seguida, abra **Observe → Sessions** e confirme que os eventos de modelo, ferramenta, humano, hook e erro aparecem na ordem esperada. Use o ID de sessão como chave principal de diagnóstico.
+    Em **Observe → Events**, verifique se `agent_start` existe primeiro e `agent_end` existe por último. Em seguida, abra **Observe → Sessions** e confirme que os eventos de modelo, ferramenta, humano, hook e erro aparecem na ordem pretendida. Use o ID de sessão como chave principal de troubleshooting.
   </Tab>
   <Tab title="CLI">
     ```bash
@@ -209,14 +234,14 @@ Estes cinco nomes são reservados e rejeitados diretamente: `timestamp`, `sessio
   </Tab>
 </Tabs>
 
-Se a nuvem estiver vazia, inspecione `$FAILPROOFAI_HOME/custom-agents/events`; caso contrário, `~/.failproofai/custom-agents/events`. Arquivos JSONL confirmam a emissão pelo SDK; um spool crescendo aponta para configuração do daemon ou entrega, enquanto um spool vazio aponta para instrumentação ou tempo de vida do processo.
+Se a Cloud estiver vazia, inspecione `$FAILPROOFAI_HOME/custom-agents/events`, caso contrário `~/.failproofai/custom-agents/events`. Arquivos JSONL confirmam a emissão pelo SDK; um spool crescendo aponta para configuração do daemon ou entrega, enquanto um spool vazio aponta para instrumentação ou tempo de vida do processo.
 
 <Note>
-  Inspecione o spool somente quando o daemon estiver parado. Enquanto ele executa, coleta e exclui cada lote em milissegundos, então uma listagem de diretório disputa com o coletor e exibe muito menos eventos do que foram emitidos.
+  Inspecione o spool somente quando o daemon estiver parado. Enquanto ele estiver rodando, coleta e exclui cada lote em milissegundos, então uma listagem de diretório compete com o coletor e mostra muito menos eventos do que foram emitidos.
 </Note>
 
 ## Prevenir falhas em um runtime personalizado
 
-Use descobertas de auditoria e traces vinculados para definir a ação insegura, as evidências necessárias e a resposta pretendida. Uma integração de enforcement personalizada deve expor a ação antes da execução, passar sua entrada estruturada ao motor de políticas e aplicar a decisão resultante de allow, instruct ou deny.
+Use os achados de auditoria e os traces vinculados para definir a ação insegura, a evidência necessária e a resposta esperada. Uma integração de enforcement personalizada deve expor a ação antes da execução, passar sua entrada estruturada ao motor de políticas e aplicar a decisão resultante de allow, instruct ou deny.
 
-[Entre em contato com o Failproof AI](mailto:support@befailproof.ai) e iremos ajudar a mapear os limites de modelo, ferramenta e ciclo de vida do seu runtime para hooks de política, e então validar a integração junto com você.
+[Entre em contato com Failproof AI](mailto:support@befailproof.ai) e ajudaremos a mapear os limites de modelo, ferramenta e ciclo de vida do seu runtime para hooks de política, e então validaremos a integração com você.

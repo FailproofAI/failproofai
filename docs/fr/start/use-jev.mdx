@@ -1,10 +1,10 @@
 ---
 title: "Utiliser Jev"
-description: "Configurez les évaluations Jev pour les sessions terminées ou les politiques Jev pour l'examen des appels d'outils en direct."
+description: "Configurez les évaluations Jev pour les sessions terminées ou les politiques Jev pour la révision des appels d'outils en direct."
 icon: "sparkles"
 ---
 
-Jev intervient à deux moments dans l'exécution d'un agent : noter une session terminée par rapport à des réponses connues, ou examiner un appel d'outil dans le contexte de ce que vous avez demandé à l'agent de faire.
+Jev intervient à deux moments lors d'une exécution d'agent : évaluer une session terminée par rapport à des réponses connues, ou examiner un appel d'outil dans le contexte de ce que vous avez demandé à l'agent de faire.
 
 <Tabs>
   <Tab title="Évaluations Jev">
@@ -12,11 +12,11 @@ Jev intervient à deux moments dans l'exécution d'un agent : noter une session 
 
     ## Créer une évaluation
 
-    Dans le tableau de bord Cloud, ouvrez **Analyser → création d'évaluation → nouvelle évaluation**. Saisissez une question à réponse fixe, sélectionnez **brouillon**, et vérifiez qu'un score de classification a été choisi. [Testez-la](/fr/evaluations/test) sur de vraies sessions, puis déployez-la.
+    Dans le tableau de bord Cloud, ouvrez **Analyser → création d'évaluation → nouvelle évaluation**. Saisissez une question à réponse fixe, sélectionnez **brouillon**, et vérifiez qu'un score classificateur a bien été choisi. [Testez-la](/fr/evaluations/test) sur de vraies sessions, puis déployez-la.
 
-    ![Le formulaire partagé de création d'évaluation où vous décrivez une question, examinez le brouillon et le déployez. Cette capture d'écran montre un brouillon de code ; utilisez une question à réponse fixe pour Jev.](/images/dashboard/eval-authoring-draft.png)
+    ![Le formulaire partagé de création d'évaluation où vous décrivez une question, révisez le brouillon et le déployez. Cette capture d'écran montre un brouillon de code ; utilisez une question à réponse fixe pour Jev.](/images/dashboard/eval-authoring-draft.png)
 
-    ## Consulter les scores
+    ## Lire les scores
 
     Après la fin d'une nouvelle session, ouvrez **Observer → Évaluations** ou utilisez le CLI Cloud :
 
@@ -25,10 +25,10 @@ Jev intervient à deux moments dans l'exécution d'un agent : noter une session 
     fp evals --aggregate --since 7d
     ```
 
-    Le CLI lit les scores ; la création d'une évaluation Jev utilise actuellement le tableau de bord. Consultez [les évaluations Jev](/fr/evaluations/jev) pour les types de questions et des exemples.
+    Le CLI lit les scores ; la création d'une évaluation Jev s'effectue actuellement via le tableau de bord. Consultez [Évaluations Jev](/fr/evaluations/jev) pour les types de questions et des exemples.
   </Tab>
   <Tab title="Politiques Jev">
-    Utilisez l'examen des politiques Jev lorsqu'une politique par correspondance de chaînes a besoin du contexte de votre requête pour déterminer si un appel d'outil est sûr. Commencez en mode **observe** pour pouvoir inspecter les réponses de Jev pendant que vos politiques installées continuent de traiter chaque appel.
+    Utilisez la révision par politique Jev lorsqu'une politique par correspondance de chaîne a besoin du contexte de votre requête pour déterminer si un appel d'outil est sûr. Commencez en mode **observe** afin de pouvoir inspecter les réponses de Jev pendant que vos politiques installées continuent de gérer chaque appel.
 
     Les vérifications de Jev proviennent d'un pack ; Failproof AI n'en fournit aucun. Tant que vous ne les installez pas, Jev ne pose aucune question, même s'il est configuré :
 
@@ -45,19 +45,19 @@ Jev intervient à deux moments dans l'exécution d'un agent : noter une session 
     failproofai jev test
     ```
 
-    ## Utiliser votre propre point de terminaison
+    ## Utiliser votre propre endpoint
 
     Dans le tableau de bord local, ouvrez **Paramètres → Jev**. Choisissez le fournisseur, collez son jeton, sélectionnez **observe**, et activez Jev.
 
-    ![Le panneau des paramètres Jev local avec un fournisseur, un champ de jeton et le mode observe sélectionné.](/images/dashboard/jev-settings.png)
+    ![Le panneau de paramètres Jev local avec un fournisseur, un champ de jeton et le mode observe sélectionné.](/images/dashboard/jev-settings.png)
 
-    Ou configurez et testez votre point de terminaison depuis un terminal :
+    Ou configurez et testez votre endpoint depuis un terminal :
 
     ```bash
     failproofai jev --url https://api.typesafe.ai/v1 --mode observe --key-stdin < ~/typesafe.key
     failproofai jev test
     ```
 
-    Demandez à un agent connecté d'utiliser son outil de lecture de fichiers sur `README.md`. Confirmez que cet appel d'outil apparaît dans la session, puis inspectez-le sous **Politiques → Activité** dans le tableau de bord local. Une fois que les résultats en mode observe semblent corrects, [les politiques Jev](/fr/policies/jev) explique quand appliquer l'enforcement. Pour les détails du fournisseur et la configuration, consultez la [référence d'intégration](/fr/reference/jev).
+    Demandez à un agent connecté d'utiliser son outil de lecture de fichiers sur `README.md`. Confirmez que cet appel d'outil apparaît dans la session, puis inspectez-le sous **Politiques → Activité** dans le tableau de bord local. Une fois que les résultats en mode observe semblent corrects, [Politiques Jev](/fr/policies/jev) explique quand passer en mode d'application. Pour les détails sur les fournisseurs et la configuration, consultez la [référence d'intégration](/fr/reference/jev).
   </Tab>
 </Tabs>

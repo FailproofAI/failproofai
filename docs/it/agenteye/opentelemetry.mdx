@@ -1,0 +1,131 @@
+---
+title: "OpenTelemetry"
+description: "Invia telemetria dell'agente di codifica e dell'applicazione a FailproofAI Cloud con OTLP."
+icon: "radio"
+---
+
+OpenTelemetry ti consente di inviare tracce, log e metriche degli agenti a FailproofAI Cloud utilizzando il protocollo standard OTLP/HTTP. È facoltativo. Le tue integrazioni FailproofAI esistenti continuano a funzionare senza abilitarlo.
+
+## Attiva l'ingest per la tua organizzazione
+
+Un amministratore dell'organizzazione apre **Settings → OpenTelemetry** e attiva l'ingest. Utilizza una chiave API Cloud con autorizzazione `events:add`, la stessa autorizzazione utilizzata per il reporting degli agenti.
+
+Se l'ingest è disattivato, Cloud rifiuta le esportazioni OTLP, quindi `failproofai otel enable` non cambia nulla e i tuoi agenti continuano a inviare sessioni nel modo consueto. Esegui `failproofai otel status` per controllare l'interruttore dell'organizzazione e chiedi a un amministratore di attivarlo.
+
+## Connetti un agente di codifica
+
+Connetti la tua macchina con `failproofai config`, quindi scegli un agente:
+
+```bash
+failproofai otel enable claude
+failproofai otel enable codex
+failproofai otel enable copilot
+```
+
+Il comando di configurazione supporta Claude Code, Codex e Copilot e sceglie Cloud o un relè locale autenticato in base alle necessità. Copilot utilizza il relè locale automaticamente. Avvia il daemon FailproofAI configurato prima di utilizzare il relè.
+
+Se FailproofAI invia già i trascritti di sessione di un agente, la configurazione chiede se passare quell'agente a OTEL. L'impostazione predefinita è No. Se accetti, gli upload dei trascritti per quell'agente si interromperanno; non cambia l'applicazione delle policy o il reporting di altri agenti.
+
+## Connetti un'applicazione
+
+Utilizza la strumentazione OpenTelemetry della tua applicazione con queste variabili di ambiente:
+
+```bash
+export OTEL_EXPORTER_OTLP_ENDPOINT=https://app.befailproof.ai/otel
+export OTEL_EXPORTER_OTLP_PROTOCOL=http/protobuf
+export OTEL_EXPORTER_OTLP_HEADERS='Authorization=Bearer%20<key>'
+export OTEL_SERVICE_NAME=my-agent
+```
+
+L'endpoint è la base OTLP di Cloud, `https://app.befailproof.ai/otel`; il tuo esportatore aggiungerà `/v1/traces`, `/v1/logs` o `/v1/metrics` autonomamente. Le variabili per singoli segnali come `OTEL_EXPORTER_OTLP_LOGS_ENDPOINT` vengono utilizzate così come sono, quindi hanno bisogno del percorso completo, ad esempio `https://app.befailproof.ai/otel/v1/logs`.
+
+Sostituisci `<key>` con la tua chiave API. Mantieni il segreto fuori dalla cronologia della shell, dalle registrazioni dello schermo e dalla configurazione committata. Per una macchina configurata, `failproofai otel env --service my-agent` stampa il blocco con la sua chiave esistente. Il suo output contiene una credenziale.
+
+Cloud accetta esportazioni OTLP/HTTP per tracce, log e metriche, come protobuf o JSON, incluse le richieste compresse con gzip. Non accetta OTLP/gRPC.
+
+Le metriche sono riconosciute per la compatibilità dell'esportatore ma non vengono archiviate né visualizzate. Le tracce degli agenti supportate e i log degli agenti di codifica diventano sessioni; i campi che l'agente non esporta rimangono assenti.
+
+## Cattura il testo del prompt
+
+<Warning>
+La cattura del testo può includere prompt, argomenti degli strumenti e altri contenuti sensibili. `failproofai otel enable` l'attiva. Aggiungi `--no-content` per mantenere la cattura dei prompt e dei dettagli degli strumenti disattivata.
+</Warning>
+
+```bash
+failproofai otel enable claude --no-content
+failproofai otel enable codex --no-content
+```
+
+Per un agente che configuri manualmente, utilizza i suoi controlli di cattura del contenuto:
+
+<Tabs>
+  <Tab title="Claude Code">
+    Aggiungi queste variabili all'ambiente del tuo agente insieme al blocco dell'applicazione sopra:
+
+    ```bash
+    export CLAUDE_CODE_ENABLE_TELEMETRY=1
+    export OTEL_LOGS_EXPORTER=otlp
+    export OTEL_METRICS_EXPORTER=otlp
+    export OTEL_LOG_USER_PROMPTS=1
+    export OTEL_LOG_TOOL_DETAILS=1
+    ```
+
+    Imposta entrambe le variabili di contenuto a `0` per evitare di catturare prompt e dettagli degli strumenti.
+  </Tab>
+  <Tab title="Codex">
+    Nella configurazione utente di Codex, utilizza le sue impostazioni OTEL:
+
+    ```toml
+    [otel]
+    log_user_prompt = true
+    exporter = { otlp-http = { endpoint = "https://app.befailproof.ai/otel/v1/logs", protocol = "json", headers = { Authorization = "Bearer <key>" } } }
+    ```
+
+    Il contenuto della conversazione di Codex si trova nei log; lascia disabilitate le tracce di runtime interno e le metriche. Codex utilizza l'endpoint completo che fornisci. Imposta `log_user_prompt` a `false` per escludere i prompt; il comando di configurazione preserva un valore `false` esplicito.
+  </Tab>
+  <Tab title="Gemini CLI">
+    Utilizza le impostazioni di telemetria di Gemini con il relè locale:
+
+    ```json
+    {
+      "telemetry": {
+        "enabled": true,
+        "target": "local",
+        "otlpEndpoint": "http://127.0.0.1:4318",
+        "otlpProtocol": "http",
+        "useCollector": true,
+        "logPrompts": true
+      }
+    }
+    ```
+
+    Gemini CLI non è supportato da `failproofai otel enable`. Configuralo manualmente con un collettore autenticato di tua scelta. Imposta `logPrompts` a `false` per nessuna cattura dei prompt.
+  </Tab>
+  <Tab title="Copilot in VS Code">
+    Utilizza queste impostazioni utente di VS Code:
+
+    ```json
+    {
+      "github.copilot.chat.otel.enabled": true,
+      "github.copilot.chat.otel.exporterType": "otlp-http",
+      "github.copilot.chat.otel.otlpEndpoint": "http://127.0.0.1:4318",
+      "github.copilot.chat.otel.captureContent": true
+    }
+    ```
+
+    Esegui `failproofai otel enable copilot` per abilitare il relè autenticato. Imposta `captureContent` a `false` per omettere il contenuto.
+  </Tab>
+</Tabs>
+
+## Controlla o annulla la configurazione
+
+```bash
+failproofai otel status
+failproofai otel disable all
+```
+
+Lo stato distingue le impostazioni gestite da FailproofAI dalla telemetria che hai configurato altrove. Disabilita ripristina le impostazioni gestite precedenti e la scelta di caricamento dei trascritti precedente dell'agente.
+
+<Card title="OpenTelemetry CLI" href="/it/reference/otel" icon="terminal">
+  Opzioni di comando, configurazione del relè locale e troubleshooting.
+</Card>

@@ -1,0 +1,61 @@
+---
+title: "Análise de produto"
+description: "A telemetria de uso que o Failproof AI Cloud envia sobre si mesmo, o que nunca é coletado e como desativá-la."
+icon: "chart-no-axes-column"
+---
+
+O Failproof AI Cloud envia telemetria de uso **sobre o próprio software** para seus mantenedores. Ela nunca inclui dados dos seus agentes. Em uma instalação auto-hospedada, ela vem ativada por padrão e pode ser desligada.
+
+## O que é coletado
+
+Cada evento carrega cinco dimensões e nada que identifique uma pessoa:
+
+| Dimensão | Exemplo | O que é |
+| --- | --- | --- |
+| `product` | `agenteye` | Qual produto enviou o evento |
+| `component` | `dashboard`, `server`, `cli` | Qual parte do produto enviou |
+| `app_version` | `0.0.1-beta.81` | A versão em execução |
+| `deployment_kind` | `self_hosted` | Se é uma instalação de cliente, nossa demo, nosso QA ou uma máquina de desenvolvimento |
+| `org_id` | um UUID | Em qual organização a ação ocorreu, como identificador opaco |
+
+Além disso, os eventos registram **o que foi usado, nunca o conteúdo**: qual página foi visualizada (como padrão de rota, por exemplo `/:org/sessions/:id`, nunca a URL real), quantos filtros de cada tipo foram aplicados, se uma ação foi bem-sucedida e quanto tempo levou.
+
+O app do Slack registra conexões e desconexões de workspaces, vínculos de conta, perguntas feitas, gráficos publicados, decisões de aprovação e falhas por categoria fixa. Nunca inclui IDs de workspace, usuário ou canal do Slack, e-mail, perguntas, respostas, SQL ou tokens.
+
+### O nome da sua organização
+
+Junto ao `org_id` opaco, registramos o nome da sua organização, o slug de URL e o endereço do dashboard uma vez, em um registro de organização em vez de em cada evento. Isso nos permite identificar a qual conta um padrão pertence quando analisamos a adoção ou investigamos um problema que você reportou. Essa é a única informação de identificação que o produto envia sobre você.
+
+### Os totais de uso da sua organização
+
+O servidor reporta os totais de uso medido de cada organização — os mesmos números que você vê na página de Uso. São apenas contagens: eventos, sessões, agentes, ambientes, execuções de avaliação, pontuações, execuções de auditoria, consultas salvas, dashboards, alertas, problemas, chaves de API e membros, além das datas da janela de medição. Não contêm identificadores, nomes ou texto de consulta, e chegam independentemente de alguém estar conectado ou não.
+
+## O que nunca é coletado
+
+- **Nenhum prompt, resposta de modelo ou conteúdo de evento**, nem como texto, prefixo ou hash
+- **Nenhum identificador de sessão, agente ou trace**
+- **Nenhum nome de pontuação de avaliador**
+- **Nenhuma mensagem de erro, texto de exceção ou corpo de resposta**, apenas um código de status e uma categoria de uma lista fixa
+- **Nenhum argumento de ferramenta, SQL ou texto de consulta**
+- **Nenhum detalhe de app conectado.** Conectar ou revogar um cliente MCP envia no máximo uma contagem de permissões, nunca o nome do app ou qualquer token
+- **Nenhum endereço de e-mail**
+- **Nenhuma URL de referência ou string de consulta**
+- **Nenhuma gravação de tela, captura de DOM ou rastreamento de cliques e cursor**
+
+## Desativar em uma instalação auto-hospedada
+
+Defina `DO_NOT_TRACK=1` tanto no dashboard quanto no servidor. Eles decidem de forma independente, portanto definir apenas em um deles faz o outro continuar reportando. Reinicie o servidor para que a alteração tenha efeito.
+
+O README da sua versão descreve as outras configurações de cancelamento e como confirmar que a telemetria está desativada.
+
+## Um ping ao cancelar
+
+Se você cancelar por uma configuração de produto em vez de `DO_NOT_TRACK`, o dashboard pode enviar **um ping anônimo** registrando isso, com probabilidade de 1 em 1.000 por inicialização de processo. Isso nos informa quantos operadores desativam a telemetria. Não contém identificadores: nenhuma organização, usuário, hostname, URL ou IP — apenas o produto, componente, versão, tipo de implantação e motivo. Um servidor com cancelamento ativo não envia nada.
+
+Esse ping nunca é enviado quando você usa `DO_NOT_TRACK`, razão pela qual essa é a configuração a usar se sua política proibir qualquer telemetria de saída.
+
+## Para onde vai
+
+Para o PostHog (`us.i.posthog.com`) via TLS na porta 443. É um único hostname, então você também pode bloqueá-lo com uma única regra de egresso.
+
+Para saber como tratamos informações pessoais de forma mais abrangente, consulte a [política de privacidade](https://befailproof.ai/privacy/).

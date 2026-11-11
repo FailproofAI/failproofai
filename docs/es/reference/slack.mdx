@@ -1,0 +1,111 @@
+---
+title: "Aplicación de Slack"
+description: "Consulta el Asistente de Failproof desde Slack, recibe gráficos en el hilo y aprueba cambios con un botón."
+icon: "slack"
+---
+
+Consulta el [Asistente de Failproof](/es/sessions/assistant) desde Slack. Menciona la aplicación en un canal, envíale un mensaje directo o usa `/failproof <pregunta>`. Las respuestas utilizan **tus propios** permisos de Failproof AI, los gráficos llegan al hilo y cualquier acción que implique cambios te pedirá aprobación primero.
+
+Existe una sola aplicación oficial. Funciona igual tanto si tu Failproof AI Cloud está alojada como si es autoalojada.
+
+<Note>
+  Las respuestas son generadas por modelos de IA y pueden ser inexactas. Verifica cualquier información importante con los datos de origen enlazados.
+</Note>
+
+## Conectar un espacio de trabajo
+
+Necesitas el permiso `settings:write` en Failproof AI y, en Slack, ser administrador o propietario del espacio de trabajo, o la persona que agrega la aplicación.
+
+<Tabs>
+  <Tab title="Desde Failproof AI">
+    1. Ve a **Configuración → Integraciones** y selecciona **Agregar a Slack**.
+    2. Aprueba la aplicación en Slack.
+    3. De regreso en Failproof AI, confirma la conexión del espacio de trabajo con tu organización.
+  </Tab>
+  <Tab title="Desde Slack">
+    1. Agrega la aplicación y luego abre su pestaña **Inicio**.
+    2. Elige **Continuar con FailproofAI Cloud** o **Usar mi propia URL** e ingresa la dirección con la que inicias sesión.
+    3. Selecciona el botón de continuar, inicia sesión, elige la organización y confirma. El enlace es de un solo uso y caduca después de 10 minutos.
+  </Tab>
+</Tabs>
+
+Un espacio de trabajo se conecta a una organización, y una organización a un espacio de trabajo.
+
+¿No tienes cuenta? [Crea una](https://app.befailproof.ai/login) primero y luego conéctate.
+
+## Tu identidad en Slack
+
+La primera vez que haces una consulta, la aplicación determina qué miembro eres:
+
+- **Automáticamente, por correo electrónico**, cuando eres miembro completo del espacio de trabajo conectado, tu correo de Slack está confirmado y exactamente un miembro de la organización usa ese correo.
+- **En caso contrario**, recibirás un botón privado **Vincular tu cuenta** que abre Failproof AI y enlaza tu usuario de Slack con tu cuenta.
+
+## Hacer una pregunta
+
+| Dónde | Cómo |
+| --- | --- |
+| Un canal | Menciona la aplicación. Responde en su hilo para continuar, sin necesidad de mencionarla de nuevo |
+| Un mensaje directo | Envía un mensaje a la aplicación |
+| Un mensaje directo grupal en el que esté la aplicación | Menciónala y luego responde en su hilo para continuar |
+| Un canal de Slack Connect | Menciona la aplicación |
+| Cualquier conversación en la que esté la aplicación | `/failproof <pregunta>` inicia un hilo con la respuesta |
+| `/failproof help` | Ver qué puede hacer la aplicación |
+| `/failproof status` | Ver qué organización está conectada y con quién estás vinculado |
+| `/failproof link` | Ver a qué cuenta de Failproof AI estás vinculado |
+
+Un hilo es una conversación. Los compañeros pueden mencionar la aplicación en el mismo hilo y esta responde a cada uno con sus propios permisos. Solo la persona que inició el hilo puede continuarlo sin necesidad de mencionar la aplicación.
+
+Cuando la respuesta son datos, la aplicación publica un gráfico o una tabla con un enlace para abrirlo en Failproof AI.
+
+## Aprobar cambios
+
+Cada cambio que realice el asistente mostrará primero los botones **Aprobar** y **Cancelar**, y Slack pedirá confirmación una vez más antes de **Aprobar**. Solo la persona que hizo la consulta puede responder, los botones caducan después de 5 minutos y el cambio se realiza con los permisos de esa persona.
+
+Desde Slack, el asistente puede modificar consultas guardadas, paneles, evaluaciones, alertas, auditorías, incidencias y políticas, así como sugerir correcciones de código, siempre que tengas el permiso correspondiente. No puede modificar claves de API, usuarios ni configuraciones.
+
+## Vistas previas de enlaces
+
+Los enlaces de incidencias, sesiones y evaluaciones de Failproof AI pegados en Slack se despliegan en tarjetas en Failproof AI Cloud alojada. Una tarjeta muestra solo lo que puede ver la persona que la activó. Los enlaces a una dirección autoalojada no se despliegan, aunque las tarjetas en las respuestas del propio asistente sí aparecen.
+
+## Canales de Slack Connect
+
+Las personas de otro espacio de trabajo pueden usar la aplicación si son miembros de la organización, tras vincular su cuenta. Las respuestas son visibles para todos en la conversación, incluidas personas que no son miembros de tu organización, así que consulta solo donde todos puedan ver la respuesta.
+
+La aplicación solo responde una vez que alguien de cada uno de los demás espacios de trabajo del canal haya vinculado su cuenta a la organización. Hasta entonces, le explica a la persona que pregunta el motivo.
+
+## Permisos que solicita la aplicación
+
+| Permiso de Slack | Para qué sirve |
+| --- | --- |
+| `app_mentions:read` | Saber cuándo alguien menciona la aplicación |
+| `channels:history`, `groups:history`, `im:history`, `mpim:history` | Recibir mensajes directos y respuestas en los hilos de la aplicación. La aplicación ignora otros mensajes y nunca lee mensajes anteriores de una conversación |
+| `channels:read`, `groups:read`, `im:read`, `mpim:read` | Verificar qué tipo de conversación es para saber quién puede ver una respuesta |
+| `chat:write` | Publicar respuestas y botones de aprobación |
+| `commands` | Proveer `/failproof` |
+| `files:write` | Publicar gráficos |
+| `links:read`, `links:write` | Mostrar vistas previas de enlaces de Failproof AI pegados |
+| `users:read`, `users:read.email` | Vincularte con tu cuenta de Failproof AI y mostrar nombres |
+
+## Desconectar
+
+Ve a **Configuración → Integraciones** y selecciona **Desconectar**, usa **Desconectar** en la pestaña **Inicio** de la aplicación, o elimina la aplicación de Slack.
+
+Cualquiera de estas acciones elimina la conexión del espacio de trabajo, el token del bot, las cuentas vinculadas y los registros de hilos. Las conversaciones pasadas de Slack siguen siendo legibles en el panel. La organización puede entonces conectar cualquier espacio de trabajo de inmediato.
+
+## Datos y privacidad
+
+Las preguntas y respuestas se guardan como conversaciones en el panel de tu organización, bajo la persona que inició el hilo. Los datos de Slack nunca se utilizan para entrenar modelos de IA. Consulta la [política de privacidad](https://befailproof.ai/privacy/) para saber qué recibe la aplicación y durante cuánto tiempo se conserva.
+
+## Solución de problemas
+
+| Lo que ves | Qué hacer |
+| --- | --- |
+| "This workspace isn't connected to a FailproofAI Cloud yet." | Un administrador del espacio de trabajo abre la pestaña **Inicio** de la aplicación y elige una |
+| "This link expired or was already used." | Elige tu Cloud de nuevo en la pestaña **Inicio** para obtener un nuevo enlace |
+| "This org is already connected to a Slack workspace." | Desconéctalo primero en la configuración |
+| "That Slack workspace is connected to another org." | Desconéctalo primero de esa organización |
+| "Link your account to use the assistant." | Selecciona el botón y confirma en Failproof AI |
+| La aplicación no responde en un mensaje directo grupal | Agrega la aplicación a Slack de nuevo para concederle permisos de grupo. Tu conexión se conserva |
+| "I won't post answers from your organization here" | Alguien de ese espacio de trabajo que sea miembro de la organización menciona la aplicación y vincula su cuenta |
+
+¿Sigues teniendo problemas? Escribe a [support@befailproof.ai](mailto:support@befailproof.ai).

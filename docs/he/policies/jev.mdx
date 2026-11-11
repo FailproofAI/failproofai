@@ -1,45 +1,45 @@
 ---
-title: "מדיניות Jev"
-description: "הוסף ביקורת חי של Jev לקריאות כלים מוגבלות, ואז בדוק זאת לפני אכיפת ההחלטות שלה."
+title: "Jev policies"
+description: "הוסף סקירה חיה של Jev לקריאות כלים מגודרות, ולאחר מכן בדוק אותן לפני אכיפת החלטותיו."
 icon: "shield-check"
 ---
 
-Jev קורא קריאת כלי כנגד מה שהאדם ביקש מהסוכן לעשות. השתמש בה כאשר מדיניות התאמת מחרוזות חוסמת עבודה תקפה או מפספסת פעולה מסוכנת הדורשת הקשר. היא משיבה יחד עם המדיניויות שלך בשער `PreToolUse` או `PermissionRequest`. לדירוג **לאחר** שהפגישה מסתיימת, השתמש ב[הערכות Jev](/he/evaluations/jev).
+Jev קורא קריאת כלים מול מה שהאדם ביקש מהסוכן לעשות. השתמש בו כאשר מדיניות התאמת מחרוזות חוסמת עבודה תקפה או מפספסת פעולה מסוכנת שדורשת הקשר. הוא עונה לצד המדיניות שלך בשער `PreToolUse` או `PermissionRequest`. לציון **לאחר** שסשן מסתיים, השתמש ב-[Jev evaluations](/he/evaluations/jev).
 
-## התחל במצב צפייה
+## התחל במצב תצפית
 
-התקן את failproofai והצמד hooks ל[harness נתמך](/he/reference/harnesses). השתמש ב-failproofai 1.0.8-beta.0 או מאוחר יותר.
+התקן את Failproof AI והצמד hook ל-[harness נתמך](/he/reference/harnesses). השתמש ב-failproofai 1.0.8-beta.0 או בגרסה מאוחרת יותר.
 
-failproofai משודר ללא בדיקות Jev. התקנו כחבילה, או ל-Jev אין מה לשאול ולעולם לא תיקרא:
+Failproof AI אינו משלח בדיקות Jev. התקנם כחבילה, או ל-Jev אין מה לשאול ולעולם לא תקראה:
 
 ```bash
 failproofai policies add FailproofAI/jev-policies
 ```
 
-לאחר מכן בחר כיצד בקשות מגיעות ל-Jev:
+לאחר מכן בחר כיצד בקשות מגיעות אל Jev:
 
-| ניתוב | שלב ראשון |
+| נתיב | שלב ראשון |
 | --- | --- |
-| FailproofAI Cloud | התחברו עם מפתח **machine** הנושא `jev:evaluate`. במכונה ללא הגדרת Jev, `failproofai config` מפעילה את Jev במצב צפייה. |
-| הספק שלך | בדashboard המקומי, פתח **Settings → Jev**, בחר את הספק, הדבק את ה-token שלו, ובחר **observe**. או הריץ `failproofai jev --url https://api.typesafe.ai/v1 --mode observe --key-stdin < ~/typesafe.key`. |
+| FailproofAI Cloud | התחבר עם מפתח **machine** הנושא `jev:evaluate`. במכונה ללא תצורת Jev, `failproofai config` הופך את Jev למצב תצפית. |
+| ספק משלך | בלוח הבקרה המקומי, פתח את **Settings → Jev**, בחר בספק, הדבק את האסימון שלו, ובחר **observe**. או הריץ `failproofai jev --url https://api.typesafe.ai/v1 --mode observe --key-stdin < ~/typesafe.key`. |
 
-![הגדרות Jev של ה-dashboard המקומי: ספק, endpoint, token, ומצב צפייה לפני הפעלת Jev.](/images/dashboard/jev-settings.png)
+![הגדרות Jev של לוח הבקרה המקומי: ספק, נקודת קצה, אסימון, ומצב תצפית לפני הפעלת Jev.](/images/dashboard/jev-settings.png)
 
 ```bash
 failproofai jev status
 failproofai jev test
 ```
 
-`test` בודק את ה-endpoint. כדי לבדוק את נתיב ה-hook, בקש מסוכן מחובר להשתמש בכלי קריאת הקבצים שלו על `README.md`. אשר שקריאת הכלי הזו מופיעה בפגישה, ואז בדוק **Policies → Activity** ב[dashboard המקומי](/he/reference/local-dashboard#review-policy-activity). ספירת ה-Jev ב-`status` צריכה להגדיל. מצב צפייה רושם מה היה Jev החליט בזמן שתוצאת המדיניות הקיימת שלך עדיין חלה.
+`test` בודק את נקודת הקצה. כדי לבדוק את נתיב ה-hook, בקש מסוכן מחובר להשתמש בכלי קריאת הקבצים שלו על `README.md`. אשר שקריאת הכלים הזאת מופיעה בסשן, ואז בדוק את **Policies → Activity** ב-[לוח הבקרה המקומי](/he/reference/local-dashboard#review-policy-activity). ספירת Jev ב-`status` צריכה לעלות. מצב התצפית מתעד מה Jev היה החליט בעודו תוצאת המדיניות הקיימת שלך עדיין חלה.
 
 ## החלט מתי לאכוף
 
-מדיניות **קשה** תמיד יש את הטענה הסופית. Jev עשויה לפשר deny רק ממדיניות שמסומנת בחירוץ **reviewable** וגם רק כאשר היא בדקה את הדאגה הנקובה של אותה מדיניות. ראה [policy authority](/he/policies/authority) לפני הסתמכות על שחרור. Jev יכולה גם להזהיר או לכחול בעצמה. אם היא לא יכולה לענות, תוצאת המדיניות מחליטה על קריאה זו.
+מדיניות **hard** תמיד יש את הדברים האחרונים. Jev עשוי להוציא רק 否הימ ממדיניות מסומנת במפורש כ-**reviewable** ורק כאשר היא בדקה את הדאגה הנקובה של המדיניות. ראה [policy authority](/he/policies/authority) לפני הסתמכות על קבלה. Jev יכול גם להזהיר או להכחיש בכוחות עצמו. אם הוא לא יכול לענות, תוצאת המדיניות מחליטה על קריאה זו.
 
-ברגע שתוצאות הצפייה נראות נכונות, עבור למצב אכיפה ב-**Settings → Jev** או הרץ:
+כשתוצאות התצפית נראות נכונות, עבור למצב אכיפה ב-**Settings → Jev** או הריץ:
 
 ```bash
 failproofai jev setup --mode enforce
 ```
 
-לכתובות ספקים, מפתחות Cloud, הגדרה, fallbacks, ונתונים המשלחים עם כל בקשה, ראה את [הפניית שילוב Jev](/he/reference/jev).
+לכתובות URL של ספקים, מפתחות Cloud, תצורה, חזרות לאחור, ונתונים שנשלחים עם כל בקשה, ראה את [Jev integration reference](/he/reference/jev).

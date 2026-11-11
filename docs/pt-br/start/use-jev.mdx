@@ -12,25 +12,25 @@ O Jev auxilia em dois momentos durante a execução de um agente: pontuar uma se
 
     ## Criar uma avaliação
 
-    No painel Cloud, acesse **Analyze → eval authoring → new eval**. Insira uma pergunta de resposta fixa, selecione **draft** e verifique se o sistema escolheu uma pontuação classificadora. [Teste-a](/pt-br/evaluations/test) em sessões reais e, em seguida, publique-a.
+    No painel Cloud, acesse **Analyze → eval authoring → new eval**. Insira uma pergunta de resposta fixa, selecione **draft** e verifique se foi escolhida uma pontuação do tipo classificador. [Teste-a](/pt-br/evaluations/test) em sessões reais e, em seguida, publique-a.
 
-    ![O formulário compartilhado de criação de avaliações, onde você descreve uma pergunta, revisa o rascunho e o publica. Esta captura de tela mostra um rascunho de código; use uma pergunta de resposta fixa para o Jev.](/images/dashboard/eval-authoring-draft.png)
+    ![O formulário compartilhado de criação de avaliação, onde você descreve uma pergunta, revisa o rascunho e o publica. Esta captura de tela mostra um rascunho de código; use uma pergunta de resposta fixa para o Jev.](/images/dashboard/eval-authoring-draft.png)
 
-    ## Visualizar as pontuações
+    ## Ler as pontuações
 
-    Após a conclusão de uma nova sessão, acesse **Observe → Evaluations** ou use o Cloud CLI:
+    Após a conclusão de uma nova sessão, acesse **Observe → Evaluations** ou use a CLI do Cloud:
 
     ```bash
     fp evals --since 7d
     fp evals --aggregate --since 7d
     ```
 
-    O CLI lê as pontuações; a criação de uma avaliação Jev atualmente é feita pelo painel. Consulte [avaliações Jev](/pt-br/evaluations/jev) para tipos de perguntas e exemplos.
+    A CLI lê as pontuações; a criação de uma avaliação Jev atualmente é feita pelo painel. Consulte [Avaliações Jev](/pt-br/evaluations/jev) para tipos de perguntas e exemplos.
   </Tab>
   <Tab title="Políticas Jev">
-    Use a revisão de políticas Jev quando uma política de correspondência de strings precisar do contexto da sua solicitação para determinar se uma chamada de ferramenta é segura. Comece no modo **observe** para que você possa inspecionar as respostas do Jev enquanto suas políticas instaladas ainda decidem cada chamada.
+    Use a revisão de políticas Jev quando uma política baseada em correspondência de strings precisar do contexto da sua solicitação para determinar se uma chamada de ferramenta é segura. Comece no modo **observe** para inspecionar as respostas do Jev enquanto suas políticas instaladas ainda decidem cada chamada.
 
-    As verificações do Jev vêm de um pacote; o Failproof AI não inclui nenhum por padrão. Enquanto você não os instalar, o Jev não fará nenhuma verificação, mesmo quando estiver configurado:
+    As verificações do Jev vêm de um pacote; o Failproof AI não fornece nenhum. Até que você os instale, o Jev não faz nenhuma verificação, mesmo quando configurado:
 
     ```bash
     failproofai policies add FailproofAI/jev-policies
@@ -38,7 +38,7 @@ O Jev auxilia em dois momentos durante a execução de um agente: pontuar uma se
 
     ## Configurar o Cloud Jev
 
-    No painel Cloud, acesse **Administration → Keys** e crie uma chave com o preset **machine**. Use-a com `failproofai config` conforme mostrado no [início rápido](/pt-br/start/quickstart). Em uma máquina sem uma configuração Jev existente, isso habilita o Cloud Jev no modo observe. Verifique a conexão com:
+    No painel Cloud, acesse **Administration → Keys** e crie uma chave com o preset **machine**. Use-a com `failproofai config` conforme mostrado no [guia de início rápido](/pt-br/start/quickstart). Em uma máquina sem configuração Jev existente, isso habilita o Cloud Jev no modo observe. Verifique a conexão com:
 
     ```bash
     failproofai jev status
@@ -58,6 +58,6 @@ O Jev auxilia em dois momentos durante a execução de um agente: pontuar uma se
     failproofai jev test
     ```
 
-    Peça a um agente com hook que use sua ferramenta de leitura de arquivos no `README.md`. Confirme que essa chamada de ferramenta aparece na sessão e, em seguida, inspecione-a em **Policies → Activity** no painel local. Quando os resultados do observe parecerem corretos, consulte [políticas Jev](/pt-br/policies/jev) para saber quando aplicar a execução. Para detalhes sobre provedores e configuração, consulte a [referência de integração](/pt-br/reference/jev).
+    Peça a um agente com hook que use sua ferramenta de leitura de arquivos no `README.md`. Confirme que essa chamada de ferramenta aparece na sessão e, em seguida, inspecione-a em **Policies → Activity** no painel local. Assim que os resultados do modo observe parecerem corretos, consulte [Políticas Jev](/pt-br/policies/jev) para saber quando aplicar a execução. Para detalhes sobre provedores e configuração, consulte a [referência de integração](/pt-br/reference/jev).
   </Tab>
 </Tabs>

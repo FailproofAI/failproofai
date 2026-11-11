@@ -1,22 +1,22 @@
 ---
-title: "Bir politikayı dağıtın"
-description: "Test edilmiş bir politika sürümünü makinelere gözlem modunda yerleştirin, uygulayın ve her makinenin bunu aldığını doğrulayın."
+title: "Bir politikayı dağıtma"
+description: "Test edilmiş bir politika versiyonunu gözlem modunda makinelere yerleştirin, uygulayın ve her makinenin bunu aldığını doğrulayın."
 icon: "cloud-upload"
 ---
 
-Bir dağıtım, yayınlanan politika sürümlerini bir makineye yerleştirir; her biri iki etkiden birine sahiptir:
+Bir dağıtım, yayınlanan politika versiyonlarını bir makineye yerleştirir ve her biri iki etkiden birine sahiptir:
 
-- **Observe** politikanın ne yapacağını kaydeder ve hiçbir şeyi engellemiyor.
-- **Enforce** karara göre hareket eder: bir `deny` çağrıyı engeller ve bir `instruct` aracıyı yönlendirir.
+- **Observe** (Gözlem) politikanın ne yapacağını kaydeder ve hiçbir şeyi engellemez.
+- **Enforce** (Uygula) kararı yerine getirir: bir `deny` çağrıyı engeller ve bir `instruct` ajanı yönlendirir.
 
-## Makine ekleyin
+## Bir makine ekleme
 
-Cloud'a bağlandıktan sonra bir makine **Admin → enforcement** altında görünür. İstediğiniz makine henüz orada değilse:
+Bir makine, Cloud'a bağlandıktan sonra **Admin → enforcement** altında görünür. İstediğiniz makine orada yoksa:
 
 <Tabs>
   <Tab title="Dashboard">
-    1. **Administration → Keys** sayfasına gidin ve makinenin dağıtımları alabilmesi için `policies:pull` ve kararlarının Cloud'a ulaşabilmesi için `events:add` yetkisine sahip bir anahtar oluşturun.
-    2. Makineyi bu anahtarla bağlayın — [Connect a machine to Cloud](/tr/start/setup#bir-makineyi-buluta-bağlayın) bunu adım adım göstermektedir.
+    1. **Administration → Keys** bölümüne gidin ve makinenin dağıtımları alabilmesi için `policies:pull` ve kararlarının Cloud'a ulaşabilmesi için `events:add` olan bir anahtar oluşturun.
+    2. Makineyi o anahtarla bağlayın — [Bir makineyi Cloud'a bağlama](/tr/start/setup#connect-a-machine-to-cloud) adımlarını anlatır.
     3. **Admin → enforcement** altında göründüğünü doğrulayın.
   </Tab>
   <Tab title="CLI">
@@ -28,20 +28,20 @@ Cloud'a bağlandıktan sonra bir makine **Admin → enforcement** altında gör�
     failproofai config --status
     ```
 
-    Bir terminalde `failproofai config` Cloud'a bağlanıp bağlanmayacağını sorar ve anahtarı gizli bir istemi de alır. Ardından makinenin kaydedildiğini `fp fleet list` komutuyla her yerden doğrulayın.
+    Bir terminalde, `failproofai config` Cloud'a bağlanıp bağlanmayacağını sorar ve anahtarı gizli bir istemi aracılığıyla alır. Ardından makinenin kayıtlı olduğunu `fp fleet list` ile herhangi bir yerden doğrulayın.
   </Tab>
 </Tabs>
 
-## Gözlem modunda dağıtın
+## Gözlem modunda dağıtma
 
 <Tabs>
   <Tab title="Dashboard">
-    1. **Admin → enforcement** sayfasına gidin, makineyi bulun ve satırını genişletin.
-    2. **edit** seçeneğini seçin, test edilmiş politika sürümünü ekleyin ve **observe** seçeneğini seçin.
-    3. Değişikliği uygulayın, ardından makinenin sonraki check-in'ini bekleyin ve dağıtım ile kapsam durumunu doğrulayın.
-    4. Canlı kararları incelemek için **Observe → policy** sayfasına gidin.
+    1. **Admin → enforcement** bölümüne gidin, makineyi bulun ve satırını genişletin.
+    2. **edit** seçeneğini seçin, test edilmiş politika versiyonunu ekleyin ve **observe** seçeneğini belirleyin.
+    3. Değişikliği uygulayın, ardından makinenin bir sonraki check-in'ini bekleyin ve dağıtımını ve kapsam durumunu doğrulayın.
+    4. Canlı kararları incelemek için **Observe → policy** bölümüne gidin.
 
-    ![Politika sürümleri, enforce ve observe efektleri ve dağıtımı uygula eylemini gösteren makine dağıtım editörü.](/images/dashboard/enforcement-editor.png)
+    ![Politika versiyonları, enforce ve observe etkileri ve dağıtım eylemini uygulamayı gösteren makine dağıtım editörü.](/images/dashboard/enforcement-editor.png)
   </Tab>
   <Tab title="CLI">
     ```bash
@@ -50,45 +50,106 @@ Cloud'a bağlandıktan sonra bir makine **Admin → enforcement** altında gör�
     fp fleet deploy <machine-id> --add no-force-push:observe
     ```
 
-    `:observe` eki bunu gözlem moduna getirir: bare `--add no-force-push` makinenin o politika için zaten sahip olduğu efekti tutar ve aksi takdirde enforce eder. Bunu daha sonra `--add no-force-push:enforce` komutuyla enforce'a geçirin.
+    `:observe` son eki onu gözlem yapan şeydir: bare `--add no-force-push` makineye o politika için zaten sahip olduğu etkiyi tutar ve başka türlü uygular. Daha sonra `--add no-force-push:enforce` ile enforce olarak değiştirin.
 
-    `deploy` **makinenin tüm politika setini** sonuçla değiştirir. Planı yazdırır, ardından uygulamadan önce sorar — ancak yalnızca etkileşimli bir terminalde. `--yes` ile, `fp --json` altında veya stdin yönlendirilmiş olduğunda (CI adımı, betik, aracı shell dışarı atarken) onay istemeden uygular; plan yine de yazdırılır veya `--json` altında `plan` olarak döndürülür.
+    `deploy` **makinenin tüm politika setini** sonuçla değiştirir. Planı yazdırır, ardından uygulamadan önce sorar — ama yalnızca etkileşimli bir terminalde. `--yes` ile, `fp --json` altında veya stdin yönlendirildiğinde (bir CI adımı, bir script, bir ajan shell'i açarken) sorulmadan uygulanır; plan yine de yazdırılır veya `--json` altında `plan` olarak döndürülür.
 
-    Makinede, `failproofai policies` çalıştırdığı Cloud tarafından yönetilen politikaları listeler ve `failproofai config --status` bağlantısını gösterir. Etkinliğinin Cloud'a ulaştığını doğrulamak için `fp sessions --env production --since 24h` ve `fp events --event-type hook_completed` komutlarını kullanın.
+    Makinede, `failproofai policies` Cloud tarafından yönetilen ve çalıştırdığı politikaları listeler ve `failproofai config --status` bağlantısını gösterir. `fp sessions --env production --since 24h` ve `fp events --event-type hook_completed` ile aktivitesinin Cloud'a ulaştığını doğrulayın.
   </Tab>
 </Tabs>
 
 <Steps>
-  <Step title="Sürümü ve makineleri seçin">
-    Yayınlanan sürümü ve üzerinde çalışması gereken makineleri seçin.
+  <Step title="Versiyonu ve makineleri seçin">
+    Yayınlanan versiyonu ve üzerinde çalışması gereken makineleri seçin.
   </Step>
   <Step title="Gözlem">
-    Hiçbir şey engellenmediği sürece eşleşmeleri, nedenleri, etkilenen araçları ve yanlış pozitifleri gözden geçirin.
+    Hiçbir şey engellenmediği sürece eşleşmeleri, nedenleri, etkilenen araçları ve yanlış pozitifler inceyin.
   </Step>
-  <Step title="Uygulama">
-    Gözlemlenen eşleşmeler güvensiz eylemleri geçerli olanlardan ayırdığında efekti enforce'a geçirin, ardından her amaçlanan makinenin değişikliği aldığını ve kararları raporladığını doğrulayın.
+  <Step title="Uygula">
+    Gözlenen eşleşmeler güvenli olmayan eylemler ile geçerli olanları ayırt ettikten sonra etkiyi enforce'a değiştirin, ardından her amaçlanan makinenin değişikliği çektiğini ve kararlar bildirdiğini doğrulayın.
   </Step>
 </Steps>
 
-## Kapsamı kontrol edin
+## Bir makinede bir ajanı hedefleme
 
-Kapsam, bir politikanın riskin olduğu yerde çalışıp çalışmadığını yanıtlar.
+Yayınlanan politika versiyonları ajan yönlendirme kuralları içermez. Varsayılan olarak, bir atama **makinedeki tüm ajanlara** uygulanır. Bir versiyonu dağıtırken, bunun yerine bir entegrasyonu (daha sonra eklenen profiller dahil) veya o makine tarafından bildirilen belirli bir profili hedefleyebilirsiniz. Seçim makinenin atamasına aittir: aynı yayınlanan versiyon farklı makinelerde farklı ajanları hedefleyebilir.
 
-1. **Admin → enforcement** sayfasına gidin ve enforce ve gözlem toplamlarını gözden geçirin.
-2. Makineleri ID veya etikete göre arayın veya bir politikadan eksik olan makineleri filtreleyin.
+<Tabs>
+  <Tab title="Dashboard">
+    1. **Admin → enforcement** bölümünde, makineyi genişletin ve **edit** seçeneğini seçin.
+    2. Politikanın **agents** kontrolünde, **all agents** (tüm ajanları) tutun, **all hermes profiles** seçin (örneğin) veya bildirilen bir profili etiketi ve `agt_` ID'siyle arayın. Birden çok alternatif seçebilirsiniz; bir çağrı bunlardan herhangi birine aitse eşleşir.
+    3. Dağıtım planında **her** atama için listelenen hedefi gözden geçirin, değişikliği uygulayın, ardından makinenin bir sonraki check-in'den sonra bildirilen dağıtımını kontrol edin. Geçmiş ve geri alma, seçilen hedefleri tutar.
+  </Tab>
+  <Tab title="CLI">
+    ```bash
+    fp fleet show <machine-id>
+    fp fleet deploy <machine-id> --add no-force-push --target no-force-push=hermes
+    fp fleet deploy <machine-id> --target no-force-push=hermes/agt_1234567890abcdef
+    fp fleet deploy <machine-id> --all-agents no-force-push
+    ```
+
+    `--target POLICY=INTEGRATION[/agt_ID]` bir politikanın kapsamını ayarlar. Aynı atamaya ilişkin daha fazla alternatif için `--target` tekrarlayın. O atama için hedeflemeyi temizlemek üzere `--all-agents POLICY` kullanın. `fp fleet show` ve `fp fleet history` seçilen kapsamı gösterir. Özellikle bir scriptinden dağıtırken, tam değiştirme planını uygulamadan önce gözden geçirin.
+  </Tab>
+</Tabs>
+
+Yeni bir hedef ayarlayabilmek için makinenin ajan hedefleme desteğini kısa süre önce bildirmiş olması gerekir. Kesin bir profili yalnızca o makinenin bunu bir hook yüklenmiş şekilde bildirmiş ve eski değilse seçebilirsiniz. Envanter geçici olarak kullanılamıyorsa, mevcut hedefler atanmış kalır; gizlice tüm ajanlar olarak genişletilmez. Yeni kurulumların kullandığı profil ipucunu sağlamak için eski shell hook'larını yeniden kurun. CLI'yi yükselttikten sonra, `failproofai config` çalıştırarak daemon'unu da güncelleyin ve yeniden başlatın: eski bir daemon yeni profile kapsamlı çağrıları değerlendiremez ve hook uyuşmazlığı reddeder.
+Çalışan ajanın profili tanımlanamıyorsa (örneğin, birden çok ayarlar kapsamı yüklüyse ama hook hangisinin çalıştığını bildirmiyorsa), **hedefli atamalar eşleşmez**; scope'suz politikalar yine de uygulanır. O makinenin politika hataları altında `agent_scope_unresolved` arayın.
+
+Bir makine yalnızca izlediği ajanları bildirir: FailproofAI hook'u taşıyan config'i bulunan her profil için bir giriş (Hermes ve OpenClaw her profil için bir tane alır, etiketi tarafından adlandırılır). Yalnızca yüklü olan bir ajan CLI listelenmez.
+
+Her makine roster'ında en fazla 256 profile tutar. Bir profilin ID'si listelendiği sürece asla değişmez. Roster dolu olduğunda ve bir FailproofAI hook'u olan yeni bir profil görünürse (hook'u çalışırsa veya config'i hook'u taşırsa), daemon aşağıdaki tüm şartları karşılayan bir profili çıkararak yer açar:
+
+- kuruluşu hook yüklenmiş değildir;
+- hiçbir atama bunu adlandırmaz;
+- FailproofAI Cloud bunu yeni bir hedef olarak kabul etmezdi.
+
+Daemon, makine üzerinde artık bulunmayan bir profili tercih eder, ardından en uzun süre kullanılmayan profili tercih eder. Tam bir hedefin kullandığı profili asla çıkarmaz, bu nedenle bu hedefler geçerli kalır. Hiçbir profil çıkarılamazsa, yeni profil henüz bir ID'ye sahip değildir ve hedefli atamalar bir slot boşalana kadar onunla eşleşmez.
+
+## Jev denetimlerini dağıtma
+
+Bir Cloud politikası JavaScript'in yanı sıra veya yerine Jev denetimlerini taşıyabilir. Türü `jev` (yalnızca Jev denetimleri) veya `both` (kendi denetimleri tarafından kararı temizlenebilecek JavaScript) olabilir. Tam olarak başka herhangi bir politika gibi dağıtılır, değişir ve geri alınır.
+
+Jev denetimleri FailproofAI Cloud'da çalışır; makinede hiçbir şey yüklenmez. Makine yalnızca bir `both` politikasının JavaScript'ini alır. Bir `jev` veya `both` politikası buna dağıtılırken, FailproofAI Cloud makinede Jev'i açar ve politikanın hedeflediği bir ajanın kontrol edilen her araç çağrısı FailproofAI Cloud'a gider, buna dağıtılan denetimleri sorar ve kararlarını döndürür. Hiçbiri dağıtılmamışsa, Jev kapalıdır. Elle ayarlanacak Jev modu yoktur.
+
+```bash
+fp policies publish prod-db-intent --kind jev --semantic ./checks.json
+fp fleet deploy <machine-id> --add prod-db-intent:observe
+```
+
+Jev denetimlerini hiçbir şey karar vermeden deneyebilmek için, politikayı `:observe` ile dağıtın: denetimleri sorulur ve cevapları "olmuş olurdu" olarak kaydedilir, ne engeller ne de hiçbir şeyi temizler. Politika sayfası ne yapacaklarını gösterdikten sonra `enforce` olarak yeniden dağıtın; ardından Jev'in denetimleri çağrıları **engeller** ve inceledikleri JavaScript kararlarını temizler. `:observe` ile dağıtılan bir `both` politikası her iki tarafı da gözlemler.
+
+Bir `both` politikasının JavaScript'i yalnızca kendi denetimlerinin FailproofAI Cloud'dan aldığı cevaplarla temizlenebilir. Yüklü bir paket'in aynı addaki denetimi onu asla temizlemez. FailproofAI Cloud'a ulaşılamazsa veya soran modu ayarlamazsa, politika **hard** kalır: JavaScript'inin her reddi ayakta kalır.
+
+Ajan hedefleme, yalnızca Jev politikaları için de çalışır. Bir `both` politikası için, atama'nın bir hedefi **hem** yerel JavaScript'ini hem de Cloud Jev denetimlerini yönetir; bu hedefin dışındaki bir çağrı hiçbir tarafı çalıştırmaz. Kapsız bir Jev dağıtımı gibi, kapsamlı denetimleri deneme sürüsü yaparken politikayı `observe` tutun.
+
+Bir makine bunu sormasını engelleyen şeyleri bildirir ve `fp fleet show <machine-id>` bunu politika hataları altında listeler:
+
+- `transcripts_disabled`: makine `--no-transcripts` ile bağlantı kesildi. Böyle bir makine hiçbir zaman Jev'e araç çağrıları göndermez.
+- `jev_unconfigured`: makinenin anahtarı Jev'i taşımazsa.
+- `jev_rate_limited`: bazı çağrılar kuruluşun Jev hız sınırı nedeniyle reddedildi ve yalnızca regex politikaları tarafından kararlaştırıldı.
+- `jev_unavailable`: FailproofAI Cloud'ın Jev birkaç çağrıda başarısız oldu, bu nedenle makine bunu bir defada bir dakika atlıyor.
+
+Bir Jev isteği sınırlı miktarda soru metni taşır. FailproofAI Cloud'ın denetimleri, makinede yüklü paketlerin denetimlerinden önce gelir. Sığmayan bir paket denetimi çıkarılır ve `jev_budget` olarak bildirilir. Kuruluşunuzun Cloud denetimlerinden biriyle aynı adı taşıyan bir paket denetimi de çıkarılır ve `jev_name_clash` olarak bildirilir: onun yerine Cloud denetimi sorulur.
+
+## Kapsamı kontrol etme
+
+Kapsam, bir politikanın riskin olduğu yerde çalışıp çalışmadığını cevaplar.
+
+1. **Admin → enforcement** bölümüne gidin ve uygulama ve gözlem toplamlarını gözden geçirin.
+2. Bir makineyi ID veya etiketiyle arayın veya politika eksik olan makineleri filtreleyin.
 3. Atanan politikaları, bildirilen dağıtımı, son check-in'i ve geçmişi karşılaştırmak için bir satırı genişletin.
-4. Uygulanan bir dağıtım henüz beklemede olduğunda makinenin yoklama aralığından sonra yenileyin.
+4. Uygulanan bir dağıtım hala beklemede olduğunda, makinenin yoklama aralığından sonra yenileyin.
 
-![Politika kapsamı, makine dağıtım durumu ve observe ve enforce atamalarını gösteren Enforcement filo.](/images/dashboard/enforcement-fleet.png)
+![Politika kapsamı, makine dağıtım durumu ve gözlem ve uygulama atamalarını gösteren Enforcement filosu.](/images/dashboard/enforcement-fleet.png)
 
-En son dağıtımı hiç almayan makineleri, raporlamayı durduran kayıtlı makineleri, yanlış ortama atanan bir politikayı ve kesintiye uğramış bir güncelleme sonrası sürüm kaymasını arayın.
+Son dağıtımı hiçbir zaman çekmeyen makineleri, raporlamayı durduran kayıtlı makineleri, yanlış ortama atanan bir politikayı ve kesilen bir güncellemeden sonra sürüm kaymasını arayın.
 
-Makineleri iş yükü ve ortama göre etiketleyin — yalnızca ana bilgisayar adları nadiren otomatik ölçeklendirme veya değiştirmeden sağ çıkar:
+Makineleri iş yükü ve ortama göre etiketleyin — yalnızca ana bilgisayar adları, oto ölçekleme veya değiştirilmeyi nadiren hayatta kalır:
 
 ```bash
 failproofai config --machine-label checkout-runner-03
 ```
 
 <Warning>
-  Enforcement yönetimi, yönetimsel bir Cloud iş akışıdır. Yalnızca kök enforcemet rotalarını sıradan müşteri `/v1` API uç noktaları olarak ele almayın.
+  Uygulama yönetimi, idari bir Cloud iş akışıdır. Root'a özel uygulama rotalarını sıradan müşteri `/v1` API uç noktaları olarak değerlendirmeyin.
 </Warning>

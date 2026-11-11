@@ -4,9 +4,11 @@ description: "Полный справочник по запросам и адм�
 icon: "cloud-cog"
 ---
 
-Используйте `fp` для проверки телеметрии Cloud, управления облачным enforcement (политики, развертывания флота, решения guardrail), а также управления аудитами, findings, issues, alerts, ключами, пользователями, запросами и параметрами. Используйте [`failproofai`](/ru/reference/failproof-cli) для локальных hooks, политик, захвата и регистрации машин.
+Используйте `fp` для проверки телеметрии Cloud, управления облачным принудительным применением (политики, развертывания флота, решения guardrail), а также управления аудитом, выводами, проблемами, оповещениями, ключами, пользователями, запросами и параметрами. Используйте [`failproofai`](/ru/reference/failproof-cli) для локальных хуков, политик, захвата и регистрации машин.
 
-Установите выпущенный Cloud CLI как изолированный инструмент:
+Вы также можете создавать и развертывать размещенный код, оценщики на основе LLM-judge и Jev, управлять панелями инструментов, проверять настроение и использовать ассистента панели инструментов из терминала.
+
+Установите выпущенный Cloud CLI как отдельный инструмент:
 
 ```bash
 uv tool install fp-cloud-cli
@@ -26,7 +28,7 @@ fp whoami
 fp [GLOBAL_OPTIONS] COMMAND [SUBCOMMAND] [ARGUMENTS] [OPTIONS]
 ```
 
-Глобальные параметры должны предшествовать команде:
+Глобальные опции должны предшествовать команде:
 
 ```bash
 fp --json sessions --since 24h
@@ -36,15 +38,131 @@ fp --json sessions --since 24h
 
 ## Команды CLI
 
+### Создание оценщика
+
+`fp evaluators` создает определения; `fp evals` читает результаты. Требуется включенный управляемый экземпляр (`fp evaluators instances`). Для создания требуется `evaluations:trigger`; сухие запуски сеанса и профилирование схемы также требуют `events:read`.
+
+Код — это одно ограниченное выражение Python. Сохраните как `error_free.py`:
+
+```python
+EvalResult(score=Score(1.0 if session.count("error") == 0 else 0.0), reasoning="Error-free session")
+```
+
+```bash
+fp --json evaluators create --key error_free --name "Error free" --code error_free.py --dry-run-on run-001
+fp --json evaluators dry-run --code error_free.py --session run-001
+fp --json evaluators deploy error_free --code error_free.py --version 2 --dry-run-on run-001
+fp --json evaluators list --key error_free --all
+```
+
+LLM judge:
+
+```bash
+fp --json evaluators create --key relevance --name Relevance --judge --criteria "Grade relevance to the request" --threshold 0.7
+fp --json evaluators deploy relevance --version 2 --judge --criteria "Grade relevance and completeness" --threshold 0.8
+fp --json sessions re-evaluate run-001
+fp --json sessions history run-001
+```
+
+Двоичный Jev и оцененная рубрика:
+
+```bash
+fp --json evaluators create --key resolution --name Resolution --jev noul --instructions "Was the request resolved?" --true "Resolved" --false "Unresolved"
+fp --json evaluators dry-run --jev noul --instructions "Was the request resolved?" --true "Resolved" --false "Unresolved" --session run-001
+fp --json evaluators deploy resolution --version 2 --jev score --instructions "Grade resolution quality" --level "Unresolved" --level "Partly resolved" --level "Fully resolved"
+```
+
+<Warning>
+Создание включает оценщик. Развертывание создает новую неизменяемую версию, затем отключает старые включенные версии. Неудача в последующей операции оставляет новую версию опубликованной: проверьте `evaluators list --all` перед повторной попыткой.
+Сухие запуски judge отклоняются Cloud. Сухие запуски Jev расходуют бюджет модели.
+Заполнение охватывает оценщики кода, judge и Jev и принимает максимум 90 дней; оно ставит в очередь только сеансы, которые оценщик еще не оценивал. Заполнение judge и Jev расходуют бюджет модели, поэтому сначала запустите `fp evaluators backfill --dry-run`.
+Вывод человека показывает результаты сухого запуска для каждого сеанса перед созданием/развертыванием.
+Неудачные предпросмотры останавливают запись, если вы явно не передадите `--force` после проверки.
+</Warning>
+
+Черновик AI требует `fp login` и записывает спецификацию, принимаемую create/deploy:
+
+```bash
+fp --json evaluators draft "Measure error-free sessions with code" --kind code --out evaluator.json
+# Review the draft's key, source and condition before enabling it.
+fp --json evaluators create --file evaluator.json --dry-run-on run-001
+fp --json evaluators dry-run --file evaluator.json
+```
+
+| Команда | Опции / поведение |
+| --- | --- |
+| `fp evaluators list` | `--key`, `--all` |
+| `fp evaluators show KEY[@VERSION]` | Полный источник/конверт |
+| `fp evaluators create` | `--key`, `--name`, `--version`, повторяющийся `--label`, `--condition EXPR\|@file`, один источник, повторяющийся `--dry-run-on`, `--disabled`, явный `--force` для неудачных предпросмотров |
+| `fp evaluators deploy KEY` | То же самое для флагов источника; `--version`, `--backfill 7d` (любого типа, 1–90 дней), `--force`; числовые версии автоматически увеличиваются; KEY предоставляет отсутствующий `eval_key` в файле спецификации |
+| `fp evaluators draft "intent"` | Сеанс; `--kind code\|judge\|jev`, `--out` |
+| `fp evaluators dry-run` | Флаги источника или `--file`, повторяющийся `--session` (максимум 10); отсутствие = только компиляция |
+| `fp evaluators enable\|disable KEY[@VERSION]` | Переключение |
+| `fp evaluators label KEY[@VERSION]` | Повторяющийся `--add`, `--remove` |
+| `fp evaluators instances\|schema\|jobs` | Проверка управляемого флота/схемы/задач |
+| `fp evaluators backfill` | `--from`, `--to`, `--key`, `--dry-run`; код, judge и Jev |
+
+Флаги кода — это `--code FILE|-`, `--result-kind score|metric|assertion`,
+`--timeout S`. Флаги judge — это `--judge --criteria TEXT`, повторяющийся `--step` и
+`--threshold`. Флаги Jev — это `--jev noul --instructions --true --false` или
+`--jev score --instructions` с 3–5 отдельными значениями `--level`, худший первый.
+Judge/Jev требуют оценку; пороги 0–1. Двоичные шаги judge отклоняются.
+
+Файлы спецификации содержат ровно `eval_key`, `display_name`, `eval_version`,
+`result_kind`, `labels`, `condition_source`, `evaluator_source`, `timeout_seconds`.
+`evaluator_source` judge/Jev — это строка конверта JSON. Не включайте идентификаторы строк,
+состояние включения или метаданные рассуждений AI. `--file` и отдельные флаги спецификации
+исключают друг друга; deploy может переопределить версию файла. Выходные файлы никогда не перезаписываются.
+
+### Новые элементы управления панели инструментов
+
+Все команды принимают глобальный `--json`. Неизвестные маршруты 404 выходят 6 с ошибкой "not available
+on this FailproofAI Cloud yet". Отсутствующие записи 404 также выходят 6, но сообщают, что
+запись не найдена. Команды только для сеанса отклоняют режим ключа перед HTTP (выход 2).
+
+Команды человека используют сводки и таблицы. Для необработанного экспорта JSON передайте глобальный
+`--json` или сохраните с `--out FILE`; иначе экспорт сеанса и JSON запросов показывает
+читаемое представление. Экспорт CSV остается обычным CSV для передачи по конвейеру.
+
+| Команды | Опции / примечания |
+| --- | --- |
+| `fp dashboards list\|show ID\|create\|update ID\|delete ID` | Создание `--name`, `--description`, `--file` определение; обновление сохраняет неупомянутые поля |
+| `fp dashboards tiles ID list\|add\|update TILE\|remove TILE\|layout` | Добавление `--query ID --chart TYPE --title`; конфигурация/геометрия или макет через `--file` |
+| `fp sessions show\|export\|history\|re-evaluate ID` | Экспорт `--out`; история — это история оценки |
+| `fp sessions import FILE...` | Claude Code стенограммы, Codex развертывания или события JSONL (`.gz` разрешено); `--format auto\|failproofai\|claude\|codex`, `--env`, `--dry-run`; требуется `events:add` |
+| `fp events latency` | `--since` |
+| `fp sentiment summary\|messages\|sessions\|session ID` | `--since`; список `--limit`; сообщения `--session-id` |
+| `fp query compose "question"` | Сеанс; `--run` |
+| `fp query export [ID]` | Или `--sql`; `--format csv\|json`, `--out` |
+| `fp alerts recipients` / `fp alerts issues ID` | Проблемы можно `--create --title --summary` или `--create --file` |
+| `fp audits contracts list\|show ID\|create\|update ID` | `--agent-id`, `--body TEXT\|@file`, `--file` JSON; обновление `--enabled/--disabled` |
+| `fp policies author "intent" [--kind regex\|jev\|both]` | Сеанс; черновик политики из событий вашей организации, никогда не публикует |
+| `fp policies backtest [FILE_OR_ID]` | Сеанс; regex воспроизводит модуль; `jev`/`both` (опубликованные или `--semantic checks.json`) оценивают бесплатно, `--run [--sample N]` расходует допуск Jev; `--kind`, `--hours`, `--agent-id`, `--env` |
+| `fp policies candidacy --issue ID` | Сеанс; может ли политика предотвратить эту проблему |
+| `fp issues facets` | Значения, которые могут принимать фильтры входящих, с подсчетами |
+| `fp agent brief` | Сеанс; `--range 24h\|7d` |
+| `fp orgs create --name N [--slug S]` | Сеанс; выводит опущенный slug, не переключает организацию |
+| `fp roles list\|show NAME\|create\|update NAME\|delete NAME` | Наборы разрешений; создание `--name --permission`; обновление заменяет `--permission` или объединяет `--add/--remove`; `--description`, `--file` |
+| `fp users delete ID` / `fp users defaults` | Удаление по id |
+| `fp usage windows` / `fp plan` / `fp plan claim OFFER` | `usage windows` требует ключ API; план (предложения и пробная версия) и требуют сеанс вошедшего пользователя |
+| `fp settings context-windows list\|set MODEL TOKENS\|delete MODEL` | 0–1000000 токенов |
+| `fp otel status\|enable\|disable` | Переключатель приема облачной организации, не локальный захват |
+| `fp slack status\|disconnect` | Сеанс |
+
+`fp agent ask` отображает артефакты SQL в виде таблиц/статистики через `queries:run`.
+Утверждения записи показывают предлагаемое изменение и приглашение на терминале. Скрипты и
+`--json` отклоняют, если `--approve` не явно. Существующие формы JSON остаются
+неизменными, когда артефакт не возвращается.
+
 ### Аутентификация
 
-| Команда | Назначение | Параметры |
+| Команда | Назначение | Опции |
 | --- | --- | --- |
-| `fp login` | Вход с использованием одноразового кода, отправленного по электронной почте, и выбор организации. | `--email`, `-e`; `--org`; `--force` |
+| `fp login` | Войти с отправленным одноразовым кодом по электронной почте и выбрать организацию. | `--email`, `-e`; `--org`; `--force` |
 | `fp logout` | Отозвать и удалить сохраненный сеанс пользователя. | — |
 | `fp whoami` | Показать текущую идентичность, режим аутентификации, организацию и разрешения. | — |
 | `fp version` | Показать установленную версию CLI. | — |
-| `fp help` | Показать справку по команде верхнего уровня. | — |
+| `fp help` | Показать справку команды верхнего уровня. | — |
 
 ```bash
 fp login --email you@example.com --org reliability-team
@@ -57,23 +175,23 @@ fp whoami
 fp events [OPTIONS]
 ```
 
-Выводит отдельные события агента. Легкий поток по умолчанию исключает необработанные полезные нагрузки; используйте `--full` только для ограниченного исследования.
+Перечисляет отдельные события агента. По умолчанию облегченный канал исключает необработанные полезные данные; используйте `--full` только для ограниченного расследования.
 
-| Параметр | Описание |
+| Опция | Описание |
 | --- | --- |
-| `--limit`, `-n <n>` | Максимум всего строк. По умолчанию: `50`. |
+| `--limit`, `-n <n>` | Максимальное количество строк. По умолчанию: `50`. |
 | `--since <window>` | `all`, `15m`, `1h`, `6h`, `24h` или `7d`. |
 | `--from <timestamp>` / `--to <timestamp>` | Диапазон ISO 8601 UTC; переопределяет `--since`. |
-| `--env <value>` | Фильтр окружения; повторяется или разделяется запятыми. |
-| `--event-type <value>` | Фильтр типа события; повторяется или разделяется запятыми. |
-| `--agent-id <value>` | Фильтр агента; повторяется или разделяется запятыми. |
-| `--session-id <value>` | Фильтр сеанса; повторяется или разделяется запятыми. |
-| `--search <text>` | Поиск текста в полезной нагрузке; повторяется с совпадением любого условия. |
-| `--order asc\|desc` | Порядок времени. По умолчанию: сначала новые. |
-| `--all` | Автоматическое разбиение на страницы до `--limit`. |
+| `--env <value>` | Фильтр окружения; повторить или разделить запятыми значения. |
+| `--event-type <value>` | Фильтр типа события; повторить или разделить запятыми значения. |
+| `--agent-id <value>` | Фильтр агента; повторить или разделить запятыми значения. |
+| `--session-id <value>` | Фильтр сеанса; повторить или разделить запятыми значения. |
+| `--search <text>` | Поиск текста полезной нагрузки; повторяемо, совпадение любого термина. |
+| `--order asc\|desc` | Порядок времени. По умолчанию: новые первыми. |
+| `--all` | Автоматическая пагинация до `--limit`. |
 | `--cursor <token>` | Возобновить с непрозрачного курсора. |
 | `--page-size <n>` | Строк на запрос с `--all`; максимум `200`. |
-| `--full` | Включить необработанные полезные нагрузки через более тяжелую конечную точку события. |
+| `--full` | Включить необработанные полезные данные через более тяжелую конечную точку события. |
 | `--fields <csv>` | Возвращать только выбранные поля; запрос `payload` включает полный режим. |
 
 ```bash
@@ -82,7 +200,7 @@ fp --json events --full --session-id <session-id> --all --limit 10000
 ```
 
 <Note>
-  `--all` разбивает на страницы **до `--limit`**, который по умолчанию равен **50** — поэтому `--all` само по себе останавливается на 50 строках. Когда он останавливается рано, ответ содержит `next_cursor` для возобновления; `"next_cursor": null` означает, что поток действительно исчерпан.
+  `--all` выполняет пагинацию **до `--limit`**, который по умолчанию **50** — поэтому `--all` само по себе останавливается на 50 строках. Когда он останавливается рано, ответ содержит `next_cursor` для возобновления; `"next_cursor": null` означает, что канал действительно был исчерпан.
 </Note>
 
 ### Сеансы
@@ -91,21 +209,21 @@ fp --json events --full --session-id <session-id> --all --limit 10000
 fp sessions [OPTIONS]
 ```
 
-| Параметр | Описание |
+| Опция | Описание |
 | --- | --- |
-| `--limit`, `-n <n>` | Максимум всего строк. По умолчанию: `50`. |
+| `--limit`, `-n <n>` | Максимальное количество строк. По умолчанию: `50`. |
 | `--since <window>` | `all`, `15m`, `1h`, `6h`, `24h` или `7d`. |
 | `--from <timestamp>` / `--to <timestamp>` | Диапазон ISO 8601 UTC; переопределяет `--since`. |
-| `--env <value>` | Фильтр окружения; повторяется или разделяется запятыми. |
-| `--status <value>` | `done`, `error` или `timeout`; повторяется или разделяется запятыми. |
-| `--agent-id <value>` | Совпадают сеансы, включающие любого выбранного агента. |
-| `--session-id <value>` | Фильтр сеанса; повторяется или разделяется запятыми. |
-| `--all` | Автоматическое разбиение на страницы до `--limit`. |
+| `--env <value>` | Фильтр окружения; повторить или разделить запятыми значения. |
+| `--status <value>` | `done`, `error` или `timeout`; повторить или разделить запятыми значения. |
+| `--agent-id <value>` | Совпадение сеансов, участвующих в любом выбранном агенте. |
+| `--session-id <value>` | Фильтр сеанса; повторить или разделить запятыми значения. |
+| `--all` | Автоматическая пагинация до `--limit`. |
 | `--cursor <token>` | Возобновить с непрозрачного курсора. |
 | `--page-size <n>` | Строк на запрос с `--all`; максимум `200`. |
 | `--fields <csv>` | Возвращать только выбранные поля. |
-| `--full-ids` | Не сокращать ID сеансов в выводе терминала. |
-| `--agents` | Развернуть список агентов для многоагентных сеансов. |
+| `--full-ids` | Не сокращать идентификаторы сеансов в выводе терминала. |
+| `--agents` | Развернуть реестр агентов для мультиагентных сеансов. |
 
 ### Оценки
 
@@ -113,17 +231,17 @@ fp sessions [OPTIONS]
 fp evals [OPTIONS]
 ```
 
-| Параметр | Описание |
+| Опция | Описание |
 | --- | --- |
-| `--aggregate` | Показать итоги и статистику по баллам вместо отдельных оценок. |
-| `--limit`, `-n <n>` | Максимум строк в списке. По умолчанию: `50`. |
+| `--aggregate` | Показать итоги и статистику по оценкам вместо отдельных оценок. |
+| `--limit`, `-n <n>` | Максимальное количество строк списка. По умолчанию: `50`. |
 | `--since`, `--from`, `--to` | Выбрать временной диапазон. |
-| `--env`, `--status`, `--agent-id`, `--session-id` | Сузить до одного точного значения за фильтр. |
-| `--score KEY:MIN..MAX` | Диапазон баллов; повторяется и все диапазоны должны совпадать. |
-| `--all`, `--cursor`, `--page-size` | Управлять разбиением на страницы списка. |
+| `--env`, `--status`, `--agent-id`, `--session-id` | Сузить до одного точного значения на фильтр. |
+| `--score KEY:MIN..MAX` | Диапазон оценки; повторяемо и все диапазоны должны совпадать. |
+| `--all`, `--cursor`, `--page-size` | Управление пагинацией списка. |
 | `--fields <csv>` | Возвращать только выбранные поля. |
-| `--full-ids` | Показать полные ID сеансов. |
-| `--scores-full` | Показать каждый балл в выводе терминала. |
+| `--full-ids` | Показать полные идентификаторы сеансов. |
+| `--scores-full` | Показать все оценки в выводе терминала. |
 
 ### Ошибки
 
@@ -131,122 +249,125 @@ fp evals [OPTIONS]
 fp errors [OPTIONS]
 ```
 
-| Параметр | Описание |
+| Опция | Описание |
 | --- | --- |
-| `--aggregate` | Суммировать совпадающие ошибки вместо вывода строк. |
-| `--limit`, `-n <n>` | Максимум строк в списке. По умолчанию: `50`. |
+| `--aggregate` | Суммировать совпадающие ошибки вместо перечисления строк. |
+| `--limit`, `-n <n>` | Максимальное количество строк списка. По умолчанию: `50`. |
 | `--since`, `--from`, `--to` | Выбрать временной диапазон. |
-| `--env`, `--error-type`, `--event-type`, `--agent-id`, `--session-id` | Сузить популяцию ошибок. |
-| `--search <text>` | Поиск текста в полезной нагрузке; повторяется. |
+| `--env`, `--error-type`, `--event-type`, `--agent-id`, `--session-id` | Ограничить население ошибок. |
+| `--search <text>` | Поиск текста полезной нагрузки; повторяемо. |
 | `--order asc\|desc` | Порядок времени. |
-| `--all`, `--cursor`, `--page-size` | Управлять разбиением на страницы списка. |
+| `--all`, `--cursor`, `--page-size` | Управление пагинацией списка. |
 | `--fields <csv>` | Возвращать только выбранные поля. |
-| `--full-ids` | Показать полные ID сеансов. |
+| `--full-ids` | Показать полные идентификаторы сеансов. |
 
-### Использование и значения фильтров
+### Использование и значения фильтра
 
 | Команда | Назначение |
 | --- | --- |
 | `fp usage` | Показать использование для текущего окна измерения. |
-| `fp list envs` | Вывести наблюдаемые окружения. |
-| `fp list agents` | Вывести наблюдаемые ID агентов. |
-| `fp list event_types` | Вывести типы событий. |
-| `fp list score_filters` | Вывести ключи баллов оценки. |
-| `fp list models` | Вывести имена моделей. |
-| `fp list hooks` | Вывести имена hooks. |
-| `fp list tools` | Вывести имена инструментов. |
-| `fp list error_types` | Вывести типы ошибок. |
+| `fp list envs` | Список наблюдаемых окружений. |
+| `fp list agents` | Список наблюдаемых идентификаторов агентов. |
+| `fp list event_types` | Список типов событий. |
+| `fp list score_filters` | Список ключей оценки оценки. |
+| `fp list models` | Список имен моделей. |
+| `fp list hooks` | Список имен хуков. |
+| `fp list tools` | Список имен инструментов. |
+| `fp list error_types` | Список типов ошибок. |
+| `fp list trigger_events` | Список событий триггера хука. |
+| `fp list eval_envs` | Список окружений с результатами оценки. |
+| `fp list metric_keys` | Список ключей метрик оценки. |
 
 ### Организации
 
 | Команда | Назначение |
 | --- | --- |
-| `fp orgs list` | Вывести доступные организации. |
-| `fp orgs switch [SLUG]` | Сохранить активную организацию; запрашивает, если опущено. |
+| `fp orgs list` | Список доступных организаций. |
+| `fp orgs switch [SLUG]` | Сохранить активную организацию; приглашение при отсутствии. |
 | `fp orgs current` | Показать активную организацию. |
 | `fp orgs perms` | Показать ваши разрешения в активной организации. |
 
 ### Ключи API
 
-| Команда | Назначение | Параметры |
+| Команда | Назначение | Опции |
 | --- | --- | --- |
-| `fp keys list` | Вывести ключи организации. | `--show-id`; `--fields <csv>` |
-| `fp keys show NAME` | Показать один ключ и его гранты. | — |
-| `fp keys create NAME` | Создать ключ и открыть его секрет один раз. | `--permission-set`; `--add`; `--remove` |
-| `fp keys update NAME` | Заменить набор разрешений или настроить гранты. | `--permission-set`; `--add`; `--remove`; `--yes`, `-y` |
-| `fp keys regenerate NAME` | Повернуть секрет и открыть замену один раз. | `--yes`, `-y` |
-| `fp keys disable NAME` | Навсегда отозвать ключ. | `--yes`, `-y` |
+| `fp keys list` | Список ключей организации. | `--show-id`; `--fields <csv>` |
+| `fp keys show NAME` | Показать один ключ и его разрешения. | — |
+| `fp keys create NAME` | Создать ключ и раскрыть его секрет один раз. | `--permission-set`; `--add`; `--remove` |
+| `fp keys update NAME` | Заменить набор разрешений или отрегулировать разрешения. | `--permission-set`; `--add`; `--remove`; `--yes`, `-y` |
+| `fp keys regenerate NAME` | Ротация секрета и раскрытие замены один раз. | `--yes`, `-y` |
+| `fp keys disable NAME` | Окончательно отозвать ключ. | `--yes`, `-y` |
 
-Токены разрешений используют `resource:action`, такие как `events:add`. Повторяйте `--add`, разделяйте запятыми или используйте точечные действия, такие как `events:read.add`.
+Токены разрешений используют `resource:action`, такие как `events:add`. Повторите `--add`, разделите запятыми токены или используйте точечные действия, такие как `events:read.add`.
 
 ### Запросы
 
-| Команда | Назначение | Параметры |
+| Команда | Назначение | Опции |
 | --- | --- | --- |
-| `fp query list` | Вывести сохраненные запросы. | `--show-id`; `--fields <csv>` |
+| `fp query list` | Список сохраненных запросов. | `--show-id`; `--fields <csv>` |
 | `fp query show NAME` | Показать один запрос. | — |
 | `fp query create NAME` | Сохранить запрос. | `--sql <text\|@file>`; `--description` |
 | `fp query update NAME` | Обновить или переименовать запрос. | `--name`; `--sql`; `--description`; `--yes`, `-y` |
 | `fp query delete NAME` | Удалить сохраненный запрос. | `--yes`, `-y` |
-| `fp query run [NAME]` | Запустить сохраненный запрос или SQL на лету. | `--sql`; `--limit`; `--all`; `--arg`, `--param` |
-| `fp query schema [TABLE]` | Вывести доступные таблицы или проверить одну таблицу. | — |
+| `fp query run [NAME]` | Запустить сохраненный запрос или ad-hoc SQL. | `--sql`; `--limit`; `--all`; `--arg`, `--param` |
+| `fp query schema [TABLE]` | Список запрашиваемых таблиц или проверка одной таблицы. | — |
 
 ### Пользователи
 
-| Команда | Назначение | Параметры |
+| Команда | Назначение | Опции |
 | --- | --- | --- |
-| `fp users list` | Вывести членов организации. | `--active-only`; `--show-id` |
-| `fp users show EMAIL` | Показать члена и его гранты. | — |
+| `fp users list` | Список членов организации. | `--active-only`; `--show-id` |
+| `fp users show EMAIL` | Показать члена и его разрешения. | — |
 | `fp users create EMAIL` | Добавить члена. | `--permission-set`; `--add`; `--remove` |
-| `fp users update EMAIL` | Изменить гранты члена. | `--permission-set`; `--add`; `--remove`; `--yes`, `-y` |
+| `fp users update EMAIL` | Изменить разрешения члена. | `--permission-set`; `--add`; `--remove`; `--yes`, `-y` |
 | `fp users disable EMAIL` | Отключить вход. | `--yes`, `-y` |
 | `fp users enable EMAIL` | Повторно включить вход. | `--yes`, `-y` |
 
 ### Параметры
 
-| Команда | Назначение | Параметры |
+| Команда | Назначение | Опции |
 | --- | --- | --- |
-| `fp settings list` | Вывести параметры организации и текущие значения. | — |
+| `fp settings list` | Список параметров организации и текущих значений. | — |
 | `fp settings schema` | Показать принятые значения и описания. | — |
-| `fp settings set KEY` | Изменить существующий параметр. | ровно одно из `--value`, `--json-value`, `--file`; опциональное `--yes`, `-y` |
+| `fp settings set KEY` | Изменить существующий параметр. | ровно один из `--value`, `--json-value`, `--file`; опциональный `--yes`, `-y` |
 
-### Алерты
+### Оповещения
 
-| Команда | Назначение | Параметры |
+| Команда | Назначение | Опции |
 | --- | --- | --- |
-| `fp alerts list` | Вывести правила алертов. | `--show-id` |
-| `fp alerts show NAME` | Показать один алерт. | — |
-| `fp alerts create NAME` | Создать алерт. | `--file`; `--description`; `--severity`; `--trigger-kind`; `--trigger-spec`; `--channels`; `--eval-interval-secs`; `--min-breaches`; `--eval-window` |
-| `fp alerts update NAME` | Обновить или переименовать алерт. | параметры create плюс `--name`; `--yes`, `-y` |
-| `fp alerts delete NAME` | Удалить алерт. | `--yes`, `-y` |
+| `fp alerts list` | Список правил оповещений. | `--show-id` |
+| `fp alerts show NAME` | Показать одно оповещение. | — |
+| `fp alerts create NAME` | Создать оповещение. | `--file`; `--description`; `--severity`; `--trigger-kind`; `--trigger-spec`; `--channels`; `--eval-interval-secs`; `--min-breaches`; `--eval-window` |
+| `fp alerts update NAME` | Обновить или переименовать оповещение. | опции создания плюс `--name`; `--yes`, `-y` |
+| `fp alerts delete NAME` | Удалить оповещение. | `--yes`, `-y` |
 | `fp alerts test NAME` | Отправить тестовое уведомление. | `--channels`; `--yes`, `-y` |
 
-Серьезности алертов — `info`, `warning` и `critical`. Виды триггеров — `metric_threshold`, `custom_sql`, `evaluation_score`, `eval_compound` и `per_event`. Интервалы оценки должны быть между 30 и 86,400 секундами.
+Серьезность оповещений: `info`, `warning` и `critical`. Типы триггеров: `metric_threshold`, `custom_sql`, `evaluation_score`, `eval_compound` и `per_event`. Интервалы оценки должны быть между 30 и 86,400 секундами.
 
 ### Аудиты
 
-| Команда | Назначение | Параметры |
+| Команда | Назначение | Опции |
 | --- | --- | --- |
-| `fp audits list` | Вывести аудиты. | `--enabled-only`; `--show-id` |
+| `fp audits list` | Список аудитов. | `--enabled-only`; `--show-id` |
 | `fp audits show NAME` | Показать одно определение аудита и состояние. | — |
-| `fp audits create NAME` | Создать аудит и немедленно поставить в очередь его первый запуск. | См. [параметры создания](#параметры-создания-аудита). |
-| `fp audits edit NAME` | Заменить параметры аудита, сохраняя неуказанные значения. | параметры создания определения; `--name`; `--yes`, `-y` |
-| `fp audits delete NAME` | Удалить аудит, его findings и историю запусков. | `--yes`, `-y` |
+| `fp audits create NAME` | Создать аудит и немедленно поставить его первый запуск в очередь. | См. [опции создания аудита](#audit-create-options). |
+| `fp audits edit NAME` | Заменить параметры аудита, сохраняя неупомянутые значения. | опции определения создания; `--name`; `--yes`, `-y` |
+| `fp audits delete NAME` | Удалить аудит, его выводы и историю запусков. | `--yes`, `-y` |
 | `fp audits run NAME` | Поставить в очередь ручной запуск. | — |
-| `fp audits runs NAME` | Вывести историю запусков. | `--limit`, `-n`; `--show-id` |
-| `fp audits context-show NAME` | Показать краткую справку и состояние выборки ссылок справочника. | — |
-| `fp audits context-set NAME` | Изменить краткую справку или ссылки справочника. | `--text`; `--text-file`; `--url`; `--clear-urls` |
-| `fp audits context-refresh NAME` | Повторно выбрать ссылки справочника. | — |
-| `fp audits findings` | Вывести findings. | `--audit`; `--run-id`; `--status`; `--limit`, `-n`; `--offset`; `--show-id` |
-| `fp audits finding FINDING_ID` | Показать один finding и его доказательства. | — |
-| `fp audits ack FINDING_ID` | Подтвердить finding. | `--reason` |
+| `fp audits runs NAME` | Список истории запусков. | `--limit`, `-n`; `--show-id` |
+| `fp audits context-show NAME` | Показать краткое описание и состояние выборки URL ссылки. | — |
+| `fp audits context-set NAME` | Изменить краткое описание или URL ссылок. | `--text`; `--text-file`; `--url`; `--clear-urls` |
+| `fp audits context-refresh NAME` | Повторно выбрать URL ссылок. | — |
+| `fp audits findings` | Список выводов. | `--audit`; `--run-id`; `--status`; `--limit`, `-n`; `--offset`; `--show-id` |
+| `fp audits finding FINDING_ID` | Показать один вывод и его доказательство. | — |
+| `fp audits ack FINDING_ID` | Подтвердить вывод. | `--reason` |
 | `fp audits mute FINDING_ID` | Подавить повторяющийся паттерн. | `--reason`; `--yes`, `-y` |
-| `fp audits dismiss FINDING_ID` | Отметить паттерн как не требующий действия и подавить его. | `--reason`; `--yes`, `-y` |
-| `fp audits resolve FINDING_ID` | Отметить finding как исправленный без будущего подавления. | `--yes`, `-y` |
-| `fp audits reopen FINDING_ID` | Вернуть finding в живую очередь и очистить подавление. | — |
-| `fp audits assign FINDING_ID` | Установить владельца finding. | обязательный `--to <email>` |
+| `fp audits dismiss FINDING_ID` | Отметить паттерн как неопределенный и подавить его. | `--reason`; `--yes`, `-y` |
+| `fp audits resolve FINDING_ID` | Отметить вывод как исправленный без будущего подавления. | `--yes`, `-y` |
+| `fp audits reopen FINDING_ID` | Вернуть вывод в активную очередь и очистить подавление. | — |
+| `fp audits assign FINDING_ID` | Установить владельца вывода. | требуемый `--to <email>` |
 
-#### Параметры создания аудита
+#### Опции создания аудита
 
 ```bash
 fp audits create checkout-reliability \
@@ -259,118 +380,122 @@ fp audits create checkout-reliability \
   --url https://runbooks.example.com/checkout
 ```
 
-| Параметр | Описание |
+| Опция | Описание |
 | --- | --- |
 | `--file <path>` | Основать определение на JSON или использовать `-` для stdin. Явные флаги переопределяют значения файла. |
-| `--description <text>` | Указать вопрос о сбое или назначение. |
-| `--enabled` / `--disabled` | Начать расписание включенным или выключенным. По умолчанию: включено. |
+| `--description <text>` | Обозначить вопрос об отказе или цель. |
+| `--enabled` / `--disabled` | Начать планирование вкл. или выкл. По умолчанию: включено. |
 | `--schedule-interval-secs <n>` | `3600`–`604800`. По умолчанию: `86400`. |
-| `--schedule-anchor <timestamp>` | Фиксированная фаза UTC в формате ISO 8601. По умолчанию: следующие 09:00 UTC. |
-| `--window-mode since_last\|fixed` | Продолжить после последнего полностью анализируемого окна или повторно проверить скользящее окно. По умолчанию: `since_last`. |
+| `--schedule-anchor <timestamp>` | Фиксированная фаза UTC в форме ISO 8601. По умолчанию: следующие 09:00 UTC. |
+| `--window-mode since_last\|fixed` | Продолжить после последнего полностью проанализированного окна или повторно проверить скользящее окно. По умолчанию: `since_last`. |
 | `--lookback-window-secs <n>` | `3600`–`7776000`. По умолчанию: `604800`. |
-| `--scope '<json>'` | Фильтровать по `environments`, `agent_ids` или другим поддерживаемым полям области. |
-| `--ignore-error-type <type>` | Исключить типы ошибок; повторяется или разделяется запятыми. |
-| `--llm` / `--no-llm` | Включить или отключить агентский анализ. По умолчанию: включено. |
-| `--top-k <n>` | Сохранить `1`–`500` findings. По умолчанию: `50`. |
+| `--scope '<json>'` | Фильтр по `environments`, `agent_ids` или другим поддерживаемым полям области. |
+| `--ignore-error-type <type>` | Исключить типы ошибок; повторить или разделить запятыми. |
+| `--llm` / `--no-llm` | Включить или отключить агентный анализ. По умолчанию: включено. |
+| `--top-k <n>` | Сохранить `1`–`500` выводов. По умолчанию: `50`. |
 | `--sensitivity low\|medium\|high` | Установить чувствительность отчета. По умолчанию: `medium`. |
-| `--channels '<json>'` | Массив каналов уведомлений. |
-| `--text <brief>` | Встроенная краткая справка, максимум 8,192 символов. |
-| `--text-file <path>` | Прочитать краткую справку из файла; взаимно исключающее с `--text`. |
-| `--url <https-url>` | Добавить общую ссылку справочника HTTPS; повторяется до пяти раз. |
+| `--channels '<json>'` | Массив канала уведомления. |
+| `--text <brief>` | Встроенное краткое описание, максимум 8,192 символа. |
+| `--text-file <path>` | Прочитать краткое описание из файла; взаимно исключается с `--text`. |
+| `--url <https-url>` | Добавить общую HTTPS ссылку; повторить до пяти раз. |
 
-Включите контекст при создании, если первый запуск его нуждается. Создание фиксирует определение и контекст вместе перед началом поставленного в очередь запуска.
+Включите контекст во время создания, если первый запуск нуждается в нем. Создание фиксирует определение и контекст вместе перед началом поставленного запуска.
 
 <Note>
-  `fp audits run` является асинхронным. Опросите `fp audits runs NAME` до тех пор, пока последний запуск не завершится успешно или не завершится ошибкой, прежде чем читать его findings.
+  `fp audits run` асинхронна. Опрашивайте `fp audits runs NAME` до успеха или отказа последнего запуска перед чтением его выводов.
 </Note>
 
-### Issues
+### Проблемы
 
-| Команда | Назначение | Параметры |
+| Команда | Назначение | Опции |
 | --- | --- | --- |
-| `fp issues list` | Вывести issues. | `--state`; `--alert-id`; `--limit`, `-n`; `--show-id` |
-| `fp issues count` | Подсчитать открытые или выбранные состояния issues. | `--state` |
-| `fp issues show INCIDENT_ID` | Показать детали issue, комментарии, подписчиков и активность. | — |
-| `fp issues open` | Открыть ручной или связанный с алертом issue. | обязательный `--summary`; опциональные `--title`, `--alert-id`, `--severity` |
-| `fp issues ack INCIDENT_ID` | Подтвердить issue. | — |
-| `fp issues assign INCIDENT_ID` | Заменить ответственных; опустить опцию для их очистки. | повторяемый `--assignee` |
-| `fp issues resolve INCIDENT_ID` | Разрешить issue. | `--yes`, `-y` |
-| `fp issues comment-list INCIDENT_ID` | Вывести комментарии. | — |
-| `fp issues comment-add INCIDENT_ID` | Добавить комментарий. | ровно одно из `--body`, `--file` |
+| `fp issues list` | Список проблем. Архивированные проблемы скрыты, если не `--archived only` или `all`. | `--state`; `--alert-id`; `--limit`, `-n`; `--show-id`; фильтры `--agent-id`, `--env`, `--machine`, `--source`, `--audit-id`, `--assignee` (email, `me`, `unassigned`), `--archived`, `--search`, `--since` |
+| `fp issues count` | Подсчитать открытые или выбранные состояния проблем. | `--state`; `--alert-id`; те же фильтры, что и `list` |
+| `fp issues show INCIDENT_ID` | Показать детали проблемы, комментарии, подписчиков и активность. | — |
+| `fp issues open` | Открыть ручную или связанную с оповещением проблему. | требуемый `--summary`; опциональный `--title`, `--alert-id`, `--severity` |
+| `fp issues ack INCIDENT_ID` | Подтвердить проблему. | — |
+| `fp issues assign INCIDENT_ID` | Заменить ответственных; опустить опцию для очистки. | повторяемый `--assignee` |
+| `fp issues resolve INCIDENT_ID` | Разрешить проблему: проблема исправлена. Повторяющийся вывод аудита переоткроет его. | `--yes`, `-y` |
+| `fp issues close INCIDENT_ID` | Закрыть проблему: вы закончили с ней, исправлена или нет. Повторение не переоткроет его. | `--yes`, `-y` |
+| `fp issues archive INCIDENT_ID` | Снять проблему с доски без изменения того, как она закончилась. | — |
+| `fp issues unarchive INCIDENT_ID` | Вернуть архивированную проблему на доску. | — |
+| `fp issues clear` | Разрешить все открытые проблемы в области, плюс выводы аудита за ними. Требует ровно один флаг области. | один из `--audit`, `--all-audits`, `--everything`; `--dry-run`; `--yes`, `-y` |
+| `fp issues comment-list INCIDENT_ID` | Список комментариев. | — |
+| `fp issues comment-add INCIDENT_ID` | Добавить комментарий. | ровно один из `--body`, `--file` |
 | `fp issues comment-delete INCIDENT_ID COMMENT_ID` | Удалить комментарий. | `--yes`, `-y` |
-| `fp issues subscribers INCIDENT_ID` | Вывести подписчиков. | — |
+| `fp issues subscribers INCIDENT_ID` | Список подписчиков. | — |
 | `fp issues subscribe INCIDENT_ID` | Подписать себя или другого оператора. | `--email` |
 | `fp issues unsubscribe INCIDENT_ID` | Удалить подписку. | `--email` |
 
-Действительные состояния issues — `firing`, `acknowledged` и `resolved`. Серьезности автономных issues — `info`, `warning` и `critical`.
+Допустимые состояния проблемы: `firing`, `acknowledged` и `resolved`. Самостоятельная серьезность проблем: `info`, `warning` и `critical`.
 
-### Облачный помощник
+### Облачный ассистент
 
-| Команда | Назначение | Параметры |
+| Команда | Назначение | Опции |
 | --- | --- | --- |
-| `fp agent health` | Проверить доступность помощника и конфигурацию. | — |
-| `fp agent models` | Вывести доступные модели помощника. | — |
-| `fp agent chats` | Вывести сохраненные чаты. | — |
-| `fp agent ask [MESSAGE]` | Начать или продолжить чат; читает stdin, когда сообщение опущено. | `--chat`; `--model`; `--page-context` |
+| `fp agent health` | Проверить доступность ассистента и конфигурацию. | — |
+| `fp agent models` | Список доступных моделей ассистента. | — |
+| `fp agent chats` | Список сохраненных чатов. | — |
+| `fp agent ask [MESSAGE]` | Начать или продолжить чат; читать stdin при отсутствии сообщения. | `--chat`; `--model`; `--page-context` |
 | `fp agent show CHAT_ID` | Показать сохраненный разговор. | — |
-| `fp agent rename CHAT_ID` | Переименовать разговор. | обязательный `--title` |
+| `fp agent rename CHAT_ID` | Переименовать разговор. | требуемый `--title` |
 | `fp agent delete CHAT_ID` | Удалить разговор. | `--yes`, `-y` |
 
 ### Политики
 
-Версии политик, управляемые облаком. **Только сеанс** — каждая команда здесь выходит с кодом `2` под ключом API перед любым запросом, потому что это корневые маршруты записи, намеренно отсутствующие в `/v1`.
+Версии политик, управляемые облаком. **Только для сеанса** — каждая команда здесь выходит `2` под ключом API, перед любым запросом, потому что это корневые маршруты записи, намеренно отсутствующие в `/v1`.
 
-| Команда | Назначение | Параметры |
+| Команда | Назначение | Опции |
 | --- | --- | --- |
-| `fp policies list` | Вывести версии политик. | `--json` |
-| `fp policies show POLICY_ID` | Показать одну политику с ее исходным кодом. | — |
-| `fp policies publish NAME PATH` | Создать версию из локального `.mjs`. | `--description`; `--no-verify` |
-| `fp policies enable POLICY_ID` | Добавить ее обратно в каждое развертывание, из которого она была удалена, создав новое поколение в каждом. | `--yes`, `-y` |
-| `fp policies disable POLICY_ID` | Удалить из каждого развертывания, которое ее содержит, создав новое поколение в каждом. | `--yes`, `-y` |
+| `fp policies list` | Список версий политик с типом каждой (`regex`, `jev`, `both`) и имена проверок Jev. | `--json` |
+| `fp policies show POLICY_ID` | Показать одну политику с ее источником и проверками Jev. | — |
+| `fp policies publish NAME [PATH]` | Выпустить версию: JavaScript (`regex`, по умолчанию), проверки Jev из JSON файла деклараций (`jev`) или оба, где JavaScript рецензируется его собственными проверками. | `--kind`; `--source`; `--semantic`; `--description`; `--no-verify` |
+| `fp policies enable POLICY_ID` | Добавить его обратно в каждое развертывание, из которого оно было удалено, выпустив новое поколение в каждом. | `--yes`, `-y` |
+| `fp policies disable POLICY_ID` | Удалить его из каждого развертывания, которое его несет, выпустив новое поколение в каждом. | `--yes`, `-y` |
 | `fp policies delete POLICY_ID` | Удалить версию политики. | `--yes`, `-y` |
-| `fp policies test PATH` | Запустить политику локально против синтетического контекста. Применяет фильтр `match` каждой политики, поэтому та, которая не охватывает данное событие/инструмент, сообщается как `skipped` вместо запуска. | `--event`; `--tool`; `--command`; `--file`; `--expect` |
-| `fp policies compose PROMPT` | Разработать политику с помощью помощника. Требует `policies:write`. | — |
+| `fp policies test PATH` | Запустить политику локально против синтетического контекста. Применяет фильтр `match` каждой политики, поэтому те, которые не охватывают данное событие/инструмент, сообщаются как `skipped` вместо запуска. | `--event`; `--tool`; `--command`; `--file`; `--expect` |
+| `fp policies compose PROMPT` | Подготовить политику с ассистентом. Требует `policies:write`. | — |
 
 ### Флот
 
-Какие машины запускают какие политики. **Только сеанс**, по той же причине, что и выше.
+Какие машины запускают какие политики. **Только для сеанса**, по той же причине, что выше.
 
-| Команда | Назначение | Параметры |
+| Команда | Назначение | Опции |
 | --- | --- | --- |
-| `fp fleet list` | Вывести зарегистрированные машины и их поколение развертывания. | — |
-| `fp fleet show MACHINE_ID` | Набор политик, которые машина в настоящее время запускает. | — |
-| `fp fleet deploy MACHINE_ID` | **Заменить весь набор политик машины.** Выводит план и запрашивает только в интерактивном терминале без `--json`. | `--add`; `--remove`; `--set`; `--create`; `--yes`, `-y` |
+| `fp fleet list` | Список зарегистрированных машин и поколение их развертывания. | — |
+| `fp fleet show MACHINE_ID` | Набор политик, который машина в настоящее время запускает, режим Jev, который Failproof AI Cloud получил из нее, и ошибки политики, которые она сообщила. | — |
+| `fp fleet deploy MACHINE_ID` | **Заменяет весь набор политик машины.** Печатает план и спрашивает только в интерактивном терминале без `--json`. Jev включен для машины, пока `jev` или `both` политика развернута к ней; пробует один с `:observe`. | `--add`; `--remove`; `--set`; `--target POLICY=INTEGRATION[/agt_ID]` (область одного назначения интеграции или одного агента; повторить для OR); `--all-agents POLICY` (очистить эту область); `--create`; `--yes`, `-y` |
 | `fp fleet diff MACHINE_ID` | Сравнить машину с другим развертыванием. | — |
-| `fp fleet history MACHINE_ID` | Прошлые развертывания для машины. | — |
-| `fp fleet rollback MACHINE_ID GENERATION` | Восстановить набор политик прошлого поколения как новое поколение. | `--yes`, `-y` |
-| `fp fleet rename MACHINE_ID` | Дать машине читаемое имя. | обязательный `--name` |
+| `fp fleet history MACHINE_ID` | Прошлые развертывания для машины с режимом Jev, который был в каждом. | — |
+| `fp fleet rollback MACHINE_ID GENERATION` | Переустановить набор политик прошлого поколения как новое поколение. | `--yes`, `-y` |
+| `fp fleet rename MACHINE_ID` | Дать машине читаемое имя. | требуемый `--name` |
 
 ### Guardrails
 
-Что enforcement фактически сделал. **Только сеанс**, по той же причине, что и выше.
+Что принудительное применение на самом деле сделало. **Только для сеанса**, по той же причине, что выше.
 
-| Команда | Назначение | Параметры |
+| Команда | Назначение | Опции |
 | --- | --- | --- |
-| `fp guardrails summary` | Охват, всего заблокированных/оцененных, спарклайн deny и таблица за политику. | `--since` (`1h`, `6h`, `24h`, `7d`); `--machine` |
-| `fp guardrails timeline` | Решения разбросаны по окну, просуммированы на каждый источник политики. | `--since` (`1h`, `6h`, `24h`, `7d`); `--machine` |
+| `fp guardrails summary` | Покрытие, заблокировано/оценено итого, спарклайн отказа и таблица по политикам. | `--since` (`1h`, `6h`, `24h`, `7d`); `--machine` |
+| `fp guardrails timeline` | Решения размещены над окном, суммированные по всем источникам политик. | `--since` (`1h`, `6h`, `24h`, `7d`); `--machine` |
 
 ## Глобальные флаги
 
 | Флаг | Описание |
 | --- | --- |
-| `--json` | Выпустить машинно-читаемый JSON. |
-| `--base-url <url>` | Использовать самостоятельно размещенный или развивающийся dashboard. |
+| `--json` | Генерировать читаемый машиной JSON. Ошибки включают `request_id` неудачного запроса. |
+| `--base-url <url>` | Использовать саморазмещенную или панель разработки. |
 | `--org <slug>` | Выбрать организацию для этого вызова. |
-| `--token <token>` | Переопределить сохраненный токен пользовательского сеанса. |
+| `--token <token>` | Переопределить сохраненный токен сеанса пользователя. |
 | `--api-key <key>` | Аутентифицировать автоматизацию с помощью ключа API; никогда не сохраняется. |
-| `--timeout <seconds>` | Timeout HTTP; должен быть положительным. По умолчанию: `30`. |
-| `--quiet`, `-q` | Подавить статус output на stderr. |
-| `--no-color` | Отключить цветной output. |
+| `--timeout <seconds>` | Тайм-аут HTTP; должен быть положительным. По умолчанию: `30`. |
+| `--quiet`, `-q` | Подавить вывод статуса на stderr. |
+| `--no-color` | Отключить цветной вывод. |
 | `--insecure` / `--secure` | Отключить или восстановить проверку сертификата TLS. |
-| `--version` | Вывести развернутую версию и выйти. |
+| `--version` | Печать распакованной версии и выход. |
 | `--help`, `-h` | Показать справку. |
 
-`--api-key` предназначен для автоматизации. Вход, переключение организации и команды помощника требуют пользовательский сеанс.
+`--api-key` предназначен для автоматизации. Вход, переключение организации и команды ассистента требуют сеанс пользователя.
 
 ## Переменные окружения
 
@@ -382,18 +507,18 @@ fp audits create checkout-reliability \
 | `FP_API_KEY` | `--api-key` |
 | `FP_JSON` | `--json` |
 | `FP_INSECURE` | `--insecure` |
-| `FP_HOME` | Переместить каталог конфигурации CLI (по умолчанию `~/.failproofai/fpcli`). |
+| `FP_HOME` | Перемещение каталога конфигурации CLI (по умолчанию `~/.failproofai/fpcli`). |
 | `FP_ANALYTICS_DISABLED` или `DO_NOT_TRACK` | Отключить анонимную аналитику CLI. |
-| `NO_COLOR` | Отключить цветной output. |
+| `NO_COLOR` | Отключить цветной вывод. |
 
-Явные флаги переопределяют переменные окружения, которые переопределяют сохраненную конфигурацию. В режиме ключа API выберите тенант явно с помощью `--org` или `FP_ORG`.
+Явные флаги переопределяют переменные окружения, которые переопределяют сохраненную конфигурацию. В режиме ключа API выберите клиента явно с помощью `--org` или `FP_ORG`.
 
 <Warning>
-  Написания `AGENTEYE_*` этих параметров **не читаются `fp`** и никогда не были — CLI объявляет `FP_*` (`fp_cli/app.py`), и неизвестная переменная не является ошибкой. Установка `AGENTEYE_DASHBOARD_URL` не перенаправляет CLI; она игнорируется и команда молча выполняется против сохраненного dashboard вместо этого.
+  Написания `AGENTEYE_*` этих переменных **не читаются `fp`** и никогда не были — CLI объявляет `FP_*` (`fp_cli/app.py`), и неизвестная переменная не является ошибкой. Установка `AGENTEYE_DASHBOARD_URL` не перенаправляет CLI; она игнорируется и команда тихо запускается против сохраненной панели вместо этого.
 
-  `AGENTEYE_HOME` и `AGENTEYE_ENVIRONMENT` все еще существуют, но они принадлежат **сборщику и телеметрии SDK**, а не этому CLI.
+  `AGENTEYE_HOME` и `AGENTEYE_ENVIRONMENT` все еще существуют, но они принадлежат **коллектору и телеметрии SDK**, а не этому CLI.
 </Warning>
 
 <Warning>
-  Команды, которые удаляют, отзывают, подавляют, разрешают или заменяют конфигурацию, запрашивают по умолчанию. Используйте `--yes` только после проверки активной организации и цели.
+  Команды, которые удаляют, отзывают, подавляют, разрешают или заменяют конфигурацию, приглашают по умолчанию. Используйте `--yes` только после проверки активной организации и цели.
 </Warning>

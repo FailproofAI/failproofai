@@ -1,0 +1,77 @@
+---
+title: "OpenTelemetry CLI"
+description: "OTEL für Coding-Agents aktivieren, die Auslieferung prüfen und frühere Einstellungen wiederherstellen."
+icon: "radio"
+---
+
+`failproofai otel` konfiguriert optionales OpenTelemetry-Reporting an FailproofAI Cloud. Verbinden Sie Ihren Rechner zunächst mit `failproofai config` und bitten Sie einen Organisations-Admin, **Settings → OpenTelemetry** zu aktivieren.
+
+Das interaktive Setup fragt nach dem Cloud-Schlüsselfeld und der Agent-Auswahl nach OpenTelemetry. Dieser optionale Schritt ist standardmäßig auf „Nein" gesetzt. Wählen Sie „Ja", um OTEL-Agents auszuwählen; der gleiche Aktivierungscode läuft nach dem Schreiben der Verbindung aus. Wird Esc vor dem Setup gedrückt, werden keine Änderungen übernommen. Unbeaufsichtigtes Setup, ein mitgelieferter Schlüssel, Open-Source-Modus und das Beibehalten einer gespeicherten Verbindung führen nicht zur Anmeldung.
+
+## Einen Agent aktivieren
+
+```bash
+failproofai otel enable claude
+failproofai otel enable codex --local
+failproofai otel enable codex --no-content
+failproofai otel enable copilot
+failproofai otel enable all --yes
+```
+
+Die unterstützten Agents sind `claude`, `codex` und `copilot` (VS Code). Für das Copilot-Setup ist eine VS-Code-Executable oder eine installierte Copilot-Extension erforderlich. Ein allein vorhandenes Einstellungsverzeichnis reicht nicht aus; das Setup überspringt Copilot, wenn keines von beidem gefunden wird.
+
+`--local` sendet an das lokale Relay statt direkt an Cloud. Copilot verwendet das Relay automatisch, da seine Einstellungen den Authentifizierungs-Header nicht speichern können.
+
+Das Relay lauscht ausschließlich auf Ihrem Rechner. Ihr konfigurierter FailproofAI-Daemon übernimmt die Änderung innerhalb von Sekunden; ein Neustart ist nicht erforderlich. Wenn eine andere Anwendung den Relay-Port belegt, meldet der Status ihn als inaktiv, und der Daemon läuft weiter.
+
+<Warning>
+Die Texterfassung ist standardmäßig aktiviert. Fügen Sie `--no-content` hinzu, um Prompts und Tool-Details auszulassen. Agent-Versionen können unterschiedliche Inhaltskontrollen bereitstellen; prüfen Sie, was Ihr Agent exportiert, bevor Sie ihn mit sensiblen Daten verwenden.
+</Warning>
+
+Codex exportiert ausschließlich Konversationsprotokolle, keine internen Laufzeit-Traces oder Metriken. Ein explizites `log_user_prompt = false` in Ihrer Codex-Konfiguration bleibt deaktiviert; beim Aktivieren wird ein Hinweis ausgegeben, wenn diese Einstellung beibehalten wird.
+
+### Einen Reporting-Pfad wählen
+
+Wenn das Transkript-Reporting für einen Agent aktiviert ist, fragt das Setup:
+
+> failproofai already sends Claude Code sessions to Cloud. Send them with OTEL instead? Transcript upload for Claude Code stops.
+
+Der Standard ist „Nein". `--yes` akzeptiert den Wechsel ohne Nachfrage. Andere Agents und die Policy-Durchsetzung sind nicht betroffen.
+
+Das Codex-Setup wartet darauf, dass der Daemon die Collector-Änderung bestätigt, bevor die Exporter-Einstellungen geschrieben werden. Wenn die Bestätigung das Timeout überschreitet, weist das Setup Sie darauf hin, vor dem Start von Codex zu warten.
+
+Config v2 speichert die hinterlegte Tracing-Liste unter `agents.selected` (und den Erkennungsverlauf unter `agents.seen`). Die agentenbezogene Transkript-Präferenz verbleibt unter `collector.agents.<agent>.sessions`, die OTEL-Zuständigkeit unter `otel.agents` und die Relay-Einstellungen unter `collector.otlp.enabled` / `collector.otlp.port`. Diese getrennten Schlüssel ermöglichen das Lesen älterer OTEL-Konfigurationen: Das Setup kann die Tracing-Liste ändern, ohne die Transportpräferenz oder den für die Wiederherstellung der Agent-Einstellungen benötigten Zustand zu verlieren.
+
+## Setup prüfen
+
+```bash
+failproofai otel status
+```
+
+Der Status zeigt jeden Agent, ob seine Einstellungen von FailproofAI verwaltet werden, sein Ziel, den organisationsweiten Ingest-Schalter, den Relay-Zustand und das letzte Relay-Upload-Ergebnis.
+
+`unknown` beim Organisations-Schalter bedeutet, dass der Server ihn nicht bereitgestellt hat oder nicht erreichbar war. Dies ist kein Fehler und verhindert keine Konfiguration bei einer älteren Cloud-Version.
+
+Unterstützt Cloud OTEL noch nicht, behält das Relay abgelehnte Exporte, anstatt sie zu verwerfen. Ist der organisations­weite Ingest deaktiviert, schreibt `enable` nichts und beendet sich mit einem Fehler; bitten Sie zunächst einen Admin, ihn zu aktivieren.
+
+## Konfiguration für eine Anwendung ausgeben
+
+```bash
+failproofai otel env --service my-agent
+failproofai otel env --service my-agent --local
+```
+
+Die Ausgabe ist ein Shell-Umgebungsblock für einen OTLP/HTTP-Exporter. Die Cloud-Ausgabe setzt `OTEL_EXPORTER_OTLP_ENDPOINT` auf die OTLP-Basis von Cloud, `https://<cloud>/otel`, und der Exporter hängt `/v1/<signal>` an; eine signalbezogene Variable wie `OTEL_EXPORTER_OTLP_LOGS_ENDPOINT` benötigt die vollständige URL `https://<cloud>/otel/v1/logs`. Die lokale Ausgabe verweist auf das Relay, `http://127.0.0.1:<port>`. Die Cloud-Ausgabe enthält den konfigurierten API-Schlüssel; behandeln Sie ihn als Geheimnis. Die lokale Ausgabe lässt den Schlüssel weg. Um die lokale Ausgabe zu verwenden, aktivieren Sie zunächst einen lokalen Agent, damit das Relay läuft.
+
+## Frühere Einstellungen wiederherstellen
+
+```bash
+failproofai otel disable claude
+failproofai otel disable all
+```
+
+Disable stellt ausschließlich die von FailproofAI geschriebenen Einstellungen wieder her, behält nicht zusammenhängende Änderungen bei und stellt die frühere Transkript-Reporting-Einstellung jedes Agents wieder her. Wenn der letzte verwaltete lokale Agent deaktiviert wird, nimmt das Relay keine Exporte mehr an.
+
+Für Codex zeichnet disable außerdem `collector.agents.codex.sessions_resume_after` (Epoch-Millisekunden) auf. Vorhandene Rollout-Bytes werden als ausgeliefert behandelt, sodass mit OTEL erfasste Sessions nicht erneut hochgeladen werden; spätere Anhänge fließen weiterhin über das Transkript-Reporting.
+
+Jeder Befehl unterstützt `--help`. Beispiele für Anwendungen und Coding-Agents finden Sie unter [OpenTelemetry in Cloud](/de/agenteye/opentelemetry).

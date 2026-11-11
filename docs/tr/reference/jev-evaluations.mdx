@@ -1,88 +1,88 @@
 ---
 title: "Jev evaluation referansı"
-description: "Soru türleri, kalibre edilmiş puanlar, limitler ve Jev oturumu değerlendirmeleri için geri doldurma."
+description: "Soru türleri, kalibre edilmiş puanlar, limitler ve Jev oturumu değerlendirmeleri için geriye dönük doldurma."
 icon: "list-checks"
 ---
 
-Bu sayfa [Jev değerlendirmelerinin](/tr/evaluations/jev) arkasındaki soru şekillerini ve puanlama kurallarını açıklamaktadır. Bazı soruların bir modelin konuşmayı *okumasını* gerektirir, ancak bunu *yazmasını* değil. "Müşteri aciliyet ifade etti mi?" iki cevabı vardır. "Ne kadar hayal kırıklığına uğramışlardı?" bir kaç cevabı vardır, sırayla. Her cevabı sormadan önce bilirsiniz.
+Bu sayfa [Jev değerlendirmelerinin](/tr/evaluations/jev) arkasındaki soru şekillerini ve puanlama kurallarını açıklamaktadır. Bazı sorular bir modelin konuşmayı *okumasını* gerektirir, ancak bu konuda *yazmasını* değil. "Müşteri aciliyet ifade etti mi?" iki cevaba sahiptir. "Ne kadar hayal kırıklığına uğramışlardı?" birkaç cevaba sahiptir, sıralanmış olarak. Her cevabı sormadan önce bilirsiniz.
 
-Bir **sınıflandırıcı değerlendirmesi** tam olarak bunlar içindir. Soruyu ve alabileceği cevapları yazarsınız, ve sınıflandırma için tasarlanmış küçük bir model kalibre edilmiş bir sayı döndürür — hiç ücretsiz metin değil.
+**Sınıflandırıcı değerlendirmesi** tam olarak bunlar içindir. Soruyu ve verebileceği cevapları yazarsınız, sınıflandırma için tasarlanmış küçük bir model kalibre edilmiş bir sayı döndürür — asla serbest metin değil.
 
 <Note>
-Bir hakim gibi, sınıflandırıcı değerlendirmesi oturum başına bir model çağrısı maliyeti oluşturur. Hakim olmaması yerine genel bir model yerine küçük, tek amaçlı bir model olduğundan daha hızlı ve ucuz olur — ancak hiçbir zaman kendini açıklamaz. Akıl yürütmeye ihtiyacınız varsa, bir [hakim](/tr/evaluations/judge) kullanın.
+Bir hakim gibi, sınıflandırıcı değerlendirmesi oturum başına bir model çağrısına mal olur. Ancak hakim ile farklı olarak genel bir model yerine küçük, tek amaçlı bir model olduğu için daha hızlı ve daha ucuzdur — ancak kendisini asla açıklamayacaktır. Akıl yürütmeye ihtiyacınız varsa, bir [hakim](/tr/evaluations/judge) kullanın.
 </Note>
 
 ## Hangisini istiyorum?
 
-| Soru | Kullan |
+| Soru | Kullanım |
 | --- | --- |
-| Kaç tane araç çağrısı vardı? | kod |
-| Oturum 30 saniyeden az mıydı? | kod |
+| Kaç adet araç çağrısı vardı? | kod |
+| Oturum 30 saniyenin altında mıydı? | kod |
 | Müşteri aciliyet ifade etti mi? | **sınıflandırıcı** |
-| Hangi takım bunu yönetmeli: faturalandırma, teknik veya satış? | **sınıflandırıcı** |
+| Hangi takım bunu ele almalı: faturalandırma, teknik, veya satış? | **sınıflandırıcı** |
 | Müşteri ne kadar hayal kırıklığına uğramıştı? | **sınıflandırıcı** |
 | Cevap gerçekten doğru muydu? | **hakim** |
-| Bizim yükseltme politikasını takip etti mi ve neden böyle düşünüyorsunuz? | **hakim** |
+| Tırmanış politikamızı takip etti mi ve neden böyle düşünüyorsun? | **hakim** |
 
-Temel kural: **sayılabilir → kod, listeleyebileceğiniz cevaplar → sınıflandırıcı, açıklama gerektiriyor → hakim.**
+Temel kural: **sayılabilir → kod, listeleyebileceğiniz cevaplar → sınıflandırıcı, açıklama gerektiren → hakim.**
 
-Önceden karar vermek zorunda değilsiniz. Ölçülmek istediğinizi açıklayın ve asistan seçer, hangisini seçtiğini ve neden seçtiğini söyler, ve değiştirebilirsiniz.
+Önceden karar vermeniz gerekmez. Ölçülmesini istediğinizi açıklayın ve asistan seçer, hangisini seçtiğini ve neden seçtiğini söyler, ve siz değiştirebilirsiniz.
 
 ## İki soru türü
 
 ### `noul` — bu doğru mu?
 
-İki cevap ve her ikisini de açıklarsınız. Sonuç, "doğru" açıklamanın uyma olasılığıdır:
+İki cevap ve siz ikisini de açıklarsınız. Sonuç, doğru açıklamanın uyma olasılığıdır:
 
 ```json
 {
-  "instructions": "Asistan, önce iade politikasını kontrol etmeden iade vaat etti mi?",
+  "instructions": "Asistan iade politikasını ilk olarak kontrol etmeden bir iade vaat etti mi?",
   "criteria": {
-    "true":  "Önceki politika kontrolü veya onayı olmadan iade vaat edildi veya verildi",
-    "false": "Iade vaat edilmedi veya her iade bir politika kontrolünü takip etti"
+    "true":  "Bir iade vaat edildi veya verildi, ön politika kontrolü veya onayı olmadan",
+    "false": "Hiçbir iade vaat edilmedi veya her iade bir politika kontrolünü takip etti"
   }
 }
 ```
 
-Her iki tarafı açıklayın. "Aciliyet ifade edilmedi" gerçek bir cevapdır ve bunu söylemek diğerini keskinleştirir.
+Her iki tarafı açıklayın. "Aciliyet gösterilmedi" gerçek bir cevaptır ve bunu söylemek diğer tarafını daha keskin yapar.
 
 ### `score` — bunun ne kadarı?
 
-Sıralı bir rubrik, **en kötüsü ilk**. Sonuç oturumun buna nasıl yerleştiğidir, 0–1'e yeniden ölçeklendirilir:
+Sıralı bir rubrik, **en kötüsü önce**. Sonuç oturumun üzerinde bulunduğu yerdir, 0–1 olarak yeniden ölçeklenmiş:
 
 ```json
 {
   "instructions": "Müşteri ne kadar hayal kırıklığına uğramıştı?",
-  "criteria": ["Sakin", "Hayal kırıklığı", "Çok öfkeli"]
+  "criteria": ["Sakin", "Hayal Kırıklığına Uğramış", "Çok kızgın"]
 }
 ```
 
-**Bir rubrik üç ila beş seviye alır ve hepsi farklı olmalıdır.** Her iki limit de stilistik değil, ölçülür:
+**Bir rubrik üç ila beş seviye gerektirir ve tümü farklı olmalıdır.** Her iki limit ölçülür, stilistik değildir:
 
-- **İki seviye** `noul`'un zaten daha iyi yaptığı şeye dönüşür ve **beşten fazla** model orta noktaya hedge etmek yerine taahhüt etmesini sağlar. Aynı soru aynı oturum üzerinde iki seviye ile 0.00, üç seviye ile 0.01 ve on seviye ile 0.55 puanlandı.
-- **Tekrarlanan seviyeler** cevabı keyfi olarak aralarında böler. Açıkça öfkeli bir oturum `["Sakin", "Hayal kırıklığı", "Çok öfkeli"]` karşısında 1.00 ve `["Öfkeli", "Öfkeli", "Öfkeli"]` karşısında 0.66 puanlandı — anlamı olmayan iyi biçimlendirilmiş bir sayı.
+- **İki seviye** zaten `noul` tarafından daha iyi yapılan şeye çöker ve **beşten fazla** model orta noktaya doğru şüphelenmeye başlar. Aynı soru aynı oturum üzerinde iki seviye ile 0.00, üç seviye ile 0.01 ve on seviye ile 0.55 puanlandırılmıştır.
+- **Tekrarlanan seviyeler** cevabı keyfi olarak aralarına böler. Açıkça kızgın olan bir oturum `["Sakin", "Hayal Kırıklığına Uğramış", "Çok kızgın"]` karşısında 1.00 ve `["Kızgın", "Kızgın", "Kızgın"]` karşısında 0.66 puanlandırılmıştır — hiçbir anlamı olmayan iyi biçimlenmiş bir sayı.
 
-Siparişi olmayan kategoriler — "faturalandırma, teknik veya satış" — rubrik değildir. Bunları kategori başına `noul` olarak sorun veya bir hakim kullanın.
+Siparişi olmayan kategoriler — "faturalandırma, teknik, veya satış" — rubrik değildir. Her kategori için bir `noul` olarak sorun veya bir hakim kullanın.
 
 ## Sonuçları okuma
 
-Bir sınıflandırıcı, bir hakimle tam olarak aynı şekilde 0 ila 1 arasında bir **puan** üretir, bu nedenle grafik oluşturur, filtreler ve uyarıları tetikler. Bilmeye değer iki fark vardır:
+Sınıflandırıcı, tıpkı bir hakim gibi, 0 ile 1 arasında bir **puan** üretir, bu nedenle grafiklendirme, filtreleme ve uyarıları tetikleme aynı şekilde çalışır. Bilinmeye değer iki fark vardır:
 
-- **Akıl yürütme yoktur.** Alan kasıtlı olarak boştur. Bu model kendini açıklamaz ve açıklama icat etmek bir özellik yerine sahtekarlık olurdu.
-- **Belirsizlik etiketlenmiştir.** Bir `score` sorusu kendi güvenini bildirir ve modelin emin olmadığı bir sonuç `low_confidence` ile etiketlenir — bu nedenle "bunlardan hangisine bir insan bakmalı" bir tahmin yerine bir filtredir. Bir `noul` sorusu güven bildirmez, bu nedenle asla etiketlenmez.
+- **Hiçbir akıl yürütme yoktur.** Alan boştur, bilerek. Bu model kendisini açıklamaz ve açıklama uydurma bir özellik yerine sahte olurdu.
+- **Belirsizlik etiketlenmiş.** Bir `score` sorusu kendi güvenini raporlar ve modelin emin olmadığı bir sonuç `low_confidence` ile etiketlenir — bu nedenle "hangileri bir insan görmeli" bir tahmin yerine bir filtrendir. `noul` sorusu güven rapor etmez, bu nedenle asla etiketlenmez.
 
-Çok uzun oturumlar alıntılarında okunur ve birleştirilir. Bir oturum tamamen okunmak için çok uzun olduğunda, sonuç kaç dönüşün atlandığını söyler — hiçbir zaman bir oturumun bir kısmı üzerinde yapılan bir yargı tamamı üzerinde yapılan bir olarak sunulmayacaksınız.
+Çok uzun oturumlar alıntılar halinde okunur ve birleştirilir. Bir oturum tamamını okumak için çok uzun olduğunda, sonuç kaç dönemün atlandığını söyler — asla tamamı üzerinde yapılan bir yargı parçası üzerinde yapılmış gibi sunulmaz.
 
 ## Limitler
 
-- **Üç ila beş rubrik seviyesi, hepsi ayrı.** Yukarıya bakın; her iki sınır da yazarlık zamanında uygulanır.
-- **Değerlendirme başına bir soru.** İki şey sorun ve iki değerlendirme alırsınız, bu aynı zamanda bir grafikte istediğiniz şeydir.
-- **Soruyu düzenleme yeni bir versiyonu yayımlar.** Eski ve yeni puanlar karşılaştırılmaz, bu nedenle bunlar bir trend çizgisinde karıştırılmak yerine ayrı tutulur.
-- **Sınıflandırıcı her zaman bir puan üretir**, hiçbir zaman metrik veya iddia değil.
-- **Akıl yürütme yoktur**, yukarıda olduğu gibi. Bir sayı birine "neden?" soratacaksa, bunun yerine bir hakim yazın.
+- **Üç ila beş rubrik seviyesi, tümü farklı.** Yukarıya bakın; her iki sınır yazım zamanında uygulanır.
+- **Değerlendirme başına bir soru.** İki şey sorun ve iki değerlendirme alırsınız, bu da grafiklerde istediğiniz şeydir.
+- **Soruyu düzenlemek yeni bir sürümü yayınlar.** Eski ve yeni puanlar karşılaştırılamaz, bu nedenle bir eğilim çizgisinde karıştırılmak yerine ayrı tutulurlar.
+- **Sınıflandırıcı her zaman bir puan üretir**, asla bir metrik veya iddia değil.
+- **Akıl yürütme yok**, yukarıda olduğu gibi. Bir sayı birine "neden?" diye sormak yaptıracaksa, bunun yerine bir hakim yazın.
 
-## Test ve geri doldurma
+## Test ve geriye dönük doldurma
 
-Bir hakimden farklı olarak, sınıflandırıcı değerlendirmesi dağıtmadan **test edilebilir** — gerçek oturumlar karşısında bir kod değerlendirmesi gibi [test edin](/tr/evaluations/test) ve hiçbir şey canlı gitmeden puanları okuyun.
+Hakim ile farklı olarak, sınıflandırıcı değerlendirmesi **yapabilir** dağıtmadan önce test edilmiş — kod değerlendirmesinin yaptığı şekilde gerçek oturumlar karşısında [test edin](/tr/evaluations/test) ve hiçbir şey canlı yürürlüğe girmeden puanları okuyun.
 
-Ayrıca zaten sahip olduğunuz oturumlar üzerinde [geri doldurulabilir](/tr/evaluations/deploy#score-sessions-you-already-have). Oturum başına bir model çağrısı maliyeti oluşturur, bu nedenle her şeyi yeniden oynatmak yerine pencereyi kasıtlı olarak kapsamlandırın.
+Ayrıca zaten sahip olduğunuz oturumlar üzerinde [geriye dönük olarak doldurulabilir](/tr/evaluations/deploy#score-sessions-you-already-have). Oturum başına bir model çağrısına mal olur, bu nedenle her şeyi yeniden oynatmak yerine pencereyi kasıtlı olarak kapsamlandırın.

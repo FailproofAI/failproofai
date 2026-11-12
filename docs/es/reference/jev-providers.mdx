@@ -4,30 +4,30 @@ description: "Endpoints de proveedores, IDs de modelos, configuración y comport
 icon: "key-round"
 ---
 
-Esta es la referencia de proveedores y configuración para [políticas Jev](/es/policies/jev) con tu propia clave. Las políticas de expresiones regulares comparan cadenas de texto. No pueden distinguir `rm -rf build/` que solicitaste de `rm -rf ~` que se coló en un plan, por lo que bloquean demasiado en un caso y demasiado poco en otro. **Jev**, el clasificador de TypeSafe, analiza la llamada en relación con lo que realmente pediste y responde a un conjunto de preguntas de sí/no sobre ella en una única petición rápida.
+Esta es la referencia de proveedores y configuración para [políticas Jev](/es/policies/jev) con tu propia clave. Las políticas de expresiones regulares comparan cadenas de texto. No pueden distinguir `rm -rf build/` que pediste explícitamente de `rm -rf ~` que se coló en un plan, así que bloquean demasiado en un lugar y demasiado poco en otro. **Jev**, el clasificador de TypeSafe, lee la llamada en el contexto de lo que realmente pediste y responde a un conjunto de preguntas de sí/no en una sola solicitud rápida.
 
-Con tu propio endpoint y clave de Jev configurados, Failproof AI consulta a Jev sobre cada llamada de herramienta **junto con** las políticas de expresiones regulares, nunca en su lugar:
+Con tu propio endpoint y clave de Jev configurados, Failproof AI consulta a Jev sobre cada llamada de herramienta **junto con** las políticas de expresiones regulares, nunca en lugar de ellas:
 
-- El deny de una política **hard** es definitivo. Jev no puede anularlo. Toda política es hard a menos que esté marcada explícitamente como revisable y nombre las verificaciones de Jev que la cubren, por lo que una política personalizada, de paquete o de Cloud que no especifique nada es hard, y la protección propia siempre activa es siempre hard.
-- El deny de una política **reviewable** puede anularse, pero solo cuando se consultó a Jev sobre la preocupación exacta que cubre esa política y respondió "nada aquí" o "el usuario lo pidió". Una verificación que encuentra la preocupación real, cuando el usuario no solicitó la llamada, mantiene el deny — incluso cuando su propio veredicto es solo una advertencia, porque antes de una llamada de herramienta una advertencia no detiene al agente. Y cuando esa verificación es de las que pueden denegar (exposición de secretos, exfiltración de credenciales, eliminación destructiva, …), nada se anula en esa llamada.
-- Un bloqueo puede convertirse en **warning** cuando la llamada es un paso de la tarea que asignaste y no va más allá: Jev suaviza su propio deny a una advertencia, y esa advertencia — nombrando lo que realmente está mal en la llamada — reemplaza el bloqueo de la política.
-- Jev también puede advertir o denegar por cuenta propia, ante daños que ninguna expresión regular describe.
-- Si Jev no puede responder (timeout, límite de tasa, error del servidor, sin créditos, una versión de modelo inesperada), esa llamada recibe el resultado de la expresión regular, exactamente igual que sin Jev.
-- Jev nunca hace una llamada más permisiva que tus políticas por sí solas, a menos que haya leído la llamada completa y se le haya preguntado sobre la preocupación exacta. Cualquier cosa menos — una llamada demasiado grande para enviar completa, una inyección sospechada — retira las autorizaciones y mantiene todos los denys.
+- El deny de una política **estricta** es definitivo. Jev no puede levantarlo. Toda política es estricta a menos que esté marcada explícitamente como revisable y nombre las verificaciones de Jev que la cubren; por tanto, una política personalizada, de paquete o de Cloud que no indique nada es estricta, y la protección propia siempre activa es siempre estricta.
+- El deny de una política **revisable** puede levantarse, pero solo cuando se consultó a Jev exactamente sobre la preocupación que esa política cubre y respondió "nada aquí" o "el usuario lo pidió". Una verificación que confirma que la preocupación es real, cuando el usuario no solicitó la llamada, mantiene el deny — incluso cuando su propio veredicto es solo una advertencia, porque antes de una llamada de herramienta una advertencia no detiene al agente. Y cuando esa verificación es de las que pueden denegar (exposición de secretos, exfiltración de credenciales, eliminación destructiva…), nada se levanta en esa llamada.
+- Un bloqueo puede convertirse en **advertencia** cuando la llamada es un paso de la tarea que encargaste y no va más allá: Jev suaviza su propio deny a una advertencia, y esa advertencia — que nombra exactamente qué está mal en la llamada — reemplaza el bloqueo de la política.
+- Jev también puede advertir o denegar por su cuenta, ante daños que ninguna expresión regular describe.
+- Si Jev no puede responder (timeout, límite de tasa, error del servidor, sin créditos, versión de modelo inesperada), esa llamada obtiene el resultado de la expresión regular, exactamente como si no hubiera Jev.
+- Jev nunca hace una llamada más permisiva que tus políticas por sí solas, a menos que haya leído la llamada completa y se le haya consultado sobre la preocupación exacta. Cualquier cosa menos — una llamada demasiado grande para enviar completa, una inyección sospechosa — retira los permisos y mantiene todos los denys.
 
 <Note>
-Sin una configuración de Jev nada cambia: los hooks ejecutan las políticas de expresiones regulares exactamente como siempre. La configuración es el único mecanismo de opt-in.
+Sin una configuración de Jev nada cambia: los hooks ejecutan las políticas de expresiones regulares exactamente como siempre. La configuración es el único opt-in.
 </Note>
 
 <Tip>
-¿Usas FailproofAI Cloud? No necesitas una clave propia: una máquina conectada con una clave que incluya `jev:evaluate` puede usar Jev con el plan de tu organización. Consulta [Jev a través de FailproofAI Cloud](/es/reference/jev-cloud).
+¿Usas FailproofAI Cloud? No necesitas una clave propia: una máquina conectada con una clave que incluya `jev:evaluate` puede usar Jev en el plan de tu organización. Consulta [Jev a través de FailproofAI Cloud](/es/reference/jev-cloud).
 </Tip>
 
 ## Antes de empezar
 
-Instala **failproofai 1.0.8-beta.0 o posterior** y conecta sus hooks a un [harness compatible](/es/reference/harnesses) en la máquina donde corre tu agente. Sigue el [quickstart](/es/start/quickstart) si es una máquina nueva, o [configura la aplicación local](/es/start/setup#enforce-locally) si no usas Cloud. Verifica la CLI instalada con `failproofai --version`.
+Instala **failproofai 1.0.8-beta.0 o posterior** y conecta sus hooks a un [harness compatible](/es/reference/harnesses) en la máquina donde corre tu agente. Sigue la [guía de inicio rápido](/es/start/quickstart) si es una máquina nueva, o [configura la aplicación local](/es/start/setup#enforce-locally) si no usas Cloud. Verifica la CLI instalada con `failproofai --version`.
 
-Obtén una clave de API de alguno de los proveedores siguientes, o ten listo un endpoint compatible y su clave. Jev revisa las llamadas de herramienta nombradas en la puerta `PreToolUse` o `PermissionRequest`. Puede emitir su propio veredicto, pero para anular un deny de política existente también se requiere una política instalada marcada como [reviewable](/es/policies/authority). Los denys de políticas hard permanecen definitivos.
+Obtén una clave de API de alguno de los proveedores que se indican a continuación, o ten preparado un endpoint compatible con su clave. Jev revisa las llamadas de herramienta con nombre en el punto `PreToolUse` o `PermissionRequest`. Puede emitir su propio veredicto, pero para levantar un deny de una política existente también se requiere una política instalada marcada como [revisable](/es/policies/authority). Los denys de políticas estrictas permanecen definitivos.
 
 ## Elige un proveedor
 
@@ -36,18 +36,18 @@ Jev es accesible a través de cinco rutas. Trae una clave para cualquiera de ell
 | Proveedor | `--provider` | Endpoint | Modelo por defecto | Notas |
 | --- | --- | --- | --- | --- |
 | TypeSafe | `typesafe` | `api.typesafe.ai/v1/systemone` | `jev-1.13.0` | Versión exacta fijada. |
-| OpenRouter | `openrouter` | `openrouter.ai/api/v1/systemone` | `typesafe/jev-1.13` | Las solicitudes se enrutan solo a endpoints con retención cero de datos, sin fallback a otro proveedor. Reporta una versión con fecha como `typesafe/jev-1.13-20260917`. |
-| Vercel AI Gateway | `vercel` | `ai-gateway.vercel.sh/typesafe/v1/systemone` | `typesafe-ai/jev` | Nombra a Jev solo por alias, por lo que la versión que responde se registra como no verificada. |
-| Cloudflare Workers AI | `cloudflare` | `api.cloudflare.com/client/v4/accounts/<id>/ai/run` | `typesafe/jev` | Requiere `--account-id`. Se midieron aproximadamente seis llamadas por segundo por clave antes de recibir HTTP 429. |
-| Endpoint propio | `custom` | `<base-url>/systemone` | `jev-1.13.0` | Cualquier endpoint que acepte el cuerpo de solicitud de TypeSafe e informe qué modelo respondió. Solo `https`; se acepta `http` simple a un host de loopback (`localhost`, `127.0.0.1`, `::1`) para pruebas locales. |
+| OpenRouter | `openrouter` | `openrouter.ai/api/v1/systemone` | `typesafe/jev-1.13` | Las solicitudes se enrutan solo a endpoints sin retención de datos, sin fallback a otro proveedor. Reporta una versión con fecha como `typesafe/jev-1.13-20260917`. |
+| Vercel AI Gateway | `vercel` | `ai-gateway.vercel.sh/typesafe/v1/systemone` | `typesafe-ai/jev` | Nombra a Jev solo por un alias, por lo que la versión que responde se registra como no verificada. |
+| Cloudflare Workers AI | `cloudflare` | `api.cloudflare.com/client/v4/accounts/<id>/ai/run` | `typesafe/jev` | Requiere `--account-id`. Se midieron unas seis llamadas por segundo por clave antes de recibir HTTP 429. |
+| Endpoint propio | `custom` | `<base-url>/systemone` | `jev-1.13.0` | Cualquier endpoint que acepte el cuerpo de solicitud de TypeSafe e informe qué modelo respondió. Solo `https`; se acepta `http` sin cifrado a un host loopback (`localhost`, `127.0.0.1`, `::1`) para pruebas locales. |
 
 <Warning>
-Con la función bring-your-own-key propia de Vercel, una solicitud fallida se reintenta silenciosamente con las credenciales de Vercel. Si necesitas que todas las llamadas se facturen y las vea únicamente tu cuenta de TypeSafe, usa TypeSafe directamente.
+Con la función bring-your-own-key propia de Vercel, una solicitud fallida se reintenta silenciosamente con las credenciales de Vercel. Si necesitas que todas las llamadas se facturen a, y sean vistas únicamente por, tu propia cuenta de TypeSafe, usa TypeSafe directamente.
 </Warning>
 
 ## Configuración
 
-Un comando, el endpoint y la clave. Empieza en modo `observe` para poder inspeccionar los veredictos de Jev mientras las políticas existentes siguen decidiendo las llamadas:
+Un comando, el endpoint y la clave. Comienza en modo `observe` para poder inspeccionar los veredictos de Jev mientras las políticas existentes siguen decidiendo las llamadas:
 
 ```bash
 failproofai jev --url https://api.typesafe.ai/v1 --mode observe --key-stdin < ~/typesafe.key
@@ -55,9 +55,9 @@ failproofai jev --url https://api.typesafe.ai/v1 --mode observe --key-stdin < ~/
 
 ### La URL determina el proveedor
 
-No tienes que nombrar el proveedor: el **host** de la URL indica cuál es.
+No es necesario nombrar el proveedor: el **host** de la URL indica cuál es.
 
-| Host de la URL | Proveedor | También necesita |
+| Host de la URL | Proveedor | También requiere |
 | --- | --- | --- |
 | `api.typesafe.ai` | `typesafe` | — |
 | `openrouter.ai` | `openrouter` | — |
@@ -65,17 +65,17 @@ No tienes que nombrar el proveedor: el **host** de la URL indica cuál es.
 | `api.cloudflare.com` | `cloudflare` | `--account-id <32-hex-account-id>` |
 | cualquier otro host | `custom` | — la URL que proporcionaste es la URL base |
 
-De esto se derivan tres consecuencias:
+De ello se derivan tres consecuencias:
 
-- **Una URL que coincide con la API propia del proveedor no escribe ninguna sobreescritura.** `--url https://api.typesafe.ai/v1` produce exactamente la misma configuración que `--provider typesafe`. Proporciona una ruta o host diferente en un proveedor conocido y se almacenará como la URL base, como lo haría `--base-url`.
-- **`--provider` sigue sobreescribiendo la inferencia**, que es cómo se accede a un proxy que habla la API de un proveedor desde un host propio: `--url https://jev-proxy.internal/v1 --provider typesafe`.
-- **Un `--provider` que contradice el host se rechaza**, sin intentar adivinar. `--provider openrouter --url https://api.typesafe.ai/v1` no escribe nada y explica por qué: las dos especificaciones no coinciden en adónde se enviará tu clave. El mismo par se rechaza desde `jev setup --base-url` y desde la configuración de Jev en el panel de control. (`--provider custom` no es una contradicción — significa "trata esta URL como tal" — excepto en el host de Cloudflare, cuyo endpoint por cuenta no puede alcanzarse con una ruta custom.)
+- **Una URL que es la propia API del proveedor no escribe ninguna anulación.** `--url https://api.typesafe.ai/v1` produce exactamente la misma configuración que `--provider typesafe`. Si proporcionas una ruta o host diferente en un proveedor conocido, se almacena como la URL base, igual que haría `--base-url`.
+- **`--provider` sigue anulando la inferencia**, que es la forma de acceder a un proxy que habla la API de un proveedor desde un host propio: `--url https://jev-proxy.internal/v1 --provider typesafe`.
+- **Un `--provider` que contradice el host es rechazado**, sin intentar adivinar. `--provider openrouter --url https://api.typesafe.ai/v1` no escribe nada e indica el motivo: las dos especificaciones no coinciden sobre adónde se enviará tu clave. El mismo par es rechazado desde `jev setup --base-url` y desde la configuración Jev del panel. (`--provider custom` no es una contradicción — significa "trata esta URL tal cual" — excepto en el host de Cloudflare, cuyo endpoint por cuenta no puede alcanzarse con una ruta personalizada.)
 
-`--url` se valida exactamente igual que `baseUrl` en el archivo de configuración, y se rechaza con los mismos mensajes: `https`, o `http` simple a un host de loopback (`localhost`, `127.0.0.1`, `::1`) en cualquier modo. Riesgo: nada autentica un servidor de loopback, por lo que mientras esté caído otro proceso local podría tomar su puerto y responder; usa `https` fuera de pruebas locales.
+`--url` se valida exactamente igual que `baseUrl` en el archivo de configuración, y se rechaza con los mismos mensajes: `https`, o `http` sin cifrado a un host loopback (`localhost`, `127.0.0.1`, `::1`) en cualquier modo. Riesgo: nada autentica un servidor loopback, por lo que mientras esté caído otro proceso local podría ocupar su puerto y responder; usa `https` fuera de pruebas locales.
 
 ### La clave
 
-Pásala con `--key-stdin`, o ejecuta el comando en un terminal sin esa opción y pégala en el prompt enmascarado. De cualquier forma va directamente al archivo de configuración y nunca se muestra de vuelta.
+Pásala con `--key-stdin`, o ejecuta el comando en un terminal sin ese flag y pega la clave en el prompt enmascarado. De cualquier forma va directamente al archivo de configuración y nunca se muestra de vuelta.
 
 <Tabs>
   <Tab title="TypeSafe">
@@ -107,18 +107,18 @@ Pásala con `--key-stdin`, o ejecuta el comando en un terminal sin esa opción y
   </Tab>
 </Tabs>
 
-`failproofai jev setup` acepta los mismos flags y es la forma extendida de todo esto: `setup --provider <kind>` para cuando prefieras nombrar el proveedor en lugar de la URL.
+`failproofai jev setup` acepta los mismos flags y es la forma larga de todo esto: `setup --provider <kind>` para cuando prefieras nombrar el proveedor en lugar de la URL.
 
 ### `--token` y su coste
 
-`--token <token>` pone la clave en la línea de comandos, que es la forma más rápida de configurar una máquina y la única manera de que la clave quede en algún lugar distinto al archivo de configuración:
+`--token <token>` pone la clave en la línea de comandos, que es la forma más rápida de configurar una máquina y el único método que deja la clave en otro lugar que no sea el archivo de configuración:
 
 ```bash
 failproofai jev --url https://openrouter.ai/api/v1 --token <token>
 ```
 
 <Warning>
-Un argumento de línea de comandos queda en el historial de tu shell, y mientras el comando se ejecuta está en la lista de procesos — legible desde `/proc` por cualquier cosa que corra con tu usuario. `setup` lo advierte cada vez que se usa `--token`. Prefiere `--key-stdin` en una máquina compartida, en una sesión grabada, o en cualquier lugar donde el historial se sincronice; rota una clave que hayas pasado de esta forma si es importante.
+Un argumento de línea de comandos queda en el historial de tu shell después de ejecutarlo, y mientras el comando corre está en la lista de procesos — legible desde `/proc` por cualquier cosa que corra con tu usuario. `setup` lo avisa cada vez que se usa `--token`. Prefiere `--key-stdin` en una máquina compartida, en una sesión grabada o en cualquier lugar donde el historial se sincronice; rota una clave que hayas pasado así si es importante.
 </Warning>
 
 `--token`, `--key-stdin` y `--key-from-env` son mutuamente excluyentes: usa solo uno.
@@ -138,26 +138,26 @@ failproofai jev test
   latency       523 ms — within the 3000 ms timeout
 ```
 
-`jev test` sale con código 1, y lo indica en su título, cuando la respuesta llega después del timeout (cada hook habría recurrido a las expresiones regulares como `timeout`) o responde incorrectamente su pregunta de verificación.
+`jev test` sale con código 1, y lo indica en su título, cuando la respuesta llega después del timeout (cada hook volvería al regex como `timeout`) o responde incorrectamente a su pregunta de verificación.
 
 Los hooks leen la configuración en cada llamada de herramienta, por lo que se aplica desde la siguiente. No hay nada que reiniciar, con o sin el daemon.
 
-## Comprueba qué está haciendo
+## Verifica su funcionamiento
 
 ```bash
 failproofai jev status
 failproofai jev status --json
 ```
 
-`status` muestra el proveedor, endpoint, modelo, modo, el archivo de configuración y sus permisos, y nunca la clave. A continuación resume la actividad reciente: cuántas llamadas evaluó Jev, con qué frecuencia recurrió a las expresiones regulares y por qué, su latencia, y qué políticas reviewable anuló.
+`status` muestra el proveedor, endpoint, modelo, modo, el archivo de configuración y sus permisos, y nunca la clave. A continuación resume la actividad reciente: cuántas llamadas evaluó Jev, con qué frecuencia recurrió al regex y por qué, su latencia y qué políticas revisables levantó.
 
 ## Verifica una llamada real
 
-Inicia una nueva sesión en el agente con hooks. Pídele que use su herramienta de lectura de archivos en `README.md` y que reporte el título. Confirma que la sesión contiene esa llamada de herramienta, luego ejecuta `failproofai jev status` de nuevo: el contador de llamadas evaluadas recientes debería aumentar. Abre **Policies → Activity** en el [panel de control local](/es/reference/local-dashboard#review-policy-activity) para inspeccionar el veredicto de Jev y el modo de esa llamada. En modo observe, el resultado de la política sigue decidiendo la llamada. Una anulación aparece solo si una política reviewable coincidió y Jev despejó todas las verificaciones nombradas; una lectura ordinaria puede no tener ninguna política que anular.
+Inicia una nueva sesión en el agente con hooks. Pídele que use su herramienta de lectura de archivos sobre `README.md` e informe el título. Confirma que la sesión contiene esa llamada de herramienta, luego ejecuta `failproofai jev status` de nuevo: el conteo de llamadas evaluadas recientes debería aumentar. Abre **Policies → Activity** en el [panel local](/es/reference/local-dashboard#review-policy-activity) para inspeccionar el veredicto de Jev y el modo de la llamada. En modo observe, el resultado de la política sigue decidiendo la llamada. Un levantamiento aparece solo si una política revisable coincidió y Jev despejó todas las verificaciones nombradas; una lectura ordinaria puede no tener ninguna política que levantar.
 
 ## Modo observe
 
-`enforce` es el valor por defecto. Para observar a Jev sin que cambie ninguna decisión, cambia a `observe`: Jev sigue siendo consultado y sus veredictos se registran, pero lo que se aplica es el resultado de las expresiones regulares.
+`enforce` es el modo por defecto. Para observar a Jev sin dejar que cambie ninguna decisión, cambia a `observe`: Jev sigue siendo consultado y sus veredictos se registran, pero el resultado de la expresión regular es lo que se aplica.
 
 ```bash
 failproofai jev setup --mode observe
@@ -165,13 +165,13 @@ failproofai jev setup --mode enforce
 failproofai jev setup --mode off
 ```
 
-`off` mantiene la configuración — el endpoint y la clave — y deja de consultar a Jev: los hooks ejecutan las políticas de expresiones regulares exactamente como sin configuración, y `failproofai jev status` muestra "off (switched off)". Vuelve con `--mode observe` o `--mode enforce`.
+`off` mantiene la configuración — el endpoint y la clave — y deja de consultar a Jev: los hooks ejecutan las políticas de expresiones regulares exactamente como sin configuración, y `failproofai jev status` indica "off (switched off)". Vuelve atrás con `--mode observe` o `--mode enforce`.
 
-Volver a ejecutar `setup` para el mismo proveedor conserva la clave almacenada, por lo que cambiar de modo es solo un flag. Cambiar de proveedor empieza desde cero y solicita la clave de ese proveedor. Lo mismo ocurre con un `--base-url` que mueve las solicitudes a un host diferente: una clave almacenada solo se envía al host para el que fue proporcionada, o a la API propia de su proveedor.
+Volver a ejecutar `setup` para el mismo proveedor conserva la clave almacenada, por lo que cambiar de modo es un solo flag. Cambiar de proveedor empieza de cero y pide la clave de ese proveedor. Lo mismo ocurre con un `--base-url` que mueve las solicitudes a un host diferente: una clave almacenada solo se envía al host para el que fue proporcionada, o a la propia API de su proveedor.
 
 ## El archivo de configuración
 
-Todo reside en un único archivo, `~/.failproofai/jev.json`, escrito por `setup`:
+Todo se encuentra en un solo archivo, `~/.failproofai/jev.json`, escrito por `setup`:
 
 ```json
 {
@@ -187,65 +187,65 @@ Todo reside en un único archivo, `~/.failproofai/jev.json`, escrito por `setup`
 | --- | --- |
 | `provider` | `typesafe`, `openrouter`, `vercel`, `cloudflare` o `custom` — o `failproofai`, cuya clave proviene de la conexión con FailproofAI Cloud en lugar de este archivo (ver [Jev a través de FailproofAI Cloud](/es/reference/jev-cloud)). |
 | `apiKey` | Se envía como `Authorization: Bearer <key>`. |
-| `baseUrl` | Requerido para `custom`; de lo contrario reemplaza la base de la API del proveedor. Debe ser `https`. El `http` simple a `localhost` solo se acepta con `mode: observe`: nada autentica un puerto local, por lo que mientras tu proxy esté caído cualquier proceso en la máquina, incluido el agente que se está evaluando, podría responder en su lugar. |
-| `accountId` | Solo para Cloudflare: 32 caracteres hexadecimales en minúsculas. |
-| `model` | Reemplaza el ID de modelo por defecto del proveedor. Un ID con versión debe nombrar Jev 1.13. Un valor con forma de clave de API se rechaza (y no se repite), por lo que una clave pegada en `--model` nunca se almacena ni se envía como modelo. |
-| `timeoutMs` | Tiempo que una llamada de herramienta espera a Jev antes de usar el resultado de las expresiones regulares. 100–10000, por defecto 3000. |
-| `mode` | `enforce` (por defecto), `observe`, u `off` (mantiene la configuración, no ejecuta Jev). |
+| `baseUrl` | Obligatorio para `custom`; reemplaza la base de la API del proveedor en los demás casos. Debe ser `https`. `http` sin cifrado a `localhost` solo se acepta con `mode: observe`: nada autentica un puerto local, por lo que mientras tu proxy esté caído cualquier proceso en la máquina, incluido el agente que se está evaluando, podría responder en su lugar. |
+| `accountId` | Solo Cloudflare: 32 caracteres hexadecimales en minúsculas. |
+| `model` | Reemplaza el ID de modelo por defecto del proveedor. Un ID con versión debe nombrar Jev 1.13. Un valor con forma de clave de API es rechazado (y no se repite), por lo que una clave pegada en `--model` nunca se almacena ni se envía como modelo. |
+| `timeoutMs` | Tiempo que espera una llamada de herramienta la respuesta de Jev antes de usar el resultado de la expresión regular. De 100 a 10000, por defecto 3000. |
+| `mode` | `enforce` (por defecto), `observe` u `off` (conservar la configuración, no ejecutar Jev). |
 
 Tres reglas lo protegen:
 
-- **Solo para el propietario.** Se escribe con permisos `0600`. Una copia que cualquier otro usuario o grupo pueda leer o escribir se **rechaza**, y los hooks recurren a las expresiones regulares hasta que ejecutes `chmod 600 ~/.failproofai/jev.json` o `setup` de nuevo. El directorio también se verifica: `~/.failproofai` no debe ser **escribible** por nadie más, porque quien pueda escribir ahí puede reemplazar el archivo independientemente de sus propios permisos. `setup` quita esos bits de escritura si los encuentra. `failproofai jev status` indica cuando se ha rechazado una configuración y muestra el endpoint que nombra el archivo: alguien más podría haberlo modificado, así que verifica que sea tuyo antes de hacer `chmod`. Volver a ejecutar `setup` en dicho archivo solo lleva su clave almacenada a la API propia del proveedor; cualquier otro endpoint que nombre necesita la clave de nuevo (`--key-stdin`), o `--base-url default` para enviar las solicitudes de vuelta al proveedor.
-- **Solo global.** Un repositorio no puede activar Jev, apuntarlo a otro endpoint ni elegir su modelo: un `.failproofai/jev.json` dentro de un proyecto se ignora, y el proveedor, URL, modelo e ID de cuenta se leen únicamente de ese archivo — nunca del entorno, que la configuración del agente de un repositorio puede establecer. (`FAILPROOFAI_HOME` no es una forma de evitarlo: mueve todo el directorio de failproofai, incluyendo tus políticas, en lugar de redirigir Jev por sí solo.)
-- **Solo la clave puede venir del entorno.** Si el archivo no tiene `apiKey`, `FAILPROOFAI_JEV_API_KEY` la proporciona para esa sesión (`setup --key-from-env` escribe dicho archivo). Nunca reemplaza una clave que el archivo ya tenga, y no puede activar Jev sin el archivo. Cuando la variable no está definida, Jev simplemente está desactivado para ese shell: `failproofai jev status` lo indica, sale con código 0 y deja la configuración intacta (`status --json` reporta `"status": "key-missing"` con `"reason": "no-env-key"`). El daemon `failproofaid` no ve el entorno de tu shell, así que en una máquina configurada con `failproofai config`, mantén la clave en el archivo.
+- **Solo el propietario.** Se escribe con permisos `0600`. Una copia que cualquier otro usuario o grupo pueda leer o escribir es **rechazada**, y los hooks vuelven al regex hasta que ejecutes `chmod 600 ~/.failproofai/jev.json` o `setup` de nuevo. El directorio también se verifica: `~/.failproofai` no debe ser **escribible** por nadie más, porque quien pueda escribir ahí puede reemplazar el archivo independientemente de sus propios permisos. `setup` elimina esos bits de escritura si los encuentra. `failproofai jev status` indica cuándo se ha rechazado una configuración y muestra el endpoint que nombra el archivo: alguien más podría haberlo cambiado, así que verifica que es tuyo antes de hacer `chmod`. Volver a ejecutar `setup` en ese archivo solo lleva la clave almacenada a la propia API del proveedor; cualquier otro endpoint que nombre necesita la clave de nuevo (`--key-stdin`), o `--base-url default` para enviar las solicitudes de vuelta al proveedor.
+- **Solo global.** Un repositorio no puede activar Jev, apuntarlo a otro endpoint o elegir su modelo: un `.failproofai/jev.json` dentro de un proyecto es ignorado, y el proveedor, URL, modelo e ID de cuenta se leen solo desde ese archivo — nunca del entorno, que la configuración del agente de un repositorio puede establecer. (`FAILPROOFAI_HOME` no es una forma de eludirlo: mueve todo el directorio de failproofai, incluidas tus políticas, en lugar de redirigir Jev por sí solo.)
+- **Solo la clave puede venir del entorno.** Si el archivo no tiene `apiKey`, `FAILPROOFAI_JEV_API_KEY` la proporciona para esa sesión (`setup --key-from-env` escribe ese tipo de archivo). Nunca reemplaza una clave que el archivo ya tenga, y no puede activar Jev sin el archivo. Cuando la variable no está establecida, Jev simplemente está desactivado para ese shell: `failproofai jev status` lo indica, sale con código 0 y no toca la configuración (`status --json` reporta `"status": "key-missing"` con `"reason": "no-env-key"`). El daemon `failproofaid` no ve el entorno de tu shell, por lo que en una máquina configurada con `failproofai config`, mantén la clave en el archivo.
 
 ## Qué versión de Jev responde
 
-Los umbrales de decisión de Failproof AI se calibraron con Jev 1.13, por lo que una respuesta se usa solo cuando proviene de esa familia: `jev-1.13.x`, o `typesafe/jev-1.13-<date>` de OpenRouter. Cuando un proveedor nombra a Jev solo por alias y no reporta versión (Vercel, y Cloudflare cuando no lo indica), la respuesta se usa y se registra como no verificada. Un endpoint `custom` debe reportar el modelo que respondió; la única excepción es un nombre `--model` sin versión que hayas configurado para él, que al repetirse se registra como no verificado de la misma forma. Una respuesta que reporte cualquier otra versión, o una respuesta `custom` que no reporte ninguna, no se usa: esa llamada recurre a las expresiones regulares con el motivo `model-mismatch`.
+Los umbrales de decisión de Failproof AI fueron calibrados con Jev 1.13, por lo que una respuesta solo se usa cuando proviene de esa familia: `jev-1.13.x`, o el `typesafe/jev-1.13-<fecha>` de OpenRouter. Cuando un proveedor nombra a Jev solo por un alias y no reporta versión (Vercel, y Cloudflare cuando no lo indica), la respuesta se usa y se registra como no verificada. Un endpoint `custom` debe reportar el modelo que respondió; la única excepción es un nombre `--model` sin versión que hayas configurado para él, que, devuelto en la respuesta, se registra como no verificado de la misma forma. Una respuesta que reporta cualquier otra versión, o una respuesta `custom` que no indica ninguna, no se usa: esa llamada vuelve al regex con el motivo `model-mismatch`.
 
 ## Cuando Jev no puede responder
 
-Cada uno de estos casos recurre al resultado de las expresiones regulares para esa llamada y se registra con su motivo, que `failproofai jev status` totaliza:
+Cada uno de estos casos recurre al resultado del regex para esa llamada y se registra con su motivo, que `failproofai jev status` totaliza:
 
 | Motivo | Causa |
 | --- | --- |
 | `timeout` | Sin respuesta dentro de `timeoutMs`. |
 | `http-429` | El proveedor limitó la tasa de la clave. |
-| `rate-limited` | El limitador propio de Failproof AI retuvo la llamada antes de enviarla: 5 solicitudes por segundo, en ráfagas de hasta 5, y ninguna por un momento después de que el proveedor responda `429`. No es el proveedor. |
-| `http-500`, `http-502`, `http-503`, … | Un error de servidor en el proveedor. El estado exacto se registra. |
+| `rate-limited` | El limitador propio de Failproof AI retuvo la llamada antes de enviarla: 5 solicitudes por segundo en ráfagas de hasta 5, y ninguna por un momento después de que el proveedor responda `429`. No es el proveedor. |
+| `http-500`, `http-502`, `http-503`, … | Un error del servidor en el proveedor. El estado exacto queda registrado. |
 | `out-of-credits` | HTTP 402: la cuenta del proveedor no tiene créditos. |
-| `provider-refused` | HTTP 402 de Cloudflare que dice "Model execution failed (Payment error)": el proveedor se negó a ejecutar el modelo en esta solicitud. Normalmente no es de facturación, por lo que recargar créditos no lo resolverá. |
+| `provider-refused` | HTTP 402 de Cloudflare con el mensaje "Model execution failed (Payment error)": el proveedor rechazó ejecutar el modelo en esta solicitud. Generalmente no es un problema de facturación, por lo que recargar créditos no lo resolverá. |
 | `http-401`, `http-403` | La clave fue rechazada. |
-| `http-404` | Nada sirve en `<base>/systemone`, por lo que la URL base es incorrecta — se añade `/systemone` a ella, y cada proveedor la sirve en su raíz de versión. `failproofai jev models` muestra lo que el endpoint sí sirve. |
+| `http-404` | No hay nada en `<base>/systemone`, por lo que la URL base es incorrecta — `/systemone` se añade a ella, y todos los proveedores lo sirven en su raíz de versión. `failproofai jev models` muestra qué sirve el endpoint. |
 | `network` | No se pudo alcanzar el endpoint. |
 | `http-301`, `http-302`, `http-307`, `http-308` | El endpoint respondió con una redirección. Las redirecciones nunca se siguen, por lo que la respuesta siempre proviene de la URL en tu configuración; establece `--base-url` con la URL final. |
 | `malformed` | El endpoint respondió, pero no con una respuesta de Jev — un cuerpo que no es JSON, o uno sin respuestas en él. |
 | `cloudflare-error`, `cloudflare-incomplete` | El envelope de Cloudflare reportó un fallo, o un trabajo que no había terminado. |
-| `model-mismatch` | Respondió una versión de Jev distinta a 1.13, o un endpoint `custom` no indicó qué modelo respondió. |
-| `request-cut` | **No es una interrupción.** Jev respondió; solo se le mostró parte de la llamada, por lo que su respuesta no anuló nada. Ver [Cuando Jev respondió pero no sobre la llamada completa](#when-jev-answered-but-not-on-the-whole-call). |
+| `model-mismatch` | Respondió una versión de Jev distinta a la 1.13, o un endpoint `custom` no indicó qué modelo respondió. |
+| `request-cut` | **No es una interrupción del servicio.** Jev respondió; solo se le mostró parte de la llamada, por lo que su respuesta no levantó nada. Ver [Cuando Jev respondió pero no sobre la llamada completa](#cuando-jev-respondió-pero-no-sobre-la-llamada-completa). |
 
-`failproofai jev status` también puede mostrar algunos motivos menos frecuentes, como `upstream-error` (la respuesta llevaba el error propio del proveedor) o `config`, y totaliza cualquier motivo que no pueda nombrar como `other`.
+`failproofai jev status` también puede mostrar algunos motivos más raros, como `upstream-error` (la respuesta llevaba el error propio del proveedor) o `config`, y totaliza cualquier motivo que no pueda nombrar como `other`.
 
-`request-cut` está en esta tabla porque `failproofai jev status` lo totaliza junto con los demás, y porque también deja todos los denys en pie. Es el único motivo aquí que no dice nada sobre tu proveedor: la solicitud llegó y Jev la respondió. A diferencia de todas las filas anteriores, esa respuesta sigue contando — el propio deny o warning de Jev se aplica además del resultado de las expresiones regulares en lugar de descartarse. Por lo tanto, una racha de ellos significa que las llamadas están llegando al evaluador demasiado grandes para enviarse completas, no que tu endpoint esté mal, y recargar créditos o cambiar la URL no reducirá ese número.
+`request-cut` está en esta tabla porque `failproofai jev status` lo totaliza junto con el resto, y porque también deja todos los denys en pie. Es el único motivo aquí que no dice nada sobre tu proveedor: la solicitud llegó y Jev la respondió. A diferencia de todas las filas anteriores, esa respuesta sigue contando — el deny o la advertencia propios de Jev se aplican sobre el resultado del regex en lugar de descartarse. Por tanto, una racha de ellos significa que las llamadas están llegando al evaluador demasiado grandes para enviar completas, no que tu endpoint esté mal, y recargar créditos o cambiar la URL no moverá ese número.
 
 ## Cuando Jev respondió pero no sobre la llamada completa
 
-Pueden ocurrir dos cosas más, y ninguna significa que Jev haya fallado en responder. Ambas tienen que ver con cuánto de la llamada, o de la conversación, cabía en una sola solicitud.
+Dos situaciones más pueden ocurrir, y ninguna implica que Jev no haya podido responder. Ambas tienen que ver con cuánto de la llamada, o de la conversación, cabe en una sola solicitud.
 
-**Parte de la llamada en sí no cabía.** Una llamada de herramienta se envía dentro de un presupuesto fijo, y una excesivamente grande — un `Write` muy grande, un cuerpo MCP enorme, un comando rellenado hasta el límite — se envía con lo que cupiera. Jev sigue respondiendo, y su respuesta sigue contando: su propio deny o warning se aplica con normalidad. Lo que no puede hacer es **anular** nada, porque un veredicto emitido sobre parte de una llamada no es un veredicto sobre la llamada completa. Por lo tanto, todos los denys de política permanecen, y la llamada se registra como fallback con el motivo `request-cut`, que `failproofai jev status` totaliza junto con los motivos anteriores. La regla que esto establece: hacer una llamada más grande puede costarle sus anulaciones, y nunca puede comprar una.
+**Parte de la propia llamada no cabía.** Una llamada de herramienta se envía dentro de un presupuesto fijo, y una demasiado grande — un `Write` muy extenso, un cuerpo MCP enorme, un comando relleno hasta el límite — se envía con lo que cabía. Jev sigue respondiendo, y su respuesta sigue contando: su propio deny o advertencia se aplica con normalidad. Lo que no puede hacer es **levantar** nada, porque un veredicto dado sobre parte de una llamada no es un veredicto sobre la llamada. Por eso todos los denys de las políticas se mantienen, y la llamada se registra como fallback con el motivo `request-cut`, que `failproofai jev status` totaliza junto con los motivos anteriores. La regla que esto te da: hacer una llamada más grande puede costarle sus levantamientos, y nunca puede comprar uno.
 
-**Un mensaje no cabía.** Un prompt largo que pegaste, el último mensaje del agente, o un prompt que el almacén propio de este evaluador ya había recortado. **Nada cambia**: la llamada se evalúa, anula y registra exactamente igual que cualquier otra, y no se cuenta como fallback. La longitud de lo que escribes nunca decide un veredicto, y un recorte no puede fabricar consentimiento: cuando un prompt llegó ya recortado, "no pediste esto" deja de ser una conclusión que pueda extraerse de él, en lugar de convertirse en una.
+**Un mensaje no cabía.** Un prompt largo que pegaste, el último mensaje del agente, o un prompt que el almacén propio de este evaluador ya había recortado. **Nada cambia**: la llamada se juzga, levanta y registra exactamente igual que cualquier otra, y no se cuenta como fallback. La longitud de lo que escribes nunca decide un veredicto, y un recorte no puede fabricar consentimiento: cuando un prompt llegó ya recortado, "tú no pediste esto" deja de ser una conclusión que puede extraerse de él, en lugar de convertirse en una.
 
-La línea entre los dos casos es quién escribió el texto. La llamada es del agente, y una regla que permitiera que su longitud redujera la gravedad sería una regla que el agente puede aprovechar; tu prompt es tuyo, y tratar su longitud como una señal solo castigaría pegar una especificación o un stack trace.
+La línea entre ambos casos es quién escribió el texto. La llamada es del agente, y una regla que permitiera que su longitud redujera la gravedad sería una regla que el agente puede aprovechar; tu prompt es tuyo, y tratar su longitud como una señal solo penalizaría pegar una especificación o un stack trace.
 
 ## Qué sale de la máquina
 
-Para cada llamada de herramienta que Jev evalúa, se envía una solicitud a tu proveedor, que incluye:
+Por cada llamada de herramienta que Jev evalúa, se envía una solicitud a tu proveedor con:
 
-- la propia llamada de herramienta, con secretos como claves de API, tokens bearer y asignaciones `KEY=` redactados;
-- los prompts recientes que escribiste, con el texto que el harness de tu agente añadió eliminado;
+- la propia llamada de herramienta, con secretos como claves de API, tokens bearer y asignaciones `KEY=` redactadas;
+- los prompts recientes que escribiste, sin el texto que el harness de tu agente añadió;
 - el último mensaje del agente antes de tu prompt más reciente, etiquetado como escrito por el agente;
-- hechos calculados localmente, como si una ruta está dentro del proyecto — el que tenía la sesión en su primera llamada revisada, [fijado para la sesión](/es/reference/jev-intent#the-project-root) — y la rama git actual.
+- hechos calculados localmente, como si una ruta está dentro del proyecto — el que estaba en la sesión en su primera llamada revisada, [fijado para la sesión](/es/reference/jev-intent#the-project-root) — y la rama git actual.
 
 Va únicamente al endpoint en tu configuración, bajo tu clave.
 
@@ -255,19 +255,19 @@ Va únicamente al endpoint en tu configuración, bajo tu clave.
 failproofai jev remove
 ```
 
-Esto elimina `~/.failproofai/jev.json`. Desde la siguiente llamada de herramienta, los hooks ejecutan las políticas de expresiones regulares exactamente como antes. Los almacenes por sesión en `~/.failproofai/state/semantic/` (prompts registrados en `sessions/`, raíces de proyecto en `roots/`) se dejan en su lugar y expiran por antigüedad. Para dejar de consultar a Jev pero conservar la configuración, usa `failproofai jev setup --mode off` en su lugar.
+Esto elimina `~/.failproofai/jev.json`. Desde la siguiente llamada de herramienta, los hooks ejecutan las políticas de expresiones regulares exactamente como antes. Los almacenes por sesión bajo `~/.failproofai/state/semantic/` (prompts registrados en `sessions/`, raíces de proyecto en `roots/`) se dejan en su lugar y caducan. Para dejar de consultar a Jev pero conservar la configuración, usa `failproofai jev setup --mode off` en su lugar.
 
 ## Referencia de comandos
 
 | Comando | Resultado |
 | --- | --- |
-| `failproofai jev --url <url> --key-stdin` | Configura todo en un comando; el proveedor se deduce del host de la URL |
-| `failproofai jev --url <url> --token <token>` | Igual, con la clave en la línea de comandos — tu historial y la lista de procesos la verán |
-| `failproofai jev setup --provider <kind> --key-stdin` | Escribe la configuración a partir de una clave pasada por stdin |
-| `failproofai jev setup --provider <kind>` | Igual, solicitando la clave en un prompt enmascarado |
-| `failproofai jev setup --key-from-env` | No almacena ninguna clave; lee `FAILPROOFAI_JEV_API_KEY` por sesión |
+| `failproofai jev --url <url> --key-stdin` | Configúralo en un comando; el proveedor se deduce del host de la URL |
+| `failproofai jev --url <url> --token <token>` | Lo mismo, con la clave en la línea de comandos — tu historial y la lista de procesos la verán |
+| `failproofai jev setup --provider <kind> --key-stdin` | Escribe la configuración desde una clave pasada por stdin |
+| `failproofai jev setup --provider <kind>` | Lo mismo, pidiendo la clave en un prompt enmascarado |
+| `failproofai jev setup --key-from-env` | No almacena clave; lee `FAILPROOFAI_JEV_API_KEY` por sesión |
 | `failproofai jev setup --mode observe` | Cambia el modo (`enforce`, `observe` u `off`), conservando la clave almacenada |
-| `failproofai jev setup --model <id>` / `--base-url <url>` | Sobreescribe el modelo o la base de la API; `default` borra la sobreescritura |
+| `failproofai jev setup --model <id>` / `--base-url <url>` | Anula el modelo o la base de la API; `default` elimina la anulación |
 | `failproofai jev setup --timeout-ms <n>` | Cambia el presupuesto por llamada |
 | `failproofai jev status [--json]` | Configuración, permisos y actividad reciente; nunca la clave |
 | `failproofai jev test [--json]` | Una solicitud en vivo: latencia y la versión que respondió |

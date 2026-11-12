@@ -8,13 +8,13 @@ OpenTelemetry를 사용하면 표준 OTLP/HTTP 프로토콜을 통해 에이전�
 
 ## 조직의 수집 기능 활성화
 
-조직 관리자가 **설정 → OpenTelemetry**를 열고 수집 기능을 켭니다. 에이전트 보고에 사용하는 것과 동일한 `events:add` 권한이 있는 Cloud API 키를 사용하세요.
+조직 관리자가 **Settings → OpenTelemetry**를 열고 수집을 켭니다. 에이전트 보고에 사용되는 것과 동일한 `events:add` 권한을 가진 Cloud API 키를 사용하세요.
 
-수집 기능이 꺼져 있으면 Cloud가 OTLP 내보내기를 거부하므로, `failproofai otel enable`을 실행해도 아무런 변화가 없으며 에이전트는 기존 방식대로 세션을 계속 전송합니다. `failproofai otel status`를 실행하여 조직 스위치 상태를 확인하고, 관리자에게 활성화를 요청하세요.
+수집이 꺼져 있으면 Cloud는 OTLP 내보내기를 거부하므로, `failproofai otel enable`을 실행해도 아무런 변경이 없으며 에이전트는 기존 방식으로 세션을 계속 전송합니다. `failproofai otel status`를 실행하여 조직 스위치 상태를 확인하고, 관리자에게 활성화를 요청하세요.
 
 ## 코딩 에이전트 연결
 
-`failproofai config`로 머신을 연결한 후 에이전트를 선택하세요:
+`failproofai config`로 머신을 연결한 후 에이전트를 선택합니다:
 
 ```bash
 failproofai otel enable claude
@@ -22,13 +22,13 @@ failproofai otel enable codex
 failproofai otel enable copilot
 ```
 
-설정 명령은 Claude Code, Codex, Copilot을 지원하며, 상황에 따라 Cloud 또는 로컬 인증 릴레이를 자동으로 선택합니다. Copilot은 로컬 릴레이를 자동으로 사용합니다. 릴레이를 사용하기 전에 FailproofAI 데몬을 먼저 시작하세요.
+설정 명령은 Claude Code, Codex, Copilot을 지원하며 상황에 따라 Cloud 또는 로컬 인증 릴레이를 선택합니다. Copilot은 자동으로 로컬 릴레이를 사용합니다. 릴레이를 사용하기 전에 FailproofAI 데몬을 먼저 시작하세요.
 
-FailproofAI가 이미 에이전트의 세션 트랜스크립트를 전송 중인 경우, 설정 명령이 해당 에이전트를 OTEL로 전환할지 묻습니다. 기본값은 아니오입니다. 수락하면 해당 에이전트의 트랜스크립트 업로드가 중단되지만, 정책 적용이나 다른 에이전트의 보고 방식은 변경되지 않습니다.
+FailproofAI가 이미 에이전트의 세션 트랜스크립트를 전송하고 있는 경우, 해당 에이전트를 OTEL로 전환할지 묻습니다. 기본값은 아니오입니다. 수락하면 해당 에이전트의 트랜스크립트 업로드가 중단되며, 정책 적용이나 다른 에이전트의 보고에는 영향을 미치지 않습니다.
 
 ## 애플리케이션 연결
 
-다음 환경 변수를 사용하여 애플리케이션의 OpenTelemetry 계측을 구성하세요:
+애플리케이션의 OpenTelemetry 계측에 다음 환경 변수를 사용하세요:
 
 ```bash
 export OTEL_EXPORTER_OTLP_ENDPOINT=https://app.befailproof.ai/otel
@@ -37,18 +37,18 @@ export OTEL_EXPORTER_OTLP_HEADERS='Authorization=Bearer%20<key>'
 export OTEL_SERVICE_NAME=my-agent
 ```
 
-엔드포인트는 Cloud의 OTLP 기본 경로인 `https://app.befailproof.ai/otel`이며, 내보내기 도구가 `/v1/traces`, `/v1/logs`, `/v1/metrics`를 자동으로 추가합니다. `OTEL_EXPORTER_OTLP_LOGS_ENDPOINT`와 같은 신호별 변수는 그대로 사용되므로, 예를 들어 `https://app.befailproof.ai/otel/v1/logs`처럼 전체 경로를 포함해야 합니다.
+엔드포인트는 Cloud의 OTLP 베이스인 `https://app.befailproof.ai/otel`이며, 내보내기 도구가 자체적으로 `/v1/traces`, `/v1/logs`, `/v1/metrics`를 뒤에 추가합니다. `OTEL_EXPORTER_OTLP_LOGS_ENDPOINT`와 같은 신호별 변수는 그대로 사용되므로 전체 경로(예: `https://app.befailproof.ai/otel/v1/logs`)를 포함해야 합니다.
 
-`<key>`를 실제 API 키로 교체하세요. 시크릿이 셸 히스토리, 화면 녹화, 커밋된 설정 파일에 포함되지 않도록 주의하세요. 이미 구성된 머신의 경우 `failproofai otel env --service my-agent`를 실행하면 기존 키가 포함된 블록을 출력합니다. 출력 결과에는 자격 증명이 포함됩니다.
+`<key>`를 API 키로 교체하세요. 시크릿이 셸 히스토리, 화면 녹화, 커밋된 설정 파일에 포함되지 않도록 주의하세요. 이미 설정된 머신의 경우 `failproofai otel env --service my-agent`를 실행하면 기존 키가 포함된 블록이 출력됩니다. 출력 결과에는 자격 증명이 포함되어 있습니다.
 
-Cloud는 트레이스, 로그, 메트릭에 대해 OTLP/HTTP 내보내기를 수락하며, protobuf 또는 JSON 형식과 gzip 압축 요청을 지원합니다. OTLP/gRPC는 지원하지 않습니다.
+Cloud는 트레이스, 로그, 메트릭에 대한 OTLP/HTTP 내보내기를 허용하며, protobuf 또는 JSON 형식(gzip 압축 요청 포함)을 지원합니다. OTLP/gRPC는 지원하지 않습니다.
 
-메트릭은 내보내기 도구 호환성을 위해 수신 확인되지만 저장되거나 표시되지는 않습니다. 지원되는 에이전트 트레이스와 코딩 에이전트 로그는 세션으로 변환되며, 에이전트가 내보내지 않은 필드는 비어 있습니다.
+메트릭은 내보내기 도구 호환성을 위해 수신 확인되지만 저장되거나 표시되지는 않습니다. 지원되는 에이전트 트레이스와 코딩 에이전트 로그는 세션으로 변환되며, 에이전트가 내보내지 않는 필드는 빠집니다.
 
 ## 프롬프트 텍스트 캡처
 
 <Warning>
-텍스트 캡처에는 프롬프트, 도구 인수 및 기타 민감한 콘텐츠가 포함될 수 있습니다. `failproofai otel enable`을 실행하면 캡처가 활성화됩니다. 프롬프트 및 도구 상세 정보 캡처를 비활성화하려면 `--no-content`를 추가하세요.
+텍스트 캡처에는 프롬프트, 도구 인수 및 기타 민감한 콘텐츠가 포함될 수 있습니다. `failproofai otel enable`을 실행하면 캡처가 켜집니다. 프롬프트 및 도구 세부 정보 캡처를 끄려면 `--no-content`를 추가하세요.
 </Warning>
 
 ```bash
@@ -56,7 +56,7 @@ failproofai otel enable claude --no-content
 failproofai otel enable codex --no-content
 ```
 
-수동으로 구성하는 에이전트의 경우, 해당 에이전트의 콘텐츠 캡처 설정을 사용하세요:
+에이전트를 수동으로 설정하는 경우, 해당 에이전트의 콘텐츠 캡처 설정을 직접 사용하세요:
 
 <Tabs>
   <Tab title="Claude Code">
@@ -70,7 +70,7 @@ failproofai otel enable codex --no-content
     export OTEL_LOG_TOOL_DETAILS=1
     ```
 
-    프롬프트와 도구 상세 정보 캡처를 비활성화하려면 두 콘텐츠 변수를 모두 `0`으로 설정하세요.
+    두 콘텐츠 변수를 모두 `0`으로 설정하면 프롬프트와 도구 세부 정보 캡처를 방지할 수 있습니다.
   </Tab>
   <Tab title="Codex">
     Codex의 사용자 설정에서 OTEL 설정을 사용하세요:
@@ -81,7 +81,7 @@ failproofai otel enable codex --no-content
     exporter = { otlp-http = { endpoint = "https://app.befailproof.ai/otel/v1/logs", protocol = "json", headers = { Authorization = "Bearer <key>" } } }
     ```
 
-    Codex 대화 콘텐츠는 로그에 저장됩니다. 내부 런타임 트레이스와 메트릭은 비활성화 상태로 유지하세요. Codex는 제공된 전체 엔드포인트를 사용합니다. 프롬프트를 제외하려면 `log_user_prompt`를 `false`로 설정하세요. 설정 명령은 명시적으로 `false`로 설정된 값을 보존합니다.
+    Codex 대화 콘텐츠는 로그에 있으며, 내부 런타임 트레이스와 메트릭은 비활성화 상태로 유지하세요. Codex는 제공한 전체 엔드포인트를 사용합니다. 프롬프트를 제외하려면 `log_user_prompt`를 `false`로 설정하세요. 설정 명령은 명시적으로 지정된 `false` 값을 유지합니다.
   </Tab>
   <Tab title="Gemini CLI">
     로컬 릴레이와 함께 Gemini의 텔레메트리 설정을 사용하세요:
@@ -99,7 +99,7 @@ failproofai otel enable codex --no-content
     }
     ```
 
-    Gemini CLI는 `failproofai otel enable`에서 지원되지 않습니다. 직접 인증된 콜렉터를 사용하여 수동으로 구성하세요. 프롬프트 캡처를 비활성화하려면 `logPrompts`를 `false`로 설정하세요.
+    Gemini CLI는 `failproofai otel enable`에서 지원되지 않습니다. 직접 인증된 컬렉터를 사용하여 수동으로 설정하세요. 프롬프트를 캡처하지 않으려면 `logPrompts`를 `false`로 설정하세요.
   </Tab>
   <Tab title="Copilot in VS Code">
     다음 VS Code 사용자 설정을 사용하세요:
@@ -124,7 +124,7 @@ failproofai otel status
 failproofai otel disable all
 ```
 
-Status 명령은 FailproofAI가 관리하는 설정과 다른 곳에서 구성한 텔레메트리를 구분하여 표시합니다. Disable 명령은 이전에 관리되던 설정과 에이전트의 이전 트랜스크립트 업로드 선택을 복원합니다.
+Status는 FailproofAI가 관리하는 설정과 다른 곳에서 직접 설정한 텔레메트리를 구분합니다. Disable을 실행하면 이전에 관리되던 설정과 에이전트의 이전 트랜스크립트 업로드 선택이 복원됩니다.
 
 <Card title="OpenTelemetry CLI" href="/ko/reference/otel" icon="terminal">
   명령 옵션, 로컬 릴레이 설정 및 문제 해결.

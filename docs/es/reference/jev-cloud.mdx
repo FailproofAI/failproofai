@@ -4,23 +4,23 @@ description: "Claves de máquina en la nube, estado de conexión, límites y com
 icon: "cloud"
 ---
 
-Esta es la referencia de la ruta Cloud para las [políticas Jev](/es/policies/jev). Jev, el clasificador de TypeSafe, evalúa cada llamada a herramienta en relación con lo que realmente solicitaste y responde junto a tus políticas, nunca en lugar de ellas. A través de **FailproofAI Cloud**, una máquina conectada usa Jev con la misma clave con la que ya se conecta: sin cuenta de TypeSafe, sin segunda clave, sin endpoint que configurar. Cada llamada se carga a la asignación del plan existente de tu organización.
+Esta es la referencia de la ruta Cloud para las [políticas Jev](/es/policies/jev). Jev, el clasificador de TypeSafe, evalúa cada llamada a herramienta en función de lo que realmente solicitaste y responde junto con tus políticas, nunca en lugar de ellas. A través de **FailproofAI Cloud**, una máquina conectada usa Jev con la misma clave con la que ya se conecta: sin cuenta de TypeSafe, sin segunda clave, sin endpoint que configurar. Cada llamada se carga al límite del plan existente de tu organización.
 
-Todo lo que hace Jev no cambia respecto a la [configuración con clave propia](/es/reference/jev-providers): las políticas estrictas siguen siendo definitivas, el rechazo de una política revisable solo se elimina cuando se consultó a Jev exactamente sobre esa preocupación, y cualquier fallo recurre al resultado de la expresión regular para esa llamada.
+Todo lo que hace Jev no cambia respecto a la [configuración con clave propia](/es/reference/jev-providers): las políticas estrictas siguen siendo definitivas, el rechazo de una política revisable solo se elimina cuando se consultó a Jev exactamente sobre esa preocupación, y cualquier fallo vuelve al resultado de la expresión regular para esa llamada.
 
 <Note>
-Requiere **failproofai 1.0.8-beta.0** o posterior. La versión 1.0.7 no tiene Jev, aunque se ordene por encima de las betas de 1.0.7. Sin una configuración de Jev nada cambia: los hooks ejecutan las políticas de expresiones regulares exactamente como siempre.
+Requiere **failproofai 1.0.8-beta.0** o posterior. La versión 1.0.7 no incluye Jev, aunque figure por encima de las betas 1.0.7 en la ordenación. Sin una configuración de Jev, nada cambia: los hooks ejecutan las políticas de expresión regular exactamente como siempre.
 </Note>
 
 ## Antes de empezar
 
-Instala Failproof AI en la máquina donde se ejecuta tu agente y adjunta sus hooks a un [harness compatible](/es/reference/harnesses). Si estás empezando desde cero, sigue la [guía de inicio rápido](/es/start/quickstart) hasta la instalación de hooks. Comprueba el CLI instalado con `failproofai --version`; actualízalo si es anterior a Jev. También necesitas acceso a la página **Administración → Claves** de tu organización para crear una clave de máquina.
+Instala Failproof AI en la máquina donde se ejecuta tu agente y vincula sus hooks a un [harness compatible](/es/reference/harnesses). Si empiezas desde cero, sigue la [guía de inicio rápido](/es/start/quickstart) hasta la instalación de hooks. Comprueba la CLI instalada con `failproofai --version`; actualízala si es anterior a Jev. También necesitas acceso a la página **Administration → Keys** de tu organización para crear una clave de máquina.
 
-Jev revisa las llamadas a herramientas nombradas en la puerta `PreToolUse` o `PermissionRequest`. No revisa todos los eventos de una sesión. Para ver cómo Jev elimina un rechazo de política, necesitas tener instalada una política marcada como [revisable](/es/policies/authority); todos los demás rechazos de política siguen siendo definitivos.
+Jev revisa llamadas a herramienta con nombre en la puerta `PreToolUse` o `PermissionRequest`. No revisa todos los eventos de una sesión. Para ver cómo Jev elimina un rechazo de política, necesitas una política instalada marcada como [revisable](/es/policies/authority); todos los demás rechazos de política siguen siendo definitivos.
 
 ## Activarlo
 
-1. **Crea una clave con Jev.** En el panel de FailproofAI Cloud, abre **Administración → Claves → Crear clave** y selecciona el preset de **máquina**. Concede los tres permisos que necesita una máquina: `events:add` (enviar actividad), `policies:pull` (recibir políticas) y `jev:evaluate` (Jev, cargado al plan de tu organización). Una clave no puede tener `jev:evaluate` sin los otros dos.
+1. **Crea una clave con Jev.** En el panel de FailproofAI Cloud, abre **Administration → Keys → Create key** y selecciona el preset **machine**. Otorga los tres permisos que necesita una máquina: `events:add` (enviar actividad), `policies:pull` (recibir políticas) y `jev:evaluate` (Jev, con cargo al plan de tu organización). Una clave no puede llevar `jev:evaluate` sin los otros dos.
 2. **Conecta la máquina** con esa clave. Lee su secreto de un solo uso en un prompt y ejecuta el comando de configuración completo:
 
    ```bash
@@ -28,11 +28,11 @@ Jev revisa las llamadas a herramientas nombradas en la puerta `PreToolUse` o `Pe
    failproofai config
    ```
 
-   `failproofai config` instala el daemon, adjunta hooks para los CLIs de agente que encuentra y conecta la máquina. La variable de entorno mantiene la clave fuera de los argumentos del comando y del historial de tu shell. Si tu harness se instaló después, [adjúntalo explícitamente](/es/start/quickstart).
+   `failproofai config` instala el daemon, vincula los hooks para las CLI de agente que encuentra y conecta la máquina. La variable de entorno mantiene la clave fuera de los argumentos del comando y del historial de tu shell. Si tu harness se instaló después, [vincúlalo explícitamente](/es/start/quickstart).
 
-   Si tu organización ejecuta su propio FailproofAI Cloud en lugar del alojado, añade su dirección: `--url https://<tu host del panel>` (o exporta `FAILPROOFAI_CLOUD_URL`). Sin esto, la clave se verifica contra el servicio alojado y la conexión falla. Si el certificado de ese host proviene de una CA privada, instala la CA en el almacén de confianza del sistema de la máquina (por ejemplo con `update-ca-certificates`), no solo en `NODE_EXTRA_CA_CERTS`: el daemon que envía eventos y obtiene políticas lee el almacén del sistema. Consulta [Solución de problemas](/es/reference/troubleshooting).
+   Si tu organización ejecuta su propio FailproofAI Cloud en lugar del servicio alojado, añade su dirección: `--url https://<tu host del panel>` (o exporta `FAILPROOFAI_CLOUD_URL`). Sin esto, la clave se verifica contra el servicio alojado y la conexión falla. Si el certificado de ese host proviene de una CA privada, instala la CA en el almacén de confianza del sistema de la máquina (por ejemplo con `update-ca-certificates`), no solo en `NODE_EXTRA_CA_CERTS`: el daemon que envía eventos y descarga políticas lee el almacén del sistema. Consulta [Solución de problemas](/es/reference/troubleshooting).
 
-Eso es todo. Al conectarse se almacena la clave y, cuando la máquina **no** tiene configuración Jev todavía, se escribe una para FailproofAI Cloud. Desde el primer despliegue de la máquina (en unos 30 s) FailproofAI Cloud establece el modo: `enforce` mientras haya alguna política Jev desplegada en ella, `off` cuando no haya ninguna (consulta [Quién establece el modo](#who-sets-the-mode)). La salida lo indica:
+Eso es todo. La conexión almacena la clave y, cuando la máquina **no** tiene configuración de Jev todavía, escribe una para FailproofAI Cloud. A partir del primer despliegue de la máquina (en unos 30 s), FailproofAI Cloud establece el modo: `enforce` mientras haya una política Jev desplegada en ella, `off` cuando no haya ninguna (consulta [Quién establece el modo](#who-sets-the-mode)). La salida lo indica:
 
 ```text
   Jev       configured through FailproofAI Cloud; waiting for FailproofAI Cloud's Jev mode, which arrives with this machine's first deployment (within ~30 s) and decides.
@@ -44,35 +44,35 @@ Las comprobaciones que FailproofAI Cloud despliega se ejecutan en Cloud. Para a�
 failproofai policies add FailproofAI/jev-policies
 ```
 
-**Con `--no-transcripts`, conectarse no activa Jev.** Jev envía cada llamada a herramienta comprobada y el prompt reciente a FailproofAI Cloud, lo cual es más de lo que pide una conexión de solo decisiones. La clave se almacena igualmente, y la salida indica que Jev está disponible y cómo activarlo:
+**Con `--no-transcripts`, la conexión no activa Jev.** Jev envía cada llamada a herramienta revisada y el prompt reciente a FailproofAI Cloud, lo que supone más datos de los que enviaría una conexión de solo decisiones. La clave se almacena igualmente, y la salida indica que Jev está disponible y cómo activarlo:
 
 ```bash
 failproofai jev setup --provider failproofai
 ```
 
-También desactiva Jev a través de FailproofAI Cloud. Se elimina un `jev.json` que ejecute Jev a través de FailproofAI Cloud (dejado por una conexión anterior con transcripts activados), siguiendo la misma regla que usa `config --disconnect`, y la salida indica que Jev vía FailproofAI Cloud permanece desactivado en esta máquina. Un `jev.json` para tu propio endpoint de Jev se deja tal como está, al igual que uno de FailproofAI Cloud que hayas desactivado (`--mode off`).
+También desactiva Jev a través de FailproofAI Cloud. Se elimina un `jev.json` que ejecute Jev a través de FailproofAI Cloud (dejado por una conexión anterior con transcripts activados), siguiendo la misma regla que usa `config --disconnect`, y la salida indica que Jev vía FailproofAI Cloud permanece desactivado en esta máquina. Un `jev.json` para tu propio endpoint de Jev se deja tal cual, y también uno de FailproofAI Cloud que hayas desactivado (`--mode off`).
 
 <Warning>
-Conectarse **nunca sobreescribe** un `~/.failproofai/jev.json` existente. Si ya usas tu propio endpoint de Jev, seguirá usándose, y la salida indica que el archivo se dejó tal como estaba configurado — y, cuando ese archivo deja Jev desactivado (rechazado o desactivado), lo indica junto con cómo solucionarlo. Para cambiar esa máquina a FailproofAI Cloud, ejecuta `failproofai jev setup --provider failproofai`.
+La conexión **nunca sobreescribe** un `~/.failproofai/jev.json` existente. Si ya usas tu propio endpoint de Jev, sigue usándose, y la salida indica que el archivo se dejó tal como estaba configurado — y, cuando ese archivo deja Jev desactivado (rechazado o desactivado manualmente), lo indica y explica cómo solucionarlo. Para cambiar esa máquina a FailproofAI Cloud, ejecuta `failproofai jev setup --provider failproofai`.
 </Warning>
 
 ## Quién establece el modo
 
-En una máquina conectada a FailproofAI Cloud, **FailproofAI Cloud establece el modo Jev**; nada en la máquina lo hace:
+En una máquina conectada a FailproofAI Cloud, **FailproofAI Cloud establece el modo de Jev**; nada en la máquina lo hace:
 
-- `enforce` mientras haya alguna política Jev (o regex + Jev) desplegada en la máquina: cada llamada a herramienta comprobada de un agente al que se dirige alguna de esas políticas va a FailproofAI Cloud, que ejecuta sus comprobaciones junto con las de los packs instalados allí. Una llamada de un agente al que no se dirige ninguna política Jev de Cloud, sin comprobación propia de ningún pack, no se envía en absoluto. En modo `enforce`, las propias comprobaciones de rechazo de Jev bloquean llamadas además de limpiar los veredictos de expresiones regulares que revisan.
-- `off` cuando no hay ninguna: nada de Jev, sin importar lo que diga `jev.json`.
+- `enforce` mientras haya alguna política Jev (o de expresión regular + Jev) desplegada en la máquina: cada llamada a herramienta revisada proveniente de un agente al que apunta alguna de esas políticas se envía a FailproofAI Cloud, que aplica sus comprobaciones junto con las de los packs instalados allí. Una llamada de un agente al que ninguna política Jev de Cloud apunta, y sin comprobación propia de ningún pack, no se envía en absoluto. En modo `enforce`, las comprobaciones de rechazo propias de Jev también bloquean llamadas además de eliminar los veredictos de expresión regular que revisan.
+- `off` cuando no hay ninguna: sin Jev en absoluto, independientemente de lo que diga `jev.json`.
 
-Para probar una política Jev antes de que actúe, despliégala con efecto **observe**: sus comprobaciones siguen consultándose, y lo que habrían hecho queda registrado como **would-have** en la página de la política, pero nunca bloquea ni limpia ninguna llamada. `failproofai jev setup --mode` y el interruptor **Configuración → Jev** del panel indican que el modo está gestionado por FailproofAI Cloud y no cambian nada. `jev.json` no se usa para las comprobaciones de Cloud, aunque nombre otro proveedor. `failproofai config --disconnect` devuelve Jev al `jev.json` propio de la máquina.
+Para probar una política Jev antes de que entre en vigor, despliégala con efecto **observe**: sus comprobaciones se siguen realizando y lo que habrían hecho queda registrado como **would-have** en la página de la política, pero nunca bloquea ni elimina ninguna llamada. `failproofai jev setup --mode` y el interruptor **Settings → Jev** del panel indican que el modo está gestionado por FailproofAI Cloud y no cambian nada. `jev.json` no se usa para las comprobaciones de Cloud, aunque nombre otro proveedor. `failproofai config --disconnect` devuelve Jev al `jev.json` propio de la máquina.
 
-`failproofai jev status` entonces indica `Jev checks run on FailproofAI Cloud (mode: enforce)`. También nombra las comprobaciones que revisan cada política `both`. La página de flota muestra por qué una máquina con un modo no puede preguntar:
+`failproofai jev status` mostrará entonces `Jev checks run on FailproofAI Cloud (mode: enforce)`. También indica las comprobaciones que revisan cada política `both`. La página de la flota muestra por qué una máquina con un modo no puede preguntar:
 
-- `transcripts_disabled`: la máquina se conectó con `--no-transcripts`, que nunca activa Jev.
+- `transcripts_disabled`: la máquina se conectó con `--no-transcripts`, lo que nunca activa Jev.
 - `jev_unconfigured`: la clave de la máquina no lleva `jev:evaluate`.
-- `jev_rate_limited`: FailproofAI Cloud rechazó algunas de las llamadas de la máquina por el límite de velocidad de Jev de la organización, y esas llamadas fueron decididas únicamente por las políticas de expresiones regulares.
+- `jev_rate_limited`: FailproofAI Cloud rechazó algunas llamadas de la máquina por el límite de tasa de Jev de la organización, y esas llamadas fueron decididas únicamente por las políticas de expresión regular.
 - `jev_unavailable`: varias llamadas consecutivas fallaron, por lo que la máquina omite el Jev de FailproofAI Cloud durante un minuto cada vez. Reintenta por sí sola.
 
-Si FailproofAI Cloud no responde en 5 segundos, las políticas de expresiones regulares deciden solas, igual que ante cualquier interrupción de Jev. Tras 3 fallos consecutivos, la máquina deja de preguntar durante un minuto cada vez, para que una interrupción de Cloud no ralentice cada llamada a herramienta.
+Si FailproofAI Cloud no responde en 5 segundos, las políticas de expresión regular deciden solas, como ante cualquier interrupción de Jev. Tras 3 fallos consecutivos, la máquina deja de preguntar durante un minuto, para que una interrupción de Cloud no ralentice cada llamada a herramienta.
 
 Una pausa de sesión (`failproofai config --pause`) no detiene las comprobaciones Jev de FailproofAI Cloud, igual que no detiene las políticas gestionadas por Cloud. Sí pausa las comprobaciones Jev de los packs instalados en la máquina.
 
@@ -83,56 +83,56 @@ failproofai jev status
 failproofai jev test
 ```
 
-`status` muestra el proveedor como **FailproofAI Cloud**, el host de Cloud al que se conectó la máquina, el modo, y el origen de la clave como **conexión de FailproofAI Cloud**, nunca la clave en sí. Cuando hay un `jev.json` de FailproofAI Cloud pero Jev no puede ejecutarse, indica el motivo:
+`status` muestra el proveedor como **FailproofAI Cloud**, el host de Cloud al que se conectó la máquina, el modo y el origen de la clave como **FailproofAI Cloud connection**, nunca la clave en sí. Cuando hay un `jev.json` de FailproofAI Cloud pero Jev no puede ejecutarse, indica el motivo:
 
 | `status` indica | `status --json` | Significado |
 | --- | --- | --- |
-| **off — no Jev key is stored for this machine's FailproofAI Cloud connection** | `key-lacks-jev` | La máquina está conectada, pero no hay ninguna clave Jev almacenada: a la clave le falta `jev:evaluate`, o la conexión no pudo confirmarlo. Ejecuta `failproofai config` de nuevo con la clave en `FAILPROOFAI_CLOUD_TOKEN`; si le falta el permiso, usa una clave de **máquina**. |
-| **off — this machine is not connected to FailproofAI Cloud** | `not-connected` | No hay conexión a FailproofAI Cloud en esta máquina a la que pertenezca la clave Jev. |
+| **off — no Jev key is stored for this machine's FailproofAI Cloud connection** | `key-lacks-jev` | La máquina está conectada, pero no hay ninguna clave Jev almacenada para ella: a la clave le falta `jev:evaluate`, o la conexión no pudo confirmarlo. Ejecuta `failproofai config` de nuevo con la clave en `FAILPROOFAI_CLOUD_TOKEN`; si le falta el permiso, usa una clave **machine**. |
+| **off — this machine is not connected to FailproofAI Cloud** | `not-connected` | No hay ninguna conexión de FailproofAI Cloud en esta máquina a la que pertenezca la clave Jev. |
 
-Tras `failproofai config --disconnect` ya no hay ningún `jev.json` de FailproofAI Cloud (a menos que estuviera desactivado, que se conserva), por lo que `status` simplemente informa de que Jev está desactivado. `status --json` contiene los mismos datos (`provider: "failproofai"`, `keySource: "cloud"`, `cloudConnected`, `keyCarriesJev`), también cuando la configuración está ausente o fue rechazada. `permissions` es siempre el de `jev.json`; un rechazo relativo a `credentials.json` añade `credentialsPermissions`, y `fix` cuando un comando lo soluciona. `test` envía una solicitud en tiempo real e informa de su latencia y la versión de Jev que respondió. Sale con código 1, e indica en su título, cuando la respuesta llega después del tiempo límite del hook (los hooks registrarían `timeout`) o responde incorrectamente su pregunta de comprobación.
+Tras `failproofai config --disconnect` ya no hay `jev.json` de FailproofAI Cloud (a menos que se haya desactivado, que se conserva), por lo que `status` simplemente informa de que Jev está desactivado. `status --json` contiene los mismos datos (`provider: "failproofai"`, `keySource: "cloud"`, `cloudConnected`, `keyCarriesJev`), también cuando la configuración está ausente o rechazada. `permissions` es siempre el de `jev.json`; un rechazo sobre `credentials.json` añade `credentialsPermissions`, y `fix` cuando un comando lo soluciona. `test` envía una solicitud real y reporta su latencia y la versión de Jev que respondió. Sale con código 1, e indica así en su título, cuando la respuesta llega después del timeout del hook (los hooks registrarían `timeout`) o responde incorrectamente a su pregunta de comprobación.
 
-El panel **Configuración → Jev** del panel también muestra la **conexión de FailproofAI Cloud**: a qué organización pertenece la máquina y si su clave lleva Jev. Se lee desde los propios archivos de la máquina, sin ninguna llamada de red.
+El panel **Settings → Jev** del panel también muestra la **FailproofAI Cloud connection**: en qué organización reporta la máquina y si su clave lleva Jev. Se lee de los archivos propios de la máquina, sin ninguna llamada de red.
 
 ## Verificar una llamada real
 
-Inicia una nueva sesión en el agente con hooks. Pídele que use su herramienta de lectura de archivos en `README.md` e informe del título. Confirma que la sesión contiene esa llamada a herramienta y luego ejecuta `failproofai jev status` de nuevo: su recuento de llamadas evaluadas recientemente debería aumentar. Abre **Políticas → Actividad** en el [panel local](/es/reference/local-dashboard#review-policy-activity) para inspeccionar el veredicto Jev y el modo de esa llamada. En Cloud, la página **Políticas** de la organización muestra los resultados Jev de la actividad entregada. En modo observe, el veredicto se registra como **would-have** y el resultado de la política sigue decidiendo la llamada. Una aprobación aparece solo cuando una política revisable coincidió y Jev limpió sus comprobaciones nombradas.
+Inicia una nueva sesión en el agente con hooks. Pídele que use su herramienta de lectura de archivos en `README.md` e informe del título. Confirma que la sesión contiene esa llamada a herramienta y luego ejecuta `failproofai jev status` de nuevo: su recuento reciente de llamadas evaluadas debería aumentar. Abre **Policies → Activity** en el [panel local](/es/reference/local-dashboard#review-policy-activity) para inspeccionar el veredicto Jev y el modo de esa llamada. En Cloud, la página **Policies** de la organización muestra los resultados de Jev para la actividad entregada. En modo observe, el veredicto se registra como **would-have** y el resultado de la política sigue decidiendo la llamada. Una eliminación solo aparece cuando una política revisable coincidió y Jev eliminó sus comprobaciones con nombre.
 
 ## Qué llega a la página de políticas
 
-La máquina ya envía su actividad de hooks a FailproofAI Cloud (`events:add`). Con Jev activado, el registro de cada llamada supervisada también indica qué evaluador se ejecutó, qué decidió Jev, qué políticas limpió, por qué recurrió al fallback cuando lo hizo, su latencia y el modelo que respondió — decisiones, códigos y nombres, nunca el comando ni tu prompt. En la página **Políticas** de tu organización:
+La máquina ya envía su actividad de hooks a FailproofAI Cloud (`events:add`). Con Jev activado, el registro de cada llamada revisada también indica qué evaluador se ejecutó, qué decidió Jev, qué políticas eliminó, por qué hizo fallback cuando lo hizo, su latencia y el modelo que respondió — decisiones, códigos y nombres, nunca el comando ni tu prompt. En la página **Policies** de tu organización:
 
-- una llamada decidida por el propio veredicto de Jev (modo enforce) se atribuye a **Jev**, y cuando la comprobación decisiva provino de un pack, el registro también nombra ese pack y su versión;
-- en modo observe, el rechazo o advertencia de Jev aparece como **would-have**, junto a los despliegues que estás observando;
-- las políticas que Jev limpió, o habría limpiado en modo observe, se contabilizan por política;
-- una decisión en la que Jev participó (un bloqueo, una advertencia, una aprobación o un would-have en modo observe) lista cada comprobación que realizó y lo que concluyó: veredicto, motivo (`not-detected`, `exempt`, `fired`, `op-requested`, …), su evidencia `p`, la respuesta `exempt` y la respuesta de cada sonda. También se lista una comprobación de una política desplegada en modo observe, marcada como observada; nunca bloquea. Jev responde con probabilidades, no con texto libre, por lo que no hay motivo en texto libre. Las aprobaciones simples se agrupan en recuentos y no llevan esta lista.
+- una llamada decidida por el veredicto propio de Jev (modo enforce) se atribuye a **Jev** y, cuando la comprobación decisiva provino de un pack, el registro también nombra ese pack y su versión;
+- en modo observe, el rechazo o advertencia de Jev aparece como **would-have**, junto a los rollouts que estás observando;
+- las políticas que Jev eliminó, o habría eliminado en modo observe, se cuentan por política;
+- una decisión en la que Jev participó (un bloqueo, una advertencia, una eliminación o un would-have en modo observe) enumera cada comprobación que realizó y lo que concluyó: veredicto, motivo (`not-detected`, `exempt`, `fired`, `op-requested`, …), su evidencia `p`, la respuesta `exempt` y la respuesta de cada sonda. También se lista una comprobación de una política desplegada para observar (observe), marcada como watched; nunca bloquea. Jev responde con probabilidades, no con texto libre, por lo que no hay motivo en texto libre. Las autorizaciones simples se agrupan en recuentos y no llevan esta lista.
 
 ## Cuando Jev no puede responder
 
-Todos estos casos recurren al resultado de tus políticas para esa llamada y se registran con su motivo:
+Todos los casos siguientes vuelven al resultado de tus políticas para esa llamada y se registran con su motivo:
 
 | Motivo | Causa |
 | --- | --- |
-| `out-of-credits` | Tu organización ha agotado la asignación de su plan. |
-| `http-401`, `http-403` | La clave fue revocada, o no lleva `jev:evaluate`. Reconéctate con una clave que sí lo lleve. |
-| `http-429` | FailproofAI Cloud está limitando la velocidad de Jev para tu organización. Hasta que expire el tiempo de espera que solicita (su `Retry-After`, máximo 60 segundos), la máquina no envía nada y cada llamada recurre inmediatamente al fallback. Las llamadas retenidas de ese modo se registran como `http-429`, o como `rate-limited` cuando el límite de velocidad propio de la máquina las retiene primero. |
-| `http-429` (límite diario) | Tu organización ha agotado sus llamadas diarias a Jev: **10.000 por día UTC**, a menos que quien opera tu FailproofAI Cloud haya establecido otro límite. Cada llamada recurre al fallback hasta que el contador se reinicia a las 00:00 UTC; la máquina sigue preguntando como máximo una vez por minuto, por lo que detecta el reinicio en menos de un minuto. `failproofai jev test` indica "Daily Jev limit for this org reached; resets at 00:00 UTC." |
-| `http-422` | Jev rechazó la solicitud de esta llamada, generalmente porque la llamada a herramienta contenía texto denso (base64, hex, código minificado) que supera el presupuesto de tokens de Jev. Esa llamada siempre recurre al fallback; no es una interrupción. |
+| `out-of-credits` | Tu organización ha agotado el límite de su plan. |
+| `http-401`, `http-403` | La clave fue revocada o no lleva `jev:evaluate`. Vuelve a conectar con una clave que sí lo lleve. |
+| `http-429` | FailproofAI Cloud está limitando la tasa de Jev para tu organización. Hasta que expire la espera solicitada (su `Retry-After`, como máximo 60 segundos), la máquina no envía nada y cada llamada hace fallback de inmediato. Las llamadas retenidas de este modo se registran como `http-429`, o como `rate-limited` cuando el límite de tasa propio de la máquina las retiene primero. |
+| `http-429` (límite diario) | Tu organización ha agotado sus llamadas Jev diarias: **10 000 por día UTC**, a menos que quien opera tu FailproofAI Cloud haya establecido otro límite. Cada llamada hace fallback hasta que el contador se reinicia a las 00:00 UTC; la máquina sigue preguntando como máximo una vez por minuto, por lo que detecta el reinicio en menos de un minuto. `failproofai jev test` indica "Daily Jev limit for this org reached; resets at 00:00 UTC." |
+| `http-422` | Jev rechazó la solicitud de esta llamada, normalmente porque la llamada a herramienta contenía texto denso (base64, hex, código minificado) que supera el presupuesto de tokens de Jev. Esa llamada siempre hace fallback; no es una interrupción. |
 | `http-502` | Jev no está disponible en este momento. |
-| `http-503` | Este Cloud no puede servir Jev para tu organización: sin pasarela de modelo, una organización aún no aprovisionada, o la pasarela está caída. Consulta a tu administrador; los hooks vuelven a preguntar como máximo una vez por minuto. |
+| `http-503` | Este Cloud no puede servir Jev para tu organización: sin gateway de modelo, una organización no aprovisionada aún, o el gateway está caído. Consulta a tu administrador; los hooks vuelven a preguntar como máximo una vez por minuto. |
 | `http-404` | Este FailproofAI Cloud aún no sirve Jev. |
-| `timeout` | Sin respuesta dentro de `timeoutMs` (predeterminado 3000). Mientras FailproofAI Cloud establece el modo Jev de la máquina, la espera es de 5000 ms y `timeoutMs` de `jev.json` no se usa. |
-| `model-mismatch` | Respondió una versión de Jev distinta a 1.13. |
+| `timeout` | Sin respuesta dentro de `timeoutMs` (por defecto 3000). Mientras FailproofAI Cloud establece el modo Jev de la máquina, la espera es de 5000 ms y el `timeoutMs` de `jev.json` no se usa. |
+| `model-mismatch` | Respondió una versión de Jev distinta a la 1.13. |
 
-## Dónde vive la clave y a dónde va
+## Dónde vive la clave y adónde va
 
-- La clave se almacena una vez, en `~/.failproofai/credentials.json` (`0600`, en un directorio solo para el propietario), junto a las demás credenciales de FailproofAI Cloud. `jev.json` no contiene ninguna clave para esta ruta; una escrita allí hace que la configuración sea inválida.
-- Si `credentials.json` tiene **cualquier** permiso para alguien que no seas tú (grupo u otros, lectura o escritura), o su directorio puede ser **escrito** por alguien que no seas tú, se **rechaza**, no se lee, y Jev permanece desactivado hasta que lo corrijas: `chmod 600` en el archivo, `chmod 700` en el directorio (o reconéctate, lo que reescribe el archivo con `0600` y hace el directorio solo para el propietario). Un directorio que otros solo pueden leer está bien; uno que pueden escribir les permite intercambiar el archivo.
-- La clave solo cuenta mientras la conexión con la que llegó está en la máquina: una credencial de política o de informes para el mismo FailproofAI Cloud **con la misma clave**, en el mismo archivo. Una clave Jev dejada sin ninguna se ignora, y Jev permanece desactivado. Eso ocurre cuando el `config --disconnect` de un failproofai más antiguo deja la clave Jev en su lugar (no sabe que debe eliminarla), o cuando el `config --token` de un failproofai más antiguo se conecta con otra clave, que en FailproofAI Cloud puede pertenecer a otra organización. Para volver a activar Jev, conéctate de nuevo con una clave de **máquina**.
-- La clave solo se envía al origen de Cloud contra el que fue verificada. Un `jev.json` que apunte a cualquier otro lugar se rechaza.
-- **Un agente en la máquina puede leerla.** `credentials.json` es solo para el propietario, y el agente se ejecuta como ese propietario. Leer los propios archivos de failproofai está permitido deliberadamente (solo cambiarlos está bloqueado, por `block-failproofai-commands`), por lo que lo único que se interpone entre un agente y este archivo es `block-read-outside-cwd` — una política *revisable* — y desde una sesión iniciada en tu directorio personal, nada. Una clave con `jev:evaluate` gasta la asignación Jev de tu organización (hasta el límite diario) desde donde sea que se use, así que trata una clave de máquina como cualquier otra credencial de gasto: si un agente puede haberla leído, deshabilítala en la página de Claves y reconéctate con una nueva.
+- La clave se almacena una sola vez, en `~/.failproofai/credentials.json` (`0600`, en un directorio solo para el propietario), junto a las demás credenciales de FailproofAI Cloud. `jev.json` no contiene ninguna clave para esta ruta; si se escribe una allí, la configuración queda inválida.
+- Si `credentials.json` tiene **algún** permiso para alguien que no seas tú (grupo u otros, lectura o escritura), o su directorio puede ser **escrito** por alguien que no seas tú, se **rechaza** sin leerlo y Jev permanece desactivado hasta que lo corrijas: `chmod 600` en el archivo, `chmod 700` en el directorio (o vuelve a conectar, lo que reescribe el archivo con `0600` y deja el directorio solo para el propietario). Un directorio que otros solo puedan leer está bien; uno que puedan escribir les permite reemplazar el archivo.
+- La clave solo cuenta mientras la conexión con la que llegó esté en la máquina: una credencial de política o de reporte para el mismo FailproofAI Cloud **con la misma clave**, en el mismo archivo. Una clave Jev que queda sin ninguna se ignora y Jev permanece desactivado. Eso ocurre cuando el `config --disconnect` de una versión anterior de failproofai deja la clave Jev en su lugar (no sabe que debe eliminarla), o cuando el `config --token` de una versión anterior conecta con otra clave, que en FailproofAI Cloud puede pertenecer a otra organización. Para volver a activar Jev, conecta de nuevo con una clave **machine**.
+- La clave solo se envía al origen de Cloud contra el que fue verificada. Un `jev.json` que apunte a cualquier otro lugar es rechazado.
+- **Un agente en la máquina puede leerla.** `credentials.json` es solo para el propietario y el agente se ejecuta como ese propietario. Leer los archivos propios de failproofai está permitido intencionalmente (solo cambiarlos está bloqueado por `block-failproofai-commands`), por lo que lo único que hay entre un agente y este archivo es `block-read-outside-cwd` — una política *revisable* — y desde una sesión iniciada en tu directorio personal, nada. Una clave con `jev:evaluate` gasta el límite Jev de tu organización (hasta el máximo diario) desde cualquier lugar donde se use, así que trata una clave de máquina como cualquier otra credencial de gasto: si un agente puede haberla leído, desactívala en la página de Keys y vuelve a conectar con una nueva.
 - Solo tus archivos globales deciden esto. Un repositorio no puede activar Cloud Jev, apuntarlo a otro lugar ni proporcionar su clave, y `FAILPROOFAI_JEV_API_KEY` se ignora para esta ruta.
-- Para cada llamada que Jev evalúa, se envía una solicitud a FailproofAI Cloud con lo que lista la [página de clave propia](/es/reference/jev-providers#what-leaves-the-machine) (secretos redactados). FailproofAI Cloud la reenvía a TypeSafe y no la registra ni conserva.
+- Por cada llamada que evalúa Jev, se envía una solicitud a FailproofAI Cloud con lo que lista la [página de clave propia](/es/reference/jev-providers#what-leaves-the-machine) (secretos redactados). FailproofAI Cloud la reenvía a TypeSafe y no la registra ni la conserva.
 
 ## Desactivarlo
 
@@ -140,7 +140,7 @@ En una máquina conectada, Jev está desactivado cuando FailproofAI Cloud no des
 
 | Comando | Resultado |
 | --- | --- |
-| Eliminar las políticas Jev de la máquina en FailproofAI Cloud | El modo de Cloud pasa a `off` en el siguiente sondeo (unos 30 s): nada de Jev, sin importar lo que diga `jev.json`. |
-| `failproofai config --disconnect` | Desconecta la máquina: la clave se elimina, y también `jev.json` cuando nombra a FailproofAI Cloud y no está desactivado. Un `jev.json` para tu propio endpoint permanece. |
+| Eliminar las políticas Jev de la máquina en FailproofAI Cloud | El modo de Cloud pasa a `off` en el siguiente sondeo (unos 30 s): sin Jev en absoluto, independientemente de lo que diga `jev.json`. |
+| `failproofai config --disconnect` | Desconectar la máquina: la clave se elimina, y también `jev.json` si nombra a FailproofAI Cloud y no está desactivado. Un `jev.json` para tu propio endpoint permanece. |
 
-A partir de la siguiente llamada a herramienta, los hooks ejecutan las políticas de expresiones regulares exactamente como antes.
+A partir de la siguiente llamada a herramienta, los hooks ejecutan las políticas de expresión regular exactamente como antes.

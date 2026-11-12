@@ -1223,7 +1223,6 @@
                   "pt-br/reference/overview",
                   "pt-br/reference/harnesses",
                   "pt-br/reference/custom-agents",
-                  "pt-br/reference/custom-agents-typescript",
                   "pt-br/reference/evaluator-sdk",
                   "pt-br/reference/policy-sdk",
                   "pt-br/reference/self-hosting"
@@ -1378,7 +1377,6 @@
               {
                 "group": "Get a policy",
                 "pages": [
-                  "de/policies/authority",
                   "de/policies/editor",
                   "de/policies/packs"
                 ]

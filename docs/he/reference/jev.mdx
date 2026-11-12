@@ -1,22 +1,22 @@
 ---
-title: "הפניה לשילוב Jev"
-description: "תצורה, ספקים, מפתחות, נתוני בקשה והתנהגות כשל עבור Jev."
+title: "Jev integration reference"
+description: "Configuration, providers, keys, request data, and failure behavior for Jev."
 icon: "braces"
 ---
 
-ל-Jev שני שימושים ב-Failproof AI:
+ל-Jev יש שני שימושים ב-Failproof AI:
 
-| שימוש | מתי הוא פועל | מה הוא מחזיר | התחל כאן |
+| שימוש | מתי הוא רץ | מה הוא מחזיר | התחל כאן |
 | --- | --- | --- | --- |
-| הערכת session | לאחר סיום session | ניקוד לשאלת תשובה קבועה | [הערכות Jev](/he/evaluations/jev) |
-| בדיקת מדיניות קריאת כלים | לפני הפעלת קריאת כלים שגודרה | פסק דין לצד המדיניויות המותקנות | [מדיניויות Jev](/he/policies/jev) |
+| Session evaluation | לאחר סיום session | ניקוד לשאלת תשובה קבועה | [Jev evaluations](/he/evaluations/jev) |
+| Tool-call policy review | לפני שקריאת כלי מגודרת רצה | verdicttוויות לצד המדיניות המותקנות | [Jev policies](/he/policies/jev) |
 
-## דפי הפניה
+## עמודי reference
 
 | נושא | פרטים |
 | --- | --- |
-| [שאלות הערכה](/he/reference/jev-evaluations) | קריטריונים בוליאנים וניקוד מסודר, תוצאות, מגבלות ומילוי אחורה. |
-| [השוואת ספקים והגדרת מפתח משלך](/he/reference/jev-providers) | TypeSafe, OpenRouter, Vercel, Cloudflare ונקודות קצה מותאמות אישית; הסקת URL, מזהי דוגמה, `jev.json`, מצבים וקודי חזרה לכשל. |
-| [ניתוב FailproofAI Cloud](/he/reference/jev-cloud) | הרשאות מפתח מכונה, הגדרה observe אוטומטית, מגבלות שימוש, מצב חיבור וטיפול בנתונים. |
+| [Evaluation questions](/he/reference/jev-evaluations) | קריטריונים בוליאניים וניקוד מסודר, תוצאות, מגבלות, וملء לאחור. |
+| [Provider comparison and own-key setup](/he/reference/jev-providers) | TypeSafe, OpenRouter, Vercel, Cloudflare, וקצוות מותאמים אישית; ניתוח URL, מזהי מודלים, `jev.json`, מצבים, וקודי fallback. |
+| [FailproofAI Cloud route](/he/reference/jev-cloud) | הרשאות machine-key, הגדרה observe אוטומטית, מגבלות שימוש, מצב חיבור, וטיפול בנתונים. |
 
-פקודות CLI מקומיות מפורטות ב[הפניה ל-CLI של Failproof AI](/he/reference/failproof-cli). ה[הפניה לעמדת בקרה מקומית](/he/reference/local-dashboard#set-up-jev) מתארת את הגדרות Jev וצפיית הפעילות שלה.
+פקודות ה-CLI המקומיות מופיעות ב-[Failproof AI CLI reference](/he/reference/failproof-cli). ה-[local dashboard reference](/he/reference/local-dashboard#set-up-jev) מתאר את הגדרות Jev שלו והצגת פעילות.

@@ -1,23 +1,23 @@
 ---
 title: "Distribuire una policy"
-description: "Metti una versione di policy testata su macchine in modalità observe, applicala e conferma che ogni macchina l'ha ricevuta."
+description: "Metti in produzione una versione di policy testata su macchine in modalità osservazione, attivala e conferma che ogni macchina l'ha ricevuta."
 icon: "cloud-upload"
 ---
 
-Una distribuzione mette versioni di policy pubblicate su una macchina, ciascuna con uno di due effetti:
+Una distribuzione mette versioni di policy pubblicate su una macchina, ciascuna con uno dei due effetti:
 
 - **Observe** registra quello che la policy avrebbe fatto e non blocca nulla.
-- **Enforce** agisce sulla decisione: un `deny` blocca la chiamata e un `instruct` guida l'agente.
+- **Enforce** agisce sulla decisione: un `deny` blocca la chiamata e un `instruct` orienta l'agente.
 
 ## Aggiungi una macchina
 
-Una macchina appare sotto **Admin → enforcement** una volta che è connessa a Cloud. Se quella che vuoi non è ancora lì:
+Una macchina appare in **Admin → enforcement** una volta connessa a Cloud. Se quella che ti serve non è ancora lì:
 
 <Tabs>
   <Tab title="Dashboard">
     1. Vai a **Administration → Keys** e crea una chiave con `policies:pull`, in modo che la macchina possa ricevere distribuzioni, e `events:add`, in modo che le sue decisioni raggiungano Cloud.
-    2. Connetti la macchina con quella chiave — [Connect a machine to Cloud](/it/start/setup#connect-a-machine-to-cloud) ne spiega i dettagli.
-    3. Conferma che appare sotto **Admin → enforcement**.
+    2. Connetti la macchina con quella chiave — [Connect a machine to Cloud](/it/start/setup#connetti-una-macchina-a-cloud) ti spiega come.
+    3. Conferma che appare in **Admin → enforcement**.
   </Tab>
   <Tab title="CLI">
     Sulla macchina:
@@ -28,20 +28,20 @@ Una macchina appare sotto **Admin → enforcement** una volta che è connessa a 
     failproofai config --status
     ```
 
-    In un terminale, `failproofai config` chiede se connettersi a Cloud e prende la chiave a un prompt mascherato. Quindi conferma che la macchina è registrata, da qualsiasi luogo, con `fp fleet list`.
+    In un terminale, `failproofai config` chiede se connettersi a Cloud e richiede la chiave in un prompt mascherato. Poi conferma che la macchina è registrata, da qualsiasi posto, con `fp fleet list`.
   </Tab>
 </Tabs>
 
-## Distribuisci in modalità observe
+## Distribuisci in modalità osservazione
 
 <Tabs>
   <Tab title="Dashboard">
-    1. Vai a **Admin → enforcement**, trova la macchina ed espandi la sua riga.
+    1. Vai a **Admin → enforcement**, trova la macchina e espandi la sua riga.
     2. Seleziona **edit**, aggiungi la versione di policy testata e scegli **observe**.
-    3. Applica la modifica, quindi attendi il prossimo check-in della macchina e conferma lo stato di distribuzione e copertura.
+    3. Applica la modifica, poi attendi il prossimo check-in della macchina e conferma lo stato della distribuzione e della copertura.
     4. Vai a **Observe → policy** per ispezionare le decisioni in tempo reale.
 
-    ![L'editor di distribuzione della macchina con versioni di policy, effetti enforce e observe, e l'azione di applicazione della distribuzione.](/images/dashboard/enforcement-editor.png)
+    ![L'editor di distribuzione della macchina con versioni di policy, effetti enforce e observe, e l'azione di distribuzione apply.](/images/dashboard/enforcement-editor.png)
   </Tab>
   <Tab title="CLI">
     ```bash
@@ -50,11 +50,11 @@ Una macchina appare sotto **Admin → enforcement** una volta che è connessa a 
     fp fleet deploy <machine-id> --add no-force-push:observe
     ```
 
-    Il suffisso `:observe` è ciò che lo rende observe: un semplice `--add no-force-push` mantiene l'effetto che la macchina già ha per quella policy, e altrimenti applica l'enforce. Cambialo in enforce più tardi con `--add no-force-push:enforce`.
+    Il suffisso `:observe` è quello che attiva l'osservazione: un semplice `--add no-force-push` mantiene l'effetto che la macchina ha già per quella policy, altrimenti applica enforce. Cambialo in enforce più tardi con `--add no-force-push:enforce`.
 
-    `deploy` **sostituisce l'intero set di policy della macchina** con il risultato. Stampa il piano, quindi chiede prima di applicare — ma solo su un terminale interattivo. Con `--yes`, sotto `fp --json`, o con stdin reindirizzato (un passo CI, uno script, un agente che esegue shell) applica senza chiedere; il piano viene comunque stampato o restituito come `plan` sotto `--json`.
+    `deploy` **sostituisce l'intero set di policy della macchina** con il risultato. Stampa il piano, poi chiede prima di applicare — ma solo su un terminale interattivo. Con `--yes`, sotto `fp --json`, o con stdin reindirizzato (un step di CI, uno script, un agente che lancia comandi) applica senza chiedere; il piano è ancora stampato, oppure restituito come `plan` sotto `--json`.
 
-    Sulla macchina, `failproofai policies` elenca le policy gestite da Cloud in esecuzione e `failproofai config --status` mostra la sua connessione. Usa `fp sessions --env production --since 24h` e `fp events --event-type hook_completed` per confermare che la sua attività raggiunge Cloud.
+    Sulla macchina, `failproofai policies` elenca le policy gestite da Cloud che sta eseguendo e `failproofai config --status` mostra la sua connessione. Usa `fp sessions --env production --since 24h` e `fp events --event-type hook_completed` per confermare che la sua attività raggiunge Cloud.
   </Tab>
 </Tabs>
 
@@ -62,97 +62,33 @@ Una macchina appare sotto **Admin → enforcement** una volta che è connessa a 
   <Step title="Scegli la versione e le macchine">
     Seleziona la versione pubblicata e le macchine su cui dovrebbe essere eseguita.
   </Step>
-  <Step title="Observe">
-    Rivedi i match, i motivi, gli strumenti interessati e i falsi positivi mentre nulla è bloccato.
+  <Step title="Osserva">
+    Rivedi i match, le ragioni, gli strumenti interessati e i falsi positivi mentre nulla viene bloccato.
   </Step>
-  <Step title="Enforce">
-    Cambia l'effetto in enforce una volta che i match osservati separano le azioni non sicure da quelle valide, quindi conferma che ogni macchina prevista ha ricevuto la modifica e sta segnalando le decisioni.
+  <Step title="Applica enforce">
+    Cambia l'effetto in enforce una volta che i match osservati distinguono le azioni non sicure da quelle valide, poi conferma che ogni macchina prevista ha ricevuto la modifica e sta segnalando le decisioni.
   </Step>
 </Steps>
-
-## Indirizza un agente su una macchina
-
-Le versioni di policy pubblicate non contengono regole di routing degli agenti. Per impostazione predefinita, un'assegnazione si applica a **tutti gli agenti sulla sua macchina**. Quando distribuisci una versione, puoi invece indirizzare un'integrazione (inclusi i profili aggiunti in seguito) o un particolare profilo segnalato da quella macchina. La scelta appartiene all'assegnazione della macchina: la stessa versione pubblicata può indirizzare agenti diversi su macchine diverse.
-
-<Tabs>
-  <Tab title="Dashboard">
-    1. In **Admin → enforcement**, espandi la macchina e seleziona **edit**.
-    2. Sul controllo **agents** della policy, mantieni **all agents**, seleziona **all hermes profiles** (ad esempio), o cerca un profilo segnalato per la sua etichetta e ID `agt_`. Puoi selezionare più alternative; una chiamata corrisponde se appartiene a una qualsiasi di esse.
-    3. Rivedi il target elencato per **ogni** assegnazione nel piano di distribuzione, applica la modifica, quindi controlla la distribuzione segnalata della macchina dopo il suo prossimo check-in. La cronologia e il rollback mantengono i target selezionati.
-  </Tab>
-  <Tab title="CLI">
-    ```bash
-    fp fleet show <machine-id>
-    fp fleet deploy <machine-id> --add no-force-push --target no-force-push=hermes
-    fp fleet deploy <machine-id> --target no-force-push=hermes/agt_1234567890abcdef
-    fp fleet deploy <machine-id> --all-agents no-force-push
-    ```
-
-    `--target POLICY=INTEGRATION[/agt_ID]` imposta l'ambito di una policy. Ripeti
-    `--target` per più alternative sulla stessa assegnazione. Usa `--all-agents POLICY`
-    per cancellare il targeting di quella assegnazione. `fp fleet show` e `fp fleet history`
-    visualizzano l'ambito selezionato. Rivedi il piano di sostituzione completo prima di
-    applicare, specialmente quando distribuisci da uno script.
-  </Tab>
-</Tabs>
-
-La macchina deve aver segnalato di recente il supporto per il targeting degli agenti prima di poter impostare un nuovo target. Puoi selezionare un profilo esatto solo se quella macchina lo ha segnalato con un hook installato e non è obsoleto. Se l'inventario è temporaneamente non disponibile, i target esistenti rimangono assegnati; non vengono silenziosamente ampliati a tutti gli agenti. Reinstalla gli hook shell più vecchi per fornire l'hint di profilo utilizzato dalle nuove installazioni. Dopo aver aggiornato la CLI, esegui `failproofai config` per aggiornare e riavviare anche il suo daemon: un daemon più vecchio non può valutare nuove chiamate con scope di profilo e l'hook rifiuta la mancata corrispondenza. Se il profilo dell'agente in esecuzione non può essere identificato (ad esempio, quando più scope di impostazioni sono installati ma l'hook non segnala quale è stato eseguito), **le assegnazioni target non corrispondono**; le policy non scoped si applicano comunque. Cerca `agent_scope_unresolved` sotto gli errori di policy di quella macchina.
-
-Una macchina segnala solo gli agenti che traccia: una voce per profilo il cui config porta l'hook FailproofAI (Hermes e OpenClaw ne ottengono uno per profilo, denominato dalla sua etichetta). Un agent CLI che è meramente installato non è elencato.
-
-Ogni macchina mantiene fino a 256 profili nel suo elenco. L'ID di un profilo non cambia mai mentre è elencato. Quando l'elenco è pieno e appare un nuovo profilo con un hook FailproofAI (il suo hook viene eseguito o il suo config porta l'hook), il daemon libera spazio eliminando un profilo che soddisfa tutti questi:
-
-- non ha hook installato;
-- nessuna assegnazione lo nomina;
-- FailproofAI Cloud non l'accetterebbe come nuovo target.
-
-Il daemon preferisce un profilo non più trovato sulla macchina, quindi quello inutilizzato più a lungo. Non elimina mai un profilo che un target esatto utilizza, quindi questi target rimangono validi. Se nessun profilo può essere eliminato, il nuovo profilo non ha ancora un ID e le assegnazioni target non vi corrispondere finché uno slot non si libera.
-
-## Distribuisci i controlli Jev
-
-Una policy Cloud può portare controlli Jev oltre a, o al posto di, JavaScript. Il suo kind è `jev` (solo controlli Jev) o `both` (JavaScript il cui verdetto i suoi stessi controlli possono annullare). Si distribuisce, attiva e ripristina esattamente come qualsiasi altra policy.
-
-I controlli Jev vengono eseguiti su FailproofAI Cloud; nulla è installato sulla macchina. La macchina riceve solo il JavaScript di una policy `both`. Mentre una policy `jev` o `both` è distribuita ad essa, FailproofAI Cloud attiva Jev per la macchina, e ogni chiamata di strumento controllata di un agente che la policy indirizza va a FailproofAI Cloud, che chiede i controlli distribuiti a quell'agente e restituisce il loro verdetto. Senza nessuno distribuito, Jev è spento lì. Non esiste una modalità Jev da impostare manualmente.
-
-```bash
-fp policies publish prod-db-intent --kind jev --semantic ./checks.json
-fp fleet deploy <machine-id> --add prod-db-intent:observe
-```
-
-Per provare i controlli Jev senza che decidano nulla, distribuisci la policy con `:observe`: i suoi controlli vengono chiesti e le loro risposte registrate come "would have", e non bloccano né annullano nulla. Ridistribuiscila come `enforce` una volta che la pagina della policy mostra quello che avrebbero fatto; quindi i controlli di Jev **bloccano** le chiamate e annullano i verdetti di JavaScript che revisionano. Una policy `both` distribuita con `:observe` osserva entrambe le metà.
-
-Il JavaScript di una policy `both` può essere annullato solo dalle risposte dei suoi stessi controlli da FailproofAI Cloud. Un controllo di un pack installato con lo stesso nome non lo annulla mai. Se FailproofAI Cloud non può essere raggiunto o non imposta una modalità che chiede, la policy rimane **hard**: ogni deny del suo JavaScript rimane.
-
-Il targeting degli agenti funziona anche per le policy solo Jev. Per una policy `both`, il target dell'assegnazione governa **entrambi** il suo JavaScript locale e i suoi controlli Jev Cloud; una chiamata al di fuori di quel target non esegue nessuna delle due metà. Mantieni la policy su `observe` durante il trial dei controlli con scope, proprio come faresti per un rollout Jev senza scope.
-
-Una macchina segnala cosa l'impedisce di chiedere, e `fp fleet show <machine-id>` lo elenca sotto gli errori di policy:
-
-- `transcripts_disabled`: la macchina è stata connessa con `--no-transcripts`. Una tale macchina non invia mai chiamate di strumento a Jev.
-- `jev_unconfigured`: la chiave della macchina non porta Jev.
-- `jev_rate_limited`: alcune chiamate sono state rifiutate per il limite di velocità Jev dell'organizzazione e decise dalle policy regex sole.
-- `jev_unavailable`: Jev di FailproofAI Cloud ha fallito diverse chiamate di fila, quindi la macchina lo salta un minuto alla volta.
-
-Una richiesta Jev porta una quantità limitata di testo di domanda. I controlli di FailproofAI Cloud arrivano prima dei controlli dei pack installati sulla macchina. Un controllo pack che non si adatta è omesso e segnalato come `jev_budget`. Un controllo pack con lo stesso nome di uno dei controlli Cloud della tua organizzazione è omesso anche esso, e segnalato come `jev_name_clash`: il controllo Cloud viene chiesto al suo posto.
 
 ## Controlla la copertura
 
 La copertura risponde se una policy è in esecuzione dove c'è il rischio.
 
 1. Vai a **Admin → enforcement** e rivedi i totali di enforce e observe.
-2. Cerca una macchina per ID o etichetta, o filtra per macchine a cui manca una policy.
+2. Cerca una macchina per ID o label, o filtra le macchine a cui manca una policy.
 3. Espandi una riga per confrontare le policy assegnate, la distribuzione segnalata, l'ultimo check-in e la cronologia.
 4. Aggiorna dopo l'intervallo di polling della macchina quando una distribuzione applicata è ancora in sospeso.
 
-![La flotta Enforcement che mostra la copertura della policy, lo stato di distribuzione della macchina e le assegnazioni observe e enforce.](/images/dashboard/enforcement-fleet.png)
+![La flotta Enforcement che mostra la copertura della policy, lo stato di distribuzione della macchina e gli incarichi observe e enforce.](/images/dashboard/enforcement-fleet.png)
 
-Cerca macchine che non hanno mai ricevuto l'ultima distribuzione, macchine registrate che hanno smesso di segnalare, una policy assegnata all'ambiente sbagliato e deviazione di versione dopo un aggiornamento interrotto.
+Cerca macchine che non hanno mai ricevuto l'ultima distribuzione, macchine registrate che hanno smesso di segnalare, una policy assegnata all'ambiente sbagliato e drift di versione dopo un aggiornamento interrotto.
 
-Etichetta le macchine per carico di lavoro e ambiente — gli hostname da soli raramente sopravvivono all'autoscaling o alla sostituzione:
+Etichetta le macchine per workload e ambiente — i nomi host da soli raramente sopravvivono all'autoscaling o alla sostituzione:
 
 ```bash
 failproofai config --machine-label checkout-runner-03
 ```
 
 <Warning>
-  La gestione dell'enforcement è un flusso di lavoro amministrativo di Cloud. Non trattare le rotte di enforcement solo root come endpoint `/v1` ordinari dei clienti.
+  La gestione dell'enforcement è un flusso di lavoro Cloud amministrativo. Non trattare le route di enforcement root-only come endpoint `/v1` ordinari del cliente.
 </Warning>

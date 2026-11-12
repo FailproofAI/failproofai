@@ -1,22 +1,22 @@
 ---
 title: "Fazer deploy de uma política"
-description: "Coloque uma versão de política testada nas máquinas em modo de observação, aplique a execução forçada e confirme que todas as máquinas a receberam."
+description: "Coloque uma versão de política testada em máquinas no modo de observação, aplique a execução e confirme que todas as máquinas a receberam."
 icon: "cloud-upload"
 ---
 
-Um deploy coloca versões de política publicadas em uma máquina, cada uma com um de dois efeitos:
+Um deploy coloca versões de políticas publicadas em uma máquina, cada uma com um dos dois efeitos:
 
 - **Observe** registra o que a política teria feito, sem bloquear nada.
-- **Enforce** age com base na decisão: um `deny` bloqueia a chamada e um `instruct` direciona o agente.
+- **Enforce** age conforme a decisão: um `deny` bloqueia a chamada e um `instruct` direciona o agente.
 
 ## Adicionar uma máquina
 
-Uma máquina aparece em **Admin → enforcement** assim que é conectada à Cloud. Se a que você deseja ainda não estiver lá:
+Uma máquina aparece em **Admin → enforcement** assim que se conecta à Cloud. Se a que você deseja ainda não está lá:
 
 <Tabs>
   <Tab title="Dashboard">
     1. Acesse **Administration → Keys** e crie uma chave com `policies:pull`, para que a máquina possa receber deploys, e `events:add`, para que suas decisões cheguem à Cloud.
-    2. Conecte a máquina com essa chave — [Conectar uma máquina à Cloud](/pt-br/start/setup#connect-a-machine-to-cloud) explica o processo passo a passo.
+    2. Conecte a máquina com essa chave — [Conectar uma máquina à Cloud](/pt-br/start/setup#conectar-uma-máquina-à-cloud) descreve o processo.
     3. Confirme que ela aparece em **Admin → enforcement**.
   </Tab>
   <Tab title="CLI">
@@ -28,20 +28,20 @@ Uma máquina aparece em **Admin → enforcement** assim que é conectada à Clou
     failproofai config --status
     ```
 
-    No terminal, `failproofai config` pergunta se deseja conectar à Cloud e solicita a chave em um prompt mascarado. Em seguida, confirme que a máquina está registrada, de qualquer lugar, com `fp fleet list`.
+    No terminal, `failproofai config` pergunta se deve se conectar à Cloud e solicita a chave em um prompt mascarado. Em seguida, confirme que a máquina foi registrada, de qualquer lugar, com `fp fleet list`.
   </Tab>
 </Tabs>
 
-## Fazer deploy em modo de observação
+## Fazer deploy no modo de observação
 
 <Tabs>
   <Tab title="Dashboard">
-    1. Acesse **Admin → enforcement**, localize a máquina e expanda sua linha.
+    1. Acesse **Admin → enforcement**, encontre a máquina e expanda sua linha.
     2. Selecione **edit**, adicione a versão de política testada e escolha **observe**.
-    3. Aplique a mudança, aguarde o próximo check-in da máquina e confirme o estado de deploy e cobertura.
+    3. Aplique a alteração, aguarde o próximo check-in da máquina e confirme o estado de deploy e cobertura.
     4. Acesse **Observe → policy** para inspecionar as decisões em tempo real.
 
-    ![O editor de deploy da máquina com versões de política, efeitos enforce e observe, e a ação de aplicar deploy.](/images/dashboard/enforcement-editor.png)
+    ![O editor de deploy da máquina com versões de políticas, efeitos enforce e observe, e a ação de aplicar o deploy.](/images/dashboard/enforcement-editor.png)
   </Tab>
   <Tab title="CLI">
     ```bash
@@ -50,105 +50,45 @@ Uma máquina aparece em **Admin → enforcement** assim que é conectada à Clou
     fp fleet deploy <machine-id> --add no-force-push:observe
     ```
 
-    O sufixo `:observe` é o que ativa o modo de observação: usar `--add no-force-push` sem sufixo mantém o efeito que a máquina já possui para aquela política e, caso contrário, aplica enforce. Mude para enforce mais tarde com `--add no-force-push:enforce`.
+    O sufixo `:observe` é o que define o modo de observação: usar `--add no-force-push` sem sufixo mantém o efeito que a máquina já possui para essa política e, caso contrário, executa em modo enforce. Mude para enforce posteriormente com `--add no-force-push:enforce`.
 
-    `deploy` **substitui todo o conjunto de políticas da máquina** pelo resultado. Ele exibe o plano e solicita confirmação antes de aplicar — mas somente em um terminal interativo. Com `--yes`, sob `fp --json`, ou com stdin redirecionado (uma etapa de CI, um script, um agente executando comandos shell) ele aplica sem perguntar; o plano ainda é exibido, ou retornado como `plan` com `--json`.
+    O comando `deploy` **substitui todo o conjunto de políticas da máquina** pelo resultado. Ele exibe o plano e pede confirmação antes de aplicar — mas apenas em um terminal interativo. Com `--yes`, sob `fp --json`, ou com stdin redirecionado (uma etapa de CI, um script, um agente executando via shell), ele aplica sem perguntar; o plano ainda é exibido ou retornado como `plan` com `--json`.
 
-    Na máquina, `failproofai policies` lista as políticas gerenciadas pela Cloud que estão em execução, e `failproofai config --status` mostra sua conexão. Use `fp sessions --env production --since 24h` e `fp events --event-type hook_completed` para confirmar que a atividade da máquina chega à Cloud.
+    Na máquina, `failproofai policies` lista as políticas gerenciadas pela Cloud que estão em execução e `failproofai config --status` mostra sua conexão. Use `fp sessions --env production --since 24h` e `fp events --event-type hook_completed` para confirmar que a atividade da máquina chega à Cloud.
   </Tab>
 </Tabs>
 
 <Steps>
-  <Step title="Escolher a versão e as máquinas">
+  <Step title="Escolha a versão e as máquinas">
     Selecione a versão publicada e as máquinas em que ela deve ser executada.
   </Step>
   <Step title="Observe">
     Revise correspondências, motivos, ferramentas afetadas e falsos positivos enquanto nada é bloqueado.
   </Step>
   <Step title="Enforce">
-    Mude o efeito para enforce assim que as correspondências observadas separarem ações inseguras das válidas; em seguida, confirme que todas as máquinas pretendidas receberam a mudança e estão reportando decisões.
+    Mude o efeito para enforce assim que as correspondências observadas separarem as ações inseguras das válidas, e então confirme que todas as máquinas pretendidas receberam a alteração e estão reportando decisões.
   </Step>
 </Steps>
 
-## Direcionar um agente em uma máquina
-
-Versões de política publicadas não contêm regras de roteamento de agentes. Por padrão, uma atribuição se aplica a **todos os agentes na máquina**. Ao fazer o deploy de uma versão, é possível direcionar uma integração (incluindo perfis adicionados posteriormente) ou um perfil específico reportado por aquela máquina. A escolha pertence à atribuição da máquina: a mesma versão publicada pode direcionar agentes diferentes em máquinas diferentes.
-
-<Tabs>
-  <Tab title="Dashboard">
-    1. Em **Admin → enforcement**, expanda a máquina e selecione **edit**.
-    2. No controle **agents** da política, mantenha **all agents**, selecione **all hermes profiles** (por exemplo), ou busque um perfil reportado por seu rótulo e ID `agt_`. Você pode selecionar múltiplas alternativas; uma chamada corresponde se pertencer a qualquer uma delas.
-    3. Revise o alvo listado para **cada** atribuição no plano de deploy, aplique a mudança e verifique o deploy reportado pela máquina após seu próximo check-in. O histórico e o rollback retêm os alvos selecionados.
-  </Tab>
-  <Tab title="CLI">
-    ```bash
-    fp fleet show <machine-id>
-    fp fleet deploy <machine-id> --add no-force-push --target no-force-push=hermes
-    fp fleet deploy <machine-id> --target no-force-push=hermes/agt_1234567890abcdef
-    fp fleet deploy <machine-id> --all-agents no-force-push
-    ```
-
-    `--target POLICY=INTEGRATION[/agt_ID]` define o escopo de uma política. Repita `--target` para mais alternativas na mesma atribuição. Use `--all-agents POLICY` para limpar o direcionamento dessa atribuição. `fp fleet show` e `fp fleet history` exibem o escopo selecionado. Revise o plano de substituição completo antes de aplicar, especialmente ao fazer deploy a partir de um script.
-  </Tab>
-</Tabs>
-
-A máquina deve ter reportado recentemente suporte a direcionamento de agentes antes que você possa definir um novo alvo. Você pode selecionar um perfil exato somente se aquela máquina o reportou com um hook instalado e ele não está obsoleto. Se o inventário estiver temporariamente indisponível, os alvos existentes permanecem atribuídos; eles não são silenciosamente expandidos para todos os agentes. Reinstale hooks de shell mais antigos para fornecer a dica de perfil usada pelas novas instalações. Após atualizar o CLI, execute `failproofai config` para atualizar e reiniciar seu daemon também: um daemon mais antigo não consegue avaliar chamadas com escopo de perfil novo, e o hook recusa a incompatibilidade. Se o perfil do agente em execução não puder ser identificado (por exemplo, quando vários escopos de configurações estão instalados mas o hook não reporta qual deles executou), **as atribuições direcionadas não correspondem**; políticas sem escopo ainda se aplicam. Procure por `agent_scope_unresolved` nos erros de política daquela máquina.
-
-Uma máquina reporta apenas os agentes que ela rastreia: uma entrada por perfil cuja configuração carrega o hook do FailproofAI (Hermes e OpenClaw recebem uma por perfil, nomeada pelo seu rótulo). Um CLI de agente que está meramente instalado não é listado.
-
-Cada máquina mantém até 256 perfis em seu registro. O ID de um perfil nunca muda enquanto ele está listado. Quando o registro está cheio e um novo perfil com um hook do FailproofAI aparece (seu hook executa, ou sua configuração carrega o hook), o daemon libera espaço descartando um perfil que atende a todos estes critérios:
-
-- não possui hook instalado;
-- nenhuma atribuição o nomeia;
-- o FailproofAI Cloud não o aceitaria como novo alvo.
-
-O daemon prefere um perfil que não é mais encontrado na máquina e, em seguida, o que ficou sem uso por mais tempo. Ele nunca descarta um perfil que um alvo exato utiliza, portanto esses alvos permanecem válidos. Se nenhum perfil puder ser descartado, o novo perfil ainda não tem ID, e as atribuições direcionadas não correspondem a ele até que uma vaga seja liberada.
-
-## Fazer deploy de verificações Jev
-
-Uma política Cloud pode conter verificações Jev além de, ou em vez de, JavaScript. Seu tipo é `jev` (somente verificações Jev) ou `both` (JavaScript cujo veredicto suas próprias verificações podem anular). Ela é deployada, alternada e revertida exatamente como qualquer outra política.
-
-As verificações Jev são executadas no FailproofAI Cloud; nada é instalado na máquina. A máquina recebe apenas o JavaScript de uma política `both`. Enquanto uma política `jev` ou `both` está deployada nela, o FailproofAI Cloud ativa o Jev para a máquina, e cada chamada de ferramenta verificada de um agente que a política direciona vai para o FailproofAI Cloud, que consulta as verificações deployadas para aquele agente e retorna seu veredicto. Sem nenhuma deployada, o Jev fica desativado. Não há modo Jev para definir manualmente.
-
-```bash
-fp policies publish prod-db-intent --kind jev --semantic ./checks.json
-fp fleet deploy <machine-id> --add prod-db-intent:observe
-```
-
-Para testar verificações Jev sem que elas decidam nada, faça o deploy da política com `:observe`: suas verificações são consultadas e suas respostas registradas como "teria feito", sem bloquear nem anular nada. Faça o redeploy como `enforce` assim que a página da política mostrar o que elas teriam feito; então as verificações do Jev **bloqueiam** chamadas além de anular os veredictos JavaScript que revisam. Uma política `both` deployada com `:observe` observa ambas as metades.
-
-O JavaScript de uma política `both` só pode ser anulado pelas respostas de suas próprias verificações vindas do FailproofAI Cloud. A verificação de um pacote instalado com o mesmo nome nunca o anula. Se o FailproofAI Cloud não puder ser alcançado, ou não definir um modo que consulte, a política permanece **rígida**: todo deny de seu JavaScript é mantido.
-
-O direcionamento de agentes funciona também para políticas somente Jev. Para uma política `both`, o alvo único da atribuição governa **ambos** — seu JavaScript local e suas verificações Jev na Cloud; uma chamada fora desse alvo não executa nenhuma das metades. Mantenha a política em `observe` durante o teste de verificações com escopo, assim como faria para uma implantação Jev sem escopo.
-
-Uma máquina reporta o que a impede de consultar, e `fp fleet show <machine-id>` lista isso nos erros de política:
-
-- `transcripts_disabled`: a máquina foi conectada com `--no-transcripts`. Essa máquina nunca envia chamadas de ferramentas para o Jev.
-- `jev_unconfigured`: a chave da máquina não inclui Jev.
-- `jev_rate_limited`: algumas chamadas foram recusadas pelo limite de taxa Jev da organização e decididas apenas pelas políticas regex.
-- `jev_unavailable`: o Jev do FailproofAI Cloud falhou em várias chamadas consecutivas, então a máquina o ignora por um minuto de cada vez.
-
-Uma requisição Jev carrega uma quantidade limitada de texto de pergunta. As verificações do FailproofAI Cloud vêm antes das verificações de pacotes instalados na máquina. Uma verificação de pacote que não couber é omitida e reportada como `jev_budget`. Uma verificação de pacote com o mesmo nome de uma das verificações Cloud da sua organização também é omitida e reportada como `jev_name_clash`: a verificação Cloud é consultada em seu lugar.
-
-## Verificar cobertura
+## Verificar a cobertura
 
 A cobertura responde se uma política está sendo executada onde o risco existe.
 
 1. Acesse **Admin → enforcement** e revise os totais de enforce e observe.
-2. Busque uma máquina por ID ou rótulo, ou filtre por máquinas sem uma política.
-3. Expanda uma linha para comparar políticas atribuídas, deploy reportado, último check-in e histórico.
+2. Pesquise uma máquina por ID ou rótulo, ou filtre as máquinas em que falta uma política.
+3. Expanda uma linha para comparar as políticas atribuídas, o deploy reportado, o último check-in e o histórico.
 4. Atualize após o intervalo de polling da máquina quando um deploy aplicado ainda estiver pendente.
 
-![A frota de Enforcement mostrando cobertura de políticas, estado de deploy das máquinas, e atribuições observe e enforce.](/images/dashboard/enforcement-fleet.png)
+![A frota de Enforcement mostrando cobertura de políticas, estado de deploy das máquinas e atribuições de observe e enforce.](/images/dashboard/enforcement-fleet.png)
 
-Fique atento a máquinas que nunca receberam o deploy mais recente, máquinas registradas que pararam de reportar, uma política atribuída ao ambiente errado e desvio de versão após uma atualização interrompida.
+Fique atento a máquinas que nunca receberam o deploy mais recente, máquinas registradas que pararam de reportar, uma política atribuída ao ambiente errado e divergência de versões após uma atualização interrompida.
 
-Rotule as máquinas por carga de trabalho e ambiente — hostnames sozinhos raramente sobrevivem ao autoscaling ou substituição:
+Rotule as máquinas por carga de trabalho e ambiente — nomes de host sozinhos raramente sobrevivem a autoescalonamento ou substituição:
 
 ```bash
 failproofai config --machine-label checkout-runner-03
 ```
 
 <Warning>
-  O gerenciamento de enforcement é um fluxo de trabalho administrativo da Cloud. Não trate as rotas de enforcement restritas a root como endpoints comuns `/v1` de clientes.
+  O gerenciamento de enforcement é um fluxo de trabalho administrativo da Cloud. Não trate as rotas de enforcement exclusivas de root como endpoints comuns da API `/v1` do cliente.
 </Warning>

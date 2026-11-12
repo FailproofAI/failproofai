@@ -1,12 +1,12 @@
 ---
 title: "OpenTelemetry CLI"
-description: "FailproofAI Cloud için OTEL'i etkinleştirin, teslim işlemini denetleyin ve önceki ayarlarınızı geri yükleyin."
+description: "Coding ajanları için OTEL'e katılın, teslimatı inceleyin ve önceki ayarlarınızı geri yükleyin."
 icon: "radio"
 ---
 
-`failproofai otel` FailproofAI Cloud'a isteğe bağlı OpenTelemetry raporlaması yapılandırır. Önce makinenizi `failproofai config` ile bağlayın ve bir kuruluş yöneticisinden **Settings → OpenTelemetry** seçeneğini etkinleştirmesini isteyin.
+`failproofai otel` FailproofAI Cloud'a isteğe bağlı OpenTelemetry raporlaması yapılandırır. Önce makinenizi `failproofai config` ile bağlayın ve bir kuruluş yöneticisinden **Settings → OpenTelemetry** özelliğini etkinleştirmesini isteyin.
 
-Etkileşimli kurulum, Cloud anahtar alanından ve ajan seçicisinden sonra OpenTelemetry hakkında sorar. İsteğe bağlı adım varsayılan olarak Hayır'dır. OTEL ajanlarını seçmek için Evet'i seçin; bağlantı yazıldıktan sonra aynı etkinleştirme kodu çalışır. Kurulumdan önce Esc tuşuna basılırsa hiçbir değişiklik uygulanmaz. Katılımsız kurulum, sağlanan anahtar, açık kaynak modu ve kaydedilmiş bir bağlantı tutmak sizi opt-in yapmaz.
+Etkileşimli kurulum, Cloud anahtarı alanı ve ajan seçicisinden sonra OpenTelemetry hakkında sorar. İsteğe bağlı adım varsayılan olarak Hayır'dır. OTEL ajanlarını seçmek için Evet'i seçin; aynı etkinleştirme kodu bağlantı yazıldıktan sonra çalışır. Kurulumdan önce Esc tuşuna basarsanız hiçbir değişiklik uygulanmaz. Katılımsız kurulum, sağlanan bir anahtar, açık kaynak modu ve kaydedilmiş bir bağlantının tutulması sizi katılmış kılmaz.
 
 ## Bir ajanı etkinleştirin
 
@@ -18,41 +18,41 @@ failproofai otel enable copilot
 failproofai otel enable all --yes
 ```
 
-Desteklenen ajanlar `claude`, `codex` ve `copilot` (VS Code) şeklindedir. Copilot kurulumu bir VS Code yürütülebilir dosyası veya yüklü bir Copilot uzantısı gerektirir. Yalnızca kalan bir ayarlar dizini yeterli değildir; hiçbiri bulunmadığında kurulum Copilot'u atlar.
+Desteklenen ajanlar `claude`, `codex` ve `copilot` (VS Code) şeklindedir. Copilot kurulumu bir VS Code yürütülebiliri veya yüklü bir Copilot uzantısı gerektirir. Kalan bir ayarlar dizini yalnız başına yeterli değildir; kurulum ikisi de bulunamadığında Copilot'u atlar.
 
-`--local` doğrudan Cloud'a yerine yerel relay'e gönderir. Copilot, ayarları kimlik doğrulama başlığını depolayamadığından relay'i otomatik olarak kullanır.
+`--local`, doğrudan Cloud'a göndermek yerine yerel rele gönderi yapar. Copilot, ayarları kimlik doğrulama başlığını depolayamadığı için releyi otomatik olarak kullanır.
 
-Relay yalnızca makinenizde dinler. Yapılandırılan FailproofAI daemon değişikliği birkaç saniye içinde alır; yeniden başlatmanız gerekmez. Başka bir uygulama relay portuna sahipse, durum bunu kapalı olarak bildirir ve daemon çalışmaya devam eder.
+Rele yalnızca makinenizde dinler. Yapılandırılmış FailproofAI daemon'u değişikliği saniyeler içinde alır; yeniden başlatmanız gerekmez. Başka bir uygulama rele bağlantı noktasının sahibi ise, durum raporu bunu kapalı olarak gösterir ve daemon çalışmaya devam eder.
 
 <Warning>
-Metin yakalama varsayılan olarak açıktır. İstemler ve araç ayrıntılarını çıkarmak için `--no-content` ekleyin. Ajan sürümleri farklı içerik denetimleri ortaya çıkarabilir; hassas verilerle kullanmadan önce ajanınızın ihraç ettiği öğeleri gözden geçirin.
+Metin yakalaması varsayılan olarak açıktır. İstemler ve araç ayrıntılarını çıkarmak için `--no-content` ekleyin. Ajan sürümleri farklı içerik denetimlerini ortaya çıkarabilir; hassas verilerle kullanmadan önce ajanınızın ne verdiğini gözden geçirin.
 </Warning>
 
-Codex yalnızca konuşma günlükleri, dahili çalışma zamanı izlemeleri veya ölçümleri değil. Codex yapılandırmanızda açık bir `log_user_prompt = false` kapalı kalır; etkinleştir bu seçimi koruduğu zaman bir not yazdırır.
+Codex yalnızca konuşma günlüklerini dışa aktarır, iç çalışma zamanı izlemeleri veya ölçümleri değil. Codex yapılandırmanızda açık `log_user_prompt = false` kapalı kalır; etkinleştir bu seçimi koruduğunu not aldırır.
 
 ### Bir raporlama yolu seçin
 
 Bir ajan için transkript raporlaması açıksa, kurulum sorar:
 
-> failproofai zaten Claude Code oturumlarını Cloud'a gönderiyor. Bunları OTEL ile göndermek ister misiniz? Claude Code için transkript yüklemesi durur.
+> failproofai zaten Claude Code oturumlarını Cloud'a gönderiyor. Bunları OTEL ile göndermek ister misiniz? Claude Code transkript yüklemesi duracak.
 
-Varsayılan Hayır'dır. `--yes` istemi kabul eder. Diğer ajanlar ve politika zorunluluğu etkilenmez.
+Varsayılan Hayır'dır. `--yes` istem olmadan değişimi kabul eder. Diğer ajanlar ve politika yaptırımı etkilenmez.
 
-Codex kurulumu, daemon tarafından toplayıcı değişikliğinin onaylanmasını bekleyen ihracat ayarlarını yazmadan önce bekler. Onay zaman aşımına uğrarsa, kurulum Codex başlatmadan önce beklemenizi uyarır.
+Codex kurulumu, daemon tarafından collector değişikliği onaylanmadan önce dışa aktarıcı ayarlarını yazacak şekilde bekler. Onay zaman aşımına uğrarsa, kurulum sizi Codex başlatmadan önce beklemesi için uyarır.
 
-Config v2 hatırlanan izleme listesini `agents.selected` konumunda tutar (ve algılama geçmişini `agents.seen` konumunda). Ajan başına transkript tercihi `collector.agents.<agent>.sessions` konumunda kalır, OTEL sahipliği `otel.agents` konumunda ve relay ayarları `collector.otlp.enabled` / `collector.otlp.port` konumunda. Bu ayrı anahtarlar eski OTEL yapılandırmalarını okunabilir tutar: kurulum izleme listesini taşıma tercihini veya ajan ayarlarını geri yüklemek için gereken durumu kaybetmeden değiştirebilir.
+Config v2 anımsanan izleme listesini `agents.selected` konumunda tutar (ve algılama geçmişini `agents.seen` konumunda). Ajan başına transkript tercihi `collector.agents.<agent>.sessions` konumunda kalır, OTEL sahipliği `otel.agents` konumunda ve rele ayarları `collector.otlp.enabled` / `collector.otlp.port` konumunda. Bu ayrı anahtarlar eski OTEL yapılandırmalarını okunabilir tutar: kurulum izleme listesini, taşıma tercihini veya ajan ayarlarınızı geri yüklemek için gereken durumu kaybetmeden değiştirebilir.
 
-## Kurulumu denetleyin
+## Kurulumu inceleyin
 
 ```bash
 failproofai otel status
 ```
 
-Durum her ajanı, ayarlarının FailproofAI tarafından yönetilip yönetilmediğini, hedefini, kuruluşun alım anahtarını, relay durumunu ve son relay yükleme sonucunu gösterir.
+Durum her ajanı, ayarlarının FailproofAI tarafından yönetilip yönetilmediğini, hedefini, kuruluşun alım anahtarını, rele durumunu ve son rele yükleme sonucunu gösterir.
 
-Kuruluş anahtarı için `unknown`, sunucunun bunu sağlamadığı veya erişilemediği anlamına gelir. Bu hata değildir ve eski bir Cloud sürümünde yapılandırmayı engeller.
+Kuruluş anahtarı için `unknown` sunucunun bunu sağlamadığı veya erişilemediği anlamına gelir. Bu bir hata değildir ve eski Cloud sürümünde yapılandırmayı engelleme.
 
-Cloud henüz OTEL'i desteklemiyorsa, relay reddedilen ihracatları atıp tutmak yerine tutar. Kuruluş alımı kapalıysa, `enable` hiçbir şey yazmaz ve bir hatayla çıkar; önce bir yöneticiden bunu açmasını isteyin.
+Cloud henüz OTEL'i desteklemiyorsa, rele reddedilen ihracatları atmak yerine saklı tutar. Kuruluş alımı kapalıysa, `enable` hiçbir şey yazmaz ve hatayla çıkar; bir yöneticiden bunu önce açmasını isteyin.
 
 ## Bir uygulama için yapılandırmayı yazdırın
 
@@ -61,7 +61,7 @@ failproofai otel env --service my-agent
 failproofai otel env --service my-agent --local
 ```
 
-Çıktı, OTLP/HTTP ihraça yönelik bir shell ortam bloğudur. Cloud çıktısı `OTEL_EXPORTER_OTLP_ENDPOINT` ayarını Cloud'un OTLP tabanına, `https://<cloud>/otel` ayarlar ve ihraç edici `/v1/<signal>` ekler; `OTEL_EXPORTER_OTLP_LOGS_ENDPOINT` gibi sinyal başına değişken tam `https://<cloud>/otel/v1/logs` gerektirir. Yerel çıktı relay'i gösterir, `http://127.0.0.1:<port>`. Cloud çıktısı yapılandırılan API anahtarını içerir; bunu bir gizli dizi olarak ele alın. Yerel çıktı anahtarı atlar. Yerel çıktı kullanmak için önce yerel bir ajanı etkinleştirin böylece relay çalışıyor olur.
+Çıkış OTLP/HTTP dışa aktarıcısı için bir kabuk ortamı bloğudur. Cloud çıkışı `OTEL_EXPORTER_OTLP_ENDPOINT` değerini Cloud'ın OTLP tabanına ayarlar, `https://<cloud>/otel` ve dışa aktarıcı `/v1/<signal>` ekler; `OTEL_EXPORTER_OTLP_LOGS_ENDPOINT` gibi sinyal başına değişken tam `https://<cloud>/otel/v1/logs` gerektirir. Yerel çıkış rele, `http://127.0.0.1:<port>` değerini işaret eder. Cloud çıkışı yapılandırılmış API anahtarını içerir; bunu bir gizli dize olarak ele alın. Yerel çıkış anahtarı çıkarmaz. Yerel çıkışı kullanmak için, önce yerel bir ajanı etkinleştirin; böylece rele çalışmakta olur.
 
 ## Önceki ayarları geri yükleyin
 
@@ -70,8 +70,8 @@ failproofai otel disable claude
 failproofai otel disable all
 ```
 
-Devre dışı bırak yalnızca FailproofAI'nin yazdığı ayarları geri yükler, ilgisiz değişiklikleri tutar ve her ajanın önceki transkript raporlaması tercihini geri yükler. Son yönetilen yerel ajan devre dışı bırakıldığında, relay ihracatları kabul etmeyi durdurur.
+Devre dışı bırak yalnızca FailproofAI'nin yazdığı ayarları geri yükler, ilişkisiz değişiklikleri tutar ve her ajanın önceki transkript-raporlama tercihini geri yükler. Son yönetilen yerel ajan devre dışı bırakıldığında, rele ihracatları kabul etmeyi durdurur.
 
-Codex için devre dışı bırak ayrıca `collector.agents.codex.sessions_resume_after` kaydeder (epoch milisaniye). Mevcut dağıtım baytları teslim edildi olarak ele alınır, bu nedenle OTEL ile yakalanan oturumlar yeniden yüklenmez; sonraki eklemeler yine de transkript raporlaması yoluyla akar.
+Codex için, devre dışı bırak aynı zamanda `collector.agents.codex.sessions_resume_after` (epoch milisaniye) kaydeder. Var olan dağıtım baytları teslim edilmiş olarak ele alınır; böylece OTEL ile yakalanan oturumlar tekrar yüklenmez; daha sonraki ekler yine de transkript raporlama aracılığıyla akar.
 
-Her komut `--help` destekler. Uygulama ve kodlama ajanı örnekleri için [Cloud'da OpenTelemetry](/tr/agenteye/opentelemetry) bölümüne bakın.
+Her komut `--help` destekler. Uygulama ve coding-ajan örnekleri için [Cloud'da OpenTelemetry](/tr/agenteye/opentelemetry) bölümüne bakın.

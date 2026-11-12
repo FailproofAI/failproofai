@@ -1,12 +1,12 @@
 ---
 title: "OpenTelemetry CLI"
-description: "코딩 에이전트에 OTEL을 활성화하고, 전송 상태를 확인하며, 이전 설정을 복원합니다."
+description: "코딩 에이전트에 OTEL을 활성화하고, 전달 상태를 확인하며, 이전 설정을 복원합니다."
 icon: "radio"
 ---
 
-`failproofai otel`은 FailproofAI Cloud에 대한 선택적 OpenTelemetry 보고를 구성합니다. 먼저 `failproofai config`로 머신을 연결하고, 조직 관리자에게 **설정 → OpenTelemetry**를 활성화해달라고 요청하세요.
+`failproofai otel`은 FailproofAI Cloud에 대한 선택적 OpenTelemetry 보고를 구성합니다. 먼저 `failproofai config`로 머신을 연결하고, 조직 관리자에게 **Settings → OpenTelemetry**를 활성화하도록 요청하세요.
 
-대화형 설정은 Cloud 키 입력 필드와 에이전트 선택 이후에 OpenTelemetry에 대해 묻습니다. 이 선택적 단계의 기본값은 '아니오'입니다. '예'를 선택하면 OTEL 에이전트를 선택할 수 있으며, 연결이 저장된 직후 동일한 활성화 코드가 실행됩니다. 설정 도중 Esc를 누르면 아무것도 변경되지 않습니다. 무인 설정, 키 직접 지정, 오픈소스 모드, 기존 연결 유지 등의 경우에는 자동으로 활성화되지 않습니다.
+대화형 설정에서는 Cloud 키 입력 및 에이전트 선택 이후 OpenTelemetry에 대해 묻습니다. 이 선택적 단계의 기본값은 No입니다. Yes를 선택하면 OTEL 에이전트를 고를 수 있으며, 연결이 저장된 후 동일한 활성화 코드가 실행됩니다. 설정 중 Esc를 누르면 아무것도 변경되지 않습니다. 자동화된 설정, 직접 제공된 키, 오픈소스 모드, 기존 연결 유지는 자동으로 옵트인되지 않습니다.
 
 ## 에이전트 활성화
 
@@ -18,29 +18,29 @@ failproofai otel enable copilot
 failproofai otel enable all --yes
 ```
 
-지원되는 에이전트는 `claude`, `codex`, `copilot`(VS Code)입니다. Copilot 설정에는 VS Code 실행 파일 또는 설치된 Copilot 확장이 필요합니다. 설정 디렉터리만 남아 있는 경우는 충분하지 않으며, 둘 다 없으면 설정이 Copilot을 건너뜁니다.
+지원되는 에이전트는 `claude`, `codex`, `copilot`(VS Code)입니다. Copilot 설정을 사용하려면 VS Code 실행 파일이나 설치된 Copilot 익스텐션이 필요합니다. 설정 디렉터리만 남아 있는 경우는 충분하지 않으며, 둘 다 발견되지 않으면 설정 시 Copilot을 건너뜁니다.
 
-`--local`은 Cloud로 직접 전송하는 대신 로컬 릴레이로 전송합니다. Copilot은 설정에 인증 헤더를 저장할 수 없기 때문에 자동으로 릴레이를 사용합니다.
+`--local`은 Cloud에 직접 전송하는 대신 로컬 릴레이로 전송합니다. Copilot은 설정에 인증 헤더를 저장할 수 없기 때문에 릴레이를 자동으로 사용합니다.
 
-릴레이는 해당 머신에서만 수신 대기합니다. 구성된 FailproofAI 데몬은 몇 초 내에 변경 사항을 감지하므로 재시작할 필요가 없습니다. 다른 애플리케이션이 릴레이 포트를 점유하고 있는 경우, 상태에는 비활성으로 표시되며 데몬은 계속 실행됩니다.
+릴레이는 사용자의 머신에서만 수신 대기합니다. 구성된 FailproofAI 데몬은 몇 초 내에 변경 사항을 인식하므로 재시작이 필요하지 않습니다. 다른 애플리케이션이 릴레이 포트를 점유하고 있으면 상태에 off로 표시되며, 데몬은 계속 실행됩니다.
 
 <Warning>
-텍스트 캡처는 기본적으로 활성화되어 있습니다. 프롬프트와 도구 세부 정보를 제외하려면 `--no-content`를 추가하세요. 에이전트 버전에 따라 노출되는 콘텐츠 제어 옵션이 다를 수 있으므로, 민감한 데이터와 함께 사용하기 전에 에이전트가 내보내는 항목을 검토하세요.
+텍스트 캡처는 기본적으로 활성화되어 있습니다. 프롬프트와 도구 세부 정보를 제외하려면 `--no-content`를 추가하세요. 에이전트 버전마다 노출하는 콘텐츠 제어 항목이 다를 수 있으므로, 민감한 데이터와 함께 사용하기 전에 에이전트가 내보내는 항목을 검토하세요.
 </Warning>
 
-Codex는 내부 런타임 추적이나 메트릭이 아닌 대화 로그만 내보냅니다. Codex 구성에 `log_user_prompt = false`가 명시적으로 설정되어 있으면 해당 설정이 유지되며, 활성화 시 이 선택이 보존되었음을 알리는 메모가 출력됩니다.
+Codex는 내부 런타임 트레이스나 메트릭이 아닌 대화 로그만 내보냅니다. Codex 구성에 명시적으로 `log_user_prompt = false`가 설정된 경우 해당 설정은 유지되며, 활성화 시 이 선택이 보존됨을 알리는 메시지가 표시됩니다.
 
-### 단일 보고 경로 선택
+### 보고 경로 선택
 
-에이전트에 트랜스크립트 보고가 활성화되어 있으면 다음과 같은 메시지가 표시됩니다:
+에이전트에 대한 트랜스크립트 보고가 활성화되어 있으면 설정 시 다음과 같이 묻습니다:
 
-> failproofai already sends Claude Code sessions to Cloud. Send them with OTEL instead? Transcript upload for Claude Code stops.
+> failproofai가 이미 Claude Code 세션을 Cloud로 전송하고 있습니다. 대신 OTEL로 전송하시겠습니까? Claude Code에 대한 트랜스크립트 업로드가 중단됩니다.
 
-기본값은 '아니오'입니다. `--yes`를 사용하면 프롬프트 없이 전환을 수락합니다. 다른 에이전트와 정책 적용에는 영향이 없습니다.
+기본값은 No입니다. `--yes`를 사용하면 프롬프트 없이 전환이 수락됩니다. 다른 에이전트 및 정책 적용에는 영향이 없습니다.
 
-Codex 설정은 내보내기 설정을 저장하기 전에 데몬이 콜렉터 변경을 확인할 때까지 기다립니다. 확인이 타임아웃되면, Codex를 시작하기 전에 잠시 기다리라는 경고가 표시됩니다.
+Codex 설정은 내보내기 설정을 작성하기 전에 데몬이 컬렉터 변경을 확인할 때까지 대기합니다. 확인 시간이 초과되면 설정 시 Codex를 시작하기 전에 기다리라는 경고가 표시됩니다.
 
-Config v2는 기억된 추적 목록을 `agents.selected`에 저장하고(감지 기록은 `agents.seen`에 저장), 에이전트별 트랜스크립트 기본 설정은 `collector.agents.<agent>.sessions`, OTEL 소유권은 `otel.agents`, 릴레이 설정은 `collector.otlp.enabled` / `collector.otlp.port`에 저장합니다. 이렇게 키를 분리하면 기존 OTEL 구성을 그대로 읽을 수 있습니다. 즉, 전송 기본 설정이나 에이전트 설정 복원에 필요한 상태를 잃지 않고 추적 목록만 변경할 수 있습니다.
+Config v2는 기억된 트레이싱 목록을 `agents.selected`에 저장하고(감지 기록은 `agents.seen`), 에이전트별 트랜스크립트 기본 설정은 `collector.agents.<agent>.sessions`에, OTEL 소유권은 `otel.agents`에, 릴레이 설정은 `collector.otlp.enabled` / `collector.otlp.port`에 유지합니다. 이처럼 키를 분리함으로써 기존 OTEL 구성을 읽을 수 있습니다: 설정은 전송 기본 설정이나 에이전트 설정 복원에 필요한 상태를 잃지 않고 트레이싱 목록을 변경할 수 있습니다.
 
 ## 설정 확인
 
@@ -48,11 +48,11 @@ Config v2는 기억된 추적 목록을 `agents.selected`에 저장하고(감지
 failproofai otel status
 ```
 
-상태 명령은 모든 에이전트, FailproofAI가 설정을 관리하는지 여부, 전송 대상, 조직의 수집 스위치 상태, 릴레이 상태, 마지막 릴레이 업로드 결과를 표시합니다.
+Status는 모든 에이전트, FailproofAI가 설정을 관리하는지 여부, 목적지, 조직의 수집 스위치, 릴레이 상태, 마지막 릴레이 업로드 결과를 표시합니다.
 
-조직 스위치가 `unknown`으로 표시되는 경우는 서버가 해당 정보를 제공하지 않았거나 연결할 수 없었음을 의미합니다. 이는 오류가 아니며, 이전 Cloud 버전에서의 구성을 방해하지 않습니다.
+조직 스위치에 `unknown`이 표시되면 서버가 제공하지 않았거나 연결할 수 없음을 의미합니다. 오류가 아니며, 이전 Cloud 버전에서의 구성을 방해하지 않습니다.
 
-Cloud가 아직 OTEL을 지원하지 않는 경우, 릴레이는 거부된 내보내기를 버리지 않고 보관합니다. 조직 수집이 비활성화된 경우, `enable`은 아무것도 기록하지 않고 오류와 함께 종료됩니다. 관리자에게 먼저 활성화를 요청하세요.
+Cloud가 아직 OTEL을 지원하지 않는 경우, 릴레이는 거부된 내보내기를 삭제하지 않고 보관합니다. 조직 수집이 비활성화된 경우 `enable`은 아무것도 작성하지 않고 오류와 함께 종료됩니다. 관리자에게 먼저 활성화를 요청하세요.
 
 ## 애플리케이션용 구성 출력
 
@@ -61,7 +61,7 @@ failproofai otel env --service my-agent
 failproofai otel env --service my-agent --local
 ```
 
-출력은 OTLP/HTTP 내보내기용 셸 환경 블록입니다. Cloud 출력은 `OTEL_EXPORTER_OTLP_ENDPOINT`를 Cloud의 OTLP 기본 경로인 `https://<cloud>/otel`로 설정하고, 내보내기는 `/v1/<signal>`을 추가합니다. `OTEL_EXPORTER_OTLP_LOGS_ENDPOINT`와 같이 신호별 변수에는 전체 경로인 `https://<cloud>/otel/v1/logs`가 필요합니다. 로컬 출력은 릴레이인 `http://127.0.0.1:<port>`를 가리킵니다. Cloud 출력에는 구성된 API 키가 포함되므로 비밀로 취급하세요. 로컬 출력에는 키가 포함되지 않습니다. 로컬 출력을 사용하려면 먼저 로컬 에이전트를 활성화하여 릴레이가 실행 중인 상태여야 합니다.
+출력은 OTLP/HTTP 내보내기를 위한 셸 환경 블록입니다. Cloud 출력은 `OTEL_EXPORTER_OTLP_ENDPOINT`를 Cloud의 OTLP 베이스인 `https://<cloud>/otel`로 설정하고, 내보내기는 `/v1/<signal>`을 추가합니다. `OTEL_EXPORTER_OTLP_LOGS_ENDPOINT`와 같은 신호별 변수는 `https://<cloud>/otel/v1/logs`와 같은 전체 URL이 필요합니다. 로컬 출력은 릴레이인 `http://127.0.0.1:<port>`를 가리킵니다. Cloud 출력에는 구성된 API 키가 포함되어 있으므로 시크릿으로 취급하세요. 로컬 출력에는 키가 포함되지 않습니다. 로컬 출력을 사용하려면 먼저 로컬 에이전트를 활성화하여 릴레이가 실행 중인 상태여야 합니다.
 
 ## 이전 설정 복원
 
@@ -70,8 +70,8 @@ failproofai otel disable claude
 failproofai otel disable all
 ```
 
-비활성화는 FailproofAI가 작성한 설정만 복원하고, 관련 없는 변경 사항은 유지하며, 각 에이전트의 이전 트랜스크립트 보고 설정을 복원합니다. 마지막으로 관리되는 로컬 에이전트가 비활성화되면 릴레이는 내보내기 수신을 중단합니다.
+Disable은 FailproofAI가 작성한 설정만 복원하고, 관련 없는 변경 사항은 유지하며, 각 에이전트의 이전 트랜스크립트 보고 선택을 복원합니다. 마지막으로 관리된 로컬 에이전트가 비활성화되면 릴레이는 내보내기 수락을 중단합니다.
 
-Codex의 경우, 비활성화 시 `collector.agents.codex.sessions_resume_after`(에포크 밀리초)도 기록됩니다. 기존 롤아웃 바이트는 전송 완료로 처리되어 OTEL로 캡처된 세션이 다시 업로드되지 않으며, 이후에 추가된 내용은 계속 트랜스크립트 보고를 통해 전달됩니다.
+Codex의 경우, disable은 `collector.agents.codex.sessions_resume_after`(에포크 밀리초)도 기록합니다. 기존 롤아웃 바이트는 이미 전달된 것으로 처리되어 OTEL로 캡처된 세션이 다시 업로드되지 않습니다. 이후 추가된 내용은 트랜스크립트 보고를 통해 계속 전달됩니다.
 
-모든 명령은 `--help`를 지원합니다. 애플리케이션 및 코딩 에이전트 예제는 [OpenTelemetry in Cloud](/ko/agenteye/opentelemetry)를 참조하세요.
+모든 명령은 `--help`를 지원합니다. 애플리케이션 및 코딩 에이전트 예시는 [OpenTelemetry in Cloud](/ko/agenteye/opentelemetry)를 참고하세요.

@@ -1,20 +1,20 @@
 ---
 title: "OpenTelemetry"
-description: "Gửi theo dõi coding-agent và telemetry ứng dụng tới FailproofAI Cloud bằng giao thức OTLP."
+description: "Gửi telemetry của coding-agent và ứng dụng đến FailproofAI Cloud bằng giao thức OTLP."
 icon: "radio"
 ---
 
-OpenTelemetry cho phép bạn gửi traces, logs và metrics của agent tới FailproofAI Cloud bằng giao thức tiêu chuẩn OTLP/HTTP. Đó là tùy chọn. Các tích hợp FailproofAI hiện tại của bạn tiếp tục hoạt động mà không cần bật nó.
+OpenTelemetry cho phép bạn gửi traces, logs và metrics của agent đến FailproofAI Cloud bằng giao thức tiêu chuẩn OTLP/HTTP. Đây là tính năng tùy chọn. Các tích hợp FailproofAI hiện có của bạn tiếp tục hoạt động mà không cần bật tính năng này.
 
-## Bật tiếp nhận cho tổ chức của bạn
+## Bật ingest cho tổ chức của bạn
 
-Một admin tổ chức mở **Settings → OpenTelemetry** và bật tiếp nhận. Sử dụng Cloud API key với quyền `events:add`, cùng quyền được dùng để báo cáo agent.
+Một quản trị viên tổ chức mở **Settings → OpenTelemetry** và bật ingest. Sử dụng Cloud API key với quyền `events:add`, cùng quyền được dùng để báo cáo agent.
 
-Nếu tiếp nhận bị tắt, Cloud từ chối xuất OTLP, vì vậy `failproofai otel enable` không thay đổi gì và agents của bạn tiếp tục gửi sessions theo cách thông thường. Chạy `failproofai otel status` để kiểm tra công tắc tổ chức và yêu cầu admin bật nó.
+Nếu ingest tắt, Cloud sẽ từ chối OTLP exports, vì vậy `failproofai otel enable` không thay đổi gì và các agent của bạn tiếp tục gửi sessions theo cách thông thường. Chạy `failproofai otel status` để kiểm tra công tắc tổ chức và yêu cầu quản trị viên bật nó lên.
 
-## Kết nối coding agent
+## Kết nối một coding agent
 
-Kết nối máy của bạn với `failproofai config`, sau đó chọn một agent:
+Kết nối máy của bạn bằng `failproofai config`, sau đó chọn một agent:
 
 ```bash
 failproofai otel enable claude
@@ -22,9 +22,9 @@ failproofai otel enable codex
 failproofai otel enable copilot
 ```
 
-Lệnh thiết lập hỗ trợ Claude Code, Codex và Copilot và chọn Cloud hoặc relay xác thực cục bộ một cách thích hợp. Copilot sử dụng relay cục bộ tự động. Khởi động daemon FailproofAI đã được cấu hình của bạn trước khi sử dụng relay.
+Lệnh setup hỗ trợ Claude Code, Codex và Copilot và chọn Cloud hoặc một relay được xác thực cuc bộ một cách phù hợp. Copilot sử dụng relay cục bộ tự động. Khởi động daemon FailproofAI đã cấu hình trước khi sử dụng relay.
 
-Nếu FailproofAI đã gửi transcripts session của agent, thiết lập sẽ hỏi có chuyển agent đó sang OTEL không. Mặc định là Không. Chấp nhận sẽ dừng tải lên transcripts cho agent đó; nó không thay đổi thực thi chính sách hoặc báo cáo từ các agents khác.
+Nếu FailproofAI đã gửi session transcripts của một agent, setup sẽ hỏi có nên chuyển agent đó sang OTEL không. Mặc định là Không. Chấp nhận sẽ dừng uploads transcript cho agent đó; nó không thay đổi policy enforcement hoặc báo cáo từ các agent khác.
 
 ## Kết nối một ứng dụng
 
@@ -37,18 +37,18 @@ export OTEL_EXPORTER_OTLP_HEADERS='Authorization=Bearer%20<key>'
 export OTEL_SERVICE_NAME=my-agent
 ```
 
-Endpoint là cơ sở OTLP của Cloud, `https://app.befailproof.ai/otel`; exporter của bạn thêm `/v1/traces`, `/v1/logs` hoặc `/v1/metrics` tự động. Các biến cho từng tín hiệu như `OTEL_EXPORTER_OTLP_LOGS_ENDPOINT` được sử dụng nguyên vẹn, vì vậy chúng cần đường dẫn đầy đủ, ví dụ `https://app.befailproof.ai/otel/v1/logs`.
+Endpoint là OTLP base của Cloud, `https://app.befailproof.ai/otel`; exporter của bạn tự thêm `/v1/traces`, `/v1/logs` hoặc `/v1/metrics`. Các biến cho mỗi tín hiệu như `OTEL_EXPORTER_OTLP_LOGS_ENDPOINT` được sử dụng nguyên xi, vì vậy chúng cần đường dẫn đầy đủ, ví dụ `https://app.befailproof.ai/otel/v1/logs`.
 
-Thay `<key>` bằng API key của bạn. Giữ bí mật ra khỏi lịch sử shell, screen recordings và cấu hình đã commit. Đối với máy được cấu hình, `failproofai otel env --service my-agent` in khối này với key hiện tại của nó. Output của nó chứa một credential.
+Thay `<key>` bằng API key của bạn. Giữ secret ra khỏi shell history, screen recordings và committed configuration. Đối với một máy được cấu hình, `failproofai otel env --service my-agent` in khối với key hiện có của nó. Output của nó chứa một credential.
 
-Cloud chấp nhận xuất OTLP/HTTP cho traces, logs và metrics, dưới dạng protobuf hoặc JSON, bao gồm các request nén gzip. Nó không chấp nhận OTLP/gRPC.
+Cloud chấp nhận OTLP/HTTP exports cho traces, logs và metrics, dưới dạng protobuf hoặc JSON, bao gồm các yêu cầu nén gzip. Nó không chấp nhận OTLP/gRPC.
 
-Metrics được xác nhận để tương thích exporter nhưng không được lưu trữ hoặc hiển thị. Traces agent và logs coding-agent được hỗ trợ trở thành sessions; các trường mà agent không xuất sẽ vắng mặt.
+Metrics được xác nhận cho khả năng tương thích exporter nhưng không được lưu trữ hoặc hiển thị. Supported agent traces và coding-agent logs trở thành sessions; các trường mà agent không export sẽ không có mặt.
 
-## Ghi lại văn bản prompt
+## Capture prompt text
 
 <Warning>
-Ghi lại văn bản có thể bao gồm prompts, tool arguments và nội dung nhạy cảm khác. `failproofai otel enable` bật nó. Thêm `--no-content` để giữ capture prompt và tool-detail tắt.
+Text capture có thể bao gồm prompts, tool arguments và nội dung nhạy cảm khác. `failproofai otel enable` bật nó. Thêm `--no-content` để giữ prompt và tool-detail capture tắt.
 </Warning>
 
 ```bash
@@ -56,7 +56,7 @@ failproofai otel enable claude --no-content
 failproofai otel enable codex --no-content
 ```
 
-Đối với agent bạn cấu hình thủ công, sử dụng controls capture-content riêng của nó:
+Đối với một agent bạn cấu hình thủ công, sử dụng content-capture controls của chính nó:
 
 <Tabs>
   <Tab title="Claude Code">
@@ -70,10 +70,10 @@ failproofai otel enable codex --no-content
     export OTEL_LOG_TOOL_DETAILS=1
     ```
 
-    Đặt cả hai biến content thành `0` để tránh ghi lại prompts và tool details.
+    Đặt cả hai biến content thành `0` để tránh capturing prompts và tool details.
   </Tab>
   <Tab title="Codex">
-    Trong cấu hình người dùng của Codex, sử dụng các cài đặt OTEL của nó:
+    Trong Codex user configuration, sử dụng OTEL settings của nó:
 
     ```toml
     [otel]
@@ -81,10 +81,10 @@ failproofai otel enable codex --no-content
     exporter = { otlp-http = { endpoint = "https://app.befailproof.ai/otel/v1/logs", protocol = "json", headers = { Authorization = "Bearer <key>" } } }
     ```
 
-    Nội dung hội thoại Codex nằm trong logs; giữ traces và metrics runtime nội bộ bị vô hiệu hóa. Codex sử dụng endpoint đầy đủ bạn cung cấp. Đặt `log_user_prompt` thành `false` để bỏ prompts; lệnh thiết lập bảo toàn một `false` rõ ràng.
+    Codex conversation content nằm trong logs; hãy để internal runtime traces và metrics bị tắt. Codex sử dụng complete endpoint mà bạn cung cấp. Đặt `log_user_prompt` thành `false` để loại bỏ prompts; lệnh setup bảo tồn một `false` rõ ràng.
   </Tab>
   <Tab title="Gemini CLI">
-    Sử dụng cài đặt telemetry của Gemini với relay cục bộ:
+    Sử dụng telemetry settings của Gemini với local relay:
 
     ```json
     {
@@ -99,10 +99,10 @@ failproofai otel enable codex --no-content
     }
     ```
 
-    Gemini CLI không được hỗ trợ bởi `failproofai otel enable`. Cấu hình nó thủ công với collector xác thực của riêng bạn. Đặt `logPrompts` thành `false` để không ghi lại prompt.
+    Gemini CLI không được hỗ trợ bởi `failproofai otel enable`. Cấu hình nó thủ công với một authenticated collector của riêng bạn. Đặt `logPrompts` thành `false` để không capture prompt.
   </Tab>
   <Tab title="Copilot in VS Code">
-    Sử dụng các cài đặt người dùng VS Code này:
+    Sử dụng các VS Code user settings này:
 
     ```json
     {
@@ -113,19 +113,19 @@ failproofai otel enable codex --no-content
     }
     ```
 
-    Chạy `failproofai otel enable copilot` để bật relay xác thực. Đặt `captureContent` thành `false` để bỏ qua nội dung.
+    Chạy `failproofai otel enable copilot` để bật authenticated relay. Đặt `captureContent` thành `false` để bỏ qua content.
   </Tab>
 </Tabs>
 
-## Kiểm tra hoặc hoàn tác thiết lập
+## Kiểm tra hoặc hoàn tác setup
 
 ```bash
 failproofai otel status
 failproofai otel disable all
 ```
 
-Status phân biệt các cài đặt được quản lý bởi FailproofAI với telemetry bạn cấu hình ở nơi khác. Disable khôi phục các cài đặt được quản lý trước đó và lựa chọn tải lên transcript trước đó của agent.
+Status phân biệt các settings được quản lý bởi FailproofAI từ telemetry bạn cấu hình ở nơi khác. Disable khôi phục previous managed settings và previous transcript-upload choice của agent.
 
 <Card title="OpenTelemetry CLI" href="/vi/reference/otel" icon="terminal">
-  Tùy chọn lệnh, thiết lập relay cục bộ và khắc phục sự cố.
+  Các tùy chọn lệnh, local relay setup và troubleshooting.
 </Card>

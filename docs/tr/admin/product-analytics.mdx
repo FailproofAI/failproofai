@@ -1,61 +1,61 @@
 ---
-title: "Ürün analitiği"
-description: "Failproof AI Cloud'un kendisi hakkında gönderdiği kullanım telemetrisinin ne olduğu, asla nelerin toplanmadığı ve bunun nasıl kapatılacağı."
+title: "Ürün analitikleri"
+description: "Failproof AI Cloud'un kendi hakkında gönderdiği kullanım telemetrisi, hiçbir zaman toplandığı şey ve bunu kapatma yöntemi."
 icon: "chart-no-axes-column"
 ---
 
-Failproof AI Cloud, **yazılımın kendisi hakkında** kullanım telemetrisini bakımcılarına gönderir. Hiçbir zaman aracılarınızın verilerini içermez. Kendi barındırılan bir kurulumda varsayılan olarak açıktır ve bunu kapatabilirsiniz.
+Failproof AI Cloud, yazılımın kendisi hakkında kullanım telemetrisi **yazılımın bakımcılarına** gönderir. Hiçbir zaman ajanlarınızın verilerini içermez. Şirket içi kurulumda varsayılan olarak açıktır ve bunu kapatabilirsiniz.
 
 ## Ne toplanır
 
-Her olay beş boyut taşır ve bir kişiyi tanımlayan hiçbir şey içermez:
+Her etkinlik beş boyut taşır ve hiçbir şeyde kişiyi tanımlayan bilgi yoktur:
 
-| Boyut | Örnek | Nedir |
+| Boyut | Örnek | Tanımı |
 | --- | --- | --- |
-| `product` | `agenteye` | Hangi ürün gönderdi |
-| `component` | `dashboard`, `server`, `cli` | Ürünün hangi bölümü gönderdi |
-| `app_version` | `0.0.1-beta.81` | Çalıştırdığınız derleme |
+| `product` | `agenteye` | Bunu hangi ürün gönderdi |
+| `component` | `dashboard`, `server`, `cli` | Bunu ürünün hangi kısmı gönderdi |
+| `app_version` | `0.0.1-beta.81` | Çalıştırdığınız yapı |
 | `deployment_kind` | `self_hosted` | Bunun müşteri kurulumu, demo, QA veya geliştirici makinesi olup olmadığı |
-| `org_id` | bir UUID | Eylemin hangi kuruluşta gerçekleştiği, donuk bir tanımlayıcı olarak |
+| `org_id` | bir UUID | İşlemin hangi kuruluşta gerçekleştiği, opak bir tanımlayıcı olarak |
 
-Bunlara ek olarak, olaylar **nelerin kullanıldığını kaydeder, hiçbir zaman içerikte ne olduğunu değil**: hangi sayfanın görüntülendiği (rota deseni olarak örneğin `/:org/sessions/:id`, asla gerçek URL değil), kaç ve hangi tür filtrenin uygulandığı, bir eylemin başarılı olup olmadığı ve ne kadar sürdüğü.
+Bunların yanında, etkinlikler **ne kullanıldığını, hiçbir zaman içinde ne olduğunu kaydeder**: hangi sayfanın görüntülendiği (gerçek URL hiçbir zaman değil, `/:org/sessions/:id` gibi bir rota deseni olarak), ne tür kaç filtrenin uygulandığı, bir işlem başarılı olup olmadığı ve ne kadar sürdüğü.
 
-Slack uygulaması çalışma alanı bağlantılarını ve bağlantısını kesmeleri, hesap bağlantılarını, sorulan soruları, gönderilen grafikleri, onay kararlarını ve sabit kategoriye göre hataları kaydeder. Hiçbir zaman Slack çalışma alanı, kullanıcı veya kanal kimliklerini, e-postayı, soruları, cevapları, SQL'i veya jetonları içermez.
+Slack uygulaması, çalışma alanı bağlantılarını ve bağlantıları kesmeleri, hesap bağlantılarını, sorulan soruları, yayınlanan grafikleri, onay kararlarını ve önceden belirlenmiş kategoriye göre başarısızlıkları kaydeder. Hiçbir zaman Slack çalışma alanı, kullanıcı veya kanal kimliklerini, e-postayı, soruları, yanıtları, SQL veya tokenları içermez.
 
 ### Kuruluşunuzun adı
 
-Donuk `org_id` yanında, kuruluşunuzun adını, URL şimdiki halini ve pano adresini bir kez kaydederiz; her olayda değil, bir kuruluş kaydında. Bu, benimseme veya bildirdiğiniz bir sorunu araştırırken bir desnenin hangi hesaba ait olduğunu söylememizi sağlar. Bu, ürünün sizin hakkında gönderdiği tek tanımlama bilgisidir.
+Opak `org_id`'nin yanında, kuruluşunuzun adı, URL kodunu ve pano adresini bir kez kaydederiz; her etkinlikte değil, bir kuruluş kaydında. Bir deseni hangi hesaba ait olduğunu, benimseme durumunu veya bildirdiğiniz bir sorunu araştırırken söylemize yardımcı olur. Bu, ürünün sizin hakkında gönderdiği tek tanımlayıcı bilgidir.
 
 ### Kullanım toplamlarınız
 
-Sunucu, her kuruluşun ölçülen kullanım toplamlarını, Kullanım sayfasında gördüğünüz aynı sayıları bildirir. Bunlar yalnızca sayıdır: olaylar, oturumlar, aracılar, ortamlar, değerlendirme çalışmaları, puanlar, denetim çalışmaları, kaydedilmiş sorgular, panolar, uyarılar, sorunlar, API anahtarları ve üyeler, ayrıca ölçüm penceresinin tarihleri. Hiçbir tanımlayıcı, ad veya sorgu metni içermez ve birisi oturum açmış olsun ya da olmasın gelirler.
+Sunucu, her kuruluşun ölçülen kullanım toplamlarını, Kullanım sayfasında gördüğünüz sayıları bildirir. Bunlar yalnızca sayıdır: etkinlikler, oturumlar, ajanlar, ortamlar, değerlendirme çalıştırmaları, puanlar, denetim çalıştırmaları, kaydedilen sorgular, panolar, uyarılar, sorunlar, API anahtarları ve üyeler, artı ölçüm penceresinin tarihleri. Tanımlayıcı, ad veya sorgu metni içermezler ve herhangi birinin oturum açıp açmadığından bağımsız olarak gelirler.
 
-## Asla nelerin toplanmadığı
+## Hiçbir zaman ne toplanır
 
-- **Hiçbir ipucu, model yanıtı veya olay içeriği**, metin, önek veya hash olarak değil
-- **Hiçbir oturum, aracı veya izleme tanımlayıcısı**
-- **Hiçbir değerlendirici puanı adı**
-- **Hiçbir hata mesajı, istisna metni veya yanıt gövdesi**, yalnızca bir durum kodu ve sabit listeden bir kategori
-- **Hiçbir araç argümanı, SQL veya sorgu metni**
-- **Hiçbir bağlı uygulama detayı.** Bir MCP istemcisini bağlamak veya iptal etmek en fazla bir izin sayısı gönderir, asla uygulamanın adını veya herhangi bir jetonı değil
-- **Hiçbir e-posta adresi**
-- **Hiçbir yönlendirici URL'leri veya sorgu dizeleri**
-- **Hiçbir ekran kaydı, DOM yakalaması veya tıklama ve imleç izlemesi**
+- **Istem, model yanıtı veya etkinlik içeriği yoktur**, metin, önek veya hash olarak değil
+- **Oturum, ajan veya iz tanımlayıcısı yoktur**
+- **Değerlendirici puanı adı yoktur**
+- **Hata mesajı, istisna metni veya yanıt gövdesi yoktur**, yalnızca bir durum kodu ve önceden belirlenmiş bir listeden bir kategori
+- **Araç argümanı, SQL veya sorgu metni yoktur**
+- **Bağlı uygulama ayrıntısı yoktur.** MCP istemcisini bağlamak veya iptal etmek en çok bir izin sayısı gönderir, hiçbir zaman uygulamanın adı veya herhangi bir token
+- **E-posta adresi yoktur**
+- **Referer URL'si veya sorgu dizesi yoktur**
+- **Ekran kaydı, DOM yakalama veya tık ve imleç izlemesi yoktur**
 
-## Kendi barındırılan kurulumda kapatın
+## Şirket içi kurulumda kapatın
 
-Her iki panoda da `DO_NOT_TRACK=1` ayarlayın ve sunucu. Ayrı ayrı karar verirler, bu nedenle bunu yalnızca birine ayarlamak diğerini raporlamaya bırakır. Değişikliğin uygulanması için sunucuyu yeniden başlatın.
+`DO_NOT_TRACK=1` ayarını hem pano hem de sunucu üzerinde belirleyin. Ayrı ayrı karar verirler, bu nedenle bunu yalnızca birine ayarlamak diğerini raporlamaya bırakır. Değişikliğin uygulanması için sunucuyu yeniden başlatın.
 
-Sürüm README'niz diğer çıkış ayarlarını ve telemetrinin kapatıldığını nasıl doğrulayacağınızı açıklar.
+Sürüm README'niz diğer vazgeçme ayarlarını ve telemetrinin kapalı olup olmadığını nasıl doğrulayacağınızı açıklar.
 
-## Çıkış yaptığınızda bir ping
+## Vazgeçtiğinizde bir ping
 
-Bir ürün ayarıyla `DO_NOT_TRACK` yerine çıkış yaparsanız, pano **bir anonim ping** gönderebilir; işlem başına 1000'de 1 olasılıkla kayıt alır. Bize kaç operatörün telemetriyi kapattığını söyler. Hiçbir tanımlayıcı içermez: kuruluş, kullanıcı, ana makine adı, URL veya IP yok, yalnızca ürün, bileşen, sürüm, dağıtım türü ve nedeni. Çıkış yapan bir sunucu hiçbir şey göndermiyor.
+`DO_NOT_TRACK` yerine bir ürün ayarı ile vazgeçerseniz, pano **bir anonim ping** gönderebilir ve bunu proses başına 1000'de 1'lik bir olasılıkla kaydeder. Bu, kaç operatörün telemetriyi kapattığını bize söyler. Tanımlayıcı içermez: kuruluş, kullanıcı, ana bilgisayar adı, URL veya IP yok, yalnızca ürün, bileşen, sürüm, dağıtım türü ve neden. Vazgeçen bir sunucu hiçbir şey göndermiyor.
 
-`DO_NOT_TRACK` kullandığınızda hiçbir zaman gönderilmez, bu nedenle politikanız herhangi bir giden telemetriyi yasaklarsa kullanılacak ayar budur.
+`DO_NOT_TRACK` kullanıldığında hiçbir zaman gönderilmez, bu da politikanız giden telemetriyi yasaklıyorsa kullanılması gereken ayardır.
 
 ## Nereye gider
 
-PostHog'a (`us.i.posthog.com`) TLS üzerinden 443 numaralı bağlantı noktasında. Tek bir ana makine adıdır, bu nedenle bunu tek bir çıkış kuralıyla da engelleyebilirsiniz.
+PostHog'a (`us.i.posthog.com`) TLS üzerinden 443 numaralı bağlantı noktasında. Tek bir ana bilgisayar adıdır, bu nedenle bunu tek bir çıkış kuralı ile de engelleyebilirsiniz.
 
-Kişisel bilgileri daha geniş kapsamda nasıl ele aldığımız hakkında bilgi için [gizlilik politikasını](https://befailproof.ai/privacy/) inceleyin.
+Kişisel bilgileri daha geniş bir şekilde nasıl işlediğimiz hakkında bilgi için [gizlilik politikasına](https://befailproof.ai/privacy/) bakın.

@@ -1,26 +1,26 @@
 ---
 title: "部署策略"
-description: "将已测试的策略版本以观察模式部署到机器上，然后切换为强制执行，并确认每台机器已成功拉取。"
+description: "将经过测试的策略版本以观察模式部署到机器上，强制执行，并确认每台机器都已接收到该版本。"
 icon: "cloud-upload"
 ---
 
-部署操作会将已发布的策略版本应用到机器上，每个版本具有以下两种效果之一：
+部署会将已发布的策略版本推送到机器上，每个版本具有以下两种效果之一：
 
-- **观察（Observe）** 记录策略本应执行的操作，但不阻止任何调用。
-- **强制执行（Enforce）** 根据决策采取行动：`deny` 会阻止调用，`instruct` 会引导代理。
+- **观察（Observe）** 记录策略本应执行的操作，但不阻止任何内容。
+- **强制（Enforce）** 根据决策采取行动：`deny` 会阻止调用，`instruct` 会引导代理。
 
 ## 添加机器
 
-机器连接到 Cloud 后，将出现在 **Admin → enforcement** 下。如果目标机器尚未显示：
+机器连接到 Cloud 后，会出现在 **Admin → enforcement** 下。如果目标机器尚未显示：
 
 <Tabs>
   <Tab title="Dashboard">
     1. 前往 **Administration → Keys**，创建一个包含 `policies:pull`（用于接收部署）和 `events:add`（用于将决策上报到 Cloud）权限的密钥。
-    2. 使用该密钥连接机器 — 详见[将机器连接到 Cloud](/zh/start/setup#connect-a-machine-to-cloud)。
+    2. 使用该密钥连接机器 — 具体步骤请参阅 [将机器连接到 Cloud](/zh/start/setup#将机器连接到-cloud)。
     3. 确认机器出现在 **Admin → enforcement** 下。
   </Tab>
   <Tab title="CLI">
-    在目标机器上执行：
+    在机器上执行：
 
     ```bash
     npm install -g failproofai
@@ -28,7 +28,7 @@ icon: "cloud-upload"
     failproofai config --status
     ```
 
-    在终端中，`failproofai config` 会询问是否连接到 Cloud，并通过掩码提示符输入密钥。然后在任意位置使用 `fp fleet list` 确认机器已成功注册。
+    在终端中，`failproofai config` 会询问是否连接到 Cloud，并通过掩码提示符接收密钥。然后可在任意位置使用 `fp fleet list` 确认机器已成功注册。
   </Tab>
 </Tabs>
 
@@ -38,10 +38,10 @@ icon: "cloud-upload"
   <Tab title="Dashboard">
     1. 前往 **Admin → enforcement**，找到目标机器并展开其行。
     2. 选择 **edit**，添加已测试的策略版本，并选择 **observe**。
-    3. 应用更改，等待机器下次签入，确认其部署状态和覆盖状态。
+    3. 应用更改，等待机器下次签入，然后确认其部署和覆盖状态。
     4. 前往 **Observe → policy** 查看实时决策。
 
-    ![机器部署编辑器，显示策略版本、强制执行与观察效果以及应用部署操作。](/images/dashboard/enforcement-editor.png)
+    ![机器部署编辑器，显示策略版本、强制和观察效果以及应用部署操作。](/images/dashboard/enforcement-editor.png)
   </Tab>
   <Tab title="CLI">
     ```bash
@@ -50,11 +50,11 @@ icon: "cloud-upload"
     fp fleet deploy <machine-id> --add no-force-push:observe
     ```
 
-    `:observe` 后缀表示观察模式：直接使用 `--add no-force-push`（不带后缀）会保留该策略在机器上已有的效果，否则默认为强制执行。之后可使用 `--add no-force-push:enforce` 切换到强制执行模式。
+    `:observe` 后缀决定了观察模式：不带后缀的 `--add no-force-push` 会保持该策略在机器上原有的效果，默认为强制执行。之后可通过 `--add no-force-push:enforce` 切换为强制模式。
 
-    `deploy` **会替换机器上的全部策略集**。该命令会打印执行计划，然后在应用前进行确认——但仅在交互式终端中如此。使用 `--yes`、在 `fp --json` 下或将 stdin 重定向时（如 CI 步骤、脚本、代理调用），将直接应用而不询问；执行计划仍会被打印，或在 `--json` 模式下以 `plan` 字段返回。
+    `deploy` **会用执行结果替换机器上的整个策略集**。它会打印执行计划，然后在应用前进行确认——但仅限于交互式终端。使用 `--yes`、`fp --json` 或 stdin 被重定向时（CI 步骤、脚本、代理调用），将直接应用而不询问；执行计划仍会被打印，或在 `--json` 模式下以 `plan` 字段返回。
 
-    在机器上，`failproofai policies` 会列出当前运行的 Cloud 托管策略，`failproofai config --status` 显示连接状态。使用 `fp sessions --env production --since 24h` 和 `fp events --event-type hook_completed` 确认机器活动已上报到 Cloud。
+    在机器上，`failproofai policies` 列出当前运行的 Cloud 管理策略，`failproofai config --status` 显示连接状态。使用 `fp sessions --env production --since 24h` 和 `fp events --event-type hook_completed` 确认机器活动已上报到 Cloud。
   </Tab>
 </Tabs>
 
@@ -63,92 +63,32 @@ icon: "cloud-upload"
     选择已发布的版本以及需要运行该版本的机器。
   </Step>
   <Step title="观察">
-    在不阻止任何操作的情况下，审查匹配项、原因、受影响的工具和误报。
+    在不阻止任何内容的情况下，审查匹配项、原因、受影响的工具以及误报。
   </Step>
   <Step title="强制执行">
-    当观察到的匹配结果能够有效区分不安全操作与合法操作后，将效果切换为强制执行，并确认每台目标机器已拉取更改并正在上报决策。
+    当观察到的匹配项能够区分不安全操作与合法操作后，将效果切换为强制执行，然后确认每台目标机器已拉取变更并正在上报决策。
   </Step>
 </Steps>
 
-## 针对机器上的特定代理
-
-已发布的策略版本不包含代理路由规则。默认情况下，分配适用于**该机器上的所有代理**。在部署版本时，您可以改为针对某个集成（包括后续添加的配置文件）或该机器上报的特定配置文件。该选择属于机器的分配设置：同一已发布版本可以在不同机器上针对不同的代理。
-
-<Tabs>
-  <Tab title="Dashboard">
-    1. 在 **Admin → enforcement** 中，展开目标机器并选择 **edit**。
-    2. 在策略的 **agents** 控件中，保持 **all agents**，选择 **all hermes profiles**（例如），或通过标签和 `agt_` ID 搜索已上报的配置文件。可以选择多个选项；只要调用属于其中任一选项即可匹配。
-    3. 查看部署计划中**每个**分配所列出的目标，应用更改，然后在机器下次签入后检查其上报的部署情况。历史记录和回滚会保留所选目标。
-  </Tab>
-  <Tab title="CLI">
-    ```bash
-    fp fleet show <machine-id>
-    fp fleet deploy <machine-id> --add no-force-push --target no-force-push=hermes
-    fp fleet deploy <machine-id> --target no-force-push=hermes/agt_1234567890abcdef
-    fp fleet deploy <machine-id> --all-agents no-force-push
-    ```
-
-    `--target POLICY=INTEGRATION[/agt_ID]` 设置一个策略的作用范围。对同一分配的多个备选目标，重复使用 `--target`。使用 `--all-agents POLICY` 清除该分配的目标范围。`fp fleet show` 和 `fp fleet history` 会显示所选作用范围。在从脚本部署时，应在应用前仔细审查完整的替换计划。
-  </Tab>
-</Tabs>
-
-只有机器最近上报了对代理目标定向的支持，才能为其设置新目标。只有当机器上报了某个配置文件且该文件安装了 hook 并未过期，才能选择该精确配置文件。如果库存暂时不可用，现有目标仍保持分配状态，不会被静默扩展为所有代理。请重新安装较旧的 shell hook，以提供新版安装所使用的配置文件提示。升级 CLI 后，请运行 `failproofai config` 更新并重启其守护进程：较旧的守护进程无法评估新的配置文件范围调用，且 hook 会拒绝版本不匹配的情况。如果运行中代理的配置文件无法被识别（例如，安装了多个设置范围但 hook 未上报实际运行的是哪个），**有目标范围的分配将不会匹配**；无范围限制的策略仍然适用。请在该机器的策略错误中查找 `agent_scope_unresolved`。
-
-机器仅上报其追踪到的代理：每个配置文件对应一个条目，该配置文件的配置中携带了 FailproofAI hook（Hermes 和 OpenClaw 每个配置文件各有一个条目，以标签命名）。仅安装了代理 CLI 但未配置 hook 的代理不会被列出。
-
-每台机器的名单中最多保存 256 个配置文件。配置文件的 ID 在列出期间不会更改。当名单已满，且出现携带 FailproofAI hook 的新配置文件时（其 hook 运行，或其配置携带该 hook），守护进程会通过删除一个满足以下所有条件的配置文件来腾出空间：
-
-- 未安装 hook；
-- 没有分配引用它；
-- FailproofAI Cloud 不接受其作为新目标。
-
-守护进程优先删除机器上已不存在的配置文件，其次是最长时间未使用的配置文件。它不会删除精确目标正在使用的配置文件，因此这些目标将保持有效。如果没有可删除的配置文件，新配置文件将暂无 ID，且有目标范围的分配在有空位前不会匹配它。
-
-## 部署 Jev 检查
-
-Cloud 策略除了可以包含 JavaScript 外，还可以携带 Jev 检查，或仅包含 Jev 检查。其类型为 `jev`（仅含 Jev 检查）或 `both`（JavaScript 加上可由其自身检查清除裁决的逻辑）。其部署、切换和回滚方式与其他策略完全相同。
-
-Jev 检查在 FailproofAI Cloud 上运行，无需在机器上安装任何内容。机器仅接收 `both` 策略的 JavaScript 部分。当 `jev` 或 `both` 策略部署到机器上时，FailproofAI Cloud 会为该机器开启 Jev，该策略目标代理的每个受检工具调用都会发送到 FailproofAI Cloud，由 Cloud 向部署到该代理的检查项询问并返回裁决。若无部署，该机器的 Jev 则为关闭状态。无需手动设置 Jev 模式。
-
-```bash
-fp policies publish prod-db-intent --kind jev --semantic ./checks.json
-fp fleet deploy <machine-id> --add prod-db-intent:observe
-```
-
-如需在不让 Jev 检查影响结果的情况下进行试用，请以 `:observe` 方式部署策略：检查项会被询问，其结果以"本应如此"的形式记录，既不阻止也不清除任何内容。当策略页面显示出检查项的预期行为后，以 `enforce` 方式重新部署；此后 Jev 的检查项将**阻止**调用，同时清除其审查的 JavaScript 裁决。以 `:observe` 方式部署的 `both` 策略会同时观察两个部分。
-
-`both` 策略的 JavaScript 只能由其自身检查项从 FailproofAI Cloud 返回的结果来清除。已安装的检查包中同名检查项不会清除它。如果 FailproofAI Cloud 无法访问，或未设置任何询问模式，该策略将保持**硬性**状态：其 JavaScript 的所有 deny 判决均会生效。
-
-代理目标定向对仅含 Jev 的策略同样有效。对于 `both` 策略，分配中的目标设置同时约束**本地 JavaScript 和 Cloud Jev 检查**；目标范围之外的调用两者均不执行。在试用有范围限制的检查时，请保持策略处于 `observe` 状态，与无范围限制的 Jev 部署流程相同。
-
-机器会上报阻止其发起询问的原因，可通过 `fp fleet show <machine-id>` 在策略错误中查看：
-
-- `transcripts_disabled`：机器在连接时使用了 `--no-transcripts`。此类机器永远不会向 Jev 发送工具调用。
-- `jev_unconfigured`：机器的密钥未包含 Jev 权限。
-- `jev_rate_limited`：由于组织的 Jev 速率限制，部分调用被拒绝，仅由正则策略进行决策。
-- `jev_unavailable`：FailproofAI Cloud 的 Jev 连续多次调用失败，机器将每次跳过 Jev 约一分钟。
-
-每个 Jev 请求所携带的问题文本量有限。FailproofAI Cloud 的检查项优先于机器上已安装检查包的检查项执行。超出限额的检查包检查项将被省略并以 `jev_budget` 上报。与组织 Cloud 检查项同名的检查包检查项也会被省略，以 `jev_name_clash` 上报：Cloud 检查项将替代其被询问。
-
 ## 检查覆盖情况
 
-覆盖率反映策略是否在风险所在的位置运行。
+覆盖情况用于评估策略是否在存在风险的地方运行。
 
-1. 前往 **Admin → enforcement**，查看强制执行和观察中的总量。
+1. 前往 **Admin → enforcement**，查看强制执行和观察中的汇总数据。
 2. 按 ID 或标签搜索机器，或筛选缺少某策略的机器。
-3. 展开某行，对比分配的策略、上报的部署情况、最近签入时间和历史记录。
-4. 若已应用的部署仍处于待定状态，请在机器的轮询间隔后刷新。
+3. 展开某一行，比较已分配的策略、已上报的部署状态、最后签入时间以及历史记录。
+4. 如果已应用的部署仍处于待定状态，请在机器的轮询间隔后刷新。
 
-![强制执行机群视图，显示策略覆盖情况、机器部署状态以及观察和强制执行分配。](/images/dashboard/enforcement-fleet.png)
+![Enforcement fleet 页面，显示策略覆盖情况、机器部署状态以及观察和强制执行分配。](/images/dashboard/enforcement-fleet.png)
 
-注意以下情况：从未拉取最新部署的机器、已注册但停止上报的机器、策略被分配到错误环境，以及更新中断后的版本漂移。
+注意以下情况：从未拉取最新部署的机器、已注册但停止上报的机器、分配到错误环境的策略，以及更新中断后导致的版本漂移。
 
-通过工作负载和环境为机器添加标签——仅靠主机名在自动扩展或替换后往往难以追踪：
+按工作负载和环境为机器打标签——仅靠主机名在自动扩缩容或机器替换时往往无法持久：
 
 ```bash
 failproofai config --machine-label checkout-runner-03
 ```
 
 <Warning>
-  强制执行管理是一项管理性的 Cloud 工作流。请勿将仅限 root 的强制执行路由视为普通客户 `/v1` API 端点。
+  强制执行管理是一项管理员级别的 Cloud 工作流。请勿将仅限 root 的强制执行路由视为普通客户的 `/v1` API 端点。
 </Warning>

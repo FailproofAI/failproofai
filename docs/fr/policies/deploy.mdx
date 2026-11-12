@@ -1,13 +1,13 @@
 ---
 title: "Déployer une politique"
-description: "Mettez une version de politique testée sur des machines en mode observation, appliquez-la en mode enforcement, et confirmez que chaque machine l'a bien récupérée."
+description: "Mettez une version de politique testée sur des machines en mode observation, appliquez-la, et confirmez que chaque machine l'a bien récupérée."
 icon: "cloud-upload"
 ---
 
-Un déploiement installe des versions de politiques publiées sur une machine, chacune avec l'un des deux effets suivants :
+Un déploiement place des versions de politique publiées sur une machine, chacune avec l'un de deux effets possibles :
 
 - **Observer** enregistre ce que la politique aurait fait, sans rien bloquer.
-- **Appliquer** agit selon la décision : un `deny` bloque l'appel et un `instruct` oriente l'agent.
+- **Appliquer** agit sur la décision : un `deny` bloque l'appel et un `instruct` guide l'agent.
 
 ## Ajouter une machine
 
@@ -15,8 +15,8 @@ Une machine apparaît sous **Admin → enforcement** dès qu'elle est connectée
 
 <Tabs>
   <Tab title="Tableau de bord">
-    1. Accédez à **Administration → Keys** et créez une clé avec `policies:pull` pour que la machine puisse recevoir les déploiements, et `events:add` pour que ses décisions remontent au Cloud.
-    2. Connectez la machine avec cette clé — [Connecter une machine au Cloud](/fr/start/setup#connect-a-machine-to-cloud) vous guide pas à pas.
+    1. Allez dans **Administration → Keys** et créez une clé avec `policies:pull`, pour que la machine puisse recevoir les déploiements, et `events:add`, pour que ses décisions parviennent au Cloud.
+    2. Connectez la machine avec cette clé — [Connecter une machine au Cloud](/fr/start/setup#connecter-une-machine-au-cloud) vous guide pas à pas.
     3. Confirmez qu'elle apparaît bien sous **Admin → enforcement**.
   </Tab>
   <Tab title="CLI">
@@ -28,7 +28,7 @@ Une machine apparaît sous **Admin → enforcement** dès qu'elle est connectée
     failproofai config --status
     ```
 
-    Dans un terminal, `failproofai config` demande si vous souhaitez vous connecter au Cloud et prend la clé via un prompt masqué. Confirmez ensuite que la machine est bien enrôlée, depuis n'importe où, avec `fp fleet list`.
+    Dans un terminal, `failproofai config` demande si vous souhaitez vous connecter au Cloud et saisit la clé via une invite masquée. Confirmez ensuite que la machine est enrôlée, depuis n'importe quel endroit, avec `fp fleet list`.
   </Tab>
 </Tabs>
 
@@ -36,12 +36,12 @@ Une machine apparaît sous **Admin → enforcement** dès qu'elle est connectée
 
 <Tabs>
   <Tab title="Tableau de bord">
-    1. Accédez à **Admin → enforcement**, trouvez la machine et développez sa ligne.
+    1. Allez dans **Admin → enforcement**, trouvez la machine et développez sa ligne.
     2. Sélectionnez **edit**, ajoutez la version de politique testée et choisissez **observe**.
-    3. Appliquez le changement, puis attendez le prochain check-in de la machine et confirmez son état de déploiement et de couverture.
-    4. Accédez à **Observe → policy** pour inspecter les décisions en temps réel.
+    3. Appliquez la modification, puis attendez le prochain enregistrement de la machine et confirmez son état de déploiement et de couverture.
+    4. Allez dans **Observe → policy** pour inspecter les décisions en direct.
 
-    ![L'éditeur de déploiement de machine avec les versions de politique, les effets enforce et observe, et l'action d'application du déploiement.](/images/dashboard/enforcement-editor.png)
+    ![L'éditeur de déploiement de machine avec les versions de politique, les effets d'application et d'observation, et l'action d'application du déploiement.](/images/dashboard/enforcement-editor.png)
   </Tab>
   <Tab title="CLI">
     ```bash
@@ -50,11 +50,11 @@ Une machine apparaît sous **Admin → enforcement** dès qu'elle est connectée
     fp fleet deploy <machine-id> --add no-force-push:observe
     ```
 
-    Le suffixe `:observe` est ce qui active le mode observation : un `--add no-force-push` sans suffixe conserve l'effet que la machine a déjà pour cette politique, et applique le mode enforce dans les autres cas. Passez en enforce ultérieurement avec `--add no-force-push:enforce`.
+    Le suffixe `:observe` est ce qui active le mode observation : un simple `--add no-force-push` sans suffixe conserve l'effet que la machine a déjà pour cette politique, et applique sinon. Basculez vers l'application plus tard avec `--add no-force-push:enforce`.
 
-    `deploy` **remplace l'intégralité du jeu de politiques de la machine** par le résultat. Il affiche le plan puis demande confirmation avant d'appliquer — mais uniquement sur un terminal interactif. Avec `--yes`, sous `fp --json`, ou avec stdin redirigé (une étape CI, un script, un agent exécutant un shell), il s'applique sans demander ; le plan est tout de même affiché, ou retourné sous la clé `plan` avec `--json`.
+    `deploy` **remplace l'ensemble des politiques de la machine** par le résultat. Il affiche le plan, puis demande confirmation avant d'appliquer — mais uniquement sur un terminal interactif. Avec `--yes`, sous `fp --json`, ou avec stdin redirigé (une étape CI, un script, un agent exécutant un shell), il s'applique sans demander ; le plan est tout de même affiché, ou retourné sous la clé `plan` avec `--json`.
 
-    Sur la machine, `failproofai policies` liste les politiques gérées par le Cloud en cours d'exécution, et `failproofai config --status` affiche sa connexion. Utilisez `fp sessions --env production --since 24h` et `fp events --event-type hook_completed` pour confirmer que son activité remonte bien au Cloud.
+    Sur la machine, `failproofai policies` liste les politiques gérées par le Cloud en cours d'exécution et `failproofai config --status` affiche l'état de la connexion. Utilisez `fp sessions --env production --since 24h` et `fp events --event-type hook_completed` pour confirmer que son activité parvient au Cloud.
   </Tab>
 </Tabs>
 
@@ -63,123 +63,32 @@ Une machine apparaît sous **Admin → enforcement** dès qu'elle est connectée
     Sélectionnez la version publiée et les machines sur lesquelles elle doit s'exécuter.
   </Step>
   <Step title="Observer">
-    Examinez les correspondances, les raisons, les outils concernés et les faux positifs sans que rien ne soit bloqué.
+    Examinez les correspondances, les raisons, les outils concernés et les faux positifs pendant qu'aucun blocage n'est actif.
   </Step>
   <Step title="Appliquer">
-    Passez l'effet en enforce une fois que les correspondances observées distinguent les actions non sécurisées des actions valides, puis confirmez que chaque machine concernée a bien récupéré le changement et remonte ses décisions.
+    Basculez l'effet sur enforce une fois que les correspondances observées distinguent les actions non sécurisées des actions valides, puis confirmez que chaque machine concernée a bien récupéré la modification et signale ses décisions.
   </Step>
 </Steps>
 
-## Cibler un agent sur une machine
-
-Les versions de politiques publiées ne contiennent pas de règles de routage par agent. Par défaut, une assignation
-s'applique à **tous les agents de la machine**. Lors du déploiement d'une version, vous pouvez à la place
-cibler une intégration (y compris les profils ajoutés ultérieurement) ou un profil particulier
-rapporté par cette machine. Ce choix appartient à l'assignation de la machine : la
-même version publiée peut cibler différents agents sur différentes machines.
-
-<Tabs>
-  <Tab title="Tableau de bord">
-    1. Dans **Admin → enforcement**, développez la machine et sélectionnez **edit**.
-    2. Sur le contrôle **agents** de la politique, conservez **all agents**, sélectionnez **all hermes profiles** (par exemple), ou recherchez un profil rapporté par son libellé et son ID `agt_`. Vous pouvez sélectionner plusieurs alternatives ; un appel correspond dès qu'il appartient à l'une d'elles.
-    3. Vérifiez la cible indiquée pour **chaque** assignation dans le plan de déploiement, appliquez le changement, puis contrôlez le déploiement rapporté par la machine après son prochain check-in. L'historique et le rollback conservent les cibles sélectionnées.
-  </Tab>
-  <Tab title="CLI">
-    ```bash
-    fp fleet show <machine-id>
-    fp fleet deploy <machine-id> --add no-force-push --target no-force-push=hermes
-    fp fleet deploy <machine-id> --target no-force-push=hermes/agt_1234567890abcdef
-    fp fleet deploy <machine-id> --all-agents no-force-push
-    ```
-
-    `--target POLICY=INTEGRATION[/agt_ID]` définit la portée d'une politique. Répétez
-    `--target` pour ajouter des alternatives sur la même assignation. Utilisez `--all-agents POLICY`
-    pour effacer le ciblage de cette assignation. `fp fleet show` et `fp fleet history`
-    affichent la portée sélectionnée. Vérifiez le plan de remplacement complet avant
-    d'appliquer, en particulier lors d'un déploiement depuis un script.
-  </Tab>
-</Tabs>
-
-La machine doit avoir récemment rapporté la prise en charge du ciblage par agent avant que
-vous puissiez définir une nouvelle cible. Vous ne pouvez sélectionner un profil exact que si cette machine
-l'a rapporté avec un hook installé et qu'il n'est pas périmé. Si l'inventaire est
-temporairement indisponible, les cibles existantes restent assignées ; elles ne sont pas
-silencieusement élargies à tous les agents. Réinstallez les anciens hooks shell pour fournir
-l'indication de profil utilisée par les nouvelles installations. Après avoir mis à jour le CLI, exécutez
-`failproofai config` pour mettre à jour et redémarrer son daemon également : un daemon plus ancien
-ne peut pas évaluer les appels avec portée de profil et le hook refuse la discordance.
-Si le profil de l'agent en cours d'exécution ne peut pas être identifié (par exemple, lorsque plusieurs portées de settings sont installées mais
-que le hook ne rapporte pas laquelle s'est exécutée), **les assignations ciblées ne correspondent pas** ;
-les politiques sans portée s'appliquent toujours. Recherchez `agent_scope_unresolved` dans les
-erreurs de politique de cette machine.
-
-Une machine ne rapporte que les agents qu'elle trace : une entrée par profil dont la
-config porte le hook FailproofAI (Hermes et OpenClaw en obtiennent un par profil,
-nommé par son libellé). Un CLI d'agent simplement installé n'est pas listé.
-
-Chaque machine conserve jusqu'à 256 profils dans son registre. L'ID d'un profil ne change
-jamais tant qu'il est listé. Lorsque le registre est plein et qu'un nouveau profil avec un
-hook FailproofAI apparaît (son hook s'exécute, ou sa config porte le hook), le
-daemon fait de la place en supprimant un profil qui remplit toutes ces conditions :
-
-- il n'a pas de hook installé ;
-- aucune assignation ne le nomme ;
-- FailproofAI Cloud ne l'accepterait pas comme nouvelle cible.
-
-Le daemon préfère un profil qui n'existe plus sur la machine, puis celui
-inutilisé le plus longtemps. Il ne supprime jamais un profil qu'une cible exacte utilise, de sorte que ces
-cibles restent valides. Si aucun profil ne peut être supprimé, le nouveau profil n'a pas encore d'ID,
-et les assignations ciblées ne lui correspondent pas tant qu'un emplacement ne se libère pas.
-
-## Déployer des contrôles Jev
-
-Une politique Cloud peut embarquer des contrôles Jev en plus ou à la place de JavaScript. Son type est `jev` (contrôles Jev uniquement) ou `both` (JavaScript dont les verdicts peuvent être levés par ses propres contrôles). Elle se déploie, se bascule et se restaure exactement comme n'importe quelle autre politique.
-
-Les contrôles Jev s'exécutent sur FailproofAI Cloud ; rien n'est installé sur la machine. La machine reçoit uniquement le JavaScript d'une politique `both`. Lorsqu'une politique `jev` ou `both` lui est déployée, FailproofAI Cloud active Jev pour cette machine, et chaque appel d'outil vérifié d'un agent ciblé par la politique est envoyé à FailproofAI Cloud, qui interroge les contrôles déployés pour cet agent et retourne leur verdict. Sans aucun déploiement, Jev est désactivé. Il n'y a pas de mode Jev à configurer manuellement.
-
-```bash
-fp policies publish prod-db-intent --kind jev --semantic ./checks.json
-fp fleet deploy <machine-id> --add prod-db-intent:observe
-```
-
-Pour tester des contrôles Jev sans qu'ils décident quoi que ce soit, déployez la politique avec `:observe` : ses contrôles sont interrogés et leurs réponses enregistrées comme « aurait fait », sans rien bloquer ni lever. Redéployez-la en `enforce` une fois que la page de politique montre ce qu'ils auraient fait ; les contrôles Jev **bloquent** alors les appels tout en levant les verdicts JavaScript qu'ils examinent. Une politique `both` déployée avec `:observe` observe les deux parties.
-
-Le JavaScript d'une politique `both` ne peut être levé que par les réponses de ses propres contrôles provenant de FailproofAI Cloud. Le contrôle d'un pack installé portant le même nom ne le lève jamais. Si FailproofAI Cloud est inaccessible, ou ne définit aucun mode interrogeant, la politique reste **stricte** : chaque deny de son JavaScript s'applique.
-
-Le ciblage par agent fonctionne également pour les politiques Jev uniquement. Pour une politique `both`, la
-cible unique de l'assignation régit **à la fois** son JavaScript local et ses contrôles Jev Cloud ;
-un appel en dehors de cette cible n'exécute aucune des deux parties. Maintenez la
-politique à `observe` lors du test de contrôles à portée, comme vous le feriez pour un
-déploiement Jev sans portée.
-
-Une machine rapporte ce qui l'empêche d'interroger, et `fp fleet show <machine-id>` les liste sous les erreurs de politique :
-
-- `transcripts_disabled` : la machine a été connectée avec `--no-transcripts`. Une telle machine n'envoie jamais d'appels d'outils à Jev.
-- `jev_unconfigured` : la clé de la machine ne porte pas Jev.
-- `jev_rate_limited` : certains appels ont été refusés en raison de la limite de débit Jev de l'organisation et ont été décidés par les seules politiques regex.
-- `jev_unavailable` : Jev de FailproofAI Cloud a échoué sur plusieurs appels consécutifs, la machine le contourne donc pendant une minute à la fois.
-
-Une requête Jev transporte une quantité limitée de texte de question. Les contrôles de FailproofAI Cloud passent avant les contrôles des packs installés sur la machine. Un contrôle de pack qui ne rentre pas est omis et signalé comme `jev_budget`. Un contrôle de pack portant le même nom qu'un des contrôles Cloud de votre organisation est également omis et signalé comme `jev_name_clash` : le contrôle Cloud est interrogé à sa place.
-
 ## Vérifier la couverture
 
-La couverture répond à la question de savoir si une politique s'exécute là où se trouve le risque.
+La couverture indique si une politique s'exécute là où le risque est présent.
 
-1. Accédez à **Admin → enforcement** et examinez les totaux en enforce et en observe.
-2. Recherchez une machine par ID ou libellé, ou filtrez les machines auxquelles il manque une politique.
-3. Développez une ligne pour comparer les politiques assignées, le déploiement rapporté, le dernier check-in et l'historique.
+1. Allez dans **Admin → enforcement** et consultez les totaux en mode application et en mode observation.
+2. Recherchez une machine par ID ou par label, ou filtrez les machines auxquelles il manque une politique.
+3. Développez une ligne pour comparer les politiques assignées, le déploiement signalé, le dernier enregistrement et l'historique.
 4. Actualisez après l'intervalle de polling de la machine si un déploiement appliqué est encore en attente.
 
-![La flotte Enforcement affichant la couverture des politiques, l'état de déploiement des machines, et les assignations observe et enforce.](/images/dashboard/enforcement-fleet.png)
+![La flotte d'application montrant la couverture des politiques, l'état de déploiement des machines, et les assignations d'observation et d'application.](/images/dashboard/enforcement-fleet.png)
 
-Repérez les machines qui n'ont jamais récupéré le dernier déploiement, les machines enrôlées qui ont cessé de rapporter, une politique assignée au mauvais environnement, et la dérive de version après une mise à jour interrompue.
+Repérez les machines qui n'ont jamais récupéré le dernier déploiement, les machines enrôlées qui ont cessé de signaler leur activité, une politique assignée au mauvais environnement, et la dérive de version après une mise à jour interrompue.
 
-Étiquetez les machines par charge de travail et environnement — les noms d'hôtes seuls survivent rarement à l'autoscaling ou au remplacement :
+Étiquetez les machines par charge de travail et par environnement — les noms d'hôte seuls survivent rarement à un autoscaling ou à un remplacement :
 
 ```bash
 failproofai config --machine-label checkout-runner-03
 ```
 
 <Warning>
-  La gestion de l'enforcement est un workflow Cloud administratif. Ne traitez pas les routes d'enforcement réservées aux administrateurs comme des endpoints API `/v1` ordinaires destinés aux clients.
+  La gestion de l'application est un flux de travail administratif Cloud. Ne traitez pas les routes d'application réservées à root comme des points de terminaison API `/v1` ordinaires destinés aux clients.
 </Warning>

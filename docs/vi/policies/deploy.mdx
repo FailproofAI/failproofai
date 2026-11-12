@@ -1,23 +1,23 @@
 ---
 title: "Triển khai một policy"
-description: "Đưa một phiên bản policy đã kiểm tra lên các máy ở chế độ observe, thực thi nó, và xác nhận rằng mọi máy đều nhận được nó."
+description: "Đưa một phiên bản policy đã kiểm tra lên các máy ở chế độ observe, thực thi nó, và xác nhận mọi máy đã nhận được."
 icon: "cloud-upload"
 ---
 
-Một deployment đưa các phiên bản policy đã công bố lên một máy, mỗi phiên bản có một trong hai hiệu ứng:
+Một deployment đưa các phiên bản policy đã xuất bản lên một máy, mỗi phiên bản có một trong hai hiệu ứng:
 
-- **Observe** ghi lại những gì policy sẽ làm, và không chặn bất cứ điều gì.
-- **Enforce** thực hiện quyết định: một `deny` sẽ chặn cuộc gọi và một `instruct` sẽ hướng dẫn agent.
+- **Observe** ghi lại những gì policy sẽ làm, và không chặn bất kỳ điều gì.
+- **Enforce** thực hiện quyết định: một `deny` chặn cuộc gọi và một `instruct` điều hướng agent.
 
 ## Thêm một máy
 
-Một máy sẽ xuất hiện dưới **Admin → enforcement** khi nó được kết nối với Cloud. Nếu máy bạn muốn chưa có ở đó:
+Một máy xuất hiện dưới **Admin → enforcement** sau khi nó kết nối với Cloud. Nếu máy bạn muốn chưa có ở đó:
 
 <Tabs>
   <Tab title="Dashboard">
-    1. Đi tới **Administration → Keys** và tạo một khóa với `policies:pull`, để máy có thể nhận các deployment, và `events:add`, để những quyết định của nó đến Cloud.
-    2. Kết nối máy bằng khóa đó — [Connect a machine to Cloud](/vi/start/setup#connect-a-machine-to-cloud) sẽ hướng dẫn bạn.
-    3. Xác nhận rằng nó hiển thị dưới **Admin → enforcement**.
+    1. Đi tới **Administration → Keys** và tạo một khóa với `policies:pull`, để máy có thể nhận các deployment, và `events:add`, để các quyết định của nó đạt tới Cloud.
+    2. Kết nối máy với khóa đó — [Connect a machine to Cloud](/vi/start/setup#kết-nối-máy-đến-cloud) hướng dẫn từng bước.
+    3. Xác nhận nó xuất hiện dưới **Admin → enforcement**.
   </Tab>
   <Tab title="CLI">
     Trên máy:
@@ -28,7 +28,7 @@ Một máy sẽ xuất hiện dưới **Admin → enforcement** khi nó được
     failproofai config --status
     ```
 
-    Trong terminal, `failproofai config` hỏi có kết nối với Cloud hay không và nhận khóa tại một lời nhắc được ẩn. Sau đó xác nhận rằng máy đã được đăng ký, từ bất kỳ đâu, với `fp fleet list`.
+    Trong terminal, `failproofai config` hỏi có muốn kết nối với Cloud và nhận khóa tại một dấu nhắc ẩn. Sau đó xác nhận máy đã được đăng ký, từ bất kỳ đâu, bằng `fp fleet list`.
   </Tab>
 </Tabs>
 
@@ -36,12 +36,12 @@ Một máy sẽ xuất hiện dưới **Admin → enforcement** khi nó được
 
 <Tabs>
   <Tab title="Dashboard">
-    1. Đi tới **Admin → enforcement**, tìm máy và mở rộng hàng của nó.
+    1. Đi tới **Admin → enforcement**, tìm máy, và mở rộng hàng của nó.
     2. Chọn **edit**, thêm phiên bản policy đã kiểm tra, và chọn **observe**.
     3. Áp dụng thay đổi, sau đó chờ đợi lần check-in tiếp theo của máy và xác nhận trạng thái deployment và coverage của nó.
-    4. Đi tới **Observe → policy** để kiểm tra các quyết định live.
+    4. Đi tới **Observe → policy** để kiểm tra các quyết định trực tiếp.
 
-    ![Trình soạn thảo deployment máy với các phiên bản policy, các hiệu ứng enforce và observe, và hành động áp dụng deployment.](/images/dashboard/enforcement-editor.png)
+    ![Trình chỉnh sửa deployment máy với các phiên bản policy, hiệu ứng enforce và observe, và hành động áp dụng deployment.](/images/dashboard/enforcement-editor.png)
   </Tab>
   <Tab title="CLI">
     ```bash
@@ -50,105 +50,45 @@ Một máy sẽ xuất hiện dưới **Admin → enforcement** khi nó được
     fp fleet deploy <machine-id> --add no-force-push:observe
     ```
 
-    Hậu tố `:observe` là điều làm cho nó observe: một `--add no-force-push` không có hậu tố sẽ giữ nguyên hiệu ứng mà máy đã có cho policy đó, ngược lại sẽ thực thi. Chuyển nó thành enforce sau với `--add no-force-push:enforce`.
+    Hậu tố `:observe` là thứ làm nó observe: một `--add no-force-push` đơn thuần giữ lại hiệu ứng mà máy đã có cho policy đó, và ngoài ra thực thi. Chuyển nó sang enforce sau này bằng `--add no-force-push:enforce`.
 
-    `deploy` **thay thế toàn bộ tập hợp policy của máy** với kết quả. Nó in kế hoạch, sau đó hỏi trước khi áp dụng — nhưng chỉ trên terminal tương tác. Với `--yes`, dưới `fp --json`, hoặc với stdin được chuyển hướng (một bước CI, một script, một agent chạy shell), nó áp dụng mà không hỏi; kế hoạch vẫn được in, hoặc được trả về dưới dạng `plan` trong `--json`.
+    `deploy` **thay thế toàn bộ tập hợp policy của máy** bằng kết quả. Nó in ra kế hoạch, sau đó hỏi trước khi áp dụng — nhưng chỉ trên một terminal tương tác. Với `--yes`, dưới `fp --json`, hoặc với stdin được chuyển hướng (một bước CI, một kịch bản, một agent gọi shell) nó sẽ áp dụng mà không hỏi; kế hoạch vẫn được in hoặc trả về dưới dạng `plan` trong `--json`.
 
-    Trên máy, `failproofai policies` liệt kê các policy được quản lý bởi Cloud mà nó đang chạy và `failproofai config --status` hiển thị kết nối của nó. Sử dụng `fp sessions --env production --since 24h` và `fp events --event-type hook_completed` để xác nhận hoạt động của nó đến Cloud.
+    Trên máy, `failproofai policies` liệt kê các policy do Cloud quản lý mà nó đang chạy và `failproofai config --status` hiển thị kết nối của nó. Sử dụng `fp sessions --env production --since 24h` và `fp events --event-type hook_completed` để xác nhận hoạt động của nó đạt tới Cloud.
   </Tab>
 </Tabs>
 
 <Steps>
   <Step title="Chọn phiên bản và máy">
-    Chọn phiên bản đã công bố và các máy nó sẽ chạy trên đó.
+    Chọn phiên bản đã xuất bản và các máy nó sẽ chạy trên đó.
   </Step>
   <Step title="Observe">
-    Xem xét các kết quả khớp, lý do, các công cụ bị ảnh hưởng, và các false positive trong khi không có gì bị chặn.
+    Kiểm tra các kết quả khớp, lý do, công cụ bị ảnh hưởng, và những lần dương tính giả trong khi không có gì bị chặn.
   </Step>
   <Step title="Enforce">
-    Chuyển hiệu ứng thành enforce khi các kết quả khớp được quan sát phân tách các hành động không an toàn khỏi các hành động hợp lệ, sau đó xác nhận rằng mọi máy dự định đều kéo thay đổi và báo cáo quyết định.
+    Chuyển hiệu ứng thành enforce sau khi các kết quả được quan sát tách biệt các hành động không an toàn khỏi những hành động hợp lệ, sau đó xác nhận mọi máy dự định đã kéo thay đổi và đang báo cáo quyết định.
   </Step>
 </Steps>
 
-## Nhắm mục tiêu một agent trên một máy
-
-Các phiên bản policy đã công bố không chứa quy tắc định tuyến agent. Theo mặc định, một assignment áp dụng cho **tất cả agent trên máy của nó**. Khi triển khai một phiên bản, bạn có thể thay vào đó nhắm mục tiêu một integration (bao gồm các profile được thêm sau) hoặc một profile cụ thể được báo cáo bởi máy đó. Lựa chọn thuộc về assignment của máy: cùng một phiên bản policy đã công bố có thể nhắm mục tiêu các agent khác nhau trên các máy khác nhau.
-
-<Tabs>
-  <Tab title="Dashboard">
-    1. Trong **Admin → enforcement**, mở rộng máy và chọn **edit**.
-    2. Trên điều khiển **agents** của policy, giữ **all agents**, chọn **all hermes profiles** (ví dụ), hoặc tìm kiếm một profile được báo cáo bằng nhãn và ID `agt_` của nó. Bạn có thể chọn nhiều lựa chọn thay thế; một cuộc gọi khớp nếu nó thuộc về bất kỳ một trong chúng.
-    3. Xem xét mục tiêu được liệt kê cho **mỗi** assignment trong kế hoạch deployment, áp dụng thay đổi, sau đó kiểm tra deployment được báo cáo của máy sau lần check-in tiếp theo của nó. Lịch sử và rollback giữ lại các mục tiêu được chọn.
-  </Tab>
-  <Tab title="CLI">
-    ```bash
-    fp fleet show <machine-id>
-    fp fleet deploy <machine-id> --add no-force-push --target no-force-push=hermes
-    fp fleet deploy <machine-id> --target no-force-push=hermes/agt_1234567890abcdef
-    fp fleet deploy <machine-id> --all-agents no-force-push
-    ```
-
-    `--target POLICY=INTEGRATION[/agt_ID]` đặt phạm vi của một policy. Lặp lại `--target` cho nhiều lựa chọn thay thế trên cùng một assignment. Sử dụng `--all-agents POLICY` để xóa nhắm mục tiêu của assignment đó. `fp fleet show` và `fp fleet history` hiển thị phạm vi được chọn. Xem xét kế hoạch thay thế hoàn chỉnh trước khi áp dụng, đặc biệt là khi triển khai từ một script.
-  </Tab>
-</Tabs>
-
-Máy phải đã báo cáo gần đây hỗ trợ cho agent targeting trước khi bạn có thể đặt một mục tiêu mới. Bạn chỉ có thể chọn một profile chính xác nếu máy đó báo cáo nó với một hook được cài đặt và nó không cũ. Nếu inventory tạm thời không có sẵn, các mục tiêu hiện có vẫn được gán; chúng không được mở rộng im lặng cho tất cả agent. Cài đặt lại các hook shell cũ hơn để cung cấp gợi ý profile được sử dụng bởi các cài đặt mới. Sau khi nâng cấp CLI, chạy `failproofai config` để cập nhật và khởi động lại daemon của nó: một daemon cũ hơn không thể đánh giá các cuộc gọi profile-scoped mới và hook từ chối sự không khớp. Nếu profile của agent đang chạy không thể được xác định (ví dụ, khi nhiều phạm vi cài đặt được cài đặt nhưng hook không báo cáo cái nào chạy), **các assignment được nhắm mục tiêu không khớp**; các policy không phạm vi vẫn áp dụng. Tìm `agent_scope_unresolved` dưới các lỗi policy của máy đó.
-
-Một máy chỉ báo cáo các agent mà nó trace: một entry cho mỗi profile mà config của nó chứa FailproofAI hook (Hermes và OpenClaw nhận được một cho mỗi profile, được đặt tên theo nhãn của nó). Một agent CLI chỉ được cài đặt là không được liệt kê.
-
-Mỗi máy giữ tối đa 256 profile trong danh sách của nó. ID của một profile không bao giờ thay đổi trong khi nó được liệt kê. Khi danh sách đầy và một profile mới với một FailproofAI hook xuất hiện (hook của nó chạy, hoặc config của nó chứa hook), daemon tạo chỗ trống bằng cách loại bỏ một profile thỏa mãn tất cả những điều này:
-
-- nó không có hook được cài đặt;
-- không có assignment nào gọi tên nó;
-- FailproofAI Cloud sẽ không chấp nhận nó như một mục tiêu mới.
-
-Daemon thích một profile không còn được tìm thấy trên máy, sau đó là một profile không được sử dụng lâu nhất. Nó không bao giờ loại bỏ một profile mà một mục tiêu chính xác sử dụng, vì vậy những mục tiêu đó vẫn hợp lệ. Nếu không thể loại bỏ profile nào, profile mới không có ID, và các assignment được nhắm mục tiêu không khớp với nó cho đến khi một slot được giải phóng.
-
-## Triển khai các Jev checks
-
-Một Cloud policy có thể mang các Jev checks cũng như hoặc thay vì JavaScript. Loại của nó là `jev` (chỉ Jev checks) hoặc `both` (JavaScript mà các checks của nó có thể xóa verdict). Nó triển khai, chuyển đổi và rollback giống như bất kỳ policy nào khác.
-
-Các Jev checks chạy trên FailproofAI Cloud; không có gì được cài đặt trên máy. Máy chỉ nhận JavaScript của một policy `both`. Trong khi một policy `jev` hoặc `both` được triển khai cho nó, FailproofAI Cloud bật Jev cho máy, và mỗi tool call được kiểm tra của một agent mà policy nhắm mục tiêu đi tới FailproofAI Cloud, yêu cầu các checks được triển khai cho agent đó và trả về verdict của chúng. Mà không có được triển khai, Jev ở đó được tắt. Không có chế độ Jev để đặt bằng tay.
-
-```bash
-fp policies publish prod-db-intent --kind jev --semantic ./checks.json
-fp fleet deploy <machine-id> --add prod-db-intent:observe
-```
-
-Để thử các Jev checks mà không để chúng quyết định bất cứ điều gì, triển khai policy với `:observe`: các checks của nó được hỏi và các câu trả lời của chúng được ghi lại dưới dạng "would have", và chúng không chặn cũng không xóa bất cứ điều gì. Triển khai lại nó như `enforce` khi trang policy hiển thị những gì chúng sẽ làm; sau đó Jev's checks **chặn** các cuộc gọi cũng như xóa các verdict JavaScript mà chúng xem xét. Một policy `both` được triển khai với `:observe` quan sát cả hai nửa.
-
-JavaScript của một policy `both` chỉ có thể được xóa bởi các câu trả lời của các checks của nó từ FailproofAI Cloud. Một check của một installed pack cùng tên không bao giờ xóa nó. Nếu không thể tiếp cận FailproofAI Cloud, hoặc không đặt chế độ nào yêu cầu, policy vẫn **hard**: mỗi deny của JavaScript của nó đều đứng vững.
-
-Agent targeting cũng hoạt động cho các policy chỉ Jev. Đối với một policy `both`, mục tiêu của assignment điều chỉnh **cả hai** JavaScript cục bộ của nó và Jev checks Cloud của nó; một cuộc gọi bên ngoài mục tiêu đó không chạy nửa nào. Giữ policy ở `observe` trong khi thử các checks có phạm vi, cũng như bạn sẽ làm cho một rollout Jev không có phạm vi.
-
-Một máy báo cáo những gì ngăn nó hỏi, và `fp fleet show <machine-id>` liệt kê nó dưới các lỗi policy:
-
-- `transcripts_disabled`: máy được kết nối với `--no-transcripts`. Máy như vậy không bao giờ gửi tool calls đến Jev.
-- `jev_unconfigured`: khóa của máy không mang Jev.
-- `jev_rate_limited`: một số cuộc gọi bị từ chối vì giới hạn tốc độ Jev của tổ chức và được quyết định bởi các policy regex một mình.
-- `jev_unavailable`: Jev của FailproofAI Cloud đã thất bại trong nhiều cuộc gọi liên tiếp, vì vậy máy bỏ qua nó trong một phút một lần.
-
-Một yêu cầu Jev mang một lượng văn bản câu hỏi hạn chế. Các checks của FailproofAI Cloud đến trước các checks của các pack được cài đặt trên máy. Một check pack không vừa bị loại bỏ và được báo cáo dưới dạng `jev_budget`. Một check pack cùng tên với một trong các Cloud checks của tổ chức của bạn cũng bị loại bỏ, và được báo cáo dưới dạng `jev_name_clash`: Cloud check được hỏi thay vào đó.
-
 ## Kiểm tra coverage
 
-Coverage trả lời liệu một policy có đang chạy nơi rủi ro là.
+Coverage trả lời câu hỏi liệu một policy có đang chạy nơi có rủi ro không.
 
-1. Đi tới **Admin → enforcement** và xem xét tổng số enforce và observe.
-2. Tìm kiếm một máy theo ID hoặc nhãn, hoặc lọc các máy bị thiếu một policy.
-3. Mở rộng một hàng để so sánh các policy được gán, deployment được báo cáo, last check-in, và lịch sử.
-4. Làm mới sau polling interval của máy khi một deployment được áp dụng vẫn đang chờ.
+1. Đi tới **Admin → enforcement** và kiểm tra tổng số enforcing và observing.
+2. Tìm kiếm một máy theo ID hoặc nhãn, hoặc lọc các máy thiếu một policy.
+3. Mở rộng một hàng để so sánh các policy được gán, deployment được báo cáo, lần check-in cuối cùng, và lịch sử.
+4. Làm mới sau khoảng thời gian polling của máy khi một deployment được áp dụng vẫn đang chờ xử lý.
 
-![Fleet Enforcement hiển thị policy coverage, deployment state của máy, và các assignment observe và enforce.](/images/dashboard/enforcement-fleet.png)
+![Lực lượng Enforcement hiển thị coverage policy, trạng thái deployment máy, và các gán observe và enforce.](/images/dashboard/enforcement-fleet.png)
 
-Tìm kiếm các máy không bao giờ kéo deployment mới nhất, các máy đã đăng ký đã ngừng báo cáo, một policy được gán cho môi trường sai, và version drift sau một bản cập nhật bị gián đoạn.
+Tìm các máy chưa bao giờ kéo latest deployment, các máy đã đăng ký ngừng báo cáo, một policy được gán cho môi trường sai, và version drift sau khi cập nhật bị gián đoạn.
 
-Gán nhãn cho máy theo workload và môi trường — các hostname một mình hiếm khi tồn tại qua autoscaling hoặc thay thế:
+Gắn nhãn máy theo workload và môi trường — chỉ tên máy chủ hiếm khi sống sót qua autoscaling hoặc thay thế:
 
 ```bash
 failproofai config --machine-label checkout-runner-03
 ```
 
 <Warning>
-  Quản lý enforcement là một quy trình Cloud hành chính. Không coi các route enforcement chỉ root như các endpoint API `/v1` khách hàng thông thường.
+  Enforcement management là một quy trình Cloud quản trị. Đừng coi các tuyến đường enforcement chỉ dành cho root là các endpoint `/v1` API khách hàng thông thường.
 </Warning>

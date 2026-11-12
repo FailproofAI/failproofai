@@ -1,40 +1,40 @@
 ---
-title: "MCP sunucusu"
+title: "MCP server"
 description: "Claude, Cursor, Codex veya başka bir MCP istemcisini Failproof AI Cloud'a bağlayın ve kendi izinlerinizi kullanın."
 icon: "plug"
 ---
 
-Bir yapay zeka aracını Failproof AI Cloud'a bağlayın ve aracılarınızın verilerine ondan erişin. Aracınız oturumları ve etkinlikleri sorgulayabilir, salt okunur SQL çalıştırabilir, panoları, uyarıları, sorunları, denetim günlüklerini ve politikaları okuyabilir ve izne sahipseniz uyarı oluşturma veya politika dağıtma gibi değişiklikler yapabilir.
+Bir AI aracını Failproof AI Cloud'a bağlayın ve ajanlarınızın verilerine bundan erişin. Aracınız oturumları ve olayları sorgulayabilir, salt okunur SQL çalıştırabilir, panoları, uyarıları, sorunları, denetim günlüklerini ve politikaları okuyabilir ve izniniz varsa uyarı oluşturma veya politika dağıtma gibi değişiklikler yapabilir.
 
-Her çağrı **sizin kendi** izinlerinizle bağlanırken seçtiğiniz **bir** kuruluşta çalışır.
+Her çağrı **kendi** izinlerinizle, bağlanırken seçtiğiniz **bir** kuruluşta çalışır.
 
-Hem barındırılan hem de kendi kendine barındırılan dağıtımlar için herkese açık bir adres vardır:
+Barındırılan veya kendi kendine barındırılan tüm kişiler için bir adres vardır:
 
 ```text
 https://gateway.befailproof.ai/mcp
 ```
 
-## İstemci bağlama
+## İstemciyi bağlayın
 
-Adresi istemcinize ekleyin. Bir araç ilk kez kullanıldığında, tarayıcınız açılır. Failproof AI Cloud'unuzun nerede olduğunu seçin, oturum açın, bir kuruluş seçin ve **Allow** (İzin Ver) seçeneğini seçin. **Cancel** (İptal) hiçbir şeyi bağlamaz.
+Adresi istemcinize ekleyin. Bir araç ilk kez kullanıldığında, tarayıcınız açılır. Failproof AI Cloud'unuzun nerede olduğunu seçin, oturum açın, bir kuruluş seçin ve **Allow** (İzin Ver) seçeneğini seçin. **Cancel** (İptal) hiçbir şey bağlamaz.
 
-Sayfa uygulamanın adını ve döndüğü yeri gösterir. Kendi web adresiyle tanımlanmayan bir uygulama **unverified app** (doğrulanmamış uygulama) olarak işaretlenir, bu nedenle bunu kendi istemcinizden az önce başlattıysanız devam edin.
+Sayfa uygulamanın adını ve nereye döneceğini gösterir. Kendi web adresiyle tanımlanmayan bir uygulama **unverified app** (doğrulanmamış uygulama) olarak işaretlenir, bu nedenle yalnızca bunu kendi istemcinizden başlattıysanız devam edin.
 
 <Tabs>
   <Tab title="Claude">
-    claude.ai veya Claude Desktop'ta **Settings → Connectors → Add custom connector** (Ayarlar → Bağlayıcılar → Özel bağlayıcı ekle) öğesine gidin. Adı `Failproof AI` olarak ayarlayın, adresi girin, **Add** (Ekle) öğesini seçin, ardından **Connect** (Bağlan) öğesini seçin.
+    claude.ai veya Claude Desktop'ta **Settings → Connectors → Add custom connector** (Ayarlar → Bağlayıcılar → Özel bağlayıcı ekle) seçeneğine gidin. Buna `Failproof AI` adını verin, adresi girin, **Add** (Ekle) seçeneğini seçin, ardından **Connect** (Bağlan) seçeneğini seçin.
 
-    Team ve Enterprise planlarında, bir sahip önce kuruluş için bağlayıcıyı ekler. Daha sonra her kişi kendi hesabını bağlar.
+    Team ve Enterprise planlarında, bir sahip önce kuruluş için bağlayıcıyı ekler. Ardından her kişi kendi hesaplarını bağlar.
   </Tab>
   <Tab title="Claude Code">
     ```bash
     claude mcp add --transport http failproofai https://gateway.befailproof.ai/mcp
     ```
 
-    Ardından Claude Code içinde `/mcp` öğesini çalıştırın, `failproofai` öğesini seçin ve **Authenticate** (Kimlik Doğrula) öğesini seçin.
+    Ardından Claude Code içinde `/mcp` komutunu çalıştırın, `failproofai` seçeneğini seçin ve **Authenticate** (Kimlik Doğrula) seçeneğini seçin.
   </Tab>
   <Tab title="Cursor">
-    Bunu `~/.cursor/mcp.json` öğesine veya projenizin `.cursor/mcp.json` öğesine ekleyin:
+    Bunu `~/.cursor/mcp.json` dosyasına veya projenizin `.cursor/mcp.json` dosyasına ekleyin:
 
     ```json
     {
@@ -44,20 +44,20 @@ Sayfa uygulamanın adını ve döndüğü yeri gösterir. Kendi web adresiyle ta
     }
     ```
 
-    Cursor sunucunun yanında **Needs login** (Oturum açma gerekli) öğesini gösterir. Oturum açmak için bunu seçin.
+    Cursor sunucunun yanında **Needs login** (Oturum açma gerekli) gösterir. Oturum açmak için bunu seçin.
   </Tab>
   <Tab title="Codex">
-    Bunu `~/.codex/config.toml` öğesine ekleyin:
+    Bunu `~/.codex/config.toml` dosyasına ekleyin:
 
     ```toml
     [mcp_servers.failproofai]
     url = "https://gateway.befailproof.ai/mcp"
     ```
 
-    Ardından `codex mcp login failproofai` öğesini çalıştırın.
+    Ardından `codex mcp login failproofai` komutunu çalıştırın.
   </Tab>
-  <Tab title="Diğer istemciler">
-    Streamable HTTP üzerinden OAuth ile uzak MCP sunucularını destekleyen herhangi bir istemci işe yarar. Ona yukarıdaki adresi verin. Yapılandırılacak istemci kimliği veya gizli anahtar yoktur.
+  <Tab title="Other clients">
+    Streamable HTTP üzerinden uzak MCP sunucularını OAuth ile destekleyen herhangi bir istemci işe yarar. Yukarıdaki adresi verin. Yapılandırmak için istemci kimliği veya gizli dizi yoktur.
   </Tab>
 </Tabs>
 
@@ -69,61 +69,61 @@ Demo kuruluşları bağlantıları kabul etmez. Bunun yerine kendi kuruluşunuzu
 
 ## İzinler
 
-Bir bağlantı, aşağıdaki set içinde kuruluşta yapabileceğiniz şeyleri yapabilir. Geçerli izinlerinizi takip eder: bir yönetici size daha fazlasını verirse, araç bunu alır ve onu çıkarırsa, araç bunu bir sonraki çağrısında kaybeder.
+Bir bağlantı, aşağıdaki küme içinde kuruluşta yapabileceklerinizi yapabilir. Mevcut izinlerinizi takip eder: bir yönetici size daha fazlasını verirse, araç bunu kazanır ve birisi çıkarırsa, araç bunu bir sonraki çağrısında kaybeder.
 
-| İzin | Aracı şunları yapabilir |
+| İzin | Araca İzin Veren |
 | --- | --- |
-| `events:read` | Etkinlikleri listele, bir oturumun özetini oku, aracıları ve ortamları listele |
-| `evaluations:read` | Oturumları listele, değerlendirme sonuçlarını ve işleri oku ve özetini çıkar |
-| `evaluations:trigger` | Değerlendirmeler oluştur, yeni sürümler yayımla, bunları aç/kapat, geri doldur ve bir oturumu yeniden değerlendir |
-| `dashboards:read`, `dashboards:write` | Panoları oku veya oluştur, yeniden adlandır ve sorgu ekle |
-| `queries:read`, `queries:write` | Kaydedilmiş sorguları oku veya kaydet ve düzenle |
+| `events:read` | Olayları listele, bir oturumun genel görünümünü oku, ajanları ve ortamları listele |
+| `evaluations:read` | Oturumları listele, değerlendirme sonuçlarını ve işleri oku ve özetle |
+| `evaluations:trigger` | Değerlendirmeler oluştur, yeni sürümleri yayınla, onları aç veya kapat, geriye doldur ve bir oturumu yeniden değerlendir |
+| `dashboards:read`, `dashboards:write` | Panoları oku veya oluştur, yeniden adlandır ve sorgular ekle |
+| `queries:read`, `queries:write` | Kaydedilen sorguları oku veya kaydet ve düzenle |
 | `queries:run` | Bir salt okunur SQL sorgusu çalıştır ve sorgu şemasını oku |
 | `alerts:read`, `alerts:write` | Uyarıları oku veya oluştur, düzenle, duraklat, sil ve test et |
-| `issues:read` | Sorunları oku, onaylamak ve onlara yorum yap |
-| `issues:create` | Bir uyarı üzerinde sorun aç |
+| `issues:read` | Sorunları oku, onayla ve yorum yap |
+| `issues:create` | Bir uyarı hakkında sorun aç |
 | `issues:close` | Sorunları çöz ve kapat |
-| `audits:read`, `audits:write` | Denetim günlüklerini, çalıştırmaları ve bulguları oku veya denetim günlükleri oluştur, düzenle ve bir çalıştırma başlat |
-| `code_fixes:read` | Bir sorunu nasıl düzeltileceğini görmek ve kendi aracınızın düzeltmesi için bağlamını al |
-| `code_fixes:write` | Failproof AI Cloud'da bir düzeltme başlat; GitHub'da bir çekme isteği açar |
-| `policies:read`, `policies:write` | Politikaları, makineleri ve dağıtımları oku veya politikaları yayımla, dağıt ve geri al |
+| `audits:read`, `audits:write` | Denetim günlüklerini, çalıştırmaları ve bulguları oku veya denetim günlükleri oluştur, düzenle ve çalıştırma başlat |
+| `code_fixes:read` | Bir sorunu nasıl düzeltileceğini görerek, kendi ajanınızın düzeltmesi için bağlamını al |
+| `code_fixes:write` | Failproof AI Cloud'da bir düzeltme başlat, bu da GitHub'da bir pull request açar |
+| `policies:read`, `policies:write` | Politikaları, makineleri ve dağıtımları oku veya politikaları yayınla, dağıt ve geri al |
 
-Kuruluş verisi okumadığı için birkaç araç izin gerektirmez: oturum ve etkinlik bağlantıları oluşturma ve bu belgelerde arama yapma.
+Birkaç araç hiçbir izin gerektirmez çünkü kuruluş verisi okumaz: oturum ve olay bağlantıları oluşturma ve bu belgeleri arama.
 
-Bir yapay zeka aracı hiçbir zaman API anahtarlarına, kullanıcılara, ayarlara veya kuruluş yönetimine dokunmaz ve etkinlik gönderemez.
+Bir AI aracı asla API anahtarlarına, kullanıcılara, ayarlara veya kuruluş yönetimine dokunmaz ve olayları gönderemez.
 
-## Değişiklikleri onaylama
+## Değişiklikleri Onaylama
 
-Yazma işlemleri, istemciniz istemi gösterebiliyorsa önce sizi sorar. Ne değişeceğini görürsünüz ve devam etmek için **Approve this change** (Bu değişikliği onayla) öğesini seçersiniz. Reddederseniz veya yaklaşık 4 dakika içinde yanıt vermezseniz hiçbir şey değişmez. Bazı istemciler bir dakika sonra beklemeyi durdurur, bu nedenle hızlı bir şekilde yanıt verin.
+Yazışlar, istemciniz istemi gösterebilirse sizi sorgulamaz. Ne değişeceğini görürsünüz ve devam etmek için **Approve this change** (Bu değişikliği Onayla) seçeneğini seçersiniz. Reddederseniz veya yaklaşık 4 dakika içinde yanıtlamazsanız, hiçbir şey değişmez. Bazı istemciler bir dakika sonra beklemeyi durdurur, bu nedenle hızlı yanıt verin.
 
 <Warning>
-  İstemi desteklemeyen bir istemci sorulmaz ve bir yazma işlemi istemci çağrıyı yapar yapmaz çalışır. Orada, istemcinizin kendi onayı tek olandır, bu nedenle yazma araçları için bunu açık tutun.
+  İstemlerini desteklemeyen bir istemci sorgulanmaz ve istemci çağrı yaptığı anda yazış çalışır. Orada, istemcinizin kendi onayı tek olanıdır, bu nedenle yazma araçları için bunu açık tutun.
 </Warning>
 
 ## Bağlı uygulamalar ve iptal etme
 
-**Settings → Integrations → MCP** (Ayarlar → Tümleştirmeler → MCP) geçerli kuruluşta bağlı uygulamalarınızı izinleriyle ve son kullanımla listeler. **Revoke** (İptal Et) bir uygulamayı hemen keser. Bağlayıcıyı istemcinizde kaldırmak da bağlantıyı iptal eder.
+**Settings → Integrations → MCP** (Ayarlar → Entegrasyonlar → MCP), geçerli kuruluşta bağlı uygulamalarınızı izinleri ve son kullanımı ile listeler. **Revoke** (İptal Et) bir uygulamayı hemen kesintiye uğratır. Sunucuyu istemcinizde kaldırmak da bağlantıyı iptal eder.
 
-Kuruluş başına en fazla 5 bağlı uygulanız olabilir. Aynı uygulamayı tekrar bağlamak, önceki bağlantısının yerini alır.
+Kuruluş başına 5'e kadar bağlı uygulama olabilir. Aynı uygulamayı yeniden bağlamak önceki bağlantısının yerini alır.
 
 ## Kendi kendine barındırılan dağıtımlar
 
-Bağlanırken **Self-hosted Failproof AI Cloud** (Kendi kendine barındırılan Failproof AI Cloud) seçeneğini seçin ve oturum açtığınız adresi girin. Dağıtımınız genel HTTPS üzerinden ulaşılabilir olmalıdır.
+Bağlanırken **Self-hosted Failproof AI Cloud** (Kendi kendine barındırılan Failproof AI Cloud) seçeneğini seçin ve oturum açtığınız adresi girin. Dağıtımınız genel HTTPS üzerinden erişilebilir olmalıdır.
 
-Araç çağrıları ve sonuçları, yapay zeka aracınız ile dağıtımınız arasında giderken barındırılan Failproof AI ağ geçidinden geçer. Ağ geçidi bunları depolamaz.
+Araç çağrıları ve sonuçları, AI aracınız ile dağıtımınız arasında barındırılan Failproof AI ağ geçidi aracılığıyla geçer. Ağ geçidi bunları depolamaz.
 
 ## Verilerinize ne olur
 
-Sonuçlar bağladığınız yapay zeka aracına gider ve bu araç sağlayıcısı bunları kendi koşulları altında işler. Her araç çağrısı için Failproof AI, aracın adını, sonucunu, ne kadar sürdüğünü ve kuruluşu günlüğe kaydeder, asla argümanları veya sonuçları kaydı tutmaz. [Gizlilik politikasına](https://befailproof.ai/privacy/) bakın.
+Sonuçlar bağladığınız AI aracına gider ve bu aracın sağlayıcısı bunları kendi koşulları altında işler. Her araç çağrısı için, Failproof AI aracın adını, sonucunu, ne kadar sürdüğünü ve kuruluşu günlüğe kaydeder, asla bağımsız değişkenleri veya sonuçları kaydetmez. [Gizlilik politikasına](https://befailproof.ai/privacy/) bakın.
 
-## Sorun giderme
+## Sorun Giderme
 
-| Gördüğünüz şey | Yapacak şey |
+| Gördüğünüz | Yapmanız Gereken |
 | --- | --- |
-| "Started in another browser" (Başka bir tarayıcıda başlatıldı) | İstemcinin açtığı tarayıcıda oturum açmayı tamamlayın, çerezlere izin verin ve istemciden yeniden başlayın |
-| **Allow** (İzin Ver) sonrası bir hata | Bağlantı bir kez işe yarar ve 10 dakika sonra sona erer, bu nedenle istemciden yeniden başlayın |
-| Beklediğiniz bir araç eksik | Bu kuruluşta bu izne sahip değilsiniz. Yöneticiye sorun. Bunu aldıktan sonra yeniden bağlanmanız gerekmez |
-| İstemci sizi oturum açmaya devam ediyor | Bağlantı iptal edildi, kuruluşu terk ettiniz veya 90 gün kullanılmadı. Yeniden bağlayın |
-| "You have 5 connected apps" (5 bağlı uygulamanız var) | **Settings → Integrations → MCP** (Ayarlar → Tümleştirmeler → MCP) altında birini iptal edin, sonra yeniden bağlayın |
+| "Started in another browser" (Başka bir tarayıcıda başladı) | İstemcinin açtığı tarayıcıda oturum açmayı tamamlayın, çerezler etkinleştirildi halde ve istemciden başlayın |
+| **Allow** (İzin Ver) sonrası bir hata | Bağlantı bir kez çalışır ve 10 dakika sonra sona erer, bu nedenle istemciden başlayın |
+| Beklediğiniz bir araç eksik | Bu kuruluşta izniniz yok. Bir yöneticiyle iletişime geçin. Bir kez sahip olduğunuzda yeniden bağlanmanız gerekmez |
+| İstemci sizi oturum açmaya devam ediyor | Bağlantı iptal edildi, kuruluştan ayrıldınız veya 90 gün kullanılmadı. Yeniden bağlanın |
+| "You have 5 connected apps" (5 bağlı uygulamanız var) | **Settings → Integrations → MCP** (Ayarlar → Entegrasyonlar → MCP) altında birini iptal edin, ardından yeniden bağlanın |
 
-Hala takılıydınız? [support@befailproof.ai](mailto:support@befailproof.ai) adresine e-posta gönderin.
+Hâlâ takılı mı? [support@befailproof.ai](mailto:support@befailproof.ai) adresine e-posta gönderin.

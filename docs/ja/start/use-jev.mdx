@@ -1,36 +1,36 @@
 ---
 title: "Jev を使う"
-description: "完了したセッションに対する Jev 評価、またはライブのツール呼び出しレビュー用 Jev ポリシーを設定します。"
+description: "完了したセッションの評価に Jev evals を、ライブのツール呼び出しレビューに Jev policies を設定します。"
 icon: "sparkles"
 ---
 
-Jev はエージェント実行の 2 つの時点で役立ちます。完了したセッションを既知の回答と照合してスコアリングするか、エージェントに依頼した内容のコンテキストに基づいてツール呼び出しをレビューします。
+Jev はエージェント実行の 2 つのタイミングで役立ちます。完了したセッションを既知の回答と照合してスコアリングするか、エージェントへの依頼内容を踏まえてツール呼び出しをレビューします。
 
 <Tabs>
-  <Tab title="Jev 評価">
-    完了したセッションを、「お客様は返金を求めましたか？はいまたはいいえで答えてください。」のような少数の既知の回答を持つ質問に対してスコアリングできる場合に、Jev 評価を使用します。セッション全体のパターンを見つけるのに役立ちます。
+  <Tab title="Jev evals">
+    完了したセッションを「お客様は返金を求めましたか？はいかいいえで答えてください。」のような固定回答の質問と照合してスコアリングできる場合に Jev eval を使います。セッション間のパターンを発見するのに役立ちます。
 
-    ## 評価を作成する
+    ## eval を作成する
 
-    Cloud ダッシュボードで **Analyze → eval authoring → new eval** を開きます。固定回答の質問を 1 つ入力し、**draft** を選択して、分類器スコアが選ばれていることを確認してください。実際のセッションで[テスト](/ja/evaluations/test)してから、デプロイします。
+    Cloud ダッシュボードで **Analyze → eval authoring → new eval** を開きます。固定回答の質問を 1 つ入力し、**draft** を選択して、分類スコアが選ばれていることを確認します。実際のセッションで[テスト](/ja/evaluations/test)してからデプロイしてください。
 
-    ![質問を記述し、下書きを確認してデプロイする共有 eval 作成フォーム。このスクリーンショットはコードの下書きを示していますが、Jev にはFixed-answer 形式の質問を使用してください。](/images/dashboard/eval-authoring-draft.png)
+    ![質問を記述し、ドラフトをレビューしてデプロイする共有 eval 作成フォーム。このスクリーンショットはコードのドラフトを示しています。Jev には固定回答の質問を使用してください。](/images/dashboard/eval-authoring-draft.png)
 
     ## スコアを確認する
 
-    新しいセッションが完了したら、**Observe → Evaluations** を開くか、Cloud CLI を使用します。
+    新しいセッションが完了したら、**Observe → Evaluations** を開くか、Cloud CLI を使います。
 
     ```bash
     fp evals --since 7d
     fp evals --aggregate --since 7d
     ```
 
-    CLI はスコアを読み取ります。Jev 評価の作成は現在ダッシュボードから行います。質問の種類や例については [Jev 評価](/ja/evaluations/jev) を参照してください。
+    CLI はスコアを読み取ります。Jev eval の作成は現時点ではダッシュボードを使用します。質問の種類と例については [Jev evaluations](/ja/evaluations/jev) を参照してください。
   </Tab>
-  <Tab title="Jev ポリシー">
-    文字列マッチングポリシーがツール呼び出しの安全性を判断するためにリクエストのコンテキストを必要とする場合は、Jev ポリシーレビューを使用します。まず **observe** モードで開始し、インストール済みのポリシーが各呼び出しを決定しながら Jev の回答を確認できるようにしてください。
+  <Tab title="Jev policies">
+    文字列マッチングポリシーがツール呼び出しの安全性を判断するためにリクエストのコンテキストを必要とする場合に、Jev ポリシーレビューを使用します。まず **observe** モードで開始することで、インストール済みのポリシーが各呼び出しを判断しながら Jev の回答を検査できます。
 
-    Jev のチェックはパックから提供されます。Failproof AI はパックを同梱していないため、インストールするまで Jev は設定されていても何も確認しません。
+    Jev のチェックはパックから提供されます。Failproof AI はパックを同梱していないため、インストールするまで Jev は設定されていても何も尋ねません。
 
     ```bash
     failproofai policies add FailproofAI/jev-policies
@@ -38,7 +38,7 @@ Jev はエージェント実行の 2 つの時点で役立ちます。完了し�
 
     ## Cloud Jev を設定する
 
-    Cloud ダッシュボードで **Administration → Keys** を開き、**machine** プリセットでキーを作成します。[クイックスタート](/ja/start/quickstart)に示すように `failproofai config` で使用してください。既存の Jev 設定がないマシンでは、observe モードで Cloud Jev が有効になります。以下のコマンドで接続を確認してください。
+    Cloud ダッシュボードで **Administration → Keys** を開き、**machine** プリセットでキーを作成します。[クイックスタート](/ja/start/quickstart)に示されている通り、`failproofai config` でそのキーを使用します。既存の Jev 設定がないマシンでは、Cloud Jev が observe モードで有効になります。次のコマンドで接続を確認します。
 
     ```bash
     failproofai jev status
@@ -49,15 +49,15 @@ Jev はエージェント実行の 2 つの時点で役立ちます。完了し�
 
     ローカルダッシュボードで **Settings → Jev** を開きます。プロバイダーを選択し、トークンを貼り付け、**observe** を選択して Jev をオンにします。
 
-    ![プロバイダー、トークンフィールド、observe モードが選択されたローカル Jev 設定パネル。](/images/dashboard/jev-settings.png)
+    ![プロバイダー、トークンフィールド、および observe モードが選択されたローカル Jev 設定パネル。](/images/dashboard/jev-settings.png)
 
-    または、ターミナルからエンドポイントを設定してテストします。
+    またはターミナルからエンドポイントを設定してテストします。
 
     ```bash
     failproofai jev --url https://api.typesafe.ai/v1 --mode observe --key-stdin < ~/typesafe.key
     failproofai jev test
     ```
 
-    フックされたエージェントに `README.md` のファイル読み取りツールを使用するよう指示してください。そのツール呼び出しがセッションに表示されることを確認し、ローカルダッシュボードの **Policies → Activity** で確認します。observe の結果が正しく見えたら、[Jev ポリシー](/ja/policies/jev) でいつ適用するかを説明しています。プロバイダーの詳細と設定については、[インテグレーションリファレンス](/ja/reference/jev) を参照してください。
+    フックされたエージェントに `README.md` のファイル読み取りツールを使わせます。そのツール呼び出しがセッションに表示されることを確認し、ローカルダッシュボードの **Policies → Activity** で検査します。observe の結果が適切に見えたら、[Jev policies](/ja/policies/jev) でいつ適用するかを確認してください。プロバイダーの詳細と設定については [integration reference](/ja/reference/jev) を参照してください。
   </Tab>
 </Tabs>

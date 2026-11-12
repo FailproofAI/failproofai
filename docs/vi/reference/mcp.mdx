@@ -1,40 +1,40 @@
 ---
 title: "MCP server"
-description: "Kết nối Claude, Cursor, Codex hoặc một MCP client khác với Failproof AI Cloud, sử dụng quyền hạn của riêng bạn."
+description: "Kết nối Claude, Cursor, Codex hoặc một ứng dụng MCP client khác với Failproof AI Cloud, sử dụng quyền hạn của riêng bạn."
 icon: "plug"
 ---
 
-Kết nối một công cụ AI với Failproof AI Cloud và làm việc với dữ liệu của các agents từ công cụ đó. Công cụ của bạn có thể truy vấn các phiên làm việc và sự kiện, chạy SQL chỉ đọc, đọc dashboard, cảnh báo, issues, audits và policies, đồng thời nếu bạn có quyền hạn, có thể thực hiện các thay đổi như tạo cảnh báo hoặc triển khai policy.
+Kết nối một công cụ AI với Failproof AI Cloud và làm việc với dữ liệu của các agent từ đó. Công cụ của bạn có thể truy vấn các phiên làm việc và sự kiện, chạy SQL chỉ đọc, đọc bảng điều khiển, cảnh báo, các vấn đề, kiểm tra và chính sách, và nếu bạn có quyền hạn, thực hiện các thay đổi như tạo cảnh báo hoặc triển khai chính sách.
 
-Mỗi lệnh gọi được thực thi với **quyền hạn của riêng bạn**, trong **một** organization mà bạn chọn khi kết nối.
+Mỗi lần gọi chạy với **quyền hạn của riêng bạn**, trong **một** tổ chức bạn chọn khi kết nối.
 
-Có một địa chỉ duy nhất cho tất cả mọi người, cho dù được lưu trữ hay tự lưu trữ:
+Có một địa chỉ dành cho tất cả mọi người, được lưu trữ hoặc tự lưu trữ:
 
 ```text
 https://gateway.befailproof.ai/mcp
 ```
 
-## Kết nối một client
+## Kết nối một ứng dụng client
 
-Thêm địa chỉ vào client của bạn. Lần đầu tiên một công cụ được sử dụng, trình duyệt của bạn sẽ mở ra. Chọn nơi Failproof AI Cloud của bạn, đăng nhập, chọn một organization, rồi chọn **Allow**. Chọn **Cancel** sẽ không kết nối gì cả.
+Thêm địa chỉ vào ứng dụng client của bạn. Lần đầu tiên sử dụng công cụ, trình duyệt của bạn sẽ mở ra. Chọn nơi Failproof AI Cloud của bạn ở đó, đăng nhập, chọn một tổ chức, và chọn **Allow**. **Cancel** sẽ không kết nối được gì cả.
 
-Trang này ghi lại tên ứng dụng và nơi nó quay lại. Một ứng dụng không được xác định bằng địa chỉ web riêng của nó sẽ được đánh dấu là **unverified app**, vì vậy hãy tiếp tục chỉ khi bạn vừa khởi động điều này từ client của riêng bạn.
+Trang sẽ hiển thị tên của ứng dụng và nơi nó quay lại. Một ứng dụng không được xác định bởi địa chỉ web riêng của nó được đánh dấu là **unverified app**, vì vậy hãy tiếp tục chỉ nếu bạn vừa khởi động ứng dụng này từ ứng dụng client của riêng bạn.
 
 <Tabs>
   <Tab title="Claude">
-    Trong claude.ai hoặc Claude Desktop, hãy đi tới **Settings → Connectors → Add custom connector**. Đặt tên là `Failproof AI`, nhập địa chỉ, chọn **Add**, rồi chọn **Connect**.
+    Trong claude.ai hoặc Claude Desktop, đi tới **Settings → Connectors → Add custom connector**. Đặt tên `Failproof AI`, nhập địa chỉ, chọn **Add**, rồi chọn **Connect**.
 
-    Trên các gói Team và Enterprise, chủ sở hữu sẽ thêm connector cho organization trước. Sau đó, mỗi người kết nối tài khoản của riêng họ.
+    Trên các gói Team và Enterprise, chủ sở hữu sẽ thêm trình kết nối cho tổ chức trước. Sau đó, mỗi người sẽ kết nối tài khoản của họ.
   </Tab>
   <Tab title="Claude Code">
     ```bash
     claude mcp add --transport http failproofai https://gateway.befailproof.ai/mcp
     ```
 
-    Sau đó chạy `/mcp` bên trong Claude Code, chọn `failproofai`, rồi chọn **Authenticate**.
+    Sau đó chạy `/mcp` trong Claude Code, chọn `failproofai`, và chọn **Authenticate**.
   </Tab>
   <Tab title="Cursor">
-    Thêm dòng này vào `~/.cursor/mcp.json`, hoặc vào `.cursor/mcp.json` của dự án của bạn:
+    Thêm đoạn này vào `~/.cursor/mcp.json`, hoặc vào `.cursor/mcp.json` của dự án bạn:
 
     ```json
     {
@@ -44,10 +44,10 @@ Trang này ghi lại tên ứng dụng và nơi nó quay lại. Một ứng dụ
     }
     ```
 
-    Cursor sẽ hiển thị **Needs login** bên cạnh server. Chọn nó để đăng nhập.
+    Cursor sẽ hiển thị **Needs login** bên cạnh máy chủ. Chọn nó để đăng nhập.
   </Tab>
   <Tab title="Codex">
-    Thêm dòng này vào `~/.codex/config.toml`:
+    Thêm đoạn này vào `~/.codex/config.toml`:
 
     ```toml
     [mcp_servers.failproofai]
@@ -57,73 +57,73 @@ Trang này ghi lại tên ứng dụng và nơi nó quay lại. Một ứng dụ
     Sau đó chạy `codex mcp login failproofai`.
   </Tab>
   <Tab title="Other clients">
-    Bất kỳ client nào hỗ trợ MCP server từ xa qua Streamable HTTP với OAuth đều hoạt động. Cung cấp cho nó địa chỉ ở trên. Không có client ID hoặc secret để cấu hình.
+    Bất kỳ ứng dụng client nào hỗ trợ máy chủ MCP từ xa qua Streamable HTTP với OAuth đều hoạt động. Cung cấp cho nó địa chỉ ở trên. Không có ID hoặc bí mật client nào để cấu hình.
   </Tab>
 </Tabs>
 
-## Một organization cho mỗi kết nối
+## Một tổ chức cho mỗi kết nối
 
-Một kết nối chỉ hoạt động trong organization mà bạn đã chọn. Để sử dụng hai organization, hãy thêm server hai lần dưới các tên khác nhau, chẳng hạn như `failproofai-acme` và `failproofai-sandbox`, rồi kết nối mỗi server với organization của riêng nó.
+Một kết nối chỉ hoạt động trong tổ chức bạn đã chọn. Để sử dụng hai tổ chức, hãy thêm máy chủ hai lần dưới các tên khác nhau, chẳng hạn như `failproofai-acme` và `failproofai-sandbox`, và kết nối từng tổ chức với tổ chức của nó.
 
-Các organization demo không chấp nhận kết nối. Hãy chọn organization của riêng bạn thay thế.
+Các tổ chức Demo không chấp nhận kết nối. Chọn tổ chức của riêng bạn.
 
 ## Quyền hạn
 
-Một kết nối có thể thực hiện những gì bạn có thể làm trong organization, trong phạm vi dưới đây. Nó tuân theo quyền hạn hiện tại của bạn: nếu admin cấp cho bạn thêm quyền, công cụ sẽ có được nó, và nếu họ lấy đi một cái gì đó, công cụ sẽ mất nó trong lệnh gọi tiếp theo.
+Một kết nối có thể làm những gì bạn có thể làm trong tổ chức, trong phạm vi dưới đây. Nó tuân theo các quyền hạn hiện tại của bạn: nếu quản trị viên cấp cho bạn thêm quyền, công cụ sẽ nhận được nó, và nếu họ lấy đi, công cụ sẽ mất nó khi gọi tiếp theo.
 
 | Quyền hạn | Cho phép công cụ |
 | --- | --- |
-| `events:read` | Liệt kê các sự kiện, đọc tổng quan phiên làm việc, liệt kê các agents và môi trường |
-| `evaluations:read` | Liệt kê các phiên làm việc, đọc và tóm tắt kết quả và công việc đánh giá |
-| `evaluations:trigger` | Tạo đánh giá, xuất bản phiên bản mới, bật hoặc tắt chúng, backfill và đánh giá lại một phiên làm việc |
-| `dashboards:read`, `dashboards:write` | Đọc dashboard, hoặc tạo, đổi tên và thêm truy vấn vào chúng |
+| `events:read` | Liệt kê các sự kiện, đọc tổng quan của một phiên, liệt kê các agent và môi trường |
+| `evaluations:read` | Liệt kê các phiên, và đọc và tóm tắt kết quả và công việc đánh giá |
+| `evaluations:trigger` | Tạo đánh giá, xuất bản các phiên bản mới, bật hoặc tắt chúng, backfill và đánh giá lại một phiên |
+| `dashboards:read`, `dashboards:write` | Đọc bảng điều khiển, hoặc tạo, đổi tên và thêm truy vấn vào chúng |
 | `queries:read`, `queries:write` | Đọc các truy vấn đã lưu, hoặc lưu và chỉnh sửa chúng |
-| `queries:run` | Chạy một truy vấn SQL chỉ đọc và đọc schema của truy vấn |
+| `queries:run` | Chạy một truy vấn SQL chỉ đọc và đọc lược đồ truy vấn |
 | `alerts:read`, `alerts:write` | Đọc cảnh báo, hoặc tạo, chỉnh sửa, tạm dừng, xóa và kiểm tra chúng |
-| `issues:read` | Đọc issues, xác nhận chúng và bình luận về chúng |
-| `issues:create` | Mở một issue trên một cảnh báo |
-| `issues:close` | Giải quyết và đóng issues |
-| `audits:read`, `audits:write` | Đọc audits, chạy và tìm kiếm, hoặc tạo và chỉnh sửa audits cũng như bắt đầu một chạy |
-| `code_fixes:read` | Xem cách khắc phục một issue và lấy bối cảnh của nó để agent của riêng bạn khắc phục |
-| `code_fixes:write` | Bắt đầu sửa chữa trong Failproof AI Cloud, điều này mở một pull request trên GitHub của bạn |
-| `policies:read`, `policies:write` | Đọc policies, máy và triển khai, hoặc xuất bản, triển khai và khôi phục policies |
+| `issues:read` | Đọc các vấn đề, xác nhận chúng và bình luận về chúng |
+| `issues:create` | Mở một vấn đề trên một cảnh báo |
+| `issues:close` | Giải quyết và đóng các vấn đề |
+| `audits:read`, `audits:write` | Đọc kiểm tra, lần chạy và phát hiện, hoặc tạo và chỉnh sửa kiểm tra và bắt đầu một lần chạy |
+| `code_fixes:read` | Xem cách khắc phục một vấn đề và lấy ngữ cảnh của nó để agent của riêng bạn khắc phục |
+| `code_fixes:write` | Bắt đầu một bản sửa trong Failproof AI Cloud, nó sẽ mở một pull request trên GitHub của bạn |
+| `policies:read`, `policies:write` | Đọc chính sách, máy và triển khai, hoặc xuất bản, triển khai và khôi phục chính sách |
 
-Một số công cụ không cần quyền hạn vì chúng không đọc dữ liệu organization: xây dựng liên kết phiên làm việc và sự kiện, cũng như tìm kiếm tài liệu này.
+Một vài công cụ không cần quyền hạn vì chúng không đọc dữ liệu tổ chức: xây dựng liên kết phiên làm việc và sự kiện, và tìm kiếm tài liệu này.
 
-Một công cụ AI không bao giờ có thể chạm vào API keys, người dùng, cài đặt hoặc quản trị organization, và nó không thể gửi sự kiện.
+Một công cụ AI không bao giờ có thể chạm vào các khóa API, người dùng, cài đặt hoặc quản trị viên tổ chức, và nó không thể gửi sự kiện.
 
 ## Phê duyệt các thay đổi
 
-Các lệnh ghi sẽ hỏi bạn trước nếu client của bạn có thể hiển thị lời nhắc. Bạn sẽ thấy những gì sẽ thay đổi và chọn **Approve this change** để tiếp tục. Nếu bạn từ chối hoặc không trả lời trong khoảng 4 phút, không có gì thay đổi. Một số client ngừng chờ sau một phút, vì vậy hãy trả lời nhanh chóng.
+Các lần ghi sẽ hỏi bạn trước nếu ứng dụng client của bạn có thể hiển thị lời nhắc. Bạn sẽ thấy những gì sẽ thay đổi và chọn **Approve this change** để tiếp tục. Nếu bạn từ chối hoặc không trả lời trong khoảng 4 phút, không có gì thay đổi. Một số ứng dụng client sẽ dừng chờ sau một phút, vì vậy hãy trả lời nhanh chóng.
 
 <Warning>
-  Một client không hỗ trợ prompts sẽ không được hỏi, và một lệnh ghi sẽ chạy ngay khi client thực hiện lệnh gọi. Ở đó, xác nhận của riêng client của bạn là xác nhận duy nhất, vì vậy hãy bật nó cho các công cụ ghi.
+  Một ứng dụng client không hỗ trợ các lời nhắc sẽ không được hỏi, và một lần ghi sẽ chạy ngay khi ứng dụng client thực hiện cuộc gọi. Ở đó, xác nhận của ứng dụng client của riêng bạn là yếu tố duy nhất, vì vậy hãy giữ nó bật cho các công cụ ghi.
 </Warning>
 
 ## Các ứng dụng được kết nối và thu hồi
 
-**Settings → Integrations → MCP** liệt kê các ứng dụng được kết nối của bạn trong organization hiện tại, với quyền hạn và lần sử dụng cuối cùng của chúng. **Revoke** sẽ cắt đứt một ứng dụng ngay lập tức. Loại bỏ server trong client của bạn cũng sẽ thu hồi kết nối.
+**Settings → Integrations → MCP** liệt kê các ứng dụng được kết nối của bạn trong tổ chức hiện tại, với quyền hạn và lần sử dụng cuối cùng của chúng. **Revoke** sẽ cắt đứt một ứng dụng ngay lập tức. Xóa máy chủ trong ứng dụng client của bạn cũng sẽ thu hồi kết nối.
 
-Bạn có thể có tối đa 5 ứng dụng được kết nối cho mỗi organization. Kết nối cùng một ứng dụng lại sẽ thay thế kết nối trước đó của nó.
+Bạn có thể có tối đa 5 ứng dụng được kết nối cho mỗi tổ chức. Kết nối cùng một ứng dụng lại sẽ thay thế kết nối trước đó của nó.
 
 ## Triển khai tự lưu trữ
 
-Chọn **Self-hosted Failproof AI Cloud** khi kết nối, rồi nhập địa chỉ mà bạn đăng nhập. Triển khai của bạn phải có thể truy cập được qua public HTTPS.
+Chọn **Self-hosted Failproof AI Cloud** khi kết nối, và nhập địa chỉ bạn đăng nhập vào. Triển khai của bạn phải có thể truy cập được qua public HTTPS.
 
-Các lệnh gọi công cụ và kết quả của chúng đi qua gateway Failproof AI được lưu trữ trên đường đi giữa công cụ AI của bạn và triển khai của bạn. Gateway không lưu trữ chúng.
+Các cuộc gọi công cụ và kết quả của chúng sẽ đi qua cổng Failproof AI được lưu trữ trên đường đi giữa công cụ AI và triển khai của bạn. Cổng không lưu trữ chúng.
 
-## Điều gì xảy ra với dữ liệu của bạn
+## Dữ liệu của bạn được xử lý như thế nào
 
-Kết quả đi tới công cụ AI mà bạn kết nối, và nhà cung cấp công cụ đó xử lý chúng theo các điều khoản của riêng họ. Cho mỗi lệnh gọi công cụ, Failproof AI ghi lại tên công cụ, kết quả của nó, thời gian nó mất và organization, không bao giờ là các đối số hoặc kết quả. Xem [privacy policy](https://befailproof.ai/privacy/).
+Kết quả sẽ được gửi tới công cụ AI bạn đã kết nối, và nhà cung cấp công cụ đó sẽ xử lý chúng theo các điều khoản của riêng họ. Cho mỗi lần gọi công cụ, Failproof AI ghi lại tên công cụ, kết quả của nó, thời gian nó mất và tổ chức, không bao giờ là các đối số hoặc kết quả. Xem [chính sách bảo mật](https://befailproof.ai/privacy/).
 
 ## Khắc phục sự cố
 
-| Những gì bạn thấy | Những gì cần làm |
+| Những gì bạn thấy | Điều cần làm |
 | --- | --- |
-| "Started in another browser" | Hoàn thành đăng nhập trong trình duyệt mà client mở, với cookie được cho phép, và bắt đầu lại từ client |
-| Lỗi sau khi chọn **Allow** | Liên kết hoạt động một lần và hết hạn sau 10 phút, vì vậy hãy bắt đầu lại từ client |
-| Một công cụ mà bạn mong đợi không xuất hiện | Bạn không có quyền hạn của nó trong organization này. Hỏi admin. Bạn không cần phải kết nối lại khi bạn có nó |
-| Client tiếp tục yêu cầu bạn đăng nhập | Kết nối bị thu hồi, bạn rời khỏi organization hoặc nó không được sử dụng trong 90 ngày. Kết nối lại |
-| "You have 5 connected apps" | Thu hồi một trong số chúng dưới **Settings → Integrations → MCP**, rồi kết nối lại |
+| Lỗi "Started in another browser" | Hoàn thành đăng nhập trong trình duyệt mà ứng dụng client mở ra, với cookies được cho phép, và bắt đầu lại từ ứng dụng client |
+| Một lỗi sau khi **Allow** | Liên kết hoạt động một lần và hết hạn sau 10 phút, vì vậy hãy bắt đầu lại từ ứng dụng client |
+| Một công cụ bạn mong đợi bị thiếu | Bạn không có quyền hạn của nó trong tổ chức này. Hỏi quản trị viên. Bạn không cần kết nối lại khi bạn có nó |
+| Ứng dụng client liên tục yêu cầu bạn đăng nhập | Kết nối bị thu hồi, bạn rời khỏi tổ chức, hoặc nó không được sử dụng trong 90 ngày. Kết nối lại |
+| Lỗi "You have 5 connected apps" | Thu hồi một trong số chúng dưới **Settings → Integrations → MCP**, sau đó kết nối lại |
 
-Vẫn còn gặp khó khăn? Gửi email tới [support@befailproof.ai](mailto:support@befailproof.ai).
+Vẫn gặp vấn đề? Gửi email tới [support@befailproof.ai](mailto:support@befailproof.ai).

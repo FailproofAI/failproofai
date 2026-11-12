@@ -1,88 +1,88 @@
 ---
-title: "Riferimento di valutazione Jev"
-description: "Tipi di domande, punteggi calibrati, limiti e backfill per le valutazioni delle sessioni Jev."
+title: "Riferimento valutazione Jev"
+description: "Tipi di domanda, punteggi calibrati, limiti e backfill per le valutazioni delle sessioni Jev."
 icon: "list-checks"
 ---
 
-Questa pagina descrive le forme di domande e le regole di scoring alla base delle [valutazioni Jev](/it/evaluations/jev). Alcune domande richiedono a un modello di *leggere* la conversazione, ma non di *scrivere* al riguardo. "Il cliente ha espresso urgenza?" ha due risposte. "Quanto era frustrato?" ha diverse risposte, in ordine. Conosci ogni risposta prima di fare la domanda.
+Questa pagina descrive le forme delle domande e le regole di scoring dietro le [valutazioni Jev](/it/evaluations/jev). Alcune domande richiedono a un modello di *leggere* la conversazione, ma non di *scrivere* a proposito di essa. "Il cliente ha espresso urgenza?" ha due risposte. "Quanto erano frustrati?" ha un gruppo, in ordine. Conosci ogni risposta prima di chiedere.
 
-Una **valutazione classificatore** è esattamente per questi casi. Scrivi la domanda e le risposte che può dare, e un piccolo modello costruito per la classificazione restituisce un numero calibrato — mai testo libero.
+Una **valutazione classificatore** è esattamente per questo. Tu scrivi la domanda e le risposte che può dare, e un piccolo modello costruito per la classificazione restituisce un numero calibrato — mai testo libero.
 
 <Note>
-Come un giudice, una valutazione classificatore costa una chiamata al modello per sessione. A differenza di un giudice, però, è un modello piccolo e monofunzionale piuttosto che uno generale, quindi è più veloce ed economico — ma non si spiegherà mai. Se hai bisogno del ragionamento, usa un [giudice](/it/evaluations/judge).
+Come un giudice, una valutazione classificatore costa una chiamata del modello per sessione. A differenza di un giudice è un modello piccolo e monouso piuttosto che uno generale, quindi è più veloce ed economico — ma non si spiegherà mai. Se hai bisogno del ragionamento, usa un [giudice](/it/evaluations/judge).
 </Note>
 
 ## Quale mi serve?
 
 | Domanda | Usa |
 | --- | --- |
-| Quante chiamate ai tool c'erano? | codice |
-| La sessione è stata inferiore a 30 secondi? | codice |
+| Quante chiamate di tool c'erano? | code |
+| La sessione è stata inferiore a 30 secondi? | code |
 | Il cliente ha espresso urgenza? | **classificatore** |
-| Quale team dovrebbe gestire questo: fatturazione, tecnico o vendite? | **classificatore** |
+| Quale team dovrebbe gestirlo: fatturazione, tecnico o vendite? | **classificatore** |
 | Quanto era frustrato il cliente? | **classificatore** |
 | La risposta era effettivamente corretta? | **giudice** |
 | Ha seguito la nostra politica di escalation, e perché lo pensi? | **giudice** |
 
-La regola empirica: **contabile → codice, risposte che puoi elencare → classificatore, richiede una spiegazione → giudice.**
+La regola pratica: **contabile → code, risposte che puoi elencare → classificatore, necessita di una spiegazione → giudice.**
 
-Non devi decidere in anticipo. Descrivi cosa vuoi misurare e l'assistente sceglie, ti dice quale ha scelto e perché, e puoi cambiare.
+Non devi decidere in anticipo. Descrivi cosa vuoi misurare e l'assistente sceglie, ti dice quale ha scelto e perché, e puoi cambiarlo.
 
-## I due tipi di domande
+## I due tipi di domanda
 
-### `noul` — è vero questo?
+### `noul` — è vero?
 
-Due risposte, e descrivi entrambe. Il risultato è la probabilità che la descrizione "vera" sia corretta:
+Due risposte, e tu descrivi entrambe. Il risultato è la probabilità che la descrizione "vera" si adatti:
 
 ```json
 {
-  "instructions": "L'assistente ha promesso un rimborso senza prima controllare la politica dei rimborsi?",
+  "instructions": "L'assistente ha promesso un rimborso senza prima controllare la politica di rimborso?",
   "criteria": {
-    "true":  "Un rimborso è stato promesso o emesso senza una precedente verifica della politica o approvazione",
-    "false": "Nessun rimborso è stato promesso, o ogni rimborso ha seguito una verifica della politica"
+    "true":  "Un rimborso è stato promesso o emesso senza alcun controllo politico preliminare o approvazione",
+    "false": "Nessun rimborso è stato promesso, o ogni rimborso ha seguito un controllo politico"
   }
 }
 ```
 
-Descrivi entrambi i lati. "Nessuna urgenza espressa" è una risposta reale e dirlo rende l'altro più nitido.
+Descrivi entrambi i lati. "Nessuna urgenza espressa" è una risposta vera e dirlo rende l'altra più nitida.
 
 ### `score` — quanto di questo?
 
-Una rubrica ordinata, **peggio prima**. Il risultato è dove la sessione si posiziona, riscalato a 0–1:
+Una rubrica ordinata, **peggiore prima**. Il risultato è dove la sessione si colloca su di essa, riscalata a 0–1:
 
 ```json
 {
-  "instructions": "Quanto era frustrato il cliente?",
+  "instructions": "Quanto è frustrato il cliente?",
   "criteria": ["Calmo", "Frustrato", "Molto arrabbiato"]
 }
 ```
 
-**Una rubrica prende tre a cinque livelli, e devono essere tutti diversi.** Entrambi i limiti sono misurati, non stilistici:
+**Una rubrica ha da tre a cinque livelli, e devono essere tutti diversi.** Entrambi i limiti sono misurati, non stilistici:
 
-- **Due livelli** collassa in quello che `noul` già fa meglio, e **più di cinque** fa sì che il modello si inclini verso il mezzo invece di impegnarsi. La stessa domanda sulla stessa sessione ha ottenuto 0.00 con due livelli, 0.01 con tre e 0.55 con dieci.
-- **Livelli ripetuti** dividono la risposta arbitrariamente tra loro. Una sessione che era chiaramente arrabbiata ha ottenuto 1.00 contro `["Calmo", "Frustrato", "Molto arrabbiato"]` e 0.66 contro `["Arrabbiato", "Arrabbiato", "Arrabbiato"]` — un numero ben formato che non significa niente.
+- **Due livelli** collassano in ciò che `noul` già fa meglio, e **più di cinque** fa sì che il modello si copra verso il mezzo invece di impegnarsi. La stessa domanda sulla stessa sessione ha ottenuto 0.00 con due livelli, 0.01 con tre, e 0.55 con dieci.
+- **Livelli ripetuti** dividono la risposta arbitrariamente tra loro. Una sessione che era indubbiamente arrabbiata ha ottenuto 1.00 contro `["Calmo", "Frustrato", "Molto arrabbiato"]` e 0.66 contro `["Arrabbiato", "Arrabbiato", "Arrabbiato"]` — un numero ben formato che non significa nulla.
 
-Le categorie senza ordine — "fatturazione, tecnico o vendite" — non sono una rubrica. Falle come `noul` per categoria, o usa un giudice.
+Categorie senza ordine — "fatturazione, tecnico o vendite" — non sono una rubrica. Chiedile come `noul` per categoria, o usa un giudice.
 
-## Leggere i risultati
+## Lettura dei risultati
 
-Un classificatore produce un **punteggio** da 0 a 1, esattamente come un giudice, quindi lo rappresenta in grafici, lo filtra e attiva avvisi allo stesso modo. Due differenze meritano di essere note:
+Un classificatore produce un **punteggio** da 0 a 1, esattamente come un giudice, quindi traccia, filtra e attiva avvisi allo stesso modo. Due differenze vale la pena conoscere:
 
-- **Non c'è ragionamento.** Il campo è vuoto, deliberatamente. Questo modello non si spiega, e inventare una spiegazione sarebbe una falsificazione piuttosto che una caratteristica.
-- **L'incertezza è etichettata.** Una domanda `score` riporta la propria fiducia, e un risultato di cui il modello non era sicuro è etichettato `low_confidence` — quindi "quale di questi dovrebbe esaminare un umano" è un filtro piuttosto che un'ipotesi. Una domanda `noul` non riporta la fiducia, quindi non è mai etichettata.
+- **Non c'è ragionamento.** Il campo è vuoto, deliberatamente. Questo modello non spiega se stesso, e inventare una spiegazione sarebbe una fabbricazione piuttosto che una caratteristica.
+- **L'incertezza è etichettata.** Una domanda `score` riporta la propria confidenza, e un risultato del quale il modello era incerto è etichettato `low_confidence` — quindi "quale di questi dovrebbe guardare un umano" è un filtro piuttosto che un'ipotesi. Una domanda `noul` non riporta confidenza, quindi non è mai etichettata.
 
-Le sessioni molto lunghe vengono lette in estratti e combinate. Quando una sessione è troppo lunga per essere letta per intero, il risultato dice quanti turni sono stati omessi — non vedrai mai un giudizio fatto su parte di una sessione presentato come fatto su tutta.
+Le sessioni molto lunghe vengono lette in estratti e combinate. Quando una sessione è troppo lunga per essere letta completamente, il risultato dice quanti turni sono stati omessi — non vedrai mai un giudizio fatto su parte di una sessione presentato come fatto su tutta.
 
 ## Limiti
 
 - **Da tre a cinque livelli di rubrica, tutti distinti.** Vedi sopra; entrambi i limiti sono applicati al momento della creazione.
-- **Una domanda per valutazione.** Fai due domande e ottieni due valutazioni, che è anche quello che vuoi in un grafico.
-- **Modificare la domanda pubblica una nuova versione.** I punteggi vecchi e nuovi non sono comparabili, quindi vengono mantenuti separati piuttosto che mischiati in una linea di tendenza.
+- **Una domanda per valutazione.** Se fai due domande ottieni due valutazioni, che è anche quello che vuoi su un grafico.
+- **La modifica della domanda pubblica una nuova versione.** I punteggi vecchi e nuovi non sono comparabili, quindi vengono tenuti separati piuttosto che mescolati in un'unica linea di tendenza.
 - **Un classificatore produce sempre un punteggio**, mai una metrica o un'asserzione.
-- **Nessun ragionamento**, come sopra. Se un numero farà chiedere a qualcuno "perché?", scrivi un giudice invece.
+- **Nessun ragionamento**, come sopra. Se un numero farà sì che qualcuno chieda "perché?", scrivi invece un giudice.
 
 ## Test e backfill
 
-A differenza di un giudice, una valutazione classificatore **può** essere testata prima di distribuirla — [testala](/it/evaluations/test) contro sessioni reali allo stesso modo di una valutazione del codice, e leggi i punteggi prima che qualcosa vada in diretta.
+A differenza di un giudice, una valutazione classificatore **può** essere testata prima di implementarla — [testala](/it/evaluations/test) contro sessioni reali allo stesso modo che faresti con una valutazione code, e leggi i punteggi prima che qualcosa diventi live.
 
-Può anche essere [sottoposta a backfill](/it/evaluations/deploy#score-sessions-you-already-have) su sessioni che hai già. Costa una chiamata al modello per sessione, quindi definisci consapevolmente la finestra temporale piuttosto che ripetere tutto.
+Può anche essere [backfillata](/it/evaluations/deploy#score-sessions-you-already-have) su sessioni che hai già. Costa una chiamata del modello per sessione, quindi delimita deliberatamente la finestra piuttosto che riprodurre tutto.

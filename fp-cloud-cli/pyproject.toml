@@ -50,7 +50,7 @@ dependencies = [
     # neither CI nor the publish smoke test ever installed the broken part of the
     # range. Measured across 0.12.0/0.12.3/0.12.5 (all fail) and 0.13.0 upward
     # (all pass).
-    "typer>=0.13,<0.28",
+    "typer>=0.13,<0.29",
     # `click` is what `_click_compat` falls back to when typer is < 0.26 (0.26+ brings its
     # own), and `pygments` is imported directly. Both are declared rather than relied on
     # transitively: modern `typer` no longer installs `click`, and `rich` could likewise

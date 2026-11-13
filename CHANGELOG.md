@@ -19,6 +19,7 @@
 ### Dependencies
 
 - Update the Python SDK test dependency oauthlib to 4.0.1 to fix GHSA-3jp2-3mrg-2vxc and unblock the security gate. (#997)
+- Bump `quinn-udp` 0.5.15 → 0.5.16 in `Cargo.lock` for RUSTSEC-2026-0538, which turned OSV-Scanner red on `main` and on every pull request. It is in the lockfile as an optional dependency of `reqwest` (through `quinn`, behind the `http3` feature the daemon does not enable), so no build compiles it. Resolving it also moves the Windows-only `windows-sys` dependency of `errno`, `rustix`, `tempfile` and `winapi-util` from 0.52.0 to 0.61.2, which was already in the lockfile (#1004)
 
 ## 1.0.14-beta.0 — 2026-11-02
 

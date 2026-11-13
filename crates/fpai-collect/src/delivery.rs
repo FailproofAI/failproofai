@@ -628,7 +628,7 @@ mod tests {
             .await;
         let failed = tmpdir("redrive-failed");
         let spool = tmpdir("redrive-spool");
-        let refused_again = failed.join("a-0.a1.c401.jsonl");
+        let refused_again = failed.join("a-0.a1.r1.c401.jsonl");
         let resendable = failed.join("b-0.a1.c403.jsonl");
         let not_credential = failed.join("c-0.a1.c404.jsonl");
         std::fs::write(&refused_again, "{\"refused\":1}\n").unwrap();
@@ -656,12 +656,12 @@ mod tests {
             "refused again by that key: renamed into another park"
         );
         assert_eq!(
-            std::fs::read(failed.join("a-0.a2.c401.jsonl")).unwrap(),
+            std::fs::read(failed.join("a-0.a2.r2.c401.jsonl")).unwrap(),
             b"{\"refused\":1}\n"
         );
         delivery.redrive_refused().await;
         assert_eq!(
-            std::fs::read(failed.join("a-0.a3.c401.jsonl.poison")).unwrap(),
+            std::fs::read(failed.join("a-0.a3.r3.c401.jsonl.poison")).unwrap(),
             b"{\"refused\":1}\n",
             "exhausting retries must preserve the last local copy too"
         );
@@ -770,7 +770,7 @@ mod tests {
         ));
         delivery.deliver(fresh).await;
         assert!(old.exists(), "a key that is refused re-sends nothing");
-        assert!(failed.join("hooks-a-1-0.a1.c401.jsonl").exists());
+        assert!(failed.join("hooks-a-1-0.a1.r1.c401.jsonl").exists());
         std::fs::remove_dir_all(failed).unwrap();
         std::fs::remove_dir_all(spool).unwrap();
     }

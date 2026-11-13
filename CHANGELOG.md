@@ -1,5 +1,25 @@
 # Changelog
 
+## 1.0.14-beta.0 — 2026-11-10
+
+### Fixes
+
+- Keep telemetry retryable through prolonged network and server outages, retain interrupted acknowledgements, and preserve permanent rejections for inspection. (#997)
+- Build the macOS ARM daemon on the supported macos-15 hosted runner. (#997)
+- Count partial acknowledgements separately from outage attempts so a recovered endpoint can finish delivery. (#997)
+- Keep credential-refused batches recoverable after an outage without exhausting the skipped-acknowledgement budget. (#997)
+- Run the ARM installation check on macos-15 so a release can complete. (#997)
+- Keep CLI delivery-status filename parsing aligned with the independent retry counters. (#997)
+
+### Docs
+
+- Clarify ingestion retries and give every public OpenAPI operation a unique ID. (#997)
+- Explain manual OTLP credential-refusal recovery within the original organisation. (#997)
+
+### Dependencies
+
+- Update the Python SDK test dependency oauthlib to 4.0.1 to fix GHSA-3jp2-3mrg-2vxc and unblock the security gate. (#997)
+
 ## 1.0.14-beta.0 — 2026-11-02
 
 ### Fixes

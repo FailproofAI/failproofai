@@ -66,7 +66,7 @@ export interface ParkedName {
 /**
  * Mirrors `ParkedName::parse` in `crates/fpai-collect/src/uploader.rs`.
  *
- * Suffixes are stripped right to left (`.cNNN` then `.aN`), and each is parsed
+ * Suffixes are stripped right to left (`.cNNN`, `.rN`, `.sN`, `.aN`), and each is parsed
  * rather than merely matched, which is what keeps a real spool name safe: a
  * base like `claude-...-0` has no numeric `.c`/`.a` to find, and anything that
  * looks like one but is not numeric stays part of the base.
@@ -88,6 +88,16 @@ export function parseParkedName(name: string): ParkedName {
     if (Number.isInteger(code) && base.slice(cIdx + 2) !== "") {
       clientStatus = code;
       base = base.slice(0, cIdx);
+    }
+  }
+  // The CLI needs status and total attempts; the two rejection budgets are Rust-owned.
+  for (const suffix of [".r", ".s"]) {
+    const idx = base.lastIndexOf(suffix);
+    if (idx === -1) continue;
+    const raw = base.slice(idx + 2);
+    const n = Number(raw);
+    if (/^\+?\d+$/.test(raw) && Number.isInteger(n) && n >= 0 && n <= 0xffffffff) {
+      base = base.slice(0, idx);
     }
   }
   const aIdx = base.lastIndexOf(".a");

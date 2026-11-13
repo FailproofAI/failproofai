@@ -92,7 +92,7 @@ async fn a_later_chunk_credential_refusal_preserves_all_bytes_and_can_be_resent(
             assert_eq!(requests[0].body, b"{ \"n\": 1 }\n");
             assert_eq!(requests[1].body, b"{ \"n\": 2 }\n");
             let names = parked(&failed);
-            assert_eq!(names, [format!("original.a2.c{status}.jsonl")]);
+            assert_eq!(names, [format!("original.a2.r1.c{status}.jsonl")]);
             let retained = failed.join(&names[0]);
             assert_eq!(
                 fs::read(&retained).unwrap(),
@@ -926,4 +926,247 @@ async fn an_unset_machine_id_is_sent_as_unknown() {
 
     fs::remove_dir_all(&spool).ok();
     fs::remove_dir_all(&failed).ok();
+}
+
+#[tokio::test]
+async fn temporary_rejections_outlive_the_old_poison_budget_and_recover() {
+    use fpai_collect::uploader::ParkedName;
+    for status in [408, 429, 500, 503] {
+        let server = MockServer::start().await;
+        Mock::given(method("POST"))
+            .respond_with(ResponseTemplate::new(status))
+            .expect(20)
+            .mount(&server)
+            .await;
+        let spool = tmpdir("long-outage");
+        let failed = tmpdir("long-outage-failed");
+        let mut file = write_batch(&spool, "outage.jsonl", 2);
+        let original = fs::read(&file).unwrap();
+        let up = uploader(&server, &failed);
+        for round in 1..=4 {
+            assert!(up.upload_file(&file).await.is_err());
+            let names = parked(&failed);
+            assert_eq!(names.len(), 1);
+            let state = ParkedName::parse(&names[0]);
+            assert_eq!(state.attempt, round);
+            assert!(state.is_auto_retryable(), "{status}: {state:?}");
+            file = failed.join(&names[0]);
+            assert_eq!(fs::read(&file).unwrap(), original);
+        }
+        server.verify().await;
+        server.reset().await;
+        Mock::given(method("POST"))
+            .respond_with(
+                ResponseTemplate::new(200)
+                    .set_body_json(serde_json::json!({"accepted": 2, "skipped": 0})),
+            )
+            .expect(1)
+            .mount(&server)
+            .await;
+        up.upload_file(&file).await.unwrap();
+        assert!(!file.exists());
+        server.verify().await;
+        fs::remove_dir_all(spool).unwrap();
+        fs::remove_dir_all(failed).unwrap();
+    }
+}
+
+#[tokio::test]
+async fn outages_do_not_spend_the_partial_ack_budget() {
+    use fpai_collect::uploader::ParkedName;
+    for recover in [true, false] {
+        let server = MockServer::start().await;
+        let spool = tmpdir("outage-partial");
+        let failed = tmpdir("outage-partial-failed");
+        let mut file = write_batch(&spool, "mixed.jsonl", 2);
+        let original = fs::read(&file).unwrap();
+        let up = uploader(&server, &failed);
+        for skipped in 1..=3 {
+            Mock::given(method("POST"))
+                .respond_with(ResponseTemplate::new(500))
+                .expect(20)
+                .mount(&server)
+                .await;
+            for _ in 0..4 {
+                up.upload_file(&file).await.unwrap_err();
+                let names = parked(&failed);
+                assert_eq!(names.len(), 1);
+                file = failed.join(&names[0]);
+                let state = ParkedName::parse(&names[0]);
+                assert!(state.is_auto_retryable());
+                assert_eq!(state.skipped_attempts, skipped - 1);
+                assert_eq!(fs::read(&file).unwrap(), original);
+            }
+            server.verify().await;
+            server.reset().await;
+            Mock::given(method("POST"))
+                .respond_with(
+                    ResponseTemplate::new(200)
+                        .set_body_json(serde_json::json!({"accepted": 1, "skipped": 1})),
+                )
+                .expect(1)
+                .mount(&server)
+                .await;
+            assert!(matches!(
+                up.upload_file(&file).await,
+                Err(UploadError::PartiallySkipped { .. })
+            ));
+            let names = parked(&failed);
+            assert_eq!(names.len(), 1);
+            file = failed.join(&names[0]);
+            let state = ParkedName::parse(&names[0]);
+            assert_eq!(state.skipped_attempts, skipped);
+            assert_eq!(state.poison, skipped == 3);
+            assert_eq!(fs::read(&file).unwrap(), original);
+            assert_eq!(up.metrics().skipped_total.load(Ordering::Relaxed), 1);
+            server.verify().await;
+            server.reset().await;
+            if recover {
+                assert!(state.is_auto_retryable());
+                Mock::given(method("POST"))
+                    .respond_with(
+                        ResponseTemplate::new(200)
+                            .set_body_json(serde_json::json!({"accepted": 2, "skipped": 0})),
+                    )
+                    .expect(1)
+                    .mount(&server)
+                    .await;
+                up.upload_file(&file).await.unwrap();
+                assert!(!file.exists());
+                server.verify().await;
+                break;
+            }
+        }
+        fs::remove_dir_all(spool).unwrap();
+        fs::remove_dir_all(failed).unwrap();
+    }
+}
+
+#[tokio::test]
+async fn outages_followed_by_a_client_rejection_keep_credential_recovery_available() {
+    use fpai_collect::uploader::ParkedName;
+    for status in [401, 403, 422] {
+        let server = MockServer::start().await;
+        let failed = tmpdir("outage-client");
+        // Legacy outage state has no skipped-ack history, even at saturation.
+        let file = write_batch(&failed, "mixed.a4294967295.jsonl", 2);
+        let original = fs::read(&file).unwrap();
+        let up = uploader(&server, &failed);
+        Mock::given(method("POST"))
+            .respond_with(ResponseTemplate::new(status))
+            .expect(1)
+            .mount(&server)
+            .await;
+        assert!(
+            matches!(up.upload_file(&file).await, Err(UploadError::Client { status: s }) if s == status)
+        );
+        let names = parked(&failed);
+        assert_eq!(names.len(), 1);
+        let state = ParkedName::parse(&names[0]);
+        assert_eq!(state.attempt, u32::MAX);
+        assert_eq!(state.client_status, Some(status));
+        assert_eq!(state.client_attempts, 1);
+        assert!(!state.poison);
+        assert!(!state.is_auto_retryable());
+        assert_eq!(fs::read(failed.join(&names[0])).unwrap(), original);
+        server.verify().await;
+        server.reset().await;
+        Mock::given(method("POST"))
+            .respond_with(
+                ResponseTemplate::new(200)
+                    .set_body_json(serde_json::json!({"accepted": 2, "skipped": 0})),
+            )
+            .expect(1)
+            .mount(&server)
+            .await;
+        up.upload_file(&failed.join(&names[0])).await.unwrap();
+        assert!(parked(&failed).is_empty());
+        server.verify().await;
+        fs::remove_dir_all(failed).unwrap();
+    }
+}
+
+#[tokio::test]
+async fn network_failures_outlive_the_poison_budget_without_losing_bytes() {
+    use fpai_collect::uploader::ParkedName;
+    let spool = tmpdir("network-outage");
+    let failed = tmpdir("network-outage-failed");
+    let mut file = write_batch(&spool, "network.jsonl", 1);
+    let original = fs::read(&file).unwrap();
+    let up = Uploader::new(
+        "http://127.0.0.1:1/events".into(),
+        "key".into(),
+        failed.clone(),
+    )
+    .unwrap()
+    .with_retry_base(Duration::from_millis(1));
+    for _ in 0..4 {
+        assert!(matches!(
+            up.upload_file(&file).await,
+            Err(UploadError::Network { .. })
+        ));
+        let names = parked(&failed);
+        assert!(ParkedName::parse(&names[0]).is_auto_retryable());
+        file = failed.join(&names[0]);
+        assert_eq!(fs::read(&file).unwrap(), original);
+    }
+    fs::remove_dir_all(spool).unwrap();
+    fs::remove_dir_all(failed).unwrap();
+}
+
+#[tokio::test]
+async fn oversized_event_rejection_is_retained_without_automatic_retries() {
+    let server = MockServer::start().await;
+    Mock::given(method("POST"))
+        .respond_with(ResponseTemplate::new(422))
+        .expect(1)
+        .mount(&server)
+        .await;
+    let spool = tmpdir("oversized");
+    let failed = tmpdir("oversized-failed");
+    let file = write_batch(&spool, "oversized.jsonl", 1);
+    let original = fs::read(&file).unwrap();
+    assert!(matches!(
+        uploader(&server, &failed).upload_file(&file).await,
+        Err(UploadError::Client { status: 422 })
+    ));
+    let names = parked(&failed);
+    assert!(!fpai_collect::uploader::ParkedName::parse(&names[0]).is_auto_retryable());
+    assert_eq!(fs::read(failed.join(&names[0])).unwrap(), original);
+    server.verify().await;
+    fs::remove_dir_all(spool).unwrap();
+    fs::remove_dir_all(failed).unwrap();
+}
+
+#[tokio::test]
+async fn interrupted_success_acknowledgements_remain_retryable() {
+    use tokio::io::{AsyncReadExt, AsyncWriteExt};
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let url = format!("http://{}/events", listener.local_addr().unwrap());
+    let server = tokio::spawn(async move {
+        for _ in 0..4 {
+            let (mut stream, _) = listener.accept().await.unwrap();
+            let mut request = [0; 4096];
+            assert!(stream.read(&mut request).await.unwrap() > 0);
+            stream.write_all(b"HTTP/1.1 200 OK\r\nContent-Length: 100\r\nContent-Type: application/json\r\nConnection: close\r\n\r\n{\"accepted\":").await.unwrap();
+        }
+    });
+    let spool = tmpdir("interrupted-ack");
+    let failed = tmpdir("interrupted-ack-failed");
+    let mut file = write_batch(&spool, "ack.jsonl", 1);
+    let original = fs::read(&file).unwrap();
+    let up = Uploader::new(url, "key".into(), failed.clone()).unwrap();
+    for _ in 0..4 {
+        assert!(matches!(
+            up.upload_file(&file).await,
+            Err(UploadError::Network { .. })
+        ));
+        let names = parked(&failed);
+        assert!(fpai_collect::uploader::ParkedName::parse(&names[0]).is_auto_retryable());
+        file = failed.join(&names[0]);
+        assert_eq!(fs::read(&file).unwrap(), original);
+    }
+    server.await.unwrap();
+    fs::remove_dir_all(spool).unwrap();
+    fs::remove_dir_all(failed).unwrap();
 }

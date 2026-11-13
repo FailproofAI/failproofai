@@ -21,8 +21,8 @@
 //!
 //! **`failed/` is a retry queue, not a graveyard.** A batch there is data the
 //! server does not have, and it is the last copy. Batches are retried in place
-//! with the attempt count encoded in the filename, and only ever parked as
-//! `.poison` — never deleted.
+//! with the attempt count encoded in the filename. Temporary failures never
+//! exhaust into `.poison`; rejected batches are retained, never deleted.
 //!
 //! **Every attempt says who it is.** Three headers go with each POST so a
 //! failure can be found in the server's logs: `x-request-id` (new per attempt,
@@ -59,7 +59,7 @@ pub const DEFAULT_MAX_RETRIES: u32 = 5;
 pub const DEFAULT_RETRY_BASE: Duration = Duration::from_millis(1000);
 /// Per-read timeout. Bounds progress, not total transfer size.
 pub const DEFAULT_READ_TIMEOUT: Duration = Duration::from_secs(120);
-/// Attempts a parked batch gets before it is marked poison.
+/// Separate budgets for skipped acknowledgements and definitive client rejections.
 pub const DEFAULT_FAILED_RETRIES_MAX: u32 = 3;
 /// Header names. The server validates the request id as a W3C trace id (32
 /// lowercase hex) and mints its own when it is not one.
@@ -379,7 +379,17 @@ impl Uploader {
                         // and returning Ok here deletes the spool file behind it.
                         // Park instead, non-retryable — it will parse-fail
                         // identically until the URL is fixed.
-                        match resp.json::<IngestAck>().await {
+                        let ack_bytes = match resp.bytes().await {
+                            Ok(bytes) => bytes,
+                            Err(error) => {
+                                self.park(path, None, &request_id, true).await;
+                                return Err(UploadError::Network {
+                                    attempts: attempt,
+                                    detail: error_chain(&error),
+                                });
+                            }
+                        };
+                        match serde_json::from_slice::<IngestAck>(&ack_bytes) {
                             Ok(ack) => {
                                 // `record_ack`'s own contract: "A 200 that stored
                                 // nothing is an error, not a success." It said so
@@ -397,7 +407,7 @@ impl Uploader {
                                 // `.poison` at `failed_retries_max`, after which it
                                 // is kept forever and never retried again.
                                 if self.record_ack(path, &ack, attempt, &request_id) {
-                                    self.park(path, None, &request_id).await;
+                                    self.park(path, None, &request_id, false).await;
                                     return Err(if ack.accepted == 0 {
                                         UploadError::StoredNothing {
                                             skipped: ack.skipped,
@@ -413,7 +423,7 @@ impl Uploader {
                             }
                             Err(_) => {
                                 let code = status.as_u16();
-                                self.park(path, Some(code), &request_id).await;
+                                self.park(path, Some(code), &request_id, false).await;
                                 return Err(UploadError::Client { status: code });
                             }
                         }
@@ -428,11 +438,11 @@ impl Uploader {
                         if is_credential_status(code) {
                             self.credential_refusals.store(true, Ordering::SeqCst);
                         }
-                        self.park(path, Some(code), &request_id).await;
+                        self.park(path, Some(code), &request_id, false).await;
                         return Err(UploadError::Client { status: code });
                     }
                     if attempt >= self.max_retries {
-                        self.park(path, None, &request_id).await;
+                        self.park(path, None, &request_id, true).await;
                         return Err(UploadError::Server {
                             status: code,
                             attempts: attempt,
@@ -455,7 +465,7 @@ impl Uploader {
                 }
                 Err(err) => {
                     if attempt >= self.max_retries {
-                        self.park(path, None, &request_id).await;
+                        self.park(path, None, &request_id, true).await;
                         return Err(UploadError::Network {
                             attempts: attempt,
                             detail: error_chain(&err),
@@ -503,11 +513,11 @@ impl Uploader {
         // Keyed on the FILE NAME, not the retry counter: `upload_file`'s own
         // `attempt` restarts at 1 for every call, including each call made from
         // `retry_parked`. The parked name is where the batch's history actually
-        // lives (`.aN`), so a file already carrying one has been counted.
+        // lives (`.sN`); outage attempts must not hide the first skipped ack.
         let first_attempt = path
             .file_name()
             .and_then(|n| n.to_str())
-            .map(|n| ParkedName::parse(n).attempt == 0)
+            .map(|n| ParkedName::parse(n).skipped_attempts == 0)
             .unwrap_or(true);
         if first_attempt {
             self.metrics
@@ -586,8 +596,17 @@ impl Uploader {
     /// not written beside the batch: the filename is this module's only
     /// metadata store (see `ParkedName`), and a sidecar is exactly what that
     /// design rejects.
-    async fn park(&self, path: &Path, client_status: Option<u16>, request_id: &str) {
-        if let Err(err) = self.park_inner(path, client_status, request_id).await {
+    async fn park(
+        &self,
+        path: &Path,
+        client_status: Option<u16>,
+        request_id: &str,
+        retryable: bool,
+    ) {
+        if let Err(err) = self
+            .park_inner(path, client_status, request_id, retryable)
+            .await
+        {
             tracing::error!(
                 file = %path.display(),
                 request_id,
@@ -602,6 +621,7 @@ impl Uploader {
         path: &Path,
         client_status: Option<u16>,
         request_id: &str,
+        retryable: bool,
     ) -> Result<(), std::io::Error> {
         tokio::fs::create_dir_all(&self.failed_dir).await?;
         let name = path
@@ -610,11 +630,21 @@ impl Uploader {
             .unwrap_or("batch.jsonl");
 
         let mut parked = ParkedName::parse(name);
-        parked.attempt += 1;
-        if client_status.is_some() {
-            parked.client_status = client_status;
+        parked.attempt = parked.attempt.saturating_add(1);
+        parked.client_status = client_status;
+        if !retryable && client_status.is_none() {
+            parked.skipped_attempts = parked.skipped_attempts.saturating_add(1);
         }
-        parked.poison = parked.attempt >= self.failed_retries_max.max(1);
+        if !retryable && client_status.is_some() {
+            parked.client_attempts = parked.client_attempts.saturating_add(1);
+        }
+        // Outages spend neither rejection budget; repeated credential refusals stay bounded.
+        let rejections = if client_status.is_some() {
+            parked.client_attempts
+        } else {
+            parked.skipped_attempts
+        };
+        parked.poison = !retryable && rejections >= self.failed_retries_max.max(1);
 
         let dest = unique_destination(&self.failed_dir, &parked.render()).await;
         tracing::warn!(
@@ -823,7 +853,7 @@ pub fn error_chain(err: &dyn std::error::Error) -> String {
 }
 
 /// Retry state carried in a parked batch's filename:
-/// `<base>.a<N>[.c<STATUS>].jsonl[.poison]`.
+/// `<base>.a<N>[.s<SKIPPED_ACKS>][.r<CLIENT_REJECTIONS>][.c<STATUS>].jsonl[.poison]`.
 ///
 /// The filename IS the database. A sidecar would need its own atomicity story
 /// and could desynchronise from the batch it describes; a rename cannot.
@@ -831,6 +861,8 @@ pub fn error_chain(err: &dyn std::error::Error) -> String {
 pub struct ParkedName {
     pub base: String,
     pub attempt: u32,
+    pub skipped_attempts: u32,
+    pub client_attempts: u32,
     pub client_status: Option<u16>,
     pub poison: bool,
 }
@@ -845,9 +877,11 @@ impl ParkedName {
 
         let mut base = stem.to_string();
         let mut attempt = 0;
+        let mut skipped_attempts = 0;
+        let mut client_attempts = 0;
         let mut client_status = None;
 
-        // Suffixes are stripped right to left: `.cNNN` then `.aN`. Parsing
+        // Suffixes are stripped right to left: `.cNNN`, `.rN`, `.sN`, `.aN`. Parsing
         // rather than merely matching the prefix is what keeps a real spool
         // name safe — `claude-...-0` has no `.c`/`.a` to find, and anything
         // that does but is not numeric is left as part of the base.
@@ -855,6 +889,18 @@ impl ParkedName {
             && let Ok(code) = base[idx + 2..].parse::<u16>()
         {
             client_status = Some(code);
+            base.truncate(idx);
+        }
+        if let Some(idx) = base.rfind(".r")
+            && let Ok(n) = base[idx + 2..].parse::<u32>()
+        {
+            client_attempts = n;
+            base.truncate(idx);
+        }
+        if let Some(idx) = base.rfind(".s")
+            && let Ok(n) = base[idx + 2..].parse::<u32>()
+        {
+            skipped_attempts = n;
             base.truncate(idx);
         }
         if let Some(idx) = base.rfind(".a")
@@ -867,6 +913,8 @@ impl ParkedName {
         ParkedName {
             base,
             attempt,
+            skipped_attempts,
+            client_attempts,
             client_status,
             poison,
         }
@@ -874,6 +922,12 @@ impl ParkedName {
 
     pub fn render(&self) -> String {
         let mut s = format!("{}.a{}", self.base, self.attempt);
+        if self.skipped_attempts > 0 {
+            s.push_str(&format!(".s{}", self.skipped_attempts));
+        }
+        if self.client_attempts > 0 {
+            s.push_str(&format!(".r{}", self.client_attempts));
+        }
         if let Some(code) = self.client_status {
             s.push_str(&format!(".c{code}"));
         }
@@ -962,6 +1016,8 @@ mod tests {
         let p = ParkedName {
             base: "hooks-s1-123-0".into(),
             attempt: 2,
+            skipped_attempts: 0,
+            client_attempts: 0,
             client_status: Some(404),
             poison: false,
         };
@@ -974,6 +1030,8 @@ mod tests {
         let p = ParkedName {
             base: "claude-s-1-0".into(),
             attempt: 3,
+            skipped_attempts: 0,
+            client_attempts: 0,
             client_status: None,
             poison: true,
         };
@@ -992,9 +1050,20 @@ mod tests {
         // one that has already been retried.
         let p = ParkedName::parse("claude-3ee9c788-1785741108180149712-0.jsonl");
         assert_eq!(p.attempt, 0);
+        assert_eq!(p.skipped_attempts, 0);
         assert_eq!(p.client_status, None);
         assert!(!p.poison);
         assert_eq!(p.base, "claude-3ee9c788-1785741108180149712-0");
+    }
+
+    #[test]
+    fn skipped_ack_state_survives_renames_and_old_names_start_with_no_skips() {
+        let old = ParkedName::parse("batch.a99.jsonl");
+        assert_eq!(old.skipped_attempts, 0);
+        let mixed = ParkedName::parse("batch.a99.s2.c422.jsonl");
+        assert_eq!(mixed.base, "batch");
+        assert_eq!((mixed.attempt, mixed.skipped_attempts), (99, 2));
+        assert_eq!(mixed.render(), "batch.a99.s2.c422.jsonl");
     }
 
     #[test]

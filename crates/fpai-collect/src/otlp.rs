@@ -1,6 +1,14 @@
 //! Opaque OTLP/HTTP relay. No translation, decompression or event-uploader reuse.
 //! Each batch is a JSON metadata line followed by the exact request bytes.
 //! SDK exporters publish the same format; only atomic .jsonl files are read.
+//!
+//! Manual recovery of credential refusals (401/403): stop the daemon and verify
+//! a working `events:add` key for the SAME Cloud origin and organization. Back up
+//! the affected files under `<FAILPROOFAI_HOME>/state/failed/otlp/`, then move only
+//! those batches into `state/spool-otlp/` with fresh `otlp-<unique>.jsonl` names,
+//! never overwriting another file or changing their metadata/body bytes. Restart
+//! the daemon and confirm delivery before removing the backup. Never recover
+//! queues archived by `org_boundary` into a different organization's spool.
 use std::fs::{self, File, OpenOptions};
 use std::io::{self, Write};
 use std::net::{Ipv4Addr, SocketAddr};
@@ -175,9 +183,21 @@ impl Relay {
                         // Bound response size too; an ingest proxy need not be trusted.
                         let mut response = response;
                         let mut result = Vec::new();
-                        while let Ok(Some(chunk)) = response.chunk().await {
+                        loop {
+                            let chunk = match response.chunk().await {
+                                Ok(Some(chunk)) => chunk,
+                                Ok(None) => break,
+                                Err(_) => {
+                                    self.report(
+                                        None,
+                                        Some("response interrupted; retained".into()),
+                                    );
+                                    return Outcome::Unreachable;
+                                }
+                            };
                             if result.len() + chunk.len() > 64 * 1024 {
-                                break;
+                                self.park(path, Some(code)).await;
+                                return Outcome::Settled;
                             }
                             result.extend_from_slice(&chunk);
                         }
@@ -190,7 +210,7 @@ impl Relay {
                         return Outcome::Settled;
                     }
                     self.report(None, Some(format!("{code} parked")));
-                    if !matches!(code, 429 | 502 | 503 | 504) {
+                    if !retryable_status(code) {
                         break;
                     }
                     delay = retry_after(response.headers()).unwrap_or(delay);
@@ -219,14 +239,21 @@ impl Relay {
             return;
         };
         let mut parked = ParkedName::parse(name);
-        parked.attempt += 1;
-        parked.client_status = status.filter(|c| (400..500).contains(c) && *c != 429);
-        parked.poison = parked.attempt >= 3;
+        parked.attempt = parked.attempt.saturating_add(1);
+        parked.client_status = status.filter(|c| !retryable_status(*c));
+        if !status.is_some_and(retryable_status) {
+            parked.client_attempts = parked.client_attempts.saturating_add(1);
+        }
+        parked.poison = !status.is_some_and(retryable_status) && parked.client_attempts >= 3;
         let target = self.failed.join(parked.render());
         if tokio::fs::rename(path, target).await.is_ok() {
             let _ = File::open(&self.failed).and_then(|f| f.sync_all());
         }
     }
+}
+
+fn retryable_status(code: u16) -> bool {
+    matches!(code, 408 | 429 | 500..=599)
 }
 
 fn retry_after(headers: &HeaderMap) -> Option<Duration> {
@@ -454,7 +481,10 @@ async fn deliver_loop(relay: Arc<Relay>, sd: Shutdown) -> Result<(), TaskError> 
             let mut delivered = 0;
             while let Ok(Some(entry)) = entries.next_entry().await {
                 let name = entry.file_name().to_string_lossy().to_string();
-                if !name.starts_with("otlp-") || !name.ends_with(".jsonl") {
+                if !name.starts_with("otlp-")
+                    || !name.ends_with(".jsonl")
+                    || !ParkedName::parse(&name).is_auto_retryable()
+                {
                     continue;
                 }
                 if entry.file_type().await.is_ok_and(|t| t.is_file()) {
@@ -679,11 +709,125 @@ mod tests {
                 parked
                     .to_str()
                     .unwrap()
-                    .contains(&format!(".a1.c{code}.jsonl"))
+                    .contains(&format!(".a1.r1.c{code}.jsonl"))
             );
             assert_eq!(fs::read(&parked).unwrap(), original);
+            assert!(
+                !ParkedName::parse(parked.file_name().unwrap().to_str().unwrap())
+                    .is_auto_retryable()
+            );
             fs::remove_dir_all(home).unwrap();
         }
+    }
+
+    #[tokio::test]
+    async fn temporary_http_failures_remain_retryable_after_four_parks() {
+        for status in [429, 500, 503] {
+            let server = MockServer::start().await;
+            Mock::given(method("POST"))
+                .respond_with(ResponseTemplate::new(status))
+                .expect(20)
+                .mount(&server)
+                .await;
+            let home = temp();
+            let mut relay = Relay::new(
+                &home,
+                &Ingest {
+                    url: server.uri(),
+                    key: "test".into(),
+                },
+            )
+            .unwrap();
+            relay.retry_base = Duration::from_millis(1);
+            let mut file = batch(&relay, b"kept");
+            let original = fs::read(&file).unwrap();
+            for _ in 0..4 {
+                relay.deliver(&file, &shutdown()).await;
+                file = fs::read_dir(&relay.failed)
+                    .unwrap()
+                    .next()
+                    .unwrap()
+                    .unwrap()
+                    .path();
+                assert!(
+                    ParkedName::parse(file.file_name().unwrap().to_str().unwrap())
+                        .is_auto_retryable()
+                );
+                assert_eq!(fs::read(&file).unwrap(), original);
+            }
+            server.verify().await;
+            server.reset().await;
+            Mock::given(method("POST"))
+                .respond_with(ResponseTemplate::new(401))
+                .expect(1)
+                .mount(&server)
+                .await;
+            relay.deliver(&file, &shutdown()).await;
+            file = fs::read_dir(&relay.failed)
+                .unwrap()
+                .next()
+                .unwrap()
+                .unwrap()
+                .path();
+            let state = ParkedName::parse(file.file_name().unwrap().to_str().unwrap());
+            assert_eq!(state.client_status, Some(401));
+            assert!(!state.poison);
+            assert!(!state.is_auto_retryable());
+            assert_eq!(fs::read(&file).unwrap(), original);
+            server.verify().await;
+            server.reset().await;
+            Mock::given(method("POST"))
+                .and(header("authorization", "Bearer replacement"))
+                .respond_with(ResponseTemplate::new(200))
+                .expect(1)
+                .mount(&server)
+                .await;
+            // Follow the documented manual requeue after fixing same-org credentials.
+            relay.key = "replacement".into();
+            let requeued = relay.spool.join(format!("otlp-{}.jsonl", new_request_id()));
+            fs::rename(&file, &requeued).unwrap();
+            assert_eq!(fs::read(&requeued).unwrap(), original);
+            assert!(
+                ParkedName::parse(requeued.file_name().unwrap().to_str().unwrap())
+                    .is_auto_retryable()
+            );
+            file = requeued;
+            relay.deliver(&file, &shutdown()).await;
+            assert!(!file.exists());
+            server.verify().await;
+            fs::remove_dir_all(home).unwrap();
+        }
+    }
+
+    #[tokio::test]
+    async fn interrupted_success_response_keeps_the_spool_batch() {
+        use tokio::io::{AsyncReadExt, AsyncWriteExt};
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let url = format!("http://{}", listener.local_addr().unwrap());
+        let server = tokio::spawn(async move {
+            let (mut stream, _) = listener.accept().await.unwrap();
+            let mut request = [0; 4096];
+            assert!(stream.read(&mut request).await.unwrap() > 0);
+            stream.write_all(b"HTTP/1.1 200 OK\r\nContent-Length: 100\r\nContent-Type: application/json\r\nConnection: close\r\n\r\n{").await.unwrap();
+        });
+        let home = temp();
+        let relay = Relay::new(
+            &home,
+            &Ingest {
+                url,
+                key: "key".into(),
+            },
+        )
+        .unwrap();
+        let file = batch(&relay, b"kept");
+        let original = fs::read(&file).unwrap();
+        assert!(matches!(
+            relay.deliver(&file, &shutdown()).await,
+            Outcome::Unreachable
+        ));
+        assert_eq!(fs::read(&file).unwrap(), original);
+        server.await.unwrap();
+        fs::remove_dir_all(home).unwrap();
     }
 
     #[tokio::test]

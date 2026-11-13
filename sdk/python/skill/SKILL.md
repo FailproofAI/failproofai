@@ -391,6 +391,11 @@ platform is the `fp-cloud-cli` skill's job, from a separate environment.
 
 ## 6. Production — the collector has to agree with you
 
+Temporary network failures and HTTP 408, 429, or 5xx responses leave the daemon's
+telemetry batches eligible for retry. A `422 event_too_large` rejection requires
+reducing the event payload; splitting a batch between complete JSON objects
+cannot shrink a single event. Existing `.poison` batches need manual recovery.
+
 The SDK writes files. It never talks to the network, so from its point of view a
 completely unshipped integration looks perfect.
 

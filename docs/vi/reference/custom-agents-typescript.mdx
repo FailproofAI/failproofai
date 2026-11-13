@@ -1,24 +1,24 @@
 ---
-title: "Custom agents (TypeScript)"
-description: "Configuration, the event catalog, the scopes and the framework adapters for @failproofai/sdk."
+title: "Tác nhân tùy chỉnh (TypeScript)"
+description: "Cấu hình, danh mục sự kiện, phạm vi và bộ điều hợp khung công tác cho @failproofai/sdk."
 icon: "square-js"
 ---
 
-Tài liệu đầy đủ về từng cài đặt, phương thức và trường trong SDK TypeScript. Nếu bạn đang tích hợp lần đầu tiên, hãy bắt đầu với hướng dẫn — trang này dành cho tra cứu.
+Tìm hiểu về tất cả các cài đặt, phương thức và trường của SDK TypeScript. Nếu bạn đang thiết lập lần đầu tiên, hãy bắt đầu với hướng dẫn — trang này dùng để tìm kiếm thông tin.
 
 <Columns cols={2}>
-  <Card title="Hướng dẫn custom agents" icon="code" href="/vi/start/integrations/custom-agents">
-    Cài đặt, tích hợp, các phương thức sự kiện, ví dụ thực tế và các vấn đề thường gặp.
+  <Card title="Hướng dẫn tác nhân tùy chỉnh" icon="code" href="/vi/start/integrations/custom-agents">
+    Cài đặt, thiết lập, các phương thức sự kiện, ví dụ thực tế và các vấn đề phổ biến.
   </Card>
   <Card title="Sử dụng Python?" icon="python" href="/vi/reference/custom-agents">
-    Cùng sự kiện, cùng định dạng dây, cùng spool — từ Python.
+    Cùng các sự kiện, cùng định dạng dây, cùng kho lưu trữ — từ Python.
   </Card>
 </Columns>
 
-Node 20.9 hoặc mới hơn. ESM và CommonJS. Không có phụ thuộc runtime.
+Node 20.9 trở lên. ESM và CommonJS. Không có phụ thuộc thời gian chạy.
 
 <Note>
-  SDK này và SDK Python **ghi cùng một sự kiện vào cùng một spool**. Một fleet với các agents Node và agents Python tạo ra một tập sessions, không phải hai tập, và không có gì trong dashboard phân biệt chúng. Lựa chọn từng dịch vụ, không phải từng công ty.
+  SDK này và SDK Python viết **cùng các sự kiện vào cùng một kho lưu trữ**. Một nhóm với tác nhân Node và tác nhân Python tạo ra một bộ phiên làm việc, không phải hai bộ, và không gì trong bảng điều khiển phân biệt chúng. Chọn theo từng dịch vụ, không phải theo từng công ty.
 </Note>
 
 ## Cài đặt
@@ -35,18 +35,18 @@ await failproofai.agent("planner", { goal: question }, async () => {
 });
 ```
 
-Các framework adapters được đóng gói trong chính package. Các frameworks là **optional peer dependencies** — được khai báo để các phạm vi được hỗ trợ hiển thị, không bao giờ được cài đặt thay bạn, và chỉ được import khi bạn gọi `instrument()`.
+Các bộ điều hợp khung công tác được vận chuyển trong chính gói. Các khung công tác là **phụ thuộc ngang hàng tùy chọn** — được khai báo để hiển thị các phạm vi được hỗ trợ, không bao giờ được cài đặt thay bạn, và chỉ được nhập khi bạn gọi `instrument()`.
 
 ## Kết nối daemon Failproof
 
-Giống hệt SDK Python: tạo một khóa `events:add` dưới **Admin → Keys**, sau đó [kết nối daemon](/vi/start/setup#connect-a-machine-to-cloud) trên máy agent. SDK ghi vào đĩa; daemon vận chuyển.
+Giống với SDK Python: tạo khóa `events:add` dưới mục **Admin → Keys**, sau đó [kết nối daemon](/vi/start/setup#connect-a-machine-to-cloud) trên máy tác nhân. SDK viết vào đĩa; daemon vận chuyển.
 
 ## Cấu hình
 
-### OpenTelemetry spans (opt in)
+### OpenTelemetry spans (tùy chọn)
 
 Cài đặt OpenTelemetry riêng biệt với `npm install @opentelemetry/api @opentelemetry/sdk-trace-base`.
-Sau đó thêm FailproofAI vào các processors của provider:
+Sau đó thêm FailproofAI vào các bộ xử lý của nhà cung cấp của bạn:
 
 ```ts
 import * as failproofai from "@failproofai/sdk";
@@ -63,10 +63,12 @@ span.end();
 await provider.forceFlush();
 ```
 
-Đối với một provider hiện có, giữ các processors khác của nó trong cùng một danh sách. Các providers
-có `addSpanProcessor` có thể được chuyển thành `{ provider }`. Không có tùy chọn, thiết lập đăng ký một provider mới chỉ nếu không có provider nào được đăng ký. `OtelSpanExporter` cũng có thể được sử dụng trực tiếp với processor của riêng bạn.
+Đối với nhà cung cấp hiện có, giữ các bộ xử lý khác của nó trong cùng một danh sách. Các nhà cung cấp công khai `addSpanProcessor` có thể được chuyển dưới dạng `{ provider }`. Nếu không có tùy chọn, thiết lập chỉ đăng ký một nhà cung cấp mới nếu chưa có nhà cung cấp nào được đăng ký.
+`OtelSpanExporter` cũng có thể được sử dụng trực tiếp với bộ xử lý riêng của bạn.
 
-Các exports đi qua daemon FailproofAI được kết nối; SDK không gửi yêu cầu mạng và không cần khóa hoặc trình lắng nghe cục bộ. Yêu cầu admin bật [OpenTelemetry ingest](/vi/agenteye/opentelemetry). `instrument()` trần không bật exporter này. `uninstrument("otel")` chỉ vô hiệu hóa processor riêng của nó. Các thuộc tính span của bạn kiểm soát việc capture nội dung; flush provider trước khi thoát. OpenTelemetry vẫn là một optional application dependency, không phải hard SDK dependency.
+Xuất dữ liệu đi qua daemon FailproofAI được kết nối; SDK không gửi yêu cầu mạng và không cần khóa hoặc trình nghe cục bộ. Yêu cầu quản trị viên bật [ingest OpenTelemetry](/vi/agenteye/opentelemetry). Một `instrument()` trần không bật trình xuất này. `uninstrument("otel")` chỉ tắt bộ xử lý riêng của nó.
+Các thuộc tính span của bạn kiểm soát việc chứa nội dung; xóa sạch nhà cung cấp của bạn trước khi thoát.
+OpenTelemetry vẫn là phụ thuộc ứng dụng tùy chọn, không phải phụ thuộc SDK cứng.
 
 ```ts
 failproofai.configure({
@@ -76,40 +78,40 @@ failproofai.configure({
 });
 ```
 
-| Tùy chọn | Nó làm gì |
+| Tùy chọn | Chức năng |
 | --- | --- |
 | `environment` | Nhãn trên mỗi sự kiện — `production`, `staging`, `prod-eu`. Mặc định là `dev`. |
-| `flushInterval` | Bao thường timer ghi vào đĩa, tính bằng giây. Mặc định là `0.5`. |
-| `baseDir` | Nơi để ghi. Mặc định là spool của daemon, đó là những gì bạn muốn trừ khi bạn biết khác. |
+| `flushInterval` | Tần suất bộ đếm thời gian ghi vào đĩa, tính bằng giây. Mặc định là `0.5`. |
+| `baseDir` | Nơi ghi. Mặc định là kho lưu trữ của daemon, đó là những gì bạn muốn trừ khi bạn biết ngược lại. |
 
-Không có gì được áp dụng trừ khi tất cả được xác thực, vì vậy một cuộc gọi bị từ chối sẽ để SDK chính xác như cũ thay vì có một `baseDir` mới và khoảng thời gian cũ.
+Không gì được áp dụng trừ khi tất cả được xác nhận, vì vậy một cuộc gọi bị từ chối để lại SDK chính xác như nó đã là thay vì có `baseDir` mới và khoảng thời gian cũ.
 
-Đặt bằng biến môi trường thay vào đó:
+Đặt bằng biến môi trường thay thế:
 
-| Biến | Nó làm gì |
+| Biến | Chức năng |
 | --- | --- |
-| `AGENTEYE_ENVIRONMENT` | Đặt `environment` mà không cần thay đổi mã. Tùy chọn `configure()` sẽ thắng nó. |
-| `FAILPROOFAI_HOME` | Di chuyển gốc Failproof AI giữ spool. |
+| `AGENTEYE_ENVIRONMENT` | Đặt `environment` mà không cần thay đổi mã. Một tùy chọn `configure()` chiến thắng nó. |
+| `FAILPROOFAI_HOME` | Di chuyển gốc Failproof AI giữ kho lưu trữ. |
 | `FAILPROOFAI_SDK_LOG_LEVEL` | `debug`, `info`, `warn` (mặc định), `error`, `silent`. |
-| `FAILPROOFAI_SDK_STRICT` | `1` làm cho các lỗi tích hợp ném ra thay vì được ghi log. |
-| `FAILPROOFAI_SDK_STRICT_INTEGRATIONS` | `1` làm cho vấn đề tương thích framework ném ra thay vì cảnh báo và tiếp tục. |
+| `FAILPROOFAI_SDK_STRICT` | `1` làm cho lỗi thiết lập ném ngoại lệ thay vì được ghi nhật ký. |
+| `FAILPROOFAI_SDK_STRICT_INTEGRATIONS` | `1` làm cho vấn đề tương thích khung công tác ném ngoại lệ thay vì cảnh báo và tiếp tục. |
 
 <Warning>
-  **Không có dấu phẩy trong `environment`.** Ingest chia tách trường đó thành dấu phẩy để xây dựng các bộ lọc của nó, và bỏ qua bất kỳ sự kiện nào có nhãn chứa một — vì vậy toàn bộ chạy sẽ biến mất một cách im lặng. Viết `prod-eu`, không phải `prod,eu`.
+  **Không dấu phẩy trong `environment`.** Ingest chia trường đó trên dấu phẩy để xây dựng các bộ lọc của nó, và bỏ qua bất kỳ sự kiện nào có nhãn chứa một — vì vậy toàn bộ lần chạy âm thầm biến mất. Viết `prod-eu`, không phải `prod,eu`.
 
-  `configure({ environment: "prod,eu" })` ném ra để bạn biết ngay lập tức. `AGENTEYE_ENVIRONMENT` không thể ném ra — không ai gọi bạn — vì vậy nó cảnh báo một lần và quay lại `dev`.
+  `configure({ environment: "prod,eu" })` ném ngoại lệ để bạn tìm thấy ngay. `AGENTEYE_ENVIRONMENT` không thể ném ngoại lệ — không gì gọi bạn — vì vậy nó cảnh báo một lần và quay lại `dev`.
 </Warning>
 
-Định tuyến các dòng log riêng của SDK vào logger của bạn với `failproofai.setLogger({ debug, info, warn, error })`.
+Định tuyến các dòng nhật ký riêng của SDK vào trình ghi nhật ký của bạn bằng `failproofai.setLogger({ debug, info, warn, error })`.
 
-## Tắt
+## Tắt máy
 
-Các sự kiện được buffer được flush trên `process.on("exit")`.
+Các sự kiện được lưu trong bộ đệm được xóa sạch trên `process.on("exit")`.
 
-Một quá trình bị kết thúc bởi một tín hiệu không bao giờ đạt được nó, và mặc định của Node cho `SIGTERM` là kết thúc mà không chạy exit handlers — vì vậy một agent được container hóa mất bất kỳ điều gì mà interval cuối cùng không ghi.
+Một quy trình bị giết bởi một tín hiệu không bao giờ đến được điều đó, và giá trị mặc định của Node cho `SIGTERM` là chấm dứt mà không cần chạy trình xử lý thoát — vì vậy một tác nhân được chứa trong vùng chứa sẽ mất bất cứ điều gì trong khoảng thời gian cuối cùng mà nó chưa viết.
 
 <Warning>
-  **SDK này sẽ không cài đặt signal handler cho bạn.** Đăng ký một thay đổi hành vi của quá trình của bạn: một listener loại bỏ mặc định của Node, vì vậy một thư viện đã thêm một sẽ âm thầm dừng Ctrl-C hoạt động. Thêm của riêng bạn:
+  **SDK này sẽ không cài đặt trình xử lý tín hiệu cho bạn.** Đăng ký một trình xử lý thay đổi hành vi của quy trình của bạn: một trình nghe loại bỏ tiêu chuẩn mặc định của Node, vì vậy một thư viện thêm một sẽ âm thầm dừng Ctrl-C hoạt động. Thêm của riêng bạn:
 
   ```ts
   for (const signal of ["SIGINT", "SIGTERM"] as const) {
@@ -121,11 +123,11 @@ Một quá trình bị kết thúc bởi một tín hiệu không bao giờ đ�
   ```
 </Warning>
 
-Một script ngắn hạn hoặc một serverless handler nên `await failproofai.flush()` trước khi trả về — interval một mình không đảm bảo delivery.
+Một tập lệnh ngắn hoặc trình xử lý không máy chủ cần `await failproofai.flush()` trước khi trả về — khoảng thời gian một mình không đảm bảo giao hàng.
 
 ## Danh tính
 
-Mỗi sự kiện thuộc về một session và một agent. **Các scopes điền cả hai vào**, vì vậy bạn hiếm khi chuyển chúng:
+Mỗi sự kiện thuộc về một phiên làm việc và một tác nhân. **Các phạm vi điền cả hai**, vì vậy bạn hiếm khi vượt qua chúng:
 
 ```ts
 await failproofai.session(async () => {
@@ -135,41 +137,41 @@ await failproofai.session(async () => {
 });
 ```
 
-Chuyển `sessionId` hoặc `agentId` một cách rõ ràng vẫn hoạt động và thắng. Không có bound hay chuyển, cuộc gọi ném ra thay vì phát một sự kiện Cloud sẽ âm thầm loại bỏ.
+Truyền `sessionId` hoặc `agentId` một cách rõ ràng vẫn hoạt động và chiến thắng. Không được ràng buộc cũng không được truyền, cuộc gọi ném ngoại lệ thay vì phát hành một sự kiện Cloud sẽ im lặng loại bỏ.
 
 <Note>
-  Danh tính chạy trên `AsyncLocalStorage`. Nó theo dõi `await`, `.then()`, timers và bất kỳ callback nào được tạo bên trong scope. Nó **không** theo dõi một callback được lưu trữ trong một lần chạy và được gọi trong một lần khác, hoặc công việc được chuyển qua ranh giới `worker_threads` — bọc những cái trong `failproofai.propagate()` hoặc các sự kiện của chúng hạ cánh không được gắn.
+  Danh tính đi trên `AsyncLocalStorage`. Nó theo `await`, `.then()`, bộ đếm thời gian và bất kỳ cuộc gọi lại nào được tạo bên trong phạm vi. Nó **không** theo một cuộc gọi lại được lưu trữ trong một lần chạy và được gọi trong một lần chạy khác, hoặc công việc được chuyển qua ranh giới `worker_threads` — gói chúng bằng `failproofai.propagate()` hoặc các sự kiện của chúng hạ cánh không được gắn.
 </Note>
 
-### Scopes
+### Phạm vi
 
-| Scope | Phát | Trả về |
+| Phạm vi | Phát hành | Trả về |
 | --- | --- | --- |
-| `session(body)` | không có — chỉ danh tính | bất kỳ gì `body` trả về |
-| `agent(id, options?, body)` | `agent_start`, sau đó `agent_end` | bất kỳ gì `body` trả về |
-| `toolCall(name, options?, body)` | `tool_use`, sau đó `tool_result` | bất kỳ gì `body` trả về |
+| `session(body)` | không gì — chỉ danh tính | bất cứ điều gì `body` trả về |
+| `agent(id, options?, body)` | `agent_start`, sau đó `agent_end` | bất cứ điều gì `body` trả về |
+| `toolCall(name, options?, body)` | `tool_use`, sau đó `tool_result` | bất cứ điều gì `body` trả về |
 
-Một body đồng bộ vẫn đồng bộ: `agent("x", () => 1)` trả về `1`, không phải một promise.
+Một thân đồng bộ vẫn đồng bộ: `agent("x", () => 1)` trả về `1`, không phải một lời hứa.
 
-`toolCall` ghi lại giá trị được resolve của body như là `output` của tool, trừ khi bạn gán `call.output` của riêng bạn.
+`toolCall` ghi lại giá trị đã giải quyết của thân làm `output` của công cụ, trừ khi bạn gán `call.output` cho chính bạn.
 
-<Accordion title="Exit semantics" icon="arrow-right-from-bracket">
+<Accordion title="Ngữ nghĩa thoát" icon="arrow-right-from-bracket">
 
 | Điều gì đã xảy ra | Sự kiện | `outcome` |
 | --- | --- | --- |
-| block trả về | `agent_end` | `"success"`, hoặc `outcome` của bạn |
-| block ném | `error`, sau đó `agent_end` | `"failed"` |
+| khối trả về | `agent_end` | `"success"`, hoặc của bạn `outcome` |
+| khối ném ngoại lệ | `error`, sau đó `agent_end` | `"failed"` |
 | một `AbortError` | chỉ `agent_end` | `"cancelled"` |
 
 Lỗi luôn được ném lại.
 
-Một tool failure được ghi lại trên leaf — `tool_result` với một chuỗi `error` — và phát **không** run-level `error` event. Một cái mà agent loop bắt không phải là run failure, và một cái lan truyền được báo cáo chính xác một lần, bởi bao quanh `agent()`.
+Một lỗi công cụ được ghi lại trên lá — `tool_result` với chuỗi `error` — và phát hành **không** sự kiện `error` cấp chạy. Một trong những vòng lặp tác nhân bắt không phải là lỗi chạy, và một lỗi lan truyền được báo cáo chính xác một lần, bởi `agent()` bao quanh.
 
 </Accordion>
 
 <Accordion title="Biểu mẫu `using`" icon="brackets-curly">
 
-Khi công việc không phải là một hàm duy nhất — một scope được mở trong một constructor và đóng trong một teardown, hoặc một cái nhảy qua existing control flow:
+Khi công việc không phải là một hàm duy nhất — một phạm vi mở trong một trình tạo và đóng trong một teardown, hoặc một phạm vi xuyên qua luồng điều khiển hiện có:
 
 ```ts
 {
@@ -179,30 +181,30 @@ Khi công việc không phải là một hàm duy nhất — một scope đượ
 }  // tool_result, sau đó agent_end
 ```
 
-Cả hai biểu mẫu phát byte-identical events. Ưu tiên biểu mẫu callback: nó chạy bên trong `AsyncLocalStorage.run()`, vì vậy không có gì để unwind và toàn bộ lớp các bug "mở tại đây, đóng ở đó" là không thể tiếp cận.
+Cả hai biểu mẫu phát hành các sự kiện byte-identical. Ưa thích biểu mẫu cuộc gọi lại: nó chạy bên trong `AsyncLocalStorage.run()`, vì vậy không có gì để tháo gỡ và toàn bộ lớp lỗi "mở ở đây, đóng ở đó" không thể tiếp cận.
 
-Một `using` block bắt lỗi riêng của nó báo cáo nó với `span.fail(error)` — disposer không có exception channel riêng.
+Một khối `using` bắt được lỗi riêng của nó báo cáo nó bằng `span.fail(error)` — disposer không có kênh ngoại lệ riêng.
 
 </Accordion>
 
 ## Danh mục sự kiện
 
-Cùng mười lăm phương thức như SDK Python, trong camelCase. Hầu hết đều đi kèm **cặp** — bạn gọi opener, sau đó closer, và SDK tính toán khoảng cách.
+Cùng mười lăm phương thức như SDK Python, trong camelCase. Hầu hết đến trong **cặp** — bạn gọi trình mở, sau đó trình đóng, và SDK tính giờ khoảng cách.
 
 | | Mở | Đóng |
 | --- | --- | --- |
-| **Agents** | `agentStart` | `agentEnd` |
+| **Tác nhân** | `agentStart` | `agentEnd` |
 | | `agentPause` | `agentResume` |
-| **Models** | `modelRequest` | `modelResponse` |
-| **Tools** | `toolUse` | `toolResult` |
-| **Hooks** | `hookTriggered` | `hookCompleted` |
-| **Humans** | `humanWait` | `humanInput` |
+| **Mô hình** | `modelRequest` | `modelResponse` |
+| **Công cụ** | `toolUse` | `toolResult` |
+| **Móc** | `hookTriggered` | `hookCompleted` |
+| **Con người** | `humanWait` | `humanInput` |
 
-Ba đứng riêng: `error`, `humanPause`, `humanInterrupt`.
+Ba đứng một mình: `error`, `humanPause`, `humanInterrupt`.
 
-<Accordion title="Mỗi trường, mỗi phương thức" icon="table">
+<Accordion title="Mọi trường, cho mỗi phương thức" icon="table">
 
-Mỗi phương thức cũng nhận `sessionId` và `agentId`, mà các scopes điền vào cho bạn. Bất cứ cái gì bị bỏ qua được loại bỏ thay vì được gửi dưới dạng JSON `null`.
+Mỗi phương thức cũng lấy `sessionId` và `agentId`, mà các phạm vi điền cho bạn. Bất cứ điều gì bị bỏ qua được loại bỏ thay vì được gửi dưới dạng JSON `null`.
 
 | Phương thức | Bắt buộc | Tùy chọn |
 | --- | --- | --- |
@@ -222,57 +224,57 @@ Mỗi phương thức cũng nhận `sessionId` và `agentId`, mà các scopes đ
 | `humanPause` | — | `reason`, `userId` |
 | `humanInterrupt` | — | `reason`, `userId`, `atStep` |
 
-Bất kỳ khóa nào khác bạn thêm đều trở thành một custom payload field. Namespace bất cứ cái gì framework-specific `fw_*`; một tên va chạm với một declared field bị từ chối thay vì âm thầm ghi đè một promoted column.
+Bất kỳ khóa nào khác bạn thêm trở thành trường tải trọng tùy chỉnh. Không gian bất cứ điều gì dành riêng cho khung công tác `fw_*`; một tên va chạm với một trường được khai báo bị từ chối thay vì âm thầm ghi đè lên một cột được thúc đẩy.
 
 </Accordion>
 
 <Warning>
-  **`duration_ms` được tính toán, không được chấp nhận.** Bốn closing methods tính toán khoảng cách từ opener của chúng và từ chối một `duration_ms` được cung cấp bởi caller — một reported duration là unfalsifiable.
+  **`duration_ms` được tính toán, không được chấp nhận.** Bốn phương thức đóng tính giờ khoảng cách từ trình mở của chúng và từ chối một `duration_ms` được cung cấp bởi người gọi — một thời gian được báo cáo không thể giả mạo.
 
-  Các cặp được khớp trên **session** và id, không bao giờ trên agent. Một tool được mở dưới `planner` và đóng dưới `worker` vẫn ghép đôi, đó là những gì nested multi-agent runs thực sự làm.
+  Cặp được khớp trên **phiên làm việc** và id, không bao giờ trên tác nhân. Một công cụ được mở dưới `planner` và đóng dưới `worker` vẫn ghép nối, đó là những gì các chạy tác nhân lồng nhau đa tác nhân thực sự làm.
 </Warning>
 
-## Framework adapters
+## Bộ điều hợp khung công tác
 
 ```ts
-await failproofai.instrument();              // bất kỳ cái gì nó có thể tìm
+await failproofai.instrument();              // bất cứ điều gì nó có thể tìm thấy
 await failproofai.instrument("langchain");   // chính xác một
-failproofai.uninstrument();                  // đưa mọi thứ trở lại
+failproofai.uninstrument();                  // đặt mọi thứ trở lại
 ```
 
-| Framework | Được hỗ trợ | Cách nó gắn |
+| Khung công tác | Được hỗ trợ | Cách nó gắn |
 | --- | --- | --- |
-| **LangChain.js / LangGraph.js** | `@langchain/core` 0.3 – 1.x, LangGraph.js 0.4 – 1.x | `CallbackManager.configure`, vì vậy mỗi `invoke`/`stream`/`batch` được bao phủ mà không cần chuyển `callbacks:` ở bất kỳ đâu — hoặc chuyển `langchainHandler()` của riêng bạn và không patch. |
-| **Vercel AI SDK** | `ai` 4 – 7 | `telemetry()` tại call site, hoặc `instrument("ai")` cho toàn bộ quá trình trên `ai` 7 (trên 4–6 đó là opt-in — xem dưới). |
-| **Mastra** | `@mastra/core` 0.20 – 1.x | `Agent.generate`/`.stream`, model và tool resolution của agent, và workflow run/step engine. |
-| **LlamaIndex.TS** | `llamaindex` 0.11.4 – 0.x | `Settings.callbackManager` (subscribed) cộng với `AgentWorkflow.runStream`, cho workflow runs và các steps của chúng. |
+| **LangChain.js / LangGraph.js** | `@langchain/core` 0.3 – 1.x, LangGraph.js 0.4 – 1.x | `CallbackManager.configure`, vì vậy mỗi `invoke`/`stream`/`batch` được bao phủ mà không cần truyền `callbacks:` bất cứ nơi nào — hoặc truyền `langchainHandler()` chính bạn và không vá gì. |
+| **Vercel AI SDK** | `ai` 4 – 7 | `telemetry()` tại địa điểm gọi, hoặc `instrument("ai")` cho toàn bộ quy trình trên `ai` 7 (trên 4–6 điều đó là opt-in — xem bên dưới). |
+| **Mastra** | `@mastra/core` 0.20 – 1.x | `Agent.generate`/`.stream`, mô hình của tác nhân và giải quyết công cụ, và động cơ chạy/bước quy trình công việc. |
+| **LlamaIndex.TS** | `llamaindex` 0.11.4 – 0.x | `Settings.callbackManager` (đã đăng ký) cộng với `AgentWorkflow.runStream`, cho chạy quy trình công việc và các bước của chúng. |
 
-Mỗi phạm vi được kiểm tra so với các bản phát hành framework thực, ở cả hai đầu, như một ES module và như CommonJS, trên mỗi CI run.
+Mỗi phạm vi được kiểm tra so với các phiên bản khung công tác thực tế, ở cả hai đầu, dưới dạng mô-đun ES và CommonJS, trên mỗi lần chạy CI.
 
-Mapping là SDK Python, vì vậy cùng một chương trình vẽ cùng một cây ở một trong hai ngôn ngữ. Một construct là một **agent** chỉ nếu nó sở hữu một LLM decision loop — một graph hoặc chain run, một AI SDK `generateText`/`streamText` call, một Mastra agent, một LlamaIndex agent run. Một LangGraph node hoặc một workflow step là một **hook** (`hook_triggered`/`hook_completed`), không bao giờ là một nested agent. Model calls là `model_request`/`model_response` pairs với token counts; tool calls mang tool call id của riêng model. Một failure được ghi lại một lần, trên sự kiện nó xảy ra.
+Ánh xạ là của SDK Python, vì vậy cùng một chương trình rút ra cùng một cây trong cả hai ngôn ngữ. Một cấu trúc là một **tác nhân** chỉ khi nó sở hữu vòng lặp quyết định LLM — một chạy đồ thị hoặc chuỗi, một cuộc gọi `generateText`/`streamText` của AI SDK, một tác nhân Mastra, một chạy tác nhân LlamaIndex. Một nút LangGraph hoặc một bước quy trình công việc là một **móc** (`hook_triggered`/`hook_completed`), không bao giờ là một tác nhân lồng nhau. Các cuộc gọi mô hình là `model_request`/`model_response` cặp với số lượng mã thông báo; các cuộc gọi công cụ mang id cuộc gọi công cụ của mô hình riêng. Một lỗi được ghi lại một lần, trên sự kiện nó xảy ra.
 
-Một adapter không cài đặt được ghi log và bỏ qua; các cái khác vẫn cài đặt, bởi vì một LlamaIndex bị hỏng không nên làm bạn mất LangGraph.
+Một bộ điều hợp không cài đặt được được ghi nhật ký và bỏ qua; những cách khác vẫn cài đặt, bởi vì một LlamaIndex bị hỏng không nên làm bạn mất LangGraph.
 
 <Note>
-  `instrument()` không có đối số phát hiện framework bằng cách nó **resolves**, không phải bằng cách nó đã được import — Node không tiếp xúc tương đương của Python `sys.modules` cho ES modules. Một framework bạn đã cài đặt nhưng không sử dụng sẽ được import và patch. Đặt tên cái bạn muốn nếu điều đó có vấn đề.
+  `instrument()` không có đối số phát hiện khung công tác bằng cách nó **giải quyết**, không phải bằng cách nó đã được nhập — Node không hiển thị tương đương với `sys.modules` của Python cho các mô-đun ES. Một khung công tác bạn đã cài đặt nhưng không sử dụng sẽ được nhập và vá. Đặt tên cho cái bạn muốn nếu điều đó quan trọng.
 </Note>
 
 <Note>
-  Hầu hết các frameworks này vận chuyển một ES-module build và một CommonJS build, mà Node tải như hai bản sao không liên quan. Các adapters patch bản sao ứng dụng của bạn tải (và bản sao CommonJS cũng nếu điều gì đó đã `require`d nó), vì vậy cả hai module systems hoạt động. Một framework **bundled vào output của riêng bạn** bởi esbuild hoặc webpack nằm ngoài tầm — sử dụng call-site helpers ở đó: `langchainHandler()`, `telemetry()`, `wrapTool()`.
+  Hầu hết các khung công tác này vận chuyển một bản dựng mô-đun ES và một bản dựng CommonJS, mà Node tải như hai bản sao không liên quan. Các bộ điều hợp vá bản sao mà ứng dụng của bạn tải (và bản sao CommonJS cũng nếu một cái gì đó đã `require`d nó), vì vậy cả hai hệ thống mô-đun hoạt động. Một khung công tác **gói gọn trong đầu ra của riêng bạn** bởi esbuild hoặc webpack nằm ngoài tầm với — sử dụng các trình trợ giúp địa điểm gọi ở đó: `langchainHandler()`, `telemetry()`, `wrapTool()`.
 </Note>
 
-### LangChain không patch
+### LangChain mà không cần vá
 
 ```ts
 import { langchainHandler } from "@failproofai/sdk/langchain";
 await graph.invoke(input, { callbacks: [langchainHandler()] });
 ```
 
-Handler hoạt động với hoặc không có `instrument()` và không bao giờ double-record. `instrument("langchain")` nhận `sessionId`, `captureContent`, `includeChains`, `graphCallbacks` và `captureLimit`, khi SDK Python adapter làm; `metadata: { failproofai_sdk_session_id }` trên một call chọn session cho invocation đó.
+Trình xử lý hoạt động có hoặc không có `instrument()` và không bao giờ ghi đôi. `instrument("langchain")` lấy `sessionId`, `captureContent`, `includeChains`, `graphCallbacks` và `captureLimit`, như trình điều hợp Python làm; `metadata: { failproofai_sdk_session_id }` trên một cuộc gọi chọn phiên làm việc cho cuộc gọi đó.
 
 ### Vercel AI SDK
 
-AI SDK xuất các hàm trơn từ một ES module, và một ES module namespace là immutable bằng thông số kỹ thuật — không có chỗ để patch. Nó sử dụng các extension points mà SDK chính nó ghi chép:
+SDK AI xuất các hàm trơn tru từ mô-đun ES, và không gian tên mô-đun ES là bất biến theo đặc tả — không có nơi nào để vá. Nó sử dụng các điểm mở rộng mà chính SDK tài liệu:
 
 ```ts
 import { telemetry } from "@failproofai/sdk/ai";
@@ -281,30 +283,30 @@ const { text } = await generateText({
   model,
   prompt,
   experimental_telemetry: telemetry({ functionId: "answer-question" }),
-  // trên ai 7, `telemetry: telemetry({ … })` — cùng một object, tên mới
+  // trên ai 7, `telemetry: telemetry({ … })` — cùng một đối tượng, tên mới
 });
 ```
 
-Đó là toàn bộ tích hợp: một agent span, một model request/response pair mỗi step với token counts, và mỗi tool call. Một call site hoạt động trên mỗi major — `ai` 4–6 đọc tracer nó mang theo, `ai` 7 the telemetry integration.
+Đó là tích hợp hoàn chỉnh: một khoảng tác nhân, một cặp yêu cầu/phản hồi mô hình cho mỗi bước với số lượng mã thông báo, và mỗi cuộc gọi công cụ. Một địa điểm gọi hoạt động trên mỗi lần chính — `ai` 4–6 đọc trình theo dõi nó mang theo, `ai` 7 tích hợp telemetry.
 
-`instrument("ai")` làm cùng quá trình-wide **trên `ai` 7**: mỗi call, qua AI SDK's global telemetry-integration list, cái nào additive và không lấy bất cứ cái gì từ danh sách khác.
+`instrument("ai")` làm điều tương tự toàn quy trình **trên `ai` 7**: mỗi cuộc gọi, thông qua danh sách tích hợp telemetry toàn cầu của AI SDK, là cộng tính và không lấy gì từ bất cứ ai khác.
 
-**Trên `ai` 4–6, `instrument("ai")` ghi không có gì bằng chính nó, và ghi log một cảnh báo nói vậy.** Duy nhất quá trình-wide hook những majors đó có là global OpenTelemetry tracer provider — một single slot OpenTelemetry từ chối để giao lại một khi được thực hiện. Đăng ký của chúng tôi sẽ im lặng từ chối của bạn `NodeSDK.start()` sau đó trong startup và gửi http/database spans của bạn đến một tracer không xuất. Sử dụng `telemetry()` tại call site hoặc `wrapModel` ở đó. Nếu quá trình chạy không OpenTelemetry của riêng nó, opt in với `instrument("ai", { registerGlobalTracer: true })`: nó sau đó ghi mỗi call chuyển `experimental_telemetry: { isEnabled: true }`, và chỉ nhận slot nếu nó vẫn trống. `registerGlobalTracer: false` giữ mặc định và im lặng cảnh báo.
+**Trên `ai` 4–6, `instrument("ai")` không ghi bất cứ điều gì do chính nó, và ghi nhật ký một cảnh báo nói rằng vậy.** Duy nhất dùm toàn quy trình những đa số đó có là nhà cung cấp trình theo dõi OpenTelemetry toàn cầu — một khe đơn OpenTelemetry từ chối trao quyền một khi thực hiện. Đăng ký của chúng tôi sẽ âm thầm từ chối `NodeSDK.start()` của riêng bạn sau này trong khởi động và gửi các khoảng http/cơ sở dữ liệu của bạn đến trình theo dõi xuất không gì. Sử dụng `telemetry()` tại điểm gọi hoặc `wrapModel` ở đó. Nếu quy trình không chạy OpenTelemetry của riêng nó, chọn tham gia với `instrument("ai", { registerGlobalTracer: true })`: nó sau đó ghi lại mỗi cuộc gọi chuyển qua `experimental_telemetry: { isEnabled: true }`, và chỉ lấy khe nếu nó vẫn trống. `registerGlobalTracer: false` giữ giá trị mặc định và im lặng cảnh báo.
 
-Nếu bạn sẽ thích wrap model một lần, `wrapModel` thấy chỉ model calls, bởi vì tool calls xảy ra phía trên model layer. Một wrapped model gọi với không có gì xung quanh nó được ghi lại như chạy riêng của nó. Một streamed call đóng như thế nào stream dừng — `stop_reason: "cancelled"` khi consumer hủy nó, `"error"` với lỗi khi nó thất bại một phần:
+Nếu bạn sẽ thích gói mô hình một lần, `wrapModel` nhìn thấy các cuộc gọi mô hình duy nhất, bởi vì các cuộc gọi công cụ xảy ra trên lớp mô hình. Một mô hình được gói với không gì xung quanh nó được ghi lại như chạy riêng của nó. Một cuộc gọi truyền phát đóng tuy nhiên luồng dừng — `stop_reason: "cancelled"` khi người tiêu dùng hủy nó, `"error"` với lỗi khi nó thất bại một phần:
 
 ```ts
 import { wrapModel } from "@failproofai/sdk/ai";
 const model = await wrapModel(openai("gpt-4o"));
 ```
 
-Sử dụng cả hai tốt: middleware nhận thấy call đã được ghi lại và dở lại, vì vậy mỗi call được ghi lại một lần.
+Sử dụng cả hai là tốt: phần mềm trung gian nhận thấy cuộc gọi đã được ghi lại và hoãn lại, vì vậy mỗi cuộc gọi được ghi lại một lần.
 
-`functionId` đặt tên agent span. Giữ nó low-cardinality — nó hạ cánh trong `agent_id`, primary dashboard facet.
+`functionId` đặt tên cho khoảng tác nhân. Giữ nó cardinality thấp — nó hạ cánh trong `agent_id`, khía cạnh bảng điều khiển chính.
 
 ### Next.js
 
-`next build` bundles dependencies server của bạn theo mặc định, và một framework bundled vào build là một bản sao `instrument()` không thể tiếp cận. Wrap config một lần và gọi `instrument()` từ Next's startup hook:
+`next build` gói các phụ thuộc máy chủ của bạn theo mặc định, và một khung công tác gói gọn vào bản dựng là một bản sao `instrument()` không thể tiếp cận. Gói cấu hình một lần và gọi `instrument()` từ móc khởi động của Next:
 
 ```ts
 // next.config.ts
@@ -321,27 +323,27 @@ export async function register() {
 }
 ```
 
-`withFailproofai` thêm LangChain, Mastra, LlamaIndex và SDK chính nó vào `serverExternalPackages`, giữ danh sách riêng của bạn. Không có nó, `instrument()` cảnh báo một lần mỗi framework nó không thể tiếp cận thay vì fail silently; nếu bạn liệt kê các packages chính nó, đặt `FAILPROOFAI_NEXT_EXTERNALS=1`. Vercel AI SDK và call-site helpers hoạt động bằng cách nào. Một Edge route nhận no-op build: importing SDK an toàn và ghi không có gì.
+`withFailproofai` thêm LangChain, Mastra, LlamaIndex và SDK chính nó vào `serverExternalPackages`, giữ danh sách riêng của bạn. Nếu không, `instrument()` cảnh báo một lần cho mỗi khung công tác nó không thể tiếp cận thay vì thất bại im lặng; nếu bạn liệt kê các gói chính bạn, đặt `FAILPROOFAI_NEXT_EXTERNALS=1`. SDK AI Vercel và trình trợ giúp địa điểm gọi hoạt động cách nào. Một tuyến Edge nhận một bản dựng no-op: nhập SDK là an toàn và ghi bất cứ điều gì.
 
-### Token counts trên streamed calls
+### Số lượng mã thông báo khi gọi được truyền phát
 
-OpenAI-compatible APIs chỉ báo cáo usage trên một stream khi client yêu cầu. LangChain và Vercel AI SDK yêu cầu; cho LlamaIndex chuyển `additionalChatOptions: { stream_options: { include_usage: true } }` đến `OpenAI` LLM của nó, và cho Mastra xây dựng model với usage enabled (ví dụ `createOpenAICompatible({ includeUsage: true })`). Nếu không streamed model calls mang không token counts.
+Chỉ các API tương thích OpenAI báo cáo cách sử dụng trên luồng khi máy khách hỏi. LangChain và Vercel AI SDK hỏi; cho LlamaIndex chuyển `additionalChatOptions: { stream_options: { include_usage: true } }` đến LLM `OpenAI` của nó, và cho Mastra xây dựng mô hình với cách sử dụng được bật (ví dụ `createOpenAICompatible({ includeUsage: true })`). Ngoài ra, các cuộc gọi mô hình được truyền phát không mang số lượng mã thông báo.
 
-### Runtimes
+### Thời gian chạy
 
-Node ≥ 20.9, Bun và Deno — mỗi framework, như một ES module và như CommonJS, được kiểm tra trên mỗi cái so với Node's trace. SDK chạy bên cạnh daemon `failproofaid`, mà vận chuyển những gì nó ghi.
+Node ≥ 20.9, Bun và Deno — mỗi khung công tác, dưới dạng mô-đun ES và CommonJS, được kiểm tra trên mỗi so với dấu vết của Node. SDK chạy bên cạnh daemon `failproofaid`, vận chuyển những gì nó viết.
 
-## Agent riêng của bạn — không framework
+## Tác nhân riêng của bạn — không có khung công tác
 
-Cho một agent loop bạn viết chính nó, hoặc một framework không có adapter. Bạn phát sự kiện với cùng API adapters sử dụng bên dưới, vì vậy trace có cùng hình dạng và chất lượng.
+Cho một vòng lặp tác nhân bạn đã viết chính bạn, hoặc một khung công tác mà không có bộ điều hợp. Bạn phát hành các sự kiện với cùng API mà các bộ điều hợp sử dụng bên dưới, vì vậy dấu vết có cùng hình dạng và chất lượng.
 
-Bạn không cần biết agent được tổ chức như thế nào. Mỗi hand-built agent đã có ba nơi, bất kể hàm của nó được gọi là gì, và ba cái đó là toàn bộ tích hợp:
+Bạn không cần phải biết cách tác nhân được tổ chức. Mỗi tác nhân xây dựng tay đã có ba vị trí, bất kể các hàm của nó được gọi là gì, và ba đó là toàn bộ tích hợp:
 
-| Nơi | Điều gì để thêm | Phát |
+| Nơi | Cái gì để thêm | Phát hành |
 | --- | --- | --- |
-| Nơi **một run** bắt đầu và kết thúc | `failproofai.agent("name", { goal }, async () => …)` | `agent_start` / `agent_end` |
-| **Một hàm gọi model** | `event.modelRequest` trước, `event.modelResponse` sau — cả hai nửa, thậm chí trên failure | một cặp mỗi model turn |
-| **Một hàm chạy tools** | `failproofai.toolCall(name, { toolCallId, input }, () => run())` | `tool_use` / `tool_result` |
+| Nơi **một chạy** bắt đầu và kết thúc | `failproofai.agent("name", { goal }, async () => …)` | `agent_start` / `agent_end` |
+| **Một hàm gọi mô hình** | `event.modelRequest` trước, `event.modelResponse` sau — cả hai nửa, thậm chí khi thất bại | một cặp cho mỗi lần quay mô hình |
+| **Một hàm chạy công cụ** | `failproofai.toolCall(name, { toolCallId, input }, () => run())` | `tool_use` / `tool_result` |
 
 ```ts
 async function callModel(messages) {
@@ -378,15 +380,15 @@ await failproofai.agent("inventory", { goal: question }, async () => {
 });
 ```
 
-Danh tính là ambient: tất cả bên trong `agent()` hạ cánh trên run's session đó mà không cần một id, và không có gì khác trong chương trình thay đổi — bao gồm bất kỳ gì agent đã ghi vào database riêng của nó.
+Danh tính là xung quanh: mọi thứ bên trong `agent()` hạ cánh trên chạy phiên làm việc của người đó mà không cần lấy một id, và không gì khác trong chương trình thay đổi — bao gồm bất cứ điều gì tác nhân đã viết vào cơ sở dữ liệu riêng của nó.
 
-- **Một dịch vụ hoặc một worker:** chuyển request hoặc job id riêng của bạn như `sessionId`, vì vậy một session trên dashboard và record trong logs hoặc database riêng của bạn là cùng một chuỗi.
-- **Sub-agents:** nest `agent()` calls. Cái trong tham gia session với cái ngoài như `parent_id`.
-- **Phát các cặp.** Một `modelRequest` không có `modelResponse` là một span dashboard hiển thị như chạy mãi mãi — do đó `catch`.
+- **Một dịch vụ hoặc công nhân:** chuyển id yêu cầu hoặc công việc riêng của bạn làm `sessionId`, vì vậy một phiên làm việc trên bảng điều khiển và bản ghi trong nhật ký hoặc cơ sở dữ liệu riêng của bạn là chuỗi cùng.
+- **Tác nhân phụ:** lồng các cuộc gọi `agent()`. Cái bên trong tham gia phiên làm việc với cái bên ngoài làm `parent_id`.
+- **Phát hành các cặp.** Một `modelRequest` mà không có `modelResponse` là một khoảng bảng điều khiển cho thấy chạy mãi mãi — do đó `catch`.
 
-[`sdk/typescript/examples/research-agent.ts`](https://github.com/FailproofAI/failproofai/blob/main/sdk/typescript/examples/research-agent.ts) trong repository là phiên bản đầy đủ, runnable: một real OpenAI tool loop được tích hợp chính xác như thế này, chạy trong CI trên mỗi thay đổi như một ES module và như CommonJS.
+[`sdk/typescript/examples/research-agent.ts`](https://github.com/FailproofAI/failproofai/blob/main/sdk/typescript/examples/research-agent.ts) trong kho lưu trữ là phiên bản hoàn chỉnh, có thể chạy được: một vòng lặp công cụ OpenAI thực tế được thiết lập chính xác như thế này, chạy trong CI trên mỗi thay đổi dưới dạng mô-đun ES và CommonJS.
 
-## Evaluations
+## Đánh giá
 
 ```ts
 import { Evaluator, EvalResult, Score } from "@failproofai/sdk/evaluator";
@@ -408,19 +410,19 @@ FAILPROOFAI_EVALUATOR_URL=… FAILPROOFAI_EVALUATOR_TOKEN=… \
   npx failproofai-evaluator ./my-evals.js
 ```
 
-Xem [Evaluator SDK reference](/vi/reference/evaluator-sdk) cho protocol, worker settings và result types.
+Xem [tài liệu tham khảo Evaluator SDK](/vi/reference/evaluator-sdk) cho giao thức, cài đặt công nhân và các loại kết quả.
 
 <Warning>
-  **Một evaluation phải yield.** Một hàm đồng bộ không bao giờ trả về blocks one thread Node có, và không timeout có thể fire trong khi nó làm. Viết `async` evaluations.
+  **Một đánh giá phải nhượng bộ.** Một hàm đồng bộ không bao giờ trả về chặn luồng duy nhất Node có, và không có hết thời gian có thể bắn khi nó làm. Viết các đánh giá `async`.
 </Warning>
 
-## Điều gì nó sẽ không làm cho quá trình của bạn
+## Những gì nó sẽ không làm cho quy trình của bạn
 
 | | |
 | --- | --- |
-| **Block agent loop của bạn** | Sự kiện đi vào một queue in-memory; một timer ghi chúng. Timer là `unref`'d, vì vậy importing package này không bao giờ dừng một script thoát. |
-| **Phát triển không bị ràng buộc** | Queue bị capped bởi count *và* bởi measured bytes. Quá mỗi cái, các sự kiện cũ nhất bị loại bỏ và một cảnh báo nói vậy — một telemetry outage phải không trở thành một OOM kill. |
-| **Lấy quá trình xuống** | Một unencodable event bị loại bỏ một mình, không batch xung quanh nó. Một throwing getter, một circular reference, một `BigInt`, một lone surrogate: mỗi cái được xử lý thay vì lan truyền. |
-| **Để lại một half-written batch** | Nội dung là `fsync`ed trước một atomic rename, directory là `fsync`ed sau, và một failed write làm sạch tệp tạm thời của nó. |
-| **Để lại transcripts readable** | Batches là `0600` bên trong một `0700` directory. Họ mang goals, prompts, tool arguments và tool output. |
-| **Ship credentials** | API keys, tokens, JWTs, bearer headers và secret-shaped assignments được redacted trước bytes tiếp cận disk. Daemon redacts lại trước upload. |
+| **Chặn vòng lặp tác nhân của bạn** | Sự kiện đi vào hàng đợi trong bộ nhớ; bộ đếm thời gian ghi chúng. Bộ đếm là `unref`'d, vì vậy nhập gói này không bao giờ dừng tập lệnh thoát. |
+| **Phát triển mà không có ràng buộc** | Hàng đợi được giới hạn theo số lượng *và* theo byte được đo. Quá khứ cả hai, các sự kiện cũ nhất bị loại bỏ và cảnh báo nói vậy — một tắc nghẽn telemetry không được trở thành một lần giết OOM. |
+| **Đưa quy trình xuống** | Một sự kiện không thể mã hóa được loại bỏ một mình, không phải lô xung quanh nó. Một getter ném ngoại lệ, một tham chiếu hình tròn, một `BigInt`, một ký tự surrogate lẻ: mỗi cái được xử lý thay vì lan truyền. |
+| **Để lại một lô nửa viết** | Nội dung được `fsync`ed trước một lần đổi tên nguyên tử, thư mục được `fsync`ed sau, và một ghi bị hỏng sạch tệp tạm thời của nó. |
+| **Để lại bảng điểm có thể đọc được** | Những lô là `0600` bên trong một thư mục `0700`. Họ mang mục tiêu, lời nhắc, đối số công cụ và đầu ra công cụ. |
+| **Tàu thông tin xác thực** | Khóa API, mã thông báo, JWT, tiêu đề người mang và gán bí mật hình dạng được chỉnh sửa trước khi byte tiếp cận đĩa. Daemon chỉnh sửa lại trước khi tải lên. |

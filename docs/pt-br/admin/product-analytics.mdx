@@ -4,7 +4,7 @@ description: "A telemetria de uso que o Failproof AI Cloud envia sobre si mesmo,
 icon: "chart-no-axes-column"
 ---
 
-O Failproof AI Cloud envia telemetria de uso **sobre o próprio software** para seus mantenedores. Ela nunca inclui os dados dos seus agentes. Em uma instalação self-hosted, está ativada por padrão e pode ser desligada.
+O Failproof AI Cloud envia telemetria de uso **sobre o próprio software** para seus mantenedores. Ela nunca inclui dados dos seus agentes. Em uma instalação self-hosted, ela está ativada por padrão e pode ser desligada.
 
 ## O que é coletado
 
@@ -12,23 +12,23 @@ Cada evento carrega cinco dimensões e nada que identifique uma pessoa:
 
 | Dimensão | Exemplo | O que é |
 | --- | --- | --- |
-| `product` | `agenteye` | Qual produto o enviou |
-| `component` | `dashboard`, `server`, `cli` | Qual parte do produto o enviou |
+| `product` | `agenteye` | Qual produto enviou |
+| `component` | `dashboard`, `server`, `cli` | Qual parte do produto enviou |
 | `app_version` | `0.0.1-beta.81` | A versão em execução |
 | `deployment_kind` | `self_hosted` | Se é uma instalação de cliente, nossa demo, nosso QA ou uma máquina de desenvolvimento |
-| `org_id` | um UUID | Em qual organização a ação ocorreu, como um identificador opaco |
+| `org_id` | um UUID | Qual organização realizou a ação, como um identificador opaco |
 
-Além dessas, os eventos registram **o que foi usado, nunca o que estava contido**: qual página foi visualizada (como padrão de rota, por exemplo `/:org/sessions/:id`, nunca a URL real), quantos filtros de qual tipo foram aplicados, se uma ação foi bem-sucedida e quanto tempo levou.
+Além dessas, os eventos registram **o que foi usado, nunca o que estava nele**: qual página foi visualizada (como padrão de rota, por exemplo `/:org/sessions/:id`, nunca a URL real), quantos filtros de cada tipo foram aplicados, se uma ação foi bem-sucedida e quanto tempo levou.
 
-O app do Slack registra conexões e desconexões de workspaces, vínculos de conta, perguntas feitas, gráficos publicados, decisões de aprovação e falhas por categoria fixa. Nunca inclui IDs de workspace, usuário ou canal do Slack, e-mail, perguntas, respostas, SQL ou tokens.
+O app do Slack registra conexões e desconexões de workspaces, vinculações de contas, perguntas feitas, gráficos publicados, decisões de aprovação e falhas por categoria fixa. Ele nunca inclui IDs de workspace, usuário ou canal do Slack, e-mail, perguntas, respostas, SQL ou tokens.
 
 ### O nome da sua organização
 
-Junto ao `org_id` opaco, registramos o nome da sua organização, o slug de URL e o endereço do dashboard uma única vez, em um registro de organização, e não em cada evento. Isso nos permite identificar a qual conta um padrão pertence quando analisamos a adoção ou investigamos um problema que você relatou. Esta é a única informação identificadora que o produto envia sobre você.
+Junto ao `org_id` opaco, registramos o nome da sua organização, o slug de URL e o endereço do dashboard uma única vez, em um registro de organização e não em cada evento. Isso nos permite identificar a qual conta pertence um padrão quando analisamos adoção ou investigamos um problema que você reportou. Esta é a única informação de identificação que o produto envia sobre você.
 
 ### Seus totais de uso
 
-O servidor reporta os totais de uso medido de cada organização — os mesmos números que você vê na página de Uso. São apenas contagens: eventos, sessões, agentes, ambientes, execuções de avaliação, pontuações, execuções de auditoria, consultas salvas, dashboards, alertas, problemas, chaves de API e membros, além das datas da janela de medição. Não contêm identificadores, nomes ou texto de consulta, e chegam independentemente de alguém estar autenticado ou não.
+O servidor reporta os totais de uso medido de cada organização — os mesmos números que você vê na página de Uso. São apenas contagens: eventos, sessões, agentes, ambientes, execuções de avaliação, pontuações, execuções de auditoria, consultas salvas, dashboards, alertas, problemas, chaves de API e membros, além das datas da janela de medição. Eles não contêm identificadores, nomes ou texto de consulta, e chegam independentemente de alguém estar conectado.
 
 ## O que nunca é coletado
 
@@ -37,25 +37,25 @@ O servidor reporta os totais de uso medido de cada organização — os mesmos n
 - **Nenhum nome de pontuação de avaliador**
 - **Nenhuma mensagem de erro, texto de exceção ou corpo de resposta** — apenas um código de status e uma categoria de uma lista fixa
 - **Nenhum argumento de ferramenta, SQL ou texto de consulta**
-- **Nenhum detalhe de aplicativo conectado.** Conectar ou revogar um cliente MCP envia no máximo uma contagem de permissões, nunca o nome do aplicativo ou qualquer token
+- **Nenhum detalhe de apps conectados.** Conectar ou revogar um cliente MCP envia no máximo uma contagem de permissões, nunca o nome do app ou qualquer token
 - **Nenhum endereço de e-mail**
 - **Nenhuma URL de referência ou query string**
 - **Nenhuma gravação de tela, captura de DOM ou rastreamento de cliques e cursor**
 
 ## Desativar em uma instalação self-hosted
 
-Defina `DO_NOT_TRACK=1` tanto no dashboard quanto no servidor. Cada um decide de forma independente, portanto, definir apenas em um deles deixa o outro enviando relatórios. Reinicie o servidor para que a alteração tenha efeito.
+Defina `DO_NOT_TRACK=1` tanto no dashboard quanto no servidor. Eles decidem de forma independente, portanto definir apenas em um deles deixa o outro enviando dados. Reinicie o servidor para que a alteração entre em vigor.
 
-O README da sua versão descreve as demais configurações de opt-out e como confirmar que a telemetria está desativada.
+O README da sua versão descreve as outras configurações de opt-out e como confirmar que a telemetria está desativada.
 
 ## Um ping ao optar por sair
 
-Se você optar por sair usando uma configuração de produto em vez de `DO_NOT_TRACK`, o dashboard pode enviar **um ping anônimo** registrando isso, com probabilidade de 1 em 1000 por inicialização de processo. Ele nos informa quantos operadores desativam a telemetria. Não contém identificadores: nenhuma organização, usuário, hostname, URL ou IP — apenas o produto, componente, versão, tipo de deployment e motivo. Um servidor com opt-out não envia nada.
+Se você optar por sair por meio de uma configuração do produto em vez de usar `DO_NOT_TRACK`, o dashboard poderá enviar **um ping anônimo** registrando isso, com uma probabilidade de 1 em 1000 por início de processo. Isso nos informa quantos operadores desativam a telemetria. Ele não contém identificadores: sem organização, usuário, hostname, URL ou IP — apenas o produto, componente, versão, tipo de implantação e motivo. Um servidor com opt-out não envia nada.
 
 Ele nunca é enviado quando você usa `DO_NOT_TRACK`, por isso essa é a configuração a usar caso sua política proíba qualquer telemetria de saída.
 
 ## Para onde vai
 
-Para o PostHog (`us.i.posthog.com`) via TLS na porta 443. É um único hostname, portanto você também pode bloqueá-lo com uma única regra de egresso.
+Para o PostHog (`us.i.posthog.com`) via TLS na porta 443. É um único hostname, então você também pode bloqueá-lo com uma única regra de egress.
 
-Para saber como tratamos informações pessoais de forma mais abrangente, consulte a [política de privacidade](https://befailproof.ai/privacy/).
+Para saber como tratamos informações pessoais de forma mais ampla, consulte a [política de privacidade](https://befailproof.ai/privacy/).

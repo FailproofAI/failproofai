@@ -1,16 +1,18 @@
 ---
 title: "Sorun Giderme"
-description: "Eksik oturumları, eksik politikaları, başarısız teslimatı ve engellenen aracı işlemlerini tanılayın."
+description: "Eksik oturumları, eksik politikaları, başarısız teslimatı ve engellenen aracı işlemlerini tanıla."
 icon: "wrench"
 ---
 
-<AccordionGroup>
-  <Accordion title="Bulutta hiç oturum görünmüyor">
-    <Tabs>
-      <Tab title="Kontrol Paneli">
-        **Yönetim → Anahtarlar** bölümünü açın ve makine anahtarının etkin olduğunu ve `events:add` iznine sahip olduğunu doğrulayın. Ardından **Gözlemle → Etkinlikler** bölümünü açın, zaman aralığını genişletin ve ortam ile aracı filtrelerini temizleyin. Etkinlikler varsa, oturum kimliğini arayın ve ardından gruplaması için **Gözlemle → Oturumlar** bölümünü kontrol edin. Hiç etkinlik yoksa, Failproof daemon'unu CLI'den tanılayın.
+Geçici ağ arızaları ve HTTP 408, 429 veya 5xx yanıtları, uzun bir kesinti sonrasında bile telemetriyi otomatik yeniden deneme için uygun hale getirir. Daemon, teslimat onaylanana kadar toplu işi korur. `event_too_large` reddi, yeniden denemeden önce daha küçük bir olay yükü gerektirir. `.poison` olarak işaretlenmiş dosyalar el ile kurtarma gerektirir; güncelleme onları otomatik olarak yeniden göndermez.
 
-        ![Birincil filtreleri görünür olan ve son aracı etkinliklerinin ulaştığı canlı Etkinlikler akışı.](/images/dashboard/events-stream-current.png)
+<AccordionGroup>
+  <Accordion title="Cloud'da oturum görünmüyor">
+    <Tabs>
+      <Tab title="Pano">
+        **Administration → Keys** açın ve makine anahtarının aktif olduğunu ve `events:add` izni olduğunu doğrulayın. Ardından **Observe → Events** açın, zaman aralığını genişletin ve ortam ve aracı filtrelerini temizleyin. Olaylar varsa, oturum kimliğini arayın ve ardından gruplama için **Observe → Sessions** kontrol edin. Olay yoksa, Failproof daemon'u CLI'dan tanılayın.
+
+        ![Birincil filtreleri ve son aracı olaylarını gösteren canlı Events akışı.](/images/dashboard/events-stream-current.png)
       </Tab>
       <Tab title="CLI">
         ```bash
@@ -21,14 +23,14 @@ icon: "wrench"
         fp sessions --since 24h --limit 20
         ```
 
-        Yakalamayı doğrulayın, yapılandırılmış anahtarın `events:add` iznine sahip olduğunu ve kontrol paneli filtresinin yayılan ortamla eşleştiğini doğrulayın.
+        Yakalamayı etkinleştirme, yapılandırılan anahtarın `events:add` izni ve pano filtresinin yayınlanan ortamla eşleştiğini doğrulayın.
       </Tab>
     </Tabs>
   </Accordion>
-  <Accordion title="Python SDK etkinlikleri diskte kalıyor">
+  <Accordion title="Python SDK olayları diskte kalıyor">
     <Tabs>
-      <Tab title="Kontrol Paneli">
-        **Gözlemle → Etkinlikler** bölümündeki filtreleri temizleyin ve tam SDK oturum kimliğini arayın. Hiçbir şey görünmüyorsa, kaynak makinedeki SDK spool'u ve Failproof daemon'unu inceleyin.
+      <Tab title="Pano">
+        **Observe → Events** filtreleri temizleyin ve tam SDK oturum kimliğini arayın. Hiçbir şey görünmüyorsa, kaynak makine üzerinde SDK spool ve Failproof daemon'u inceleyin.
       </Tab>
       <Tab title="CLI">
         ```bash
@@ -36,14 +38,14 @@ icon: "wrench"
         failproofai flush --wait
         ```
 
-        Bir daemon'un çalıştığını ve bağlı olduğunu doğrulayın — SDK spool'lar, olsun ya da olmasın. Spool dizini önceden var olmak zorunda **değildir** (yazar bunu oluşturur) ve hiçbir ortam değişkeni bunu seçmez: `$FAILPROOFAI_HOME/custom-agents`, aksi takdirde `~/.failproofai/custom-agents`, tek köktür ve `configure(base_dir=...)` tek geçersiz kılmadır. İşlem `SIGKILL` edildiyse veya OOM-öldürülmüşse, hala sırada olan her şey kaybedildi — `SIGTERM`'ı işleyerek bunu sınırlandırın.
+        Daemon'un çalışıyor ve bağlı olduğunu doğrulayın — SDK, olsun ya da olmasın spool yapar. Spool dizini önceden var olması **gerekmez** (yazar onu oluşturur) ve hiçbir ortam değişkeni bunu seçmez: `$FAILPROOFAI_HOME/custom-agents`, aksi takdirde `~/.failproofai/custom-agents` tek köktür ve `configure(base_dir=...)` tek geçersiz kılma yoludur. İşlem `SIGKILL`ed ya da OOM-killed ise, sırada olan her şey kayboldu — bunu sınırlamak için `SIGTERM` işleyin.
       </Tab>
     </Tabs>
   </Accordion>
   <Accordion title="Makine politika almıyor">
     <Tabs>
-      <Tab title="Kontrol Paneli">
-        **Yönetim → Uygulama** bölümünü açın, makineyi seçin ve atanan, bildirilen ve önceki sürümlerini karşılaştırın. Dağıtım kapsamının makineyi içerdiğini ve anahtarının `policies:pull` iznine sahip olduğunu doğrulayın. Alım, politika teslimatı çalışmadığında bile çalışabilir.
+      <Tab title="Pano">
+        **Admin → enforcement** açın, makineyi seçin ve atanan, bildirilen ve önceki sürümlerini karşılaştırın. Dağıtım kapsamının makineyi içerdiğini ve anahtarın `policies:pull` izni olduğunu doğrulayın. İlk alma politika teslimi çalışmasa bile çalışabilir.
 
       </Tab>
       <Tab title="CLI">
@@ -53,14 +55,38 @@ icon: "wrench"
         failproofai config --status
         ```
 
-        Makine kimliği ve etiketinin kontrol paneli hedefiyle eşleştiğini doğrulayın. Mevcut kimlik bilgisi yalnızca etkinlik alımı izni veriyorsa, politika özellikli bir anahtarla yeniden bağlanın.
+        Makine kimliği ve etiketinin pano hedefiyle eşleştiğini doğrulayın. Mevcut kimlik bilgisi yalnızca olay alımı için izin veriyorsa politika özelliğine sahip bir anahtarla yeniden bağlanın.
       </Tab>
     </Tabs>
   </Accordion>
-  <Accordion title="Daemon kullanılamadığı için bir işlem reddedildi">
+  <Accordion title="Özel sertifika yetkilisine sahip kendi kendini barındıran Cloud hiçbir olay veya politika almıyor">
     <Tabs>
-      <Tab title="Kontrol Paneli">
-        **Yönetim → Uygulama** bölümünü açın ve makinenin en son görülme saati ve bildirilen sürümünü inceleyin. Makine eski ise, bunu yerel bir daemon sorunu olarak işleyin. Yalnızca kullanılamayan bir daemon'u geçmek için dağıtılan politikayı zayıflatmayın.
+      <Tab title="Pano">
+        Makine bağlandı ve kancaları çalışıyor, ancak **Observe → Events** boş kalıyor ve **Admin → enforcement** dağıtımını hiçbir zaman uygulandı olarak göstermiyor. CLI ve Failproof daemon'u sertifikalara farklı güvenebilir. CLI Node'da çalışır ve `NODE_EXTRA_CA_CERTS` kabul eder. Olayları gönderen ve politikaları çeken `failproofaid`, kendisiyle birlikte gelen sertifikalar artı işletim sisteminin güven deposuna güvenir ve `NODE_EXTRA_CA_CERTS` göz ardı eder. CA'nızı makinedeki sistem deposuna yükleyin.
+      </Tab>
+      <Tab title="CLI">
+        ```bash
+        # Debian / Ubuntu
+        sudo cp company-ca.pem /usr/local/share/ca-certificates/company-ca.crt
+        sudo update-ca-certificates
+        # RHEL / Fedora
+        sudo cp company-ca.pem /etc/pki/ca-trust/source/anchors/ && sudo update-ca-trust
+        # macOS
+        sudo security add-trusted-cert -d -r trustRoot -k /Library/Keychains/System.keychain company-ca.pem
+
+        # ardından daemon'u yeniden başlatın, başlangıçta güvenilen sertifikaları yükler
+        sudo systemctl restart failproofaid@$USER                           # Linux
+        sudo launchctl kickstart -k system/ai.failproof.failproofaid.$USER  # macOS
+        ```
+
+        Daemon'un günlüğü nedeni adlandırır: Linux'ta `sudo journalctl -u failproofaid@$USER | grep UnknownIssuer`. Hizmetin ortamında `SSL_CERT_FILE` veya `SSL_CERT_DIR` daemon için sistem deposunu değiştirir ve paketlenmiş sertifikalar yine de geçerlidir. CA güvenilmez iken başarısız olan toplu işler `~/.failproofai/state/failed` konumunda tutulur ve otomatik olarak yeniden denenır, yaklaşık olarak saatte bir ve daemon yeniden başladığında.
+      </Tab>
+    </Tabs>
+  </Accordion>
+  <Accordion title="Daemon kullanılamadığı için bir işlem reddediliyor">
+    <Tabs>
+      <Tab title="Pano">
+        **Admin → enforcement** açın ve makinenin son görülme zamanı ve bildirilen sürümünü inceleyin. Makine eski ise, bunu yerel bir daemon sorunu olarak ele alın. Kullanılamayan bir daemon'u atlatmak için yalnızca dağıtılan politikayı zayıflatmayın.
 
       </Tab>
       <Tab title="CLI">
@@ -71,18 +97,18 @@ icon: "wrench"
         failproofai config --status
         ```
 
-        `failproofaid` daemon'unu yeniden başlatın veya güncelleyin; CLI ve daemon protokol sürümleri farklı olduğunda yapılandırmayı yeniden çalıştırın. Yapılandırılmış daemon yolu tasarımı gereği başarısız olur.
+        `failproofaid`'i yeniden başlatın veya güncelleyin; CLI ve daemon protokol sürümleri farklıysa yapılandırmayı yeniden çalıştırın. Yapılandırılan daemon yolu tasarım gereğince kapalı başarısız olur.
       </Tab>
     </Tabs>
   </Accordion>
-  <Accordion title="Özel bir politika yüklenmez">
+  <Accordion title="Özel politika yüklenmez">
     <Tabs>
-      <Tab title="Kontrol Paneli">
-        Bulutta yazılan bir politika için **Yönetim → politika düzenleyici** bölümünü açın, taslağı seçin ve yayınlamadan önce doğrulama hatalarını gözden geçirin. Yerel bir politika için, CLI kullanarak bunu doğrulayın, ardından test işleminden sonra **Gözlemle → politika** bölümünü açarak kararların ulaştığını doğrulayın.
+      <Tab title="Pano">
+        Cloud tarafından yazılan bir politika için **Admin → policy editor** açın, taslağı seçin ve yayınlamadan önce doğrulama hatalarını gözden geçirin. Yerel bir politika için, CLI'yı kullanarak doğrulayın, ardından test işleminden sonra kararların ulaştığını doğrulamak için **Observe → policy** açın.
 
       </Tab>
       <Tab title="CLI">
-        Dosya adının `policies.js`, `policies.mjs` veya `policies.ts` ile bittiğini, modülün `customPolicies.add(...)` öğesini çağırdığını ve içe aktarmaların politika dosyasından çözümlendiğini doğrulayın.
+        Dosya adının `policies.js`, `policies.mjs` veya `policies.ts` ile bittiğini, modülün `customPolicies.add(...)` çağrısını ve politika dosyasından ithalatların çözüldüğünü doğrulayın.
 
         ```bash
         failproofai policies --install --custom ./checkout.policies.ts
@@ -91,12 +117,12 @@ icon: "wrench"
       </Tab>
     </Tabs>
   </Accordion>
-  <Accordion title="Bir denetim hiç bulgu döndürmüyor">
+  <Accordion title="Denetim hiçbir bulgu döndürmüyor">
     <Tabs>
-      <Tab title="Kontrol Paneli">
-        **Analiz → denetimler** bölümünü açın, çalıştırmayı seçin ve model analizinin çalışıp çalışmadığını kontrol edin. Ardından kapsamını ve penceresini **Gözlemle → oturumlar** bölümüyle karşılaştırın ve o popülasyondan temsili izleri açın.
+      <Tab title="Pano">
+        **Analyze → audits** açın, çalıştırmayı seçin ve model analizinin çalışıp çalışmadığını kontrol edin. Ardından kapsam ve penceresini **Observe → sessions** ile karşılaştırın ve bu popülasyondan temsilci izlemeleri açın.
 
-        Sıfır sonuç, yalnızca analiz başarıyla çalıştırıldığında anlamlıdır. Analiz atlanmışsa veya başarısız olmuşsa, çalıştırma hiç bulgu üretmez ve analiz edilmemiş pencereyi gelecekteki başarılı bir çalıştırma için açık tutar. Model analizi devre dışı bırakılmışsa, denetim de hiç bulgu üretmez çünkü belirleyici kimlik bilgisi ve PII taraması istatistikleri kaydeder ancak artık bulgular oluşturmaz.
+        Sıfır sonuç yalnızca analiz başarıyla çalıştırıldığında anlamlıdır. Analiz atlanmış veya başarısız olmuşsa, çalıştırma hiçbir bulgu üretmez ve analiz edilmemiş pencereyi gelecekteki başarılı çalıştırma için açık tutar. Model analizi devre dışı bırakılmışsa, denetim ayrıca hiçbir bulgu üretmez çünkü belirleyici kimlik bilgisi ve PII taraması istatistikleri kaydeder ancak artık bulgular yükseltmez.
 
         ![Ortam, aracı, kadans ve tarama penceresinin oturum popülasyonunu tanımladığı denetim formu.](/images/dashboard/audit-new.png)
       </Tab>
@@ -110,31 +136,31 @@ icon: "wrench"
         fp audits findings --audit <audit-name>
         ```
 
-        Çalıştırma sırada kalırsa, denetim-aracı kapasitesi için bekleyin veya dağıtım operatörünün denetim filosunu incelemesini isteyin. Sıraya alınan bir denetim yeniden dener; hemen atlanmaz.
+        Çalıştırma sıraya alınmış kalırsa, denetim aracı kapasitesi için bekleyin veya dağıtım operatörünü denetim filosu incelemesi için isteyin. Sıraya alınmış bir denetim yeniden denenecektir; hemen atlanmaz.
       </Tab>
     </Tabs>
   </Accordion>
   <Accordion title="Çevrimiçi değerlendirmeler otomatik olarak çalışmıyor">
     <Tabs>
-      <Tab title="Kontrol Paneli">
-        Tamamlanmış bir oturumu açın ve el ile bir değerlendirmenin başarılı olup olmadığını kontrol edin. Barındırılan Bulut şu anda kontrol panelinde değerlendirici uç nokta denetimi yoktur; sunucu operatörü bunu yapılandırması gerekir.
+      <Tab title="Pano">
+        Tamamlanan bir oturumu açın ve manuel bir değerlendirmenin başarılı olup olmadığını kontrol edin. Barındırılan Cloud şu anda panoda değerlendirici uç noktası kontrolüne sahip değildir; sunucu operatörü bunu yapılandırmalıdır.
       </Tab>
       <Tab title="CLI">
-        Değerlendiriciyi doğrulayın, ardından son değerlendirme durumlarını inceleyin:
+        Değerlendircinin kendisini doğrulayın, ardından son değerlendirme durumlarını inceleyin:
 
         ```bash
         curl https://evaluator.example.com/health
         fp evals --since 1h
         ```
 
-        Kendi kendini barındıran Bulut'ta, `EVALUATOR_ENDPOINT` sunucuda mevcut olduğunu ve `EVALUATOR_TOKEN` değerlendiriciyle eşleştiğini doğrulayın. Uç nokta yoksa otomatik değerlendirme devre dışı bırakılır.
+        Kendi kendini barındıran Cloud'da sunucuda `EVALUATOR_ENDPOINT` olduğunu ve `EVALUATOR_TOKEN` değerlendiricisi eşleştiğini doğrulayın. Otomatik değerlendirme, uç nokta yokken devre dışı bırakılır.
       </Tab>
     </Tabs>
   </Accordion>
-  <Accordion title="Bulut CLI kimlik doğrulaması yanlış kuruluşu hedefliyor">
+  <Accordion title="Cloud CLI kimlik doğrulaması yanlış kuruluşu hedefliyor">
     <Tabs>
-      <Tab title="Kontrol Paneli">
-        Kuruluş değiştiriciyi kullanın ve CLI'deki sonuçlarla karşılaştırmadan önce beklenen slug'u ve izinleri doğrulayın.
+      <Tab title="Pano">
+        Kuruluş değiştiricisini kullanın ve CLI ile sonuçları karşılaştırmadan önce beklenen slug ve izinleri doğrulayın.
       </Tab>
       <Tab title="CLI">
         ```bash
@@ -143,18 +169,18 @@ icon: "wrench"
         fp orgs perms
         ```
 
-        API anahtarı modunda, `fp --org <slug> --api-key <key> ...` belirtin veya `AGENTEYE_ORG` ayarlayın. Kaydedilen insan oturumu kuruluş durumu, API anahtarı istekleri için kasıtlı olarak yoksayılır.
+        API anahtarı modunda `fp --org <slug> --api-key <key> ...` belirtin veya `AGENTEYE_ORG` ayarlayın. Kaydedilen insan oturumu kuruluş durumu, API anahtarı istekleri için kasıtlı olarak göz ardı edilir.
       </Tab>
     </Tabs>
   </Accordion>
-  <Accordion title="Bir politika geçerli çalışmayı engelledi">
+  <Accordion title="Politika geçerli işi engellemeye yarıyor">
     <Tabs>
-      <Tab title="Kontrol Paneli">
-        **Gözlemle → politika** bölümünü açın, kararı ve bağlı oturumu koruyun ve yanlış pozitif koşulunu tanımlayın. Ardından **Yönetim → Uygulama** bölümünü açın ve etkilenen makineleri önceki sürüme geri döndürün. **Politika düzenleyici** bölümünde dar bir sürüm oluşturun, küçük bir kapsamda test edin ve geçerli çalışma başarılı olduktan sonra genişletin.
+      <Tab title="Pano">
+        **Observe → policy** açın, kararı ve bağlantılı oturumu koruyun ve yanlış pozitif koşulunu tanımlayın. Ardından **Admin → enforcement** açın ve etkilenen makineleri önceki sürüme geri alın. **Policy editor** konusunda daha dar bir sürüm oluşturun, küçük bir kapsamda test edin ve geçerli işlem başarılı olana kadar yalnızca genişletin.
 
       </Tab>
       <Tab title="CLI">
-        Bulut dağıtımı geri alma yalnızca kontrol paneli tarafından yapılır. Yerel bir oturum duraklaması, Bulut tarafından yönetilen politikaları devre dışı bırakmaz. Kontrol paneli kullanılamıyorsa, makine ve dağıtım durumunu yakalayın ve engellenen işlemi tekrar tekrar yeniden denemek yerine kontrol paneli erişimini geri yükleyin.
+        Cloud dağıtım geri dönüşü yalnızca panodur. Yerel bir oturum duraklatma, Cloud tarafından yönetilen politikaları devre dışı bırakmaz. Pano kullanılamıyorsa, makine ve dağıtım durumunu yakalayın ve engellenen işlemi tekrar tekrar yeniden denemek yerine pano erişimini geri yükleyin.
 
         ```bash
         failproofai config --status
@@ -162,6 +188,25 @@ icon: "wrench"
       </Tab>
     </Tabs>
   </Accordion>
+  <Accordion title="Hata bir ref gösteriyor">
+    <Tabs>
+      <Tab title="Pano">
+        Panodaki hatalar kısa bir referansla biter, örneğin `ref 4bf92f35`. Bu tek isteği tanımlar ve destek tam olarak sunucuda ne olduğunu bulmak için bunu kullanabilir. Raporunuza göründüğü gibi kopyalayın.
+
+        Bir sayfanın tamamı yüklenemeyi başarısız olursa, hata sayfası yerine `digest` gösterir. Bunu ekleyin.
+      </Tab>
+      <Tab title="CLI">
+        İnsan tarafından okunabilir `fp` hataları aynı `ref` ile biter. `--json` ile hata nesnesi tam `request_id` taşır:
+
+        ```bash
+        fp --json sessions --since 24h
+        ```
+      </Tab>
+      <Tab title="Daemon">
+        Bir yükleme başarısız olduğunda, daemon'un günlüğü `request_id` ve `batch_id` adını verir: Linux'ta `sudo journalctl -u failproofaid@$USER | grep batch_id`. Her deneme kendi `request_id` alır; `batch_id` yeniden denemeler arasında aynı kalır, bu nedenle bir toplu işin denemelerini bir araya getirir. Her ikisini de ekleyin.
+      </Tab>
+    </Tabs>
+  </Accordion>
 </AccordionGroup>
 
-Destek ile iletişime geçerken, CLI sürümünü, araçlarını, ortamı, ilgili oturum veya dağıtım kimliğini ve sırlar kaldırılmış `failproofai config --status` komutunun çıktısını ekleyin.
+Desteğe başvururken, CLI sürümü, tahmin sistemi, ortam, ilgili oturum veya dağıtım kimliği, hatadan herhangi bir `ref` veya `request_id` ve gizli diziler kaldırılmış `failproofai config --status` çıkışını ekleyin.

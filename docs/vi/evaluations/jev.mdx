@@ -1,28 +1,28 @@
 ---
-title: "Jev evaluations"
-description: "Sử dụng Jev để đánh giá một phiên làm việc hoàn thành dựa trên một câu hỏi với các câu trả lời đã biết."
+title: "Đánh giá Jev"
+description: "Sử dụng Jev để đánh giá phiên làm việc đã hoàn thành dựa trên một câu hỏi có câu trả lời đã biết."
 icon: "list-checks"
 ---
 
-Một Jev evaluation đọc một **phiên làm việc hoàn thành** và đưa ra một điểm từ 0 đến 1. Sử dụng nó khi câu trả lời đã biết trước, chẳng hạn như "Khách hàng đã bày tỏ sự gấp rút?" hoặc "Khách hàng bực bội đến mức nào?" Nó giúp bạn tìm ra các mô hình trong các lần chạy; nó không dừng một tool call. Đối với các quyết định được đưa ra **trước** khi một tool chạy, hãy sử dụng [Jev policies](/vi/policies/jev).
+Đánh giá Jev đọc một **phiên làm việc đã hoàn thành** và cho một điểm từ 0 đến 1. Sử dụng nó khi câu trả lời đã biết trước, chẳng hạn như "Khách hàng có bày tỏ sự khẩn cấp không?" hoặc "Khách hàng bực bội đến mức nào?" Nó giúp bạn tìm ra các mẫu hình trên các lần chạy; nó không dừng một lệnh gọi công cụ. Đối với các quyết định được đưa ra **trước khi** một công cụ chạy, sử dụng [chính sách Jev](/vi/policies/jev).
 
-## Tạo một cái trong bảng điều khiển
+## Tạo một đánh giá trong bảng điều khiển
 
 1. Mở **Analyze → eval authoring** và chọn **new eval**.
-2. Mô tả một câu hỏi và các câu trả lời có thể có. Ví dụ: "Agent đã hứa hoàn tiền trước khi kiểm tra chính sách hoàn tiền? Trả lời có hoặc không." Chọn **draft** và xem xét rằng kết quả là một điểm phân loại.
-3. [Kiểm tra nó](/vi/evaluations/test) trên các phiên gần đây, sau đó [triển khai nó](/vi/evaluations/deploy). Các phiên hoàn thành mới được chấm điểm; [điền lại](/vi/evaluations/deploy#score-sessions-you-already-have) nếu bạn cũng cần lịch sử.
+2. Mô tả một câu hỏi và các câu trả lời có thể có của nó. Ví dụ: "Agent có hứa hoàn tiền trước khi kiểm tra chính sách hoàn tiền không? Trả lời có hoặc không." Chọn **draft** và xem xét rằng kết quả là một điểm phân loại.
+3. [Kiểm tra nó](/vi/evaluations/test) trên các phiên gần đây, sau đó [triển khai nó](/vi/evaluations/deploy). Các phiên đã hoàn thành mới được tính điểm; [điền lại dữ liệu quá khứ](/vi/evaluations/deploy#score-sessions-you-already-have) nếu bạn cũng cần lịch sử.
 
-![Biểu mẫu authoring eval được chia sẻ, nơi bạn mô tả một câu hỏi với câu trả lời cố định, xem xét bản nháp, và triển khai sau khi thử nghiệm. Ví dụ được hiển thị là một đánh giá mã; một câu hỏi Jev sử dụng cùng một quy trình authoring.](/images/dashboard/eval-authoring-draft.png)
+![Biểu mẫu tạo đánh giá được chia sẻ, nơi bạn mô tả một câu hỏi có câu trả lời cố định, xem xét bản dự thảo và triển khai sau khi kiểm tra. Ví dụ được hiển thị là một đánh giá mã; một câu hỏi Jev sử dụng quy trình tạo lập cùng nhau.](/images/dashboard/eval-authoring-draft.png)
 
-Trợ lý có thể chọn giữa mã, phân loại Jev, và một [judge](/vi/evaluations/judge). Kiểm tra lựa chọn của nó trước khi triển khai. Jev cung cấp một điểm mà không cần lập luận dài dòng; chọn một judge khi bạn cần một lời giải thích. Xem [Jev evaluation reference](/vi/reference/jev-evaluations) để biết các loại câu hỏi và giới hạn điểm.
+Trợ lý có thể chọn giữa mã, phân loại Jev và một [thẩm phán](/vi/evaluations/judge). Kiểm tra lựa chọn của nó trước khi triển khai. Jev cho một điểm mà không cần lý luận dài dòng; chọn một thẩm phán khi bạn cần một lời giải thích. Xem [tham khảo đánh giá Jev](/vi/reference/jev-evaluations) để biết các loại câu hỏi và giới hạn điểm.
 
-## Đọc các điểm
+## Đọc các điểm số
 
-Mở **Observe → Evaluations** để vẽ biểu đồ kết quả theo agent và thời gian. Từ một terminal, Cloud CLI có thể đọc các kết quả tương tự:
+Mở **Observe → Evaluations** để biểu đồ hóa kết quả theo agent và thời gian. Từ một terminal, Cloud CLI có thể đọc những kết quả tương tự:
 
 ```bash
 fp evals --since 7d
 fp evals --aggregate --since 7d
 ```
 
-Cloud CLI đọc kết quả; authoring và triển khai diễn ra trong bảng điều khiển. Xem [Cloud CLI reference](/vi/reference/cloud-cli#evaluations) để biết các bộ lọc.
+Cloud CLI đọc kết quả; tạo lập và triển khai xảy ra trong bảng điều khiển. Xem [tham khảo Cloud CLI](/vi/reference/cloud-cli#evaluations) để biết các bộ lọc.

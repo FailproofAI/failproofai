@@ -6,18 +6,18 @@ icon: "braces"
 
 L'API pubblica è servita sotto `/v1` sull'origine della tua dashboard Failproof AI.
 
-## Crea una chiave e fai una richiesta
+## Creare una chiave e fare una richiesta
 
 <Tabs>
   <Tab title="Dashboard">
-    1. Apri **Administration → Keys**, seleziona **Create key** e scegli il preset di permessi più restrittivo che copra l'integrazione.
+    1. Apri **Administration → Keys**, seleziona **Create key** e scegli il preset di permesso più limitato che copre l'integrazione.
     2. Aggiungi singoli grant solo quando necessario, crea la chiave e copia il suo segreto monouso.
     3. Fai una richiesta di test a `/v1/sessions` e conferma che la chiave rimane attiva nella pagina Keys.
-    4. Ruota o disabilita la chiave dal suo menu di azioni quando la proprietà dell'integrazione cambia.
+    4. Ruota o disabilita la chiave dal suo menu azioni quando la proprietà dell'integrazione cambia.
 
-    ![Il nuovo drawer delle chiavi API con preset di permessi e grant individuali.](/images/dashboard/key-create.png)
+    ![Il nuovo cassetto della chiave API con preset di permessi e grant individuali.](/images/dashboard/key-create.png)
 
-    Il drawer di creazione è mostrato sopra. Il segreto monouso appare solo dopo che hai selezionato **create**; copialo prima di chiudere quella conferma.
+    Il cassetto di creazione è mostrato sopra. Il segreto monouso appare solo dopo che selezioni **create**; copialo prima di chiudere quella conferma.
   </Tab>
   <Tab title="CLI">
     Crea una chiave di lettura e usala direttamente con `fp` o `curl`:
@@ -40,15 +40,15 @@ Le chiavi sono limitate a un'organizzazione e a un set di permessi. Una richiest
 
 ## Selezione dell'organizzazione
 
-Una chiave dell'organizzazione agisce sulla sua organizzazione automaticamente. Una chiave con scope istanza può selezionare un'organizzazione per richiesta:
+Una chiave dell'organizzazione agisce sulla sua organizzazione automaticamente. Una chiave con ambito di istanza può selezionare un'organizzazione per richiesta:
 
 <Tabs>
   <Tab title="Dashboard">
-    Usa il selettore di organizzazione nell'intestazione della dashboard prima di aprire **Administration → Keys**. Le chiavi create lì appartengono all'organizzazione selezionata. Conferma lo slug dell'organizzazione nell'URL e nei dettagli della chiave prima di copiare la credenziale nell'automazione.
+    Utilizza lo switcher dell'organizzazione nell'intestazione della dashboard prima di aprire **Administration → Keys**. Le chiavi create lì appartengono all'organizzazione selezionata. Conferma lo slug dell'organizzazione nell'URL e nei dettagli della chiave prima di copiare le credenziali nell'automazione.
 
   </Tab>
   <Tab title="CLI">
-    Usa `--org` prima del comando, oppure invia l'header dell'organizzazione per una chiave API con scope istanza.
+    Usa `--org` prima del comando, o invia l'intestazione dell'organizzazione per una chiave API con ambito di istanza.
 
     ```bash
     fp orgs list
@@ -63,12 +63,20 @@ Una chiave dell'organizzazione agisce sulla sua organizzazione automaticamente. 
   </Tab>
 </Tabs>
 
-Utilizza le pagine di endpoint generate in questa sezione per i percorsi attuali, i parametri, i requisiti di permesso e i codici di stato. La specifica è generata dalle annotazioni del percorso del server e verificata rispetto al router `/v1`.
+Utilizza le pagine endpoint generate in questa sezione per i percorsi attuali, i parametri, i requisiti di permesso e i codici di stato. La specifica è generata dalle annotazioni delle route del server e controllata rispetto al router `/v1`.
 
-La specifica attuale ha una copertura completa di percorso, metodo, parametro, permesso e codice di stato. Alcuni corpi di risposta rimangono intenzionalmente non tipizzati perché il server ancora li costruisce come JSON dinamico. Ispeziona una risposta reale prima di generare un client fortemente tipizzato intorno a un endpoint senza uno schema di risposta.
+La specifica attuale ha una copertura completa di rotta, metodo, parametro, permesso e codice di stato. Alcuni corpi di risposta rimangono intenzionalmente non tipizzati perché il server li costruisce ancora come JSON dinamico. Ispeziona una risposta reale prima di generare un client fortemente tipizzato intorno a un endpoint senza uno schema di risposta.
 
-Usa `Content-Type: application/json` per le scritture JSON. Tratta `401` come autenticazione mancante o non valida, `403` come un'identità valida senza il permesso richiesto, `404` come una risorsa mancante o inaccessibile dall'organizzazione, `409` come un conflitto di stato, e `422` come un valore di campo o permesso non valido. Le risposte di errore includono un messaggio leggibile dall'utente; gli errori di permesso nominano anche il grant richiesto.
+Utilizza `Content-Type: application/json` per le scritture JSON. Tratta `401` come autenticazione mancante o non valida, `403` come identità valida senza il permesso richiesto, `404` come risorsa mancante o inaccessibile dall'organizzazione, `409` come conflitto di stato e `422` come valore di campo o permesso non valido. Le risposte di errore includono un messaggio leggibile dall'uomo; gli errori di permesso nominano anche il grant richiesto.
+
+L'acquisizione degli eventi utilizza JSON delimitato da newline: un oggetto completo per riga. Controlla sia `accepted` che `skipped` in una risposta di successo. Riprova l'intero batch dopo un errore di rete o una risposta HTTP 408, 429 o 5xx; la riesecuzione degli stessi eventi è sicura. I batch storici possono coprire molti mesi. Se l'acquisizione restituisce `422` con `error: "event_too_large"`, riduci il payload dell'evento offensivo prima di riprovare. Dividere un batch in richieste più piccole non riduce un singolo evento. Per le importazioni di file, riutilizza il cutoff `existing_before` originale sui tentativi in modo che una sessione parzialmente archiviata possa completarsi.
+
+## ID richiesta
+
+Ogni risposta porta un'intestazione `X-Request-Id` e ogni corpo di errore JSON include lo stesso valore come `request_id`. Citalo quando contatti il supporto: identifica quella una richiesta.
+
+Puoi inviare il tuo `X-Request-Id` per correlare una richiesta con i tuoi log. Usa 32 caratteri esadecimali minuscoli, come un UUID v4 con i trattini rimossi. Qualsiasi altro valore viene sostituito con un nuovo ID, che viene restituito nella risposta.
 
 <Warning>
-  L'implementazione dell'applicazione della politica è intenzionalmente gestita al di fuori della superficie pubblica ordinaria `/v1`. Utilizza il flusso di implementazione Cloud supportato.
+  Lo spiegamento dell'applicazione dei criteri è intenzionalmente gestito al di fuori della superficie pubblica ordinaria `/v1`. Utilizza il flusso di lavoro di distribuzione nel cloud supportato.
 </Warning>

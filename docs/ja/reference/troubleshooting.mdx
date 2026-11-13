@@ -1,16 +1,18 @@
 ---
 title: "トラブルシューティング"
-description: "セッションの欠落、ポリシーの欠落、配信の失敗、およびエージェントアクションのブロックを診断します。"
+description: "セッションの欠落、ポリシーの欠落、配信の失敗、エージェントアクションのブロックを診断します。"
 icon: "wrench"
 ---
 
+一時的なネットワーク障害や HTTP 408、429、5xx レスポンスが発生した場合、長時間の障害後でもテレメトリは自動リトライの対象として保持されます。デーモンは配信が確認されるまでバッチを保持します。`event_too_large` として拒否された場合は、リトライ前にイベントペイロードを小さくする必要があります。`.poison` マークが付いたファイルは手動での復旧が必要です。更新しても自動的に再送信されません。
+
 <AccordionGroup>
-  <Accordion title="セッションがCloudに表示されない">
+  <Accordion title="Cloudにセッションが表示されない">
     <Tabs>
       <Tab title="ダッシュボード">
-        **Administration → Keys** を開き、マシンキーが有効で `events:add` 権限を持っていることを確認します。次に **Observe → Events** を開き、時間範囲を広げ、環境およびエージェントフィルターをクリアします。イベントが存在する場合は、セッションIDを検索し、**Observe → Sessions** でグループ化を確認します。イベントが存在しない場合は、CLIからFailproofデーモンを診断してください。
+        **Administration → Keys** を開き、マシンキーがアクティブで `events:add` 権限を持っていることを確認してください。次に **Observe → Events** を開き、時間範囲を広げ、環境およびエージェントフィルターをクリアしてください。イベントが存在する場合は、セッション ID を検索し、**Observe → Sessions** でグループ化を確認してください。イベントが存在しない場合は、CLI から Failproof デーモンを診断してください。
 
-        ![主要なフィルターが表示されたライブイベントストリームと、最近のエージェントイベントの到着状況。](/images/dashboard/events-stream-current.png)
+        ![ライブイベントストリームに主要フィルターが表示され、最近のエージェントイベントが届いている画面。](/images/dashboard/events-stream-current.png)
       </Tab>
       <Tab title="CLI">
         ```bash
@@ -21,14 +23,14 @@ icon: "wrench"
         fp sessions --since 24h --limit 20
         ```
 
-        キャプチャが有効になっていること、設定されたキーに `events:add` 権限があること、ダッシュボードのフィルターが送信された環境と一致していることを確認します。
+        キャプチャが有効であること、設定済みキーが `events:add` を持っていること、ダッシュボードのフィルターが送信された環境と一致していることを確認してください。
       </Tab>
     </Tabs>
   </Accordion>
-  <Accordion title="Python SDKのイベントがディスク上に残る">
+  <Accordion title="Python SDKのイベントがディスクに残ったまま">
     <Tabs>
       <Tab title="ダッシュボード">
-        **Observe → Events** のフィルターをクリアし、SDKセッションIDを正確に検索します。何も表示されない場合は、ソースマシン上のSDKスプールとFailproofデーモンを確認してください。
+        **Observe → Events** のフィルターをクリアし、SDK セッション ID を正確に検索してください。何も表示されない場合は、ソースマシン上の SDK スプールと Failproof デーモンを確認してください。
       </Tab>
       <Tab title="CLI">
         ```bash
@@ -36,14 +38,14 @@ icon: "wrench"
         failproofai flush --wait
         ```
 
-        デーモンが実行中で接続されていることを確認してください — SDKはデーモンの有無にかかわらずスプールします。スプールディレクトリは事前に存在している必要は**ありません**（ライターが作成します）。また、環境変数でスプールディレクトリを選択することはできません。`$FAILPROOFAI_HOME/custom-agents`、またはそれがなければ `~/.failproofai/custom-agents` が唯一のルートであり、`configure(base_dir=...)` が唯一のオーバーライド手段です。プロセスが `SIGKILL` またはOOMキルされた場合、キューに残っていたデータは失われます — これを防ぐには `SIGTERM` を適切に処理してください。
+        デーモンが起動していて接続されていることを確認してください — SDK はデーモンの有無にかかわらずスプールします。スプールディレクトリは事前に存在している必要は**ありません**（ライターが作成します）。また、スプールディレクトリを選択する環境変数はありません。`$FAILPROOFAI_HOME/custom-agents`、それ以外の場合は `~/.failproofai/custom-agents` が唯一のルートであり、`configure(base_dir=...)` が唯一の上書き方法です。プロセスが `SIGKILL` または OOM キルされた場合、キューに残っていたものは失われます — これを防ぐには `SIGTERM` を処理してください。
       </Tab>
     </Tabs>
   </Accordion>
   <Accordion title="マシンがポリシーを受信しない">
     <Tabs>
       <Tab title="ダッシュボード">
-        **Admin → enforcement** を開き、マシンを選択して、割り当て済み・報告済み・以前のバージョンを比較します。デプロイメントスコープにそのマシンが含まれていること、およびキーに `policies:pull` 権限があることを確認します。ポリシーの配信が機能しない場合でも、イベントの取り込みは正常に動作することがあります。
+        **Admin → enforcement** を開き、マシンを選択して、割り当て済み、報告済み、および以前のバージョンを比較してください。デプロイメントスコープにマシンが含まれており、キーが `policies:pull` を持っていることを確認してください。ポリシー配信が機能しない場合でも、イベントの取り込みは動作する可能性があります。
 
       </Tab>
       <Tab title="CLI">
@@ -53,14 +55,38 @@ icon: "wrench"
         failproofai config --status
         ```
 
-        マシンIDとラベルがダッシュボードのターゲットと一致していることを確認します。既存のクレデンシャルがイベント取り込みの権限しか持っていない場合は、ポリシー対応のキーで再接続してください。
+        マシン ID とラベルがダッシュボードのターゲットと一致していることを確認してください。既存のクレデンシャルがイベント取り込みのみを許可している場合は、ポリシー対応キーで再接続してください。
+      </Tab>
+    </Tabs>
+  </Accordion>
+  <Accordion title="プライベート認証局を使用したセルフホストCloudでイベントもポリシーも届かない">
+    <Tabs>
+      <Tab title="ダッシュボード">
+        マシンは接続済みでフックも動作しているにもかかわらず、**Observe → Events** が空のままで、**Admin → enforcement** にデプロイメントが適用済みと表示されない場合があります。CLI と Failproof デーモンでは、証明書の信頼方法が異なります。CLI は Node 上で動作し、`NODE_EXTRA_CA_CERTS` を使用します。イベントの送信とポリシーの取得を行う `failproofaid` は、バンドルされた証明書とオペレーティングシステムのトラストストアを信頼し、`NODE_EXTRA_CA_CERTS` を無視します。マシンのシステムストアに CA をインストールしてください。
+      </Tab>
+      <Tab title="CLI">
+        ```bash
+        # Debian / Ubuntu
+        sudo cp company-ca.pem /usr/local/share/ca-certificates/company-ca.crt
+        sudo update-ca-certificates
+        # RHEL / Fedora
+        sudo cp company-ca.pem /etc/pki/ca-trust/source/anchors/ && sudo update-ca-trust
+        # macOS
+        sudo security add-trusted-cert -d -r trustRoot -k /Library/Keychains/System.keychain company-ca.pem
+
+        # then restart the daemon, which loads trusted certificates at start
+        sudo systemctl restart failproofaid@$USER                           # Linux
+        sudo launchctl kickstart -k system/ai.failproof.failproofaid.$USER  # macOS
+        ```
+
+        デーモンのログに原因が記録されています。Linux の場合は `sudo journalctl -u failproofaid@$USER | grep UnknownIssuer` を実行してください。サービスの環境変数 `SSL_CERT_FILE` または `SSL_CERT_DIR` を設定すると、デーモンのシステムストアが置き換えられます（バンドルされた証明書は引き続き適用されます）。CA が信頼されていない間に失敗したバッチは `~/.failproofai/state/failed` に保持され、約1時間ごと、またはデーモン再起動時に自動的にリトライされます。
       </Tab>
     </Tabs>
   </Accordion>
   <Accordion title="デーモンが利用できないためアクションが拒否される">
     <Tabs>
       <Tab title="ダッシュボード">
-        **Admin → enforcement** を開き、マシンの最終確認日時と報告されたバージョンを確認します。マシンが古い状態の場合は、ローカルのデーモン問題として対処してください。デーモンが利用できないことを回避するためだけに、デプロイ済みポリシーを緩めないでください。
+        **Admin → enforcement** を開き、マシンの最終確認日時と報告されたバージョンを確認してください。マシンが古い場合は、ローカルデーモンの問題として対処してください。デーモンが利用できないことを回避するためだけにデプロイ済みポリシーを緩めないでください。
 
       </Tab>
       <Tab title="CLI">
@@ -71,18 +97,18 @@ icon: "wrench"
         failproofai config --status
         ```
 
-        `failproofaid` を再起動または更新してください。CLIとデーモンのプロトコルバージョンが異なる場合は、設定を再実行してください。設定されたデーモンパスは、設計上フェイルクローズド（安全側に閉じる）になっています。
+        `failproofaid` を再起動または更新してください。CLI とデーモンのプロトコルバージョンが異なる場合は、設定を再実行してください。設定済みのデーモンパスは、設計上フェイルクローズ（失敗時に閉じる）します。
       </Tab>
     </Tabs>
   </Accordion>
   <Accordion title="カスタムポリシーが読み込まれない">
     <Tabs>
       <Tab title="ダッシュボード">
-        Cloudで作成したポリシーの場合は、**Admin → policy editor** を開き、ドラフトを選択して、公開前にバリデーションエラーを確認します。ローカルポリシーの場合は、CLIを使用して検証し、テストアクションの後に **Observe → policy** を開いて決定が届いていることを確認します。
+        Cloud で作成したポリシーの場合は、**Admin → policy editor** を開き、ドラフトを選択して、公開前に検証エラーを確認してください。ローカルポリシーの場合は、CLI で検証し、テストアクション後に **Observe → policy** を開いてデシジョンが届いていることを確認してください。
 
       </Tab>
       <Tab title="CLI">
-        ファイル名が `policies.js`、`policies.mjs`、または `policies.ts` で終わっていること、モジュールが `customPolicies.add(...)` を呼び出していること、およびポリシーファイルからのインポートが正しく解決されることを確認します。
+        ファイル名が `policies.js`、`policies.mjs`、または `policies.ts` で終わっていること、モジュールが `customPolicies.add(...)` を呼び出していること、ポリシーファイルからのインポートが解決できることを確認してください。
 
         ```bash
         failproofai policies --install --custom ./checkout.policies.ts
@@ -94,11 +120,11 @@ icon: "wrench"
   <Accordion title="監査で検出結果が返らない">
     <Tabs>
       <Tab title="ダッシュボード">
-        **Analyze → audits** を開き、実行を選択して、モデル分析が実行されたかどうかを確認します。次に、そのスコープとウィンドウを **Observe → sessions** と比較し、その母集団から代表的なトレースを開きます。
+        **Analyze → audits** を開き、実行を選択して、モデル分析が実行されたかどうかを確認してください。次に、スコープとウィンドウを **Observe → sessions** と比較し、その対象母集団から代表的なトレースを開いてください。
 
-        ゼロ件の結果が意味を持つのは、分析が正常に実行された場合のみです。分析がスキップまたは失敗した場合、実行は検出結果を生成せず、未分析のウィンドウを将来の正常な実行のために開いたままにします。モデル分析が無効になっている場合も監査は検出結果を生成しません。これは、決定論的なクレデンシャルとPIIスキャンが統計を記録するものの、検出結果を報告しなくなるためです。
+        ゼロ件という結果が意味を持つのは、分析が正常に実行された場合のみです。分析がスキップまたは失敗した場合、実行は検出結果を生成せず、未分析のウィンドウを将来の正常な実行のために開いたままにします。モデル分析が無効になっている場合、決定論的なクレデンシャルおよび PII スキャンは統計を記録しますが検出結果を発生させなくなるため、監査でも検出結果は生成されません。
 
-        ![環境、エージェント、実行サイクル、スイープウィンドウでセッション母集団を定義する監査フォーム。](/images/dashboard/audit-new.png)
+        ![環境、エージェント、ケイデンス、スイープウィンドウでセッション母集団を定義する監査フォーム。](/images/dashboard/audit-new.png)
       </Tab>
       <Tab title="CLI">
         ```bash
@@ -110,31 +136,31 @@ icon: "wrench"
         fp audits findings --audit <audit-name>
         ```
 
-        実行がキューに残っている場合は、監査エージェントのキャパシティを待つか、デプロイメントオペレーターに監査フリートの確認を依頼してください。キューに入った監査はリトライされます。即座にスキップされることはありません。
+        実行がキューに残ったままの場合は、監査エージェントの容量を待つか、デプロイメントオペレーターに監査フリートの確認を依頼してください。キューに入った監査はリトライされます。すぐにスキップされることはありません。
       </Tab>
     </Tabs>
   </Accordion>
-  <Accordion title="オンライン評価が自動的に実行されない">
+  <Accordion title="オンライン評価が自動実行されない">
     <Tabs>
       <Tab title="ダッシュボード">
-        完了したセッションを開き、手動評価が成功するかどうかを確認します。ホスト型Cloudでは現在、ダッシュボードでエバリュエーターエンドポイントの設定を制御する機能がありません。サーバーオペレーターが設定する必要があります。
+        完了済みセッションを開き、手動評価が成功するかどうかを確認してください。ホスト型 Cloud では、現在ダッシュボードにエバリュエーターエンドポイントの制御機能はありません。サーバーオペレーターが設定する必要があります。
       </Tab>
       <Tab title="CLI">
-        エバリュエーター自体を確認し、最近の評価状態を調べます：
+        エバリュエーター自体を確認し、最近の評価状態を確認してください。
 
         ```bash
         curl https://evaluator.example.com/health
         fp evals --since 1h
         ```
 
-        セルフホスト型Cloudの場合は、サーバー上に `EVALUATOR_ENDPOINT` が設定されていること、および `EVALUATOR_TOKEN` がエバリュエーターと一致していることを確認します。エンドポイントが存在しない場合、自動評価は無効になります。
+        セルフホスト Cloud の場合は、サーバーに `EVALUATOR_ENDPOINT` が設定されており、`EVALUATOR_TOKEN` がエバリュエーターと一致していることを確認してください。エンドポイントが設定されていない場合、自動評価は無効になります。
       </Tab>
     </Tabs>
   </Accordion>
-  <Accordion title="Cloud CLIの認証が間違った組織を対象にしている">
+  <Accordion title="Cloud CLIの認証が誤った組織を対象にしている">
     <Tabs>
       <Tab title="ダッシュボード">
-        組織スイッチャーを使用し、CLIと結果を比較する前に、期待するスラッグと権限を確認します。
+        組織スイッチャーを使用し、CLI と結果を比較する前に、期待するスラッグと権限を確認してください。
       </Tab>
       <Tab title="CLI">
         ```bash
@@ -143,18 +169,18 @@ icon: "wrench"
         fp orgs perms
         ```
 
-        APIキーモードでは、`fp --org <slug> --api-key <key> ...` を指定するか、`AGENTEYE_ORG` を設定します。保存されたヒューマンセッションの組織状態は、APIキーリクエストでは意図的に無視されます。
+        API キーモードでは、`fp --org <slug> --api-key <key> ...` を指定するか、`AGENTEYE_ORG` を設定してください。保存済みのヒューマンセッションの組織状態は、API キーリクエストでは意図的に無視されます。
       </Tab>
     </Tabs>
   </Accordion>
-  <Accordion title="ポリシーが正当な作業をブロックする">
+  <Accordion title="ポリシーが有効な作業をブロックしている">
     <Tabs>
       <Tab title="ダッシュボード">
-        **Observe → policy** を開き、決定とリンクされたセッションを保存して、偽陽性の条件を特定します。次に **Admin → enforcement** を開き、影響を受けたマシンを以前のバージョンにロールバックします。**Policy editor** でより範囲の狭いバージョンを作成し、小さなスコープでテストして、正当な作業が成功した後にのみ範囲を拡大してください。
+        **Observe → policy** を開き、デシジョンとリンクされたセッションを保存して、誤検知の条件を特定してください。次に **Admin → enforcement** を開き、影響を受けるマシンを以前のバージョンにロールバックしてください。**Policy editor** でより絞り込んだバージョンを作成し、小さなスコープでテストし、有効な作業が成功してから拡大してください。
 
       </Tab>
       <Tab title="CLI">
-        Cloudデプロイメントのロールバックはダッシュボードからのみ実行できます。ローカルセッションの一時停止では、Cloudが管理するポリシーは無効になりません。ダッシュボードが利用できない場合は、マシンとデプロイメントの状態をキャプチャし、ブロックされたアクションを繰り返し再試行するのではなく、ダッシュボードへのアクセスを回復することを優先してください。
+        Cloud デプロイメントのロールバックはダッシュボードからのみ行えます。ローカルセッションの一時停止では、Cloud 管理のポリシーは無効になりません。ダッシュボードが利用できない場合は、マシンとデプロイメントの状態をキャプチャし、ブロックされたアクションを繰り返し再試行するのではなく、ダッシュボードへのアクセスを復元してください。
 
         ```bash
         failproofai config --status
@@ -162,6 +188,25 @@ icon: "wrench"
       </Tab>
     </Tabs>
   </Accordion>
+  <Accordion title="エラーにrefが表示される">
+    <Tabs>
+      <Tab title="ダッシュボード">
+        ダッシュボードのエラーは、例えば `ref 4bf92f35` のような短いリファレンスで終わります。これは特定のリクエストを識別するもので、サポートはこれを使用してサーバー上で何が起きたかを正確に追跡できます。表示されたままコピーしてレポートに含めてください。
+
+        ページ全体の読み込みに失敗した場合、エラーページには代わりに `digest` が表示されます。それも含めてください。
+      </Tab>
+      <Tab title="CLI">
+        人が読める `fp` エラーは同じ `ref` で終わります。`--json` を使用すると、エラーオブジェクトに完全な `request_id` が含まれます。
+
+        ```bash
+        fp --json sessions --since 24h
+        ```
+      </Tab>
+      <Tab title="デーモン">
+        アップロードが失敗した場合、デーモンのログに `request_id` と `batch_id` が記録されます。Linux の場合は `sudo journalctl -u failproofaid@$USER | grep batch_id` を実行してください。各試行には固有の `request_id` が割り当てられますが、`batch_id` はリトライ全体を通じて同じ値を保持するため、同一バッチの試行をまとめて追跡できます。両方を含めてください。
+      </Tab>
+    </Tabs>
+  </Accordion>
 </AccordionGroup>
 
-サポートに連絡する際は、CLIバージョン、ハーネス、環境、関連するセッションまたはデプロイメントID、およびシークレットを除去した `failproofai config --status` の出力を含めてください。
+サポートに連絡する際は、CLI バージョン、ハーネス、環境、関連するセッションまたはデプロイメント ID、エラーに含まれる `ref` または `request_id`、およびシークレットを除去した `failproofai config --status` の出力を含めてください。

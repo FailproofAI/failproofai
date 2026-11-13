@@ -1,18 +1,18 @@
 ---
 title: "OpenTelemetry"
-description: "שלחו טלמטריה של coding-agent ואפליקציה ל-FailproofAI Cloud עם OTLP."
+description: "שלח טלמטריה של coding-agent ויישום ל-FailproofAI Cloud עם OTLP."
 icon: "radio"
 ---
 
-OpenTelemetry מאפשר לך לשלוח traces, logs ו-metrics של agents ל-FailproofAI Cloud באמצעות פרוטוקול OTLP/HTTP סטנדרטי. זה אופציונלי. האינטגרציות FailproofAI הקיימות שלך ממשיכות לעבוד ללא הפעלת התכונה הזו.
+OpenTelemetry מאפשר לך לשלוח traces, logs ו-metrics של agents ל-FailproofAI Cloud תוך שימוש בפרוטוקול OTLP/HTTP הסטנדרטי. זה אופציונלי. ההשתלבויות הקיימות שלך ב-FailproofAI ממשיכות לעבוד ללא הפעלתו.
 
-## הפעלת ingest עבור הארגון שלך
+## הפעל ingest עבור הארגון שלך
 
-מנהל ארגון פותח את **Settings → OpenTelemetry** והופעל את ה-ingest. השתמש ב-Cloud API key עם הרשאת `events:add`, אותה הרשאה המשמשת לדיווח agents.
+מנהל ארגון פותח **Settings → OpenTelemetry** והפעל את ingest. השתמש ב-Cloud API key עם הרשאת `events:add`, אותה הרשאה המשמשת לדיווח agents.
 
-אם ה-ingest כבוי, Cloud דוחה ייצוא OTLP, כך ש-`failproofai otel enable` לא משנה כלום וה-agents שלך ממשיכים לשלוח sessions בדרך הרגילה. הרץ את `failproofai otel status` כדי לבדוק את מתג הארגון, והבקש מ-admin להפעיל את זה.
+אם ingest כבוי, Cloud דוחה ייצוא OTLP, ולכן `failproofai otel enable` לא משנה כלום והagents שלך ממשיכים לשלוח sessions בדרך הרגילה. הרץ `failproofai otel status` כדי לבדוק את המתג של הארגון, ובקש מ-admin להפעיל אותו.
 
-## חיבור coding agent
+## חבר coding agent
 
 חבר את המכונה שלך עם `failproofai config`, ואז בחר agent:
 
@@ -22,13 +22,13 @@ failproofai otel enable codex
 failproofai otel enable copilot
 ```
 
-פקודת ההגדרה תומכת ב-Claude Code, Codex ו-Copilot ובוחרת Cloud או authenticated relay מקומי לפי הצורך. Copilot משתמש ב-local relay באופן אוטומטי. הפעל את ה-FailproofAI daemon המוגדר שלך לפני שימוש ב-relay.
+פקודת ההגדרה תומכת ב-Claude Code, Codex ו-Copilot ובוחרת Cloud או authenticated relay מקומי לפי הצורך. Copilot משתמש ב-local relay באופן אוטומטי. הפעל את daemon ה-FailproofAI המוגדר שלך לפני שימוש ב-relay.
 
-אם FailproofAI כבר שולח session transcripts של agent, ההגדרה שואלת האם לעבור את ה-agent הזה ל-OTEL. ברירת המחדל היא No. הקבלה עוצרת uploads של transcript עבור ה-agent הזה; היא לא משנה את כפיית המדיניות או דיווח מ-agents אחרים.
+אם FailproofAI כבר שולח session transcripts של agent, ההגדרה שואלת האם להעביר את ה-agent הזה ל-OTEL. ברירת המחדל היא No. קבלה עוצרת uploads של transcripts עבור agent זה; זה לא משנה enforcement של מדיניות או דיווח מ-agents אחרים.
 
-## חיבור אפליקציה
+## חבר יישום
 
-השתמש בinstrumentation OpenTelemetry של האפליקציה שלך עם משתני הסביבה הללו:
+השתמש בinstrumentation של OpenTelemetry של היישום שלך עם משתני הסביבה הבאים:
 
 ```bash
 export OTEL_EXPORTER_OTLP_ENDPOINT=https://app.befailproof.ai/otel
@@ -37,18 +37,18 @@ export OTEL_EXPORTER_OTLP_HEADERS='Authorization=Bearer%20<key>'
 export OTEL_SERVICE_NAME=my-agent
 ```
 
-ה-endpoint הוא בסיס OTLP של Cloud, `https://app.befailproof.ai/otel`; ה-exporter שלך מוסיף `/v1/traces`, `/v1/logs` או `/v1/metrics` בעצמו. משתנים לכל-signal כמו `OTEL_EXPORTER_OTLP_LOGS_ENDPOINT` משמשים כ-is, כך שהם צריכים את הנתיב המלא, לדוגמה `https://app.befailproof.ai/otel/v1/logs`.
+ה-endpoint הוא בסיס OTLP של Cloud, `https://app.befailproof.ai/otel`; ה-exporter שלך מוסיף `/v1/traces`, `/v1/logs` או `/v1/metrics` בעצמו. משתני per-signal כמו `OTEL_EXPORTER_OTLP_LOGS_ENDPOINT` משמשים כما-הם, ולכן הם זקוקים לנתיב מלא, למשל `https://app.befailproof.ai/otel/v1/logs`.
 
-החלף את `<key>` ב-API key שלך. שמור את הסוד מחוץ לhistory של shell, screen recordings וconfiguration שהעלו על commit. עבור מכונה מוגדרת, `failproofai otel env --service my-agent` מודפס את הבלוק עם ה-key הקיים שלו. ה-output שלו מכיל credential.
+החלף את `<key>` ב-API key שלך. שמור את הסוד מחוץ להיסטוריית shell, reencodings של מסך וקבצי תצורה committed. עבור מכונה מוגדרת, `failproofai otel env --service my-agent` מדפיס את הבלוק עם ה-key הקיים שלו. הפלט שלו מכיל credential.
 
 Cloud מקבל ייצוא OTLP/HTTP עבור traces, logs ו-metrics, כ-protobuf או JSON, כולל בקשות דחוסות gzip. זה לא מקבל OTLP/gRPC.
 
-Metrics מאושרים לתאימות exporter אך אינם מאוחסנים או מוצגים. Supported agent traces וcoding-agent logs הופכים ל-sessions; שדות שה-agent לא מייצא נשארים חסרים.
+Metrics מאושרים לתאימות exporter אך אינם מאוחסנים או מוצגים. Agent traces נתמכים והcoding-agent logs הופכים לsessions; שדות שה-agent לא מייצא נשארים חסרים.
 
-## לכידת טקסט של prompt
+## תפוס טקסט של prompt
 
 <Warning>
-לכידת טקסט יכולה לכלול prompts, tool arguments וכל תוכן רגיש אחר. `failproofai otel enable` מפעיל את זה. הוסף `--no-content` כדי שלא להקליט prompt וtool-detail capture.
+text capture יכול לכלול prompts, tool arguments וחומר רגיש אחר. `failproofai otel enable` מפעיל זאת. הוסף `--no-content` כדי להשאיר את capture של prompt וtool-detail כבויים.
 </Warning>
 
 ```bash
@@ -56,11 +56,11 @@ failproofai otel enable claude --no-content
 failproofai otel enable codex --no-content
 ```
 
-עבור agent שאתה מגדיר באופן ידני, השתמש בcontrol שלו שלו לlכידת תוכן:
+עבור agent שאתה מגדיר ידנית, השתמש בcontrol capture של תוכן שלו:
 
 <Tabs>
   <Tab title="Claude Code">
-    הוסף משתנים אלה לסביבה של ה-agent שלך לצד בלוק האפליקציה למעלה:
+    הוסף משתנים אלה לסביבת ה-agent שלך לצד הבלוק היישום לעיל:
 
     ```bash
     export CLAUDE_CODE_ENABLE_TELEMETRY=1
@@ -70,7 +70,7 @@ failproofai otel enable codex --no-content
     export OTEL_LOG_TOOL_DETAILS=1
     ```
 
-    הגדר את שתי משתני התוכן ל-`0` כדי להימנע מלכידת prompts וtool details.
+    הגדר את שני משתני התוכן ל-`0` כדי להימנע מ-capture של prompts וtool details.
   </Tab>
   <Tab title="Codex">
     בתצורת המשתמש של Codex, השתמש בהגדרות OTEL שלו:
@@ -81,10 +81,10 @@ failproofai otel enable codex --no-content
     exporter = { otlp-http = { endpoint = "https://app.befailproof.ai/otel/v1/logs", protocol = "json", headers = { Authorization = "Bearer <key>" } } }
     ```
 
-    תוכן השיחה של Codex נמצא ב-logs; השאר internal runtime traces ו-metrics מבוטלים. Codex משתמש ב-endpoint המלא שאתה מספק. הגדר את `log_user_prompt` ל-`false` כדי להשאיר prompts בחוץ; פקודת ההגדרה משמרת `false` מפורש.
+    תוכן שיחת Codex נמצא ב-logs; השאר internal runtime traces ו-metrics כבויים. Codex משתמש בendpoint המלא שאתה מספק. הגדר את `log_user_prompt` ל-`false` כדי להשאיר prompts בחוץ; פקודת ההגדרה שומרת `false` מפורש.
   </Tab>
   <Tab title="Gemini CLI">
-    השתמש בהגדרות טלמטריה של Gemini עם ה-local relay:
+    השתמש בהגדרות הטלמטריה של Gemini עם ה-local relay:
 
     ```json
     {
@@ -99,10 +99,10 @@ failproofai otel enable codex --no-content
     }
     ```
 
-    Gemini CLI לא נתמך על ידי `failproofai otel enable`. הגדר אותו ידנית עם collector מאומת משלך. הגדר את `logPrompts` ל-`false` לאין לכידת prompt.
+    Gemini CLI לא נתמך על ידי `failproofai otel enable`. הגדר אותו ידנית עם collector מאומת משלך. הגדר את `logPrompts` ל-`false` לאין capture של prompt.
   </Tab>
   <Tab title="Copilot in VS Code">
-    השתמש בהגדרות המשתמש של VS Code הללו:
+    השתמש בהגדרות משתמש VS Code אלה:
 
     ```json
     {
@@ -113,19 +113,23 @@ failproofai otel enable codex --no-content
     }
     ```
 
-    הרץ את `failproofai otel enable copilot` כדי להפעיל את authenticated relay. הגדר את `captureContent` ל-`false` כדי להשמיט תוכן.
+    הרץ `failproofai otel enable copilot` כדי להפעיל את ה-relay המאומת. הגדר את `captureContent` ל-`false` כדי להשמיט תוכן.
   </Tab>
 </Tabs>
 
-## בדיקה או ביטול של הגדרה
+## בדוק או בטל הגדרה
+
+ה-relay שומר על טלמטריה דרך כשלים זמניים בנטוורק ובשרת ו-retries לאחר התאוששות. דחייה קבועה של `400`, כולל event שגדול מדי לאחסון, דורשת תיקון payload. ה-relay שומר על הbatch שנדחה לבדיקה במקום לשלוח אותו שוב ושוב.
+
+לאחר `401` או `403`, החלף את credential בkey המעניק `events:add` לאותו ארגון. התחברות מחדש לא משלחת מחדש באופן אוטומטי ייצוא OTLP שנשמר שנדחה עבור credentials; בקש מהoperator שלך להחזיר את batch-ים אלה. שמור אותם בארגון המקורי שלהם.
 
 ```bash
 failproofai otel status
 failproofai otel disable all
 ```
 
-Status מבדיל בין הגדרות שהנהלת FailproofAI מטלמטריה שהגדרת במקום אחר. Disable משחזר את הגדרות ה-managed הקודמות ובחירת ה-transcript-upload הקודמת של ה-agent.
+Status מבדיל בין הגדרות המנוהלות על ידי FailproofAI לטלמטריה שהגדרת במקום אחר. Disable משחזר את ההגדרות המנוהלות הקודמות והבחירה הקודמת של transcript-upload של ה-agent.
 
 <Card title="OpenTelemetry CLI" href="/he/reference/otel" icon="terminal">
-  אפשרויות פקודה, הגדרת local relay וtroubleshooting.
+  אפשרויות פקודה, הגדרת local relay ו-troubleshooting.
 </Card>

@@ -1,20 +1,20 @@
 ---
 title: "OpenTelemetry"
-description: "Sende Coding-Agent- und Anwendungstelemetrie mit OTLP an Failproof AI Cloud."
+description: "Senden Sie Coding-Agent- und Anwendungstelemetrie mit OTLP an FailproofAI Cloud."
 icon: "radio"
 ---
 
-OpenTelemetry ermöglicht es dir, Agent-Traces, Logs und Metriken über das standardisierte OTLP/HTTP-Protokoll an Failproof AI Cloud zu senden. Die Nutzung ist optional. Bestehende Failproof AI-Integrationen funktionieren weiterhin, ohne dass OpenTelemetry aktiviert werden muss.
+OpenTelemetry ermöglicht es Ihnen, Agent-Traces, Logs und Metriken über das standardisierte OTLP/HTTP-Protokoll an FailproofAI Cloud zu senden. Die Funktion ist optional. Ihre bestehenden FailproofAI-Integrationen funktionieren weiterhin, ohne dass sie aktiviert werden muss.
 
-## Ingest für deine Organisation aktivieren
+## Ingest für Ihre Organisation aktivieren
 
-Ein Organisations-Admin öffnet **Einstellungen → OpenTelemetry** und aktiviert den Ingest. Verwende einen Cloud-API-Schlüssel mit der Berechtigung `events:add` – dieselbe Berechtigung, die auch für das Agent-Reporting genutzt wird.
+Ein Organisations-Administrator öffnet **Einstellungen → OpenTelemetry** und aktiviert den Ingest. Verwenden Sie einen Cloud-API-Schlüssel mit der Berechtigung `events:add` – dieselbe Berechtigung, die für das Agent-Reporting genutzt wird.
 
-Ist der Ingest deaktiviert, lehnt Cloud OTLP-Exporte ab, sodass `failproofai otel enable` keine Wirkung hat und deine Agents Sessions weiterhin auf dem üblichen Weg senden. Führe `failproofai otel status` aus, um den Organisations-Schalter zu prüfen, und bitte einen Admin, ihn zu aktivieren.
+Ist der Ingest deaktiviert, lehnt Cloud OTLP-Exporte ab, sodass `failproofai otel enable` keine Wirkung hat und Ihre Agents weiterhin auf dem gewohnten Weg Sitzungen übermitteln. Führen Sie `failproofai otel status` aus, um den Organisations-Schalter zu prüfen, und bitten Sie einen Administrator, ihn zu aktivieren.
 
 ## Einen Coding-Agent verbinden
 
-Verbinde deine Maschine mit `failproofai config` und wähle dann einen Agent:
+Verbinden Sie Ihren Computer mit `failproofai config` und wählen Sie anschließend einen Agent:
 
 ```bash
 failproofai otel enable claude
@@ -22,13 +22,13 @@ failproofai otel enable codex
 failproofai otel enable copilot
 ```
 
-Der Setup-Befehl unterstützt Claude Code, Codex und Copilot und wählt je nach Situation Cloud oder ein lokales authentifiziertes Relay aus. Copilot verwendet automatisch das lokale Relay. Starte den konfigurierten Failproof AI-Daemon, bevor du das Relay verwendest.
+Der Setup-Befehl unterstützt Claude Code, Codex und Copilot und wählt je nach Konfiguration Cloud oder einen lokalen authentifizierten Relay. Copilot verwendet automatisch den lokalen Relay. Starten Sie den konfigurierten FailproofAI-Daemon, bevor Sie den Relay nutzen.
 
-Sendet Failproof AI bereits Session-Transkripte eines Agents, fragt das Setup, ob dieser Agent auf OTEL umgestellt werden soll. Die Standardantwort ist „Nein". Bei Bestätigung werden Transkript-Uploads für diesen Agent eingestellt; die Policy-Durchsetzung und das Reporting anderer Agents bleiben unverändert.
+Falls FailproofAI bereits Sitzungstranskripte eines Agents sendet, fragt das Setup, ob dieser Agent auf OTEL umgestellt werden soll. Die Standardantwort ist Nein. Bei Bestätigung werden Transkript-Uploads für diesen Agent gestoppt; die Richtliniendurchsetzung und das Reporting anderer Agents bleiben davon unberührt.
 
 ## Eine Anwendung verbinden
 
-Verwende die OpenTelemetry-Instrumentierung deiner Anwendung mit diesen Umgebungsvariablen:
+Nutzen Sie die OpenTelemetry-Instrumentierung Ihrer Anwendung mit diesen Umgebungsvariablen:
 
 ```bash
 export OTEL_EXPORTER_OTLP_ENDPOINT=https://app.befailproof.ai/otel
@@ -37,18 +37,18 @@ export OTEL_EXPORTER_OTLP_HEADERS='Authorization=Bearer%20<key>'
 export OTEL_SERVICE_NAME=my-agent
 ```
 
-Der Endpunkt ist die OTLP-Basis von Cloud, `https://app.befailproof.ai/otel`; dein Exporter hängt selbstständig `/v1/traces`, `/v1/logs` oder `/v1/metrics` an. Signal-spezifische Variablen wie `OTEL_EXPORTER_OTLP_LOGS_ENDPOINT` werden direkt verwendet, daher ist dort der vollständige Pfad erforderlich, z. B. `https://app.befailproof.ai/otel/v1/logs`.
+Der Endpunkt ist die OTLP-Basis von Cloud, `https://app.befailproof.ai/otel`; Ihr Exporter hängt selbst `/v1/traces`, `/v1/logs` oder `/v1/metrics` an. Signalspezifische Variablen wie `OTEL_EXPORTER_OTLP_LOGS_ENDPOINT` werden unverändert verwendet und benötigen daher den vollständigen Pfad, z. B. `https://app.befailproof.ai/otel/v1/logs`.
 
-Ersetze `<key>` durch deinen API-Schlüssel. Halte das Secret aus der Shell-Historie, Bildschirmaufzeichnungen und eingecheckten Konfigurationsdateien heraus. Für eine konfigurierte Maschine gibt `failproofai otel env --service my-agent` den Block mit dem vorhandenen Schlüssel aus. Die Ausgabe enthält ein Credential.
+Ersetzen Sie `<key>` durch Ihren API-Schlüssel. Bewahren Sie das Geheimnis nicht in der Shell-History, in Bildschirmaufzeichnungen oder in eingecheckten Konfigurationsdateien auf. Für einen konfigurierten Computer gibt `failproofai otel env --service my-agent` den Block mit dem vorhandenen Schlüssel aus. Die Ausgabe enthält ein Credential.
 
-Cloud akzeptiert OTLP/HTTP-Exporte für Traces, Logs und Metriken als Protobuf oder JSON, einschließlich gzip-komprimierter Anfragen. OTLP/gRPC wird nicht unterstützt.
+Cloud akzeptiert OTLP/HTTP-Exporte für Traces, Logs und Metriken – als Protobuf oder JSON, einschließlich gzip-komprimierter Anfragen. OTLP/gRPC wird nicht unterstützt.
 
-Metriken werden zur Exporter-Kompatibilität bestätigt, aber weder gespeichert noch angezeigt. Unterstützte Agent-Traces und Coding-Agent-Logs werden zu Sessions; Felder, die der Agent nicht exportiert, bleiben leer.
+Metriken werden zur Exporter-Kompatibilität bestätigt, aber weder gespeichert noch angezeigt. Unterstützte Agent-Traces und Coding-Agent-Logs werden zu Sitzungen; Felder, die der Agent nicht exportiert, bleiben leer.
 
 ## Prompt-Text erfassen
 
 <Warning>
-Die Texterfassung kann Prompts, Tool-Argumente und andere sensible Inhalte umfassen. `failproofai otel enable` aktiviert sie. Füge `--no-content` hinzu, um die Erfassung von Prompts und Tool-Details zu deaktivieren.
+Die Texterfassung kann Prompts, Tool-Argumente und andere sensible Inhalte umfassen. `failproofai otel enable` aktiviert diese Funktion. Fügen Sie `--no-content` hinzu, um die Erfassung von Prompts und Tool-Details zu deaktivieren.
 </Warning>
 
 ```bash
@@ -56,11 +56,11 @@ failproofai otel enable claude --no-content
 failproofai otel enable codex --no-content
 ```
 
-Für einen manuell konfigurierten Agent verwende dessen eigene Einstellungen zur Inhaltserfassung:
+Für einen manuell konfigurierten Agent verwenden Sie dessen eigene Einstellungen zur Inhaltserfassung:
 
 <Tabs>
   <Tab title="Claude Code">
-    Füge diese Variablen zur Umgebung deines Agents hinzu, zusammen mit dem oben beschriebenen Anwendungsblock:
+    Fügen Sie diese Variablen zur Umgebung Ihres Agents hinzu, zusammen mit dem oben beschriebenen Anwendungsblock:
 
     ```bash
     export CLAUDE_CODE_ENABLE_TELEMETRY=1
@@ -70,10 +70,10 @@ Für einen manuell konfigurierten Agent verwende dessen eigene Einstellungen zur
     export OTEL_LOG_TOOL_DETAILS=1
     ```
 
-    Setze beide Inhaltsvariablen auf `0`, um die Erfassung von Prompts und Tool-Details zu vermeiden.
+    Setzen Sie beide Inhaltsvariablen auf `0`, um die Erfassung von Prompts und Tool-Details zu unterbinden.
   </Tab>
   <Tab title="Codex">
-    Verwende in der Benutzerkonfiguration von Codex dessen OTEL-Einstellungen:
+    Verwenden Sie in der Benutzerkonfiguration von Codex dessen OTEL-Einstellungen:
 
     ```toml
     [otel]
@@ -81,10 +81,10 @@ Für einen manuell konfigurierten Agent verwende dessen eigene Einstellungen zur
     exporter = { otlp-http = { endpoint = "https://app.befailproof.ai/otel/v1/logs", protocol = "json", headers = { Authorization = "Bearer <key>" } } }
     ```
 
-    Gesprächsinhalte von Codex befinden sich in den Logs; interne Runtime-Traces und Metriken sollten deaktiviert bleiben. Codex verwendet den vollständigen Endpunkt, den du angibst. Setze `log_user_prompt` auf `false`, um Prompts auszuschließen; der Setup-Befehl behält ein explizites `false` bei.
+    Codex-Gesprächsinhalte befinden sich in den Logs; interne Laufzeit-Traces und Metriken sollten deaktiviert bleiben. Codex verwendet den von Ihnen angegebenen vollständigen Endpunkt. Setzen Sie `log_user_prompt` auf `false`, um Prompts nicht zu erfassen; der Setup-Befehl behält ein explizit gesetztes `false` bei.
   </Tab>
   <Tab title="Gemini CLI">
-    Verwende die Telemetrie-Einstellungen von Gemini mit dem lokalen Relay:
+    Verwenden Sie die Telemetrieeinstellungen von Gemini zusammen mit dem lokalen Relay:
 
     ```json
     {
@@ -99,10 +99,10 @@ Für einen manuell konfigurierten Agent verwende dessen eigene Einstellungen zur
     }
     ```
 
-    Gemini CLI wird von `failproofai otel enable` nicht unterstützt. Konfiguriere es manuell mit einem eigenen authentifizierten Collector. Setze `logPrompts` auf `false`, um keine Prompts zu erfassen.
+    Gemini CLI wird von `failproofai otel enable` nicht unterstützt. Konfigurieren Sie es manuell mit einem eigenen authentifizierten Collector. Setzen Sie `logPrompts` auf `false`, um keine Prompts zu erfassen.
   </Tab>
   <Tab title="Copilot in VS Code">
-    Verwende diese VS Code-Benutzereinstellungen:
+    Verwenden Sie diese VS Code-Benutzereinstellungen:
 
     ```json
     {
@@ -113,18 +113,28 @@ Für einen manuell konfigurierten Agent verwende dessen eigene Einstellungen zur
     }
     ```
 
-    Führe `failproofai otel enable copilot` aus, um das authentifizierte Relay zu aktivieren. Setze `captureContent` auf `false`, um Inhalte auszulassen.
+    Führen Sie `failproofai otel enable copilot` aus, um den authentifizierten Relay zu aktivieren. Setzen Sie `captureContent` auf `false`, um Inhalte auszulassen.
   </Tab>
 </Tabs>
 
 ## Setup prüfen oder rückgängig machen
+
+Der Relay behält Telemetriedaten bei vorübergehenden Netzwerk- und Serverausfällen und
+wiederholt die Übertragung nach der Wiederherstellung. Eine dauerhafte `400`-Ablehnung – einschließlich
+eines Ereignisses, das zu groß zum Speichern ist – erfordert eine Korrektur der Nutzlast. Der Relay
+behält den abgelehnten Batch zur Überprüfung bei, anstatt ihn wiederholt zu senden.
+
+Nach einem `401` oder `403` ersetzen Sie das Credential durch einen Schlüssel mit der Berechtigung `events:add`
+für dieselbe Organisation. Eine erneute Verbindung sendet abgelehnte OTLP-Exporte aufgrund ungültiger Credentials
+nicht automatisch erneut; bitten Sie Ihren Operator, diese Batches wiederherzustellen.
+Bewahren Sie diese in ihrer ursprünglichen Organisation auf.
 
 ```bash
 failproofai otel status
 failproofai otel disable all
 ```
 
-Der Status unterscheidet zwischen von Failproof AI verwalteten Einstellungen und anderweitig konfigurierter Telemetrie. Deaktivieren stellt die vorherigen verwalteten Einstellungen und die frühere Transkript-Upload-Einstellung des Agents wieder her.
+Status unterscheidet zwischen von FailproofAI verwalteten Einstellungen und anderweitig konfigurierter Telemetrie. Disable stellt die vorherigen verwalteten Einstellungen und die frühere Transkript-Upload-Einstellung des Agents wieder her.
 
 <Card title="OpenTelemetry CLI" href="/de/reference/otel" icon="terminal">
   Befehlsoptionen, lokales Relay-Setup und Fehlerbehebung.

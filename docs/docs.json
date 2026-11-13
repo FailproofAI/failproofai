@@ -446,7 +446,8 @@
                 "pages": [
                   "zh/reference/jev",
                   "zh/reference/jev-evaluations",
-                  "zh/reference/jev-providers"
+                  "zh/reference/jev-providers",
+                  "zh/reference/jev-cloud"
                 ]
               },
               {
@@ -644,8 +645,7 @@
                 "pages": [
                   "ja/reference/jev",
                   "ja/reference/jev-evaluations",
-                  "ja/reference/jev-providers",
-                  "ja/reference/jev-cloud"
+                  "ja/reference/jev-providers"
                 ]
               },
               {
@@ -781,7 +781,6 @@
               {
                 "group": "Get a policy",
                 "pages": [
-                  "ko/policies/authority",
                   "ko/policies/editor",
                   "ko/policies/packs"
                 ]
@@ -843,8 +842,7 @@
                 "pages": [
                   "ko/reference/jev",
                   "ko/reference/jev-evaluations",
-                  "ko/reference/jev-providers",
-                  "ko/reference/jev-cloud"
+                  "ko/reference/jev-providers"
                 ]
               },
               {
@@ -1223,6 +1221,7 @@
                   "pt-br/reference/overview",
                   "pt-br/reference/harnesses",
                   "pt-br/reference/custom-agents",
+                  "pt-br/reference/custom-agents-typescript",
                   "pt-br/reference/evaluator-sdk",
                   "pt-br/reference/policy-sdk",
                   "pt-br/reference/self-hosting"
@@ -1377,6 +1376,7 @@
               {
                 "group": "Get a policy",
                 "pages": [
+                  "de/policies/authority",
                   "de/policies/editor",
                   "de/policies/packs"
                 ]

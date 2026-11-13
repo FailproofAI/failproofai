@@ -1,61 +1,61 @@
 ---
-title: "Produktanalysen"
-description: "Die Nutzungstelemetrie, die Failproof AI Cloud über sich selbst sendet, was niemals erfasst wird und wie sie deaktiviert werden kann."
+title: "Produktanalyse"
+description: "Die Nutzungstelemetrie, die Failproof AI Cloud über sich selbst sendet, was niemals erfasst wird und wie man sie deaktiviert."
 icon: "chart-no-axes-column"
 ---
 
-Failproof AI Cloud sendet Nutzungstelemetrie **über die Software selbst** an ihre Betreiber. Daten Ihrer Agenten werden dabei niemals übermittelt. Bei einer selbst gehosteten Installation ist die Telemetrie standardmäßig aktiviert und kann deaktiviert werden.
+Failproof AI Cloud sendet Nutzungstelemetrie **über die Software selbst** an ihre Entwickler. Sie enthält niemals Daten Ihrer Agenten. Bei einer selbst gehosteten Installation ist sie standardmäßig aktiviert und kann deaktiviert werden.
 
 ## Was erfasst wird
 
-Jedes Ereignis enthält fünf Dimensionen und keinerlei personenidentifizierende Informationen:
+Jedes Ereignis enthält fünf Dimensionen und keine personenbezogenen Daten:
 
 | Dimension | Beispiel | Bedeutung |
 | --- | --- | --- |
 | `product` | `agenteye` | Welches Produkt das Ereignis gesendet hat |
 | `component` | `dashboard`, `server`, `cli` | Welcher Teil des Produkts das Ereignis gesendet hat |
 | `app_version` | `0.0.1-beta.81` | Die von Ihnen ausgeführte Build-Version |
-| `deployment_kind` | `self_hosted` | Ob es sich um eine Kundeninstallation, unsere Demo, unser QA oder einen Entwicklungsrechner handelt |
+| `deployment_kind` | `self_hosted` | Ob es sich um eine Kundeninstallation, unsere Demo, unser QA oder eine Entwicklermaschine handelt |
 | `org_id` | eine UUID | In welcher Organisation die Aktion stattgefunden hat, als opaker Bezeichner |
 
-Darüber hinaus zeichnen Ereignisse auf, **was genutzt wurde, niemals was darin enthalten war**: Welche Seite aufgerufen wurde (als Routenmuster wie `/:org/sessions/:id`, niemals die echte URL), wie viele Filter welcher Art angewendet wurden, ob eine Aktion erfolgreich war und wie lange sie gedauert hat.
+Darüber hinaus zeichnen Ereignisse auf, **was verwendet wurde, niemals dessen Inhalt**: welche Seite aufgerufen wurde (als Routenmuster wie `/:org/sessions/:id`, niemals die echte URL), wie viele Filter welcher Art angewendet wurden, ob eine Aktion erfolgreich war und wie lange sie dauerte.
 
-Die Slack-App erfasst Workspace-Verbindungen und -Trennungen, Kontoverknüpfungen, gestellte Fragen, veröffentlichte Diagramme, Genehmigungsentscheidungen und Fehler nach fester Kategorie. Es werden niemals Slack-Workspace-, Benutzer- oder Kanal-IDs, E-Mail-Adressen, Fragen, Antworten, SQL oder Tokens erfasst.
+Die Slack-App erfasst Workspace-Verbindungen und -Trennungen, Kontoverknüpfungen, gestellte Fragen, gepostete Diagramme, Genehmigungsentscheidungen und Fehler nach einer festen Kategorie. Sie enthält niemals Slack-Workspace-, Benutzer- oder Kanal-IDs, E-Mail-Adressen, Fragen, Antworten, SQL oder Tokens.
 
 ### Der Name Ihrer Organisation
 
-Neben der opaken `org_id` speichern wir einmalig den Namen Ihrer Organisation, den URL-Slug und die Dashboard-Adresse – in einem Organisationsdatensatz, nicht in jedem Ereignis. So können wir erkennen, zu welchem Konto ein Muster gehört, wenn wir die Nutzung analysieren oder ein von Ihnen gemeldetes Problem untersuchen. Dies ist die einzige identifizierende Information, die das Produkt über Sie sendet.
+Neben der opaken `org_id` erfassen wir den Namen Ihrer Organisation, den URL-Slug und die Dashboard-Adresse einmalig – in einem Organisationsdatensatz und nicht in jedem einzelnen Ereignis. So können wir erkennen, welchem Konto ein Muster zuzuordnen ist, wenn wir die Nutzung analysieren oder ein von Ihnen gemeldetes Problem untersuchen. Dies ist die einzige identifizierende Information, die das Produkt über Sie sendet.
 
 ### Ihre Nutzungsgesamtwerte
 
-Der Server meldet die abgerechneten Nutzungsgesamtwerte jeder Organisation – dieselben Zahlen, die Sie auf der Nutzungsseite sehen. Es handelt sich ausschließlich um Zählwerte: Ereignisse, Sitzungen, Agenten, Umgebungen, Evaluierungsläufe, Scores, Audit-Läufe, gespeicherte Abfragen, Dashboards, Benachrichtigungen, Issues, API-Schlüssel und Mitglieder, zuzüglich der Datumsangaben des Abrechnungszeitraums. Sie enthalten keine Bezeichner, Namen oder Abfragetexte und werden unabhängig davon übermittelt, ob jemand angemeldet ist.
+Der Server meldet die gemessenen Nutzungsgesamtwerte jeder Organisation – dieselben Zahlen, die Sie auf der Nutzungsseite sehen. Es handelt sich ausschließlich um Zählwerte: Ereignisse, Sitzungen, Agenten, Umgebungen, Evaluierungsläufe, Bewertungen, Audit-Läufe, gespeicherte Abfragen, Dashboards, Benachrichtigungen, Probleme, API-Schlüssel und Mitglieder sowie die Datumsangaben des Messzeitraums. Sie enthalten keine Bezeichner, Namen oder Abfragetexte und werden unabhängig davon übermittelt, ob jemand angemeldet ist.
 
 ## Was niemals erfasst wird
 
 - **Keine Prompts, Modellantworten oder Ereignisinhalte** – weder als Text, Präfix noch als Hash
 - **Keine Sitzungs-, Agenten- oder Trace-Bezeichner**
 - **Keine Evaluator-Score-Namen**
-- **Keine Fehlermeldungen, Ausnahmetexte oder Antworttexte** – nur ein Statuscode und eine Kategorie aus einer festen Liste
-- **Keine Tool-Argumente, SQL- oder Abfragetexte**
+- **Keine Fehlermeldungen, Exception-Texte oder Antwort-Bodies** – nur ein Statuscode und eine Kategorie aus einer festen Liste
+- **Keine Tool-Argumente, SQL oder Abfragetexte**
 - **Keine Details zu verbundenen Apps.** Das Verbinden oder Widerrufen eines MCP-Clients sendet höchstens eine Berechtigungsanzahl, niemals den App-Namen oder ein Token
 - **Keine E-Mail-Adressen**
 - **Keine Referrer-URLs oder Query-Strings**
-- **Keine Bildschirmaufzeichnungen, DOM-Captures oder Klick- und Cursorverfolgung**
+- **Keine Bildschirmaufzeichnung, DOM-Erfassung oder Klick- und Cursornachverfolgung**
 
 ## Deaktivierung bei einer selbst gehosteten Installation
 
-Setzen Sie `DO_NOT_TRACK=1` sowohl auf dem Dashboard als auch auf dem Server. Da beide unabhängig voneinander entscheiden, meldet der jeweils andere weiterhin Daten, wenn die Einstellung nur auf einem gesetzt wird. Starten Sie den Server neu, damit die Änderung wirksam wird.
+Setzen Sie `DO_NOT_TRACK=1` sowohl auf dem Dashboard als auch auf dem Server. Beide entscheiden unabhängig voneinander, sodass eine Einstellung nur auf einer Seite dazu führt, dass die andere weiterhin Telemetrie sendet. Starten Sie den Server neu, damit die Änderung wirksam wird.
 
-Die README Ihrer Version beschreibt die weiteren Opt-out-Einstellungen und erläutert, wie Sie überprüfen können, ob die Telemetrie deaktiviert ist.
+Die README-Datei Ihres Releases beschreibt die weiteren Opt-out-Einstellungen und wie Sie überprüfen können, ob die Telemetrie deaktiviert ist.
 
 ## Ein einzelner Ping beim Opt-out
 
-Wenn Sie sich über eine Produkteinstellung statt über `DO_NOT_TRACK` abmelden, kann das Dashboard **einen einzelnen anonymen Ping** senden, der dies mit einer Wahrscheinlichkeit von 1 zu 1.000 pro Prozessstart erfasst. Damit erfahren wir, wie viele Betreiber die Telemetrie deaktivieren. Er enthält keine Bezeichner: keine Organisation, keinen Benutzer, keinen Hostnamen, keine URL oder IP – nur Produkt, Komponente, Version, Deployment-Art und Grund. Ein abgemeldeter Server sendet nichts.
+Wenn Sie das Opt-out über eine Produkteinstellung statt über `DO_NOT_TRACK` vornehmen, sendet das Dashboard möglicherweise **einen anonymen Ping**, der dies erfasst – mit einer Wahrscheinlichkeit von 1 zu 1000 pro Prozessstart. Er teilt uns mit, wie viele Betreiber die Telemetrie deaktivieren. Er enthält keine Bezeichner: keine Organisation, keinen Benutzer, keinen Hostnamen, keine URL und keine IP-Adresse – nur Produkt, Komponente, Version, Deployment-Art und Grund. Ein Server im Opt-out-Modus sendet nichts.
 
-Dieser Ping wird niemals gesendet, wenn Sie `DO_NOT_TRACK` verwenden. Daher ist dies die empfohlene Einstellung, wenn Ihre Richtlinien jegliche ausgehende Telemetrie untersagen.
+Er wird niemals gesendet, wenn Sie `DO_NOT_TRACK` verwenden. Daher ist dies die empfohlene Einstellung, wenn Ihre Richtlinien jegliche ausgehende Telemetrie untersagen.
 
 ## Wohin die Daten gehen
 
-An PostHog (`us.i.posthog.com`) über TLS auf Port 443. Es handelt sich um einen einzigen Hostnamen, den Sie daher auch mit einer einzelnen Egress-Regel sperren können.
+Zu PostHog (`us.i.posthog.com`) über TLS auf Port 443. Es handelt sich um einen einzigen Hostnamen, den Sie auch mit einer einzigen Egress-Regel blockieren können.
 
-Informationen dazu, wie wir mit personenbezogenen Daten im weiteren Sinne umgehen, finden Sie in der [Datenschutzerklärung](https://befailproof.ai/privacy/).
+Informationen zum allgemeinen Umgang mit personenbezogenen Daten finden Sie in der [Datenschutzrichtlinie](https://befailproof.ai/privacy/).

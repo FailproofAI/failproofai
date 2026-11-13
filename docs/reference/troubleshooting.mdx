@@ -4,6 +4,12 @@ description: "Diagnose missing sessions, missing policies, failed delivery, and 
 icon: "wrench"
 ---
 
+Temporary network failures and HTTP 408, 429, or 5xx responses leave telemetry
+eligible for automatic retry, even after a long outage. The daemon preserves the
+batch until delivery is acknowledged. An `event_too_large` rejection needs a
+smaller event payload before retrying. Files already marked `.poison` need
+manual recovery; updating does not automatically resend them.
+
 <AccordionGroup>
   <Accordion title="No sessions appear in Cloud">
     <Tabs>

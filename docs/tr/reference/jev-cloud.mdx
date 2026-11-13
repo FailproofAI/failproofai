@@ -1,146 +1,146 @@
 ---
 title: "FailproofAI Cloud aracılığıyla Jev"
-description: "Canlı Jev politikası incelemesi için bulut makine anahtarları, bağlantı durumu, limitler ve başarısızlık davranışı."
+description: "Bulut makine anahtarları, bağlantı durumu, limitler ve canlı Jev ilke incelemesi için hata davranışı."
 icon: "cloud"
 ---
 
-Bu, [Jev politikaları](/tr/policies/jev) için Cloud rota referansıdır. TypeSafe'in sınıflandırıcısı olan Jev, her araç çağrısını tam olarak istediğinize karşı okur ve politikalarınızla birlikte yanıt verir, asla onların yerine değil. **FailproofAI Cloud** aracılığıyla, bağlı bir makine Jev'i zaten bağlanılan aynı anahtarla kullanır: TypeSafe hesabı yok, ikinci anahtar yok, yapılandırılacak uç nokta yok. Her çağrı, kuruluşunuzun mevcut plan payından ücretlendirilir.
+Bu, [Jev ilkeleri](/tr/policies/jev) için Bulut rota referansıdır. Jev, TypeSafe'in sınıflandırıcısı, her araç çağrısını tam olarak ne istediğinize karşı okur ve ilkelerinizin yanında cevap verir, asla yerine değil. **FailproofAI Cloud** aracılığıyla, bağlantılı bir makine Jev'i zaten bağlandığı aynı anahtarla kullanır: TypeSafe hesabı yok, ikinci anahtar yok, yapılandırılacak uç nokta yok. Her çağrı kuruluşunuzun mevcut plan limitine tahsil edilir.
 
-Jev'in yaptığı her şey [kendi anahtarını getir kurulumundan](/tr/reference/jev-providers) değişmezdir: sert politikalar nihai kalır, gözden geçirilebilir bir politikanın inkarı yalnızca Jev tam olarak o endişe hakkında sorulduğunda temizlenir ve herhangi bir başarısızlık bu çağrı için regex sonucuna geri döner.
+Jev'in yaptığı her şey [kendi anahtarınızı getir kurulumundan](/tr/reference/jev-providers) değişmez: katı ilkeler son kalır, gözden geçirilebilir bir ilkenin reddedilmesi yalnızca Jev tam olarak o endişe hakkında sorulduğunda temizlenir ve herhangi bir hata o çağrı için normal ifade sonucuna geri döner.
 
 <Note>
-**failproofai 1.0.8-beta.0** veya daha yeni sürüm gereklidir. 1.0.7'de Jev yoktur, hatta 1.0.7 beta sürümlerinin üstünde sıralanmasına rağmen. Jev yapılandırması olmadan hiçbir şey değişmez: kancalar normal olarak regex politikalarını çalıştırır.
+**failproofai 1.0.8-beta.0** veya sonrası gerekir. 1.0.7'de Jev yok, 1.0.7 betalarının üzerine sıralansa da. Jev config olmadan hiçbir şey değişmez: kancalar normal ifade ilkelerini her zaman olduğu gibi çalıştırır.
 </Note>
 
 ## Başlamadan önce
 
-Failproof AI'ı aracınızın çalıştığı makinede yükleyin ve kancalarını [desteklenen bir araçkütüphaneye](/tr/reference/harnesses) bağlayın. Sıfırdan başlıyorsanız, [hızlı başlangıç](/tr/start/quickstart) bölümü kanca kurulumuna kadar izleyin. Yüklenmiş CLI'ı `failproofai --version` ile kontrol edin; Jev'den önceki bir sürüme sahipseniz güncelleyin. Ayrıca kuruluşunuzun **Yönetim → Anahtarlar** sayfasına erişim gerekir.
+Failproof AI'ı aracınızın çalıştığı makineye yükleyin ve kancalarını [desteklenen bir karneye](/tr/reference/harnesses) takın. Sıfırdan başlıyorsanız, kanca kurulumuna kadar [hızlı başlangıç](/tr/start/quickstart) izleyin. CLI'ı `failproofai --version` ile kontrol edin; Jev'den önceki sürümleri güncelleyin. Ayrıca kuruluşunuzun **Administration → Keys** sayfasına erişmeniz gerekir, makine anahtarı oluşturmak için.
 
-Jev, adlandırılmış araç çağrılarını `PreToolUse` veya `PermissionRequest` kapısında inceler. Oturumda her olayı incelemez. Jev'in bir politika inkarını temizlediğini görmek için [gözden geçirilebilir](/tr/policies/authority) olarak işaretlenmiş yüklenmiş bir politika gerekir; diğer tüm politika inkarları nihai kalır.
+Jev, `PreToolUse` veya `PermissionRequest` kapısında adlandırılmış araç çağrılarını inceler. Oturumda her olayı incelemez. Jev'in bir ilke reddini temizlediğini görmek için [gözden geçirilebilir](/tr/policies/authority) olarak işaretlenen yüklü bir ilkeye ihtiyacınız var; diğer tüm ilke redleri son kalır.
 
-## Etkinleştir
+## Açın
 
-1. **Jev ile bir anahtar oluşturun.** FailproofAI Cloud panosunda **Yönetim → Anahtarlar → Anahtar oluştur** açın ve **makine** ön ayarını seçin. Bir makinenin ihtiyaç duyduğu üç izni verir: `events:add` (etkinlik gönderin), `policies:pull` (politika alın) ve `jev:evaluate` (Jev, kuruluşunuzun planından ücretlendirilir). Bir anahtar diğer ikisi olmadan `jev:evaluate` taşıyamaz.
-2. **Makinenizi bu anahtarla bağlayın.** Komut isteminde tek seferlik sırrını okuyun, ardından tam kurulum komutunu çalıştırın:
+1. **Jev ile bir anahtar oluşturun.** FailproofAI Cloud panosunda **Administration → Keys → Create key** açın ve **machine** ön ayarını seçin. Bir makinenin ihtiyaç duyduğu üç izni verir: `events:add` (etkinlik gönder), `policies:pull` (ilkeleri al) ve `jev:evaluate` (Jev, kuruluşunuzun planına tahsil edilir). Bir anahtar `jev:evaluate` olmadan diğer ikisini taşıyamaz.
+2. **Makineyi o anahtarla bağlayın.** Bir istemde tek seferlik gizli dizisini okuyun, sonra tam kurulum komutunu çalıştırın:
 
    ```bash
    read -rs FAILPROOFAI_CLOUD_TOKEN && export FAILPROOFAI_CLOUD_TOKEN
    failproofai config
    ```
 
-   `failproofai config` daemon'u kurar, bulduğu aracı CLI'larına kancalar bağlar ve makinenizi bağlar. Ortam değişkeni anahtarı komut bağımsız değişkenlerinden ve kabuk geçmişinden uzak tutar. Araçkütüphaneniz daha sonra yüklendiyse, [açıkça bağlayın](/tr/start/quickstart).
+   `failproofai config` daemon'u yükler, bulduğu ajan CLI'ları için kancaları takır ve makineyi bağlar. Ortam değişkeni anahtarı komutun bağımsız değişkenlerinin ve kabuk geçmişinizin dışında tutar. Karnesiniz daha sonra yüklendiyse, [onu açıkça takın](/tr/start/quickstart).
 
-   Kuruluşunuz barındırılan yerine kendi FailproofAI Cloud'unu çalıştırıyorsa adresini ekleyin: `--url https://<pano ana bilgisayarınız>` (veya `FAILPROOFAI_CLOUD_URL` dışa aktarın). Bunu yapmadan anahtar barındırılan hizmete karşı kontrol edilir ve bağlantı başarısız olur. Bu ana bilgisayarın sertifikası özel bir CA'dan geliyorsa, CA'yı makinenin sistem güven deposuna yükleyin (örneğin `update-ca-certificates` ile), yalnızca `NODE_EXTRA_CA_CERTS` içine değil: olayları gönderen ve politika çeken daemon sistem deposunu okur. Bkz. [Sorun Giderme](/tr/reference/troubleshooting).
+   Kuruluşunuz barındırılan olanın yerine kendi FailproofAI Cloud'unu çalıştırıyorsa, adresini ekleyin: `--url https://<your dashboard host>` (veya `FAILPROOFAI_CLOUD_URL` dışa aktarın). Olmadan anahtar barındırılan servise karşı kontrol edilir ve bağlantı başarısız olur. Eğer bu ana bilgisayarın sertifikası özel bir CA'dan geliyorsa, CA'yı makinenin sistem güven deposuna yükleyin (örneğin `update-ca-certificates` ile), yalnızca `NODE_EXTRA_CA_CERTS` içinde değil: olaylar gönderen ve ilkeleri çeken daemon sistem deposunu okur. [Sorun Giderme](/tr/reference/troubleshooting) bölümünü görün.
 
-Hepsi bu kadar. Bağlantı anahtarı depolar ve makine **henüz** Jev yapılandırmasına sahip olmadığında, FailproofAI Cloud için bir yapılandırma yazar. Makinenin ilk dağıtımından itibaren (yaklaşık 30 s içinde) FailproofAI Cloud modu belirler: bir Jev politikası buna dağıtılırken `enforce`, hiç olmazsa `off` ([Modu kimse belirler?](#who-sets-the-mode) bölümüne bakın). Çıktı bunu söyler:
+Bu kadar. Bağlanmak anahtarı saklar ve makineye **henüz** Jev config olmadığında, FailproofAI Cloud için bir tane yazar. Makinenin ilk dağıtımından (yaklaşık 30 s içinde) FailproofAI Cloud modu ayarlar: Jev ilkesi ona dağıtılırken `enforce`, hiçbiri olmadığında `off` ([Modu kim ayarlar](#modu-kim-ayarlar) bölümünü görün). Çıktı bunu söyler:
 
 ```text
   Jev       configured through FailproofAI Cloud; waiting for FailproofAI Cloud's Jev mode, which arrives with this machine's first deployment (within ~30 s) and decides.
 ```
 
-FailproofAI Cloud dağıtımlarının çalıştırdığı kontroller Cloud'da çalışır. Makinede kendi kontrollerinizi eklemek için bir paket yükleyin:
+FailproofAI Cloud'un dağıttığı kontrolleri Bulut'ta çalıştırır. Makineye kendi kontrolleri eklemek için bir paket yükleyin:
 
 ```bash
 failproofai policies add FailproofAI/jev-policies
 ```
 
-**`--no-transcripts` ile bağlantı Jev'i açmaz.** Jev her kontrol edilen araç çağrısını ve yakın geçmiş istemi FailproofAI Cloud'a gönderir, bu da yalnızca karar göndermeyi istenen bir bağlantıdan daha fazlasıdır. Anahtar yine de depolanır ve çıktı Jev'in kullanılabilir olduğunu ve nasıl açılacağını söyler:
+**`--no-transcripts` ile, bağlanmak Jev'i açmaz.** Jev, kontrol edilen her araç çağrısını ve son istemi FailproofAI Cloud'a gönderir, bu yalnızca kararlar bağlantısından daha fazlasıdır. Anahtar yine de saklanır ve çıktı Jev'in mevcut olduğunu ve nasıl açılacağını söyler:
 
 ```bash
 failproofai jev setup --provider failproofai
 ```
 
-Ayrıca FailproofAI Cloud aracılığıyla Jev'i **kapatır**. FailproofAI Cloud aracılığıyla Jev çalıştıran bir `jev.json` (transkriptler açıkken önceki bir bağlantı tarafından bırakılan) kaldırılır, `config --disconnect` kullandığı kuralla aynı şekilde ve çıktı Jev'in bu makinede FailproofAI Cloud aracılığıyla kapatıldığını söyler. Kendi Jev uç noktanız için bir `jev.json` olduğu gibi bırakılır ve kapattığınız (`--mode off`) bir FailproofAI Cloud da öyle.
+Ayrıca FailproofAI Cloud **aracılığıyla Jev'i kapatır.** FailproofAI Cloud'u çalıştıran bir `jev.json` (transkriptler açıkken daha önceki bir bağlantı tarafından bırakılan), `config --disconnect`'in kullandığı aynı kurallar tarafından kaldırılır ve çıktı Jev'in bu makineyi Cloud üzerinden kapalı tutuğunu söyler. Kendi Jev uç noktanız için bir `jev.json` olduğu gibi bırakılır ve kapattığınız bir FailproofAI Cloud de (`--mode off`) öyle.
 
 <Warning>
-Bağlantı **hiçbir zaman mevcut** `~/.failproofai/jev.json` dosyasının üzerine yazmaz. Zaten kendi Jev uç noktanızı kullanıyorsanız, bunu kullanmaya devam eder ve çıktı dosyanın yapılandırıldığı şekilde bırakıldığını söyler — ve bu dosya Jev'i kapalı bıraktığında (reddedilmiş veya kapatılmış), bunu ve nasıl düzeltileceğini söyler. Bu makinenin FailproofAI Cloud'a geçmesi için `failproofai jev setup --provider failproofai` çalıştırın.
+Bağlanmak **asla mevcut** `~/.failproofai/jev.json` dosyasını üzerine yazmaz. Zaten kendi Jev uç noktanızı kullanıyorsanız, kullanılmaya devam eder ve çıktı dosyanın yapılandırıldığı gibi bırakıldığını söyler — ve bu dosya Jev'i kapalı bıraktığında (reddedildi veya kapatıldı), bunu ve nasıl düzeltileceğini söyler. Bu makineyi FailproofAI Cloud'a geçirmek için `failproofai jev setup --provider failproofai` çalıştırın.
 </Warning>
 
-## Modu kimse belirler?
+## Modu kim ayarlar
 
-FailproofAI Cloud'a bağlı bir makinede, **FailproofAI Cloud Jev modunu belirler**; makinede hiçbir şey değildir:
+FailproofAI Cloud'a bağlı bir makinede, **FailproofAI Cloud, Jev modunu ayarlar**; makinedeki hiçbir şey yapmaz:
 
-- bir Jev (veya regex + Jev) politikası makinaya dağıtılırken `enforce`: bu politikaların hedef aldığı bir aracıdan her kontrol edilen araç çağrısı FailproofAI Cloud'a gider, bu da kontrolleri orada yüklenmiş paketlerin kontrolleriyle birlikte sorar. Cloud Jev politikasının hedef almadığı bir aracıdan gelen, kendi paket kontrolü olmayan bir çağrı hiç gönderilmez. `enforce` içinde, Jev'in kendi inkar kontrolleri çağrıları engeller ve inceledikleri regex kararlarını temizler.
-- hiç olmadığında `off`: `jev.json` ne söylerse söylesin hiç Jev olmaz.
+- Makineye herhangi bir Jev (veya normal ifade + Jev) ilkesi dağıtılırken `enforce`: bu ilkelerin hedeflediği bir aracıdan gelen kontrol edilen her araç çağrısı FailproofAI Cloud'a gider, bu orada yüklü paketlerin kontrolleri ile beraber kontrolleri sorar. Hiçbir Bulut Jev ilkesinin hedeflediği olmayan bir aracıdan gelen çağrı, kendisinin de bir paket kontrolü olmadığında hiç gönderilmez. `enforce` modunda, Jev'in kendi reddetme kontrolleri çağrıları engellemekte ve kontrol ettikleri normal ifade kararlarını temizlemekte tutar.
+- Hiçbiri olmadığında `off`: Jev'in hiçbiri yok, `jev.json` ne söylerse söylesin.
 
-Jev politikasını hareket etmeden önce denemek için, **observe** etkisiyle dağıtın: kontrolleri hala sorulur ve ne yapacakları, politika sayfasında **yapardı** olarak kaydedilir, ancak asla bir çağrıyı engeller ve asla birini temizlemez. `failproofai jev setup --mode` ve panonun **Ayarlar → Jev** modu Cloud'un tarafından yönetildiğini söyleyen ve hiçbir şey değiştirilmeyen anahtarları. `jev.json` başka bir sağlayıcı adlı olsa bile Cloud'un kontrolleri için kullanılmaz. `failproofai config --disconnect` Jev'i makinenin kendi `jev.json` dosyasına geri verir.
+Jev ilkesini harekete geçmeden önce denemek için, bunu **observe** etkisiyle dağıtın: kontrolleri yine sorulur ve ne yapacaklarına dair bilgi ilke sayfasında **would-have** olarak kaydedilir, ama hiçbir çağrıyı asla engellemez ve asla temizlemez. `failproofai jev setup --mode` ve panonun **Settings → Jev** geçişi modu FailproofAI Cloud tarafından yönetildiğini söyler ve hiçbir şeyi değiştirmez. `jev.json` Cloud'un kontrolleri için kullanılmaz, başka bir sağlayıcı belirtse bile. `failproofai config --disconnect` Jev'i makinenin kendi `jev.json` öğesine geri verir.
 
-`failproofai jev status` sonra `Jev checks run on FailproofAI Cloud (mode: enforce)` diyor. Ayrıca her `both` politikayı inceleyen kontrolleri adlandırır. Filo sayfası, modu olan bir makinenin neden soramayacağını gösterir:
+`failproofai jev status` sonra `Jev checks run on FailproofAI Cloud (mode: enforce)` der. Ayrıca her `both` ilkesini inceleyen kontrolleri adlandırır. Filo sayfası, modu olan bir makinenin neden sorgulayamayacağını gösterir:
 
-- `transcripts_disabled`: makine `--no-transcripts` ile bağlandı, bu hiçbir zaman Jev'i açmaz.
+- `transcripts_disabled`: makine `--no-transcripts` ile bağlandı, bu asla Jev'i açmaz.
 - `jev_unconfigured`: makinenin anahtarı `jev:evaluate` taşımaz.
-- `jev_rate_limited`: FailproofAI Cloud kuruluşun Jev hız limitini için makinenin bazı çağrılarını reddetti ve bu çağrılar yalnızca regex politikaları tarafından kararlaştırıldı.
-- `jev_unavailable`: birkaç çağrı arka arkaya başarısız oldu, bu nedenle makine bir defada bir dakika boyunca FailproofAI Cloud'un Jev'ini atlar. Kendi başına yeniden dener.
+- `jev_rate_limited`: FailproofAI Cloud, makinenin kuruluşun Jev hız limitinden bazı çağrılarını reddetti ve bu çağrılar yalnızca normal ifade ilkeleri tarafından kararlaştırıldı.
+- `jev_unavailable`: arka arkaya birkaç çağrı başarısız oldu, bu nedenle makine FailproofAI Cloud'un Jev'ini bir defada bir dakika süreyle atlıyor. Kendi başına yeniden dener.
 
-FailproofAI Cloud 5 saniye içinde yanıt vermezse, regex politikaları yalnız karar verir, herhangi bir Jev kesintisi için olduğu gibi. Arka arkaya 3 başarısızlıktan sonra makine bir dakikalık bir süre boyunca sormayı bırakır, bu nedenle Cloud kesintisi her araç çağrısını yavaşlatmaz.
+FailproofAI Cloud 5 saniye içinde cevap vermezse, normal ifade ilkeleri yalnız karar verir, herhangi bir Jev kesintisi durumunda olduğu gibi. Arka arkaya 3 hatadan sonra makine bir defada bir dakika süreyle sormayı durdurur, bu nedenle Bulut kesintisi her araç çağrısını yavaşlatmaz.
 
-Bir oturum duraklatması (`failproofai config --pause`) FailproofAI Cloud'un Jev kontrollerini durdurmaz, tıpkı bulut yönetimli politikaları durdurmadığı gibi. Makinede yüklenmiş paketlerin Jev kontrollerini duraklatır.
+Oturum duraklatma (`failproofai config --pause`) FailproofAI Cloud'un Jev kontrollerini durdurmaz, tıpkı Bulut tarafından yönetilen ilkeleri durdurmadığı gibi. Makineye yüklü paketlerin Jev kontrollerini duraklatır.
 
-## Ne yaptığını kontrol et
+## Ne yaptığını kontrol edin
 
 ```bash
 failproofai jev status
 failproofai jev test
 ```
 
-`status` sağlayıcıyı **FailproofAI Cloud** olarak gösterir, makinenin bağlandığı Cloud ana bilgisayarı, modu ve anahtar kaynağını **FailproofAI Cloud bağlantısı** olarak gösterir, asla anahtarı değil. Bir FailproofAI Cloud `jev.json` yerindeyken Jev çalışamadığında, neden olduğunu söyler:
+`status` sağlayıcıyı **FailproofAI Cloud** olarak gösterir, makinenin bağlandığı Bulut ana bilgisayarını, modu ve anahtar kaynağını **FailproofAI Cloud connection** olarak, hiçbir zaman anahtarı değil. FailproofAI Cloud `jev.json` hazırsa ama Jev çalışamıyorsa, neden olduğunu söyler:
 
-| `status` söylediği | `status --json` | Anlam |
+| `status` der | `status --json` | Anlamı |
 | --- | --- | --- |
-| **off — bu makinenin FailproofAI Cloud bağlantısı için hiç Jev anahtarı depolanmamıştır** | `key-lacks-jev` | Makine bağlı, ancak onun için hiç Jev anahtarı depolanmamıştır: anahtar `jev:evaluate` eksik veya bağlantı bunu doğrulayamadı. Anahtarın `FAILPROOFAI_CLOUD_TOKEN` içinde olduğu `failproofai config` komutunu yeniden çalıştırın; izin eksikse, bir **makine** anahtarı kullanın. |
-| **off — bu makine FailproofAI Cloud'a bağlı değildir** | `not-connected` | Bu makinede Jev anahtarının ait olduğu FailproofAI Cloud bağlantısı yok. |
+| **off — bu makinenin FailproofAI Cloud bağlantısı için hiçbir Jev anahtarı saklanmadı** | `key-lacks-jev` | Makine bağlı ama hiçbir Jev anahtarı saklanmadı: anahtardan `jev:evaluate` eksik veya bağlantı doğrulayamadı. `FAILPROOFAI_CLOUD_TOKEN` içinde anahtarla `failproofai config` yeniden çalıştırın; izin eksikse, **machine** anahtarı kullanın. |
+| **off — bu makine FailproofAI Cloud'a bağlı değil** | `not-connected` | Bu makinede Jev anahtarının ait olabileceği FailproofAI Cloud bağlantısı yok. |
 
-`failproofai config --disconnect` sonrasında artık FailproofAI Cloud `jev.json` olmaz (kapatıldığı durum tutulur haricinde), bu yüzden `status` basitçe Jev'i kapalı olarak bildirir. `status --json` aynı olguları taşır (`provider: "failproofai"`, `keySource: "cloud"`, `cloudConnected`, `keyCarriesJev`), yapılandırma yok olduğunda veya reddedildiğinde bile. `permissions` her zaman `jev.json`'nindir; `credentials.json` hakkında reddedilme `credentialsPermissions` ekler ve bir komut düzeltiğinde `fix`. `test` bir canlı istek gönderir ve gecikmesini ve yanıt veren Jev sürümünü bildirir. Yanıt kanca zaman aşımından sonra geldiğinde (kancalar `timeout` kaydeder) veya kontrol sorusuna yanlış cevap verdiğinde 1 ile çıkır ve başlığında bunu söyler.
+`failproofai config --disconnect` sonra kapalı olarak değiştirilmediyse (tutulur), hiçbir FailproofAI Cloud `jev.json` kalmadı, bu nedenle `status` Jev'i basitçe kapalı olarak rapor eder. `status --json` aynı gerçekleri taşır (`provider: "failproofai"`, `keySource: "cloud"`, `cloudConnected`, `keyCarriesJev`), config da yokken veya reddedildiğinde. `permissions` her zaman `jev.json` öğesinin değeridir; `credentials.json` hakkında bir reddetme `credentialsPermissions` ekler ve bir komut düzeltirse `fix` ekler. `test` bir canlı istek gönderir ve yanıt gecikmesini ve cevap veren Jev sürümünü rapor eder. Cevap kanca zaman aşımından sonra gelirse (kancalar `timeout` kaydetmesi) veya kontrol sorusunu yanlış cevaplarsa 1 ile çıkar ve başlığında bunu söyler.
 
-Panonun **Ayarlar → Jev** paneli ayrıca **FailproofAI Cloud bağlantısını** gösterir: makinenin hangi kuruluşa rapor verdiği ve anahtarı Jev taşıyıp taşımadığı. Ağ çağrısı olmadan makinenin kendi dosyalarından okunur.
+Panonun **Settings → Jev** paneli ayrıca **FailproofAI Cloud connection** gösterir: makinenin rapor verdiği kuruluş ve anahtarının Jev taşıyıp taşımadığı. Makinenin kendi dosyalarından okunur, ağ çağrısı olmaz.
 
-## Gerçek bir çağrıyı doğrula
+## Gerçek bir çağrıyı doğrulayın
 
-Bağlı aracıda yeni bir oturum başlat. Dosya okuma aracını `README.md` üzerinde kullanmasını ve başlığı raporlamasını iste. Oturumun bu araç çağrısını içerdiğini doğrula, ardından `failproofai jev status` komutunu yeniden çalıştır: son değerlendirilen çağrı sayısı artmalıdır. [Yerel panosunda](/tr/reference/local-dashboard#review-policy-activity) **Politikalar → Etkinlik** açarak bu çağrının Jev kararını ve modunu incele. Cloud'da, kuruluşun **Politikalar** sayfası teslim edilen etkinlik için Jev sonuçlarını gösterir. Gözlem modunda, karar **yapardı** olarak kaydedilir ve politika sonucu yine de çağrıya karar verir. Bir temizleme yalnızca gözden geçirilebilir bir politika eşleştiğinde ve Jev adlı kontrollerini temizlediğinde görünür.
+Kancalı aracıda yeni bir oturum başlatın. Dosya okuma aracısını kullanması ve başlığı rapor etmesi için `README.md` üzerinde sorun. Oturumun bu araç çağrısını içerdiğini doğrulayın, sonra `failproofai jev status` yeniden çalıştırın: son değerlendirilen çağrı sayısı artmalıdır. [Yerel panosunda](/tr/reference/local-dashboard#review-policy-activity) **Policies → Activity** açın o çağrının Jev kararını ve modunu incelemek için. Cloud'da, kuruluşun **Policies** sayfası teslim edilen etkinlik için Jev sonuçlarını gösterir. Gözlem modunda, karar **would-have** olarak kaydedilir ve ilke sonucu yine çağrıya karar verir. Bir temizleme yalnızca gözden geçirilebilir bir ilke eşleştiğinde ve Jev adlandırılmış kontrolleri temizlediğinde görünür.
 
-## Politika sayfasına neler ulaşır
+## İlke sayfasına ne ulaşır
 
-Makine zaten kanca etkinliğini FailproofAI Cloud'a gönderir (`events:add`). Jev açık olduğunda, her kapıyı geçen çağrının kaydı hangi değerlendiricinin çalıştığını, Jev'in ne kararlaştırdığını, hangi politikaları temizlediğini, neden geri döndüğünü, gecikmesini ve yanıt veren modeli de söyler — kararlar, kodlar ve isimler, hiçbir zaman komut veya isteminiz değil. Kuruluşunuzun **Politikalar** sayfasında:
+Makine zaten kanca etkinliğini FailproofAI Cloud'a gönderir (`events:add`). Jev açıkken, her kapılı çağrının kaydı hangi değerlendirici çalıştırıldığını, Jev'in ne karar verdiğini, hangi ilkeleri temizlediğini, geri dönüş sebebini, gecikmesini ve cevap veren modeli de söyler — kararlar, kodlar ve adlar, hiçbir zaman komut veya isteminiz değil. Kuruluşunuzun **Policies** sayfasında:
 
-- Jev'in kendi kararı tarafından kararlaştırılan bir çağrı (enforce modu) **Jev** olarak atfedilir ve karar veren kontrol bir paketten geldiyse, kayıt ayrıca bu paket ve sürümünü adlandırır;
-- gözlem modunda, Jev'in inkarı veya uyarısı gözlemlediğiniz devrülmelerinin yanında **yapardı** olarak görünür;
-- Jev temizlediği veya gözlem modunda temizlemiş olacağı politikalar, politika başına sayılır.
-- Jev'in katıldığı bir karar (bir engel, bir uyarı, bir temizleme veya gözlem modunda yapardı) bulduğu her kontrolü ve o kontrolün ne sonuç verdiğini listeler: karar, neden (`not-detected`, `exempt`, `fired`, `op-requested`, …), kanıtı `p`, `exempt` yanıtı ve her prob'un yanıtı. İzlemek için dağıtılan bir politikanın kontrolü (gözlem) da listelenir, izlenen olarak işaretlenir; asla engel koymaz. Jev olasılıklar ile yanıt verir, düz metinle değil, bu yüzden bedava metin nedeni yok. Düz izinler sayılara toplanır ve bu listeyi taşımazlar.
+- Jev'in kendi kararı tarafından (enforce modu) karar verilen çağrı **Jev** öğesine atfedilir ve karar veren kontrol bir paketten geldiyse, kayıt da bu paketi ve sürümünü adlandırır;
+- gözlem modunda, Jev'in reddetmesi veya uyarısı, gözlemlemekte olduğunuz dağıtımların yanında **would-have** olarak görünür;
+- Jev temizlediği veya gözlem modunda temizlemiş olacağı ilkeler ilke başına sayılır.
+- Jev'in buna katılım aldığı bir karar (bir blok, uyarı, temizleme veya gözlem modunda would-have) sorduğu her kontrolü ve o kontrolün ne sonuclandırdığını listeler: karar, neden (`not-detected`, `exempt`, `fired`, `op-requested`, …), kanıtı `p`, `exempt` cevabı ve her sondanın cevabı. İzlenmek (gözlem) için dağıtılan bir ilkenin kontrolü de listelenir, izlenen olarak işaretlenir; asla engellemez. Jev olasılıklarla cevap verir, düz metinle değil, bu nedenle ücretsiz metin nedeni yoktur. Düz izinler sayılara toplana ve bu listeyi taşımaz.
 
 ## Jev cevap veremediğinde
 
-Bunların her biri bu çağrı için politikalarınızın sonucuna geri döner ve nedeniyle kaydedilir:
+Bunların her biri söylenen nedeniyle o çağrı için ilkelerinizin sonucuna geri döner ve kaydedilir:
 
 | Neden | Sebep |
 | --- | --- |
-| `out-of-credits` | Kuruluşunuz plan payını kullanmıştır. |
-| `http-401`, `http-403` | Anahtar iptal edildi veya `jev:evaluate` taşımaz. Bunu taşıyan bir anahtarla yeniden bağlan. |
-| `http-429` | FailproofAI Cloud kuruluş için Jev'i hız sınırlandırıyor. İstediği bekleme bitene kadar (`Retry-After`, en fazla 60 saniye), makine buna hiçbir şey göndermez ve her çağrı hemen geri döner. Bu şekilde tutulan çağrılar `http-429` olarak veya makinenin kendi hız limiti önce tuttuğunda `rate-limited` olarak kaydedilir. |
-| `http-429` (günlük limit) | Kuruluşunuz günlük Jev çağrılarını kullanmıştır: **UTC günde 10.000**, FailproofAI Cloud'unuzu işleten kişi başka bir limit belirlemiş olmadıkça. 00:00 UTC'de sayı sıfırlanana kadar her çağrı geri döner; makine yine de en fazla dakikada bir tekrar sorar, bu yüzden sıfırlamayı bir dakika içinde alır. `failproofai jev test` şu diyecektir "Daily Jev limit for this org reached; resets at 00:00 UTC." |
-| `http-422` | Jev bu çağrının istekten etti, genellikle araç çağrısı yoğun metni (base64, hex, minimize kodunu) Jev'in token bütçesinin üzerine tuttuğundan. Bu çağrı her zaman geri döner; bir kesinti değildir. |
-| `http-502` | Jev şu anda kullanılamaz. |
-| `http-503` | Bu Cloud kuruluşunuz için Jev sunabilir: model ağ geçidi yok, henüz hazırlanmamış kuruluş veya ağ geçidi arızalı. Yöneticiyi sor; kancalar en fazla dakikada bir sorar. |
-| `http-404` | Bu FailproofAI Cloud henüz Jev sunmaz. |
-| `timeout` | `timeoutMs` (varsayılan 3000) içinde yanıt olmadı. FailproofAI Cloud makinenin Jev modunu ayarladığında, bekleme 5000 ms ve `jev.json`'nin `timeoutMs` kullanılmaz. |
-| `model-mismatch` | 1.13 dışında bir Jev sürümü yanıt verdi. |
+| `out-of-credits` | Kuruluşunuz plan limitini kullandı. |
+| `http-401`, `http-403` | Anahtar iptal edildi veya `jev:evaluate` taşımıyor. `jev:evaluate` taşıyan bir anahtarla yeniden bağlanın. |
+| `http-429` | FailproofAI Cloud kuruluşunuz için Jev'i hız sınırlandırıyor. Bekleme süresinin bitene kadar (kendi `Retry-After`, en fazla 60 saniye), makine ona hiçbir şey göndermez ve her çağrı hemen geri döner. O şekilde tutulan çağrılar `http-429` olarak veya makinenin kendi hız sınırı ilk tuttuğunda `rate-limited` olarak kaydedilir. |
+| `http-429` (günlük limit) | Kuruluşunuz günlük Jev çağrılarını kullandı: **UTC günü başına 10.000**, FailproofAI Cloud'u işletenler başka bir limit ayarlamadıysa. Her çağrı sayı 00:00 UTC'de sıfırlanana kadar geri döner; makine hala en fazla dakikada bir sorrar, bu nedenle sıfırlamayı bir dakika içinde alır. `failproofai jev test` der "Daily Jev limit for this org reached; resets at 00:00 UTC." |
+| `http-422` | Jev bu çağrının isteğini reddetti, genellikle araç çağrısı Jev'in token bütçesine üst üste metni (base64, hex, minified kod) tuttuğu için. O çağrı her zaman geri döner; kesinti değil. |
+| `http-502` | Jev şu anda kullanılamıyor. |
+| `http-503` | Bu Bulut kuruluşunuz için Jev hizmet veremez: model ağ geçidi yok, henüz sağlanmamış bir kuruluş veya ağ geçidi çalışmıyor. Yöneticinize sorun; kancalar en fazla dakikada bir yeniden sorar. |
+| `http-404` | Bu FailproofAI Cloud henüz Jev hizmet vermiyor. |
+| `timeout` | `timeoutMs` içinde cevap yok (varsayılan 3000). FailproofAI Cloud makinenin Jev modunu ayarlarken, bekleme 5000 ms'dir ve `jev.json` öğesinin `timeoutMs` kullanılmaz. |
+| `model-mismatch` | 1.13 dışında bir Jev sürümü cevap verdi. |
 
-## Anahtar nerede yaşıyor ve nereye gidiyor
+## Anahtar nerede yaşar ve nereye gider
 
-- Anahtar bir kez `~/.failproofai/credentials.json` dosyasında (sahibine ait dizin içinde `0600`) depolanır, diğer FailproofAI Cloud kimlik bilgilerinin yanında. `jev.json` bu rota için anahtar tutmaz; bir yazılan yapılandırmayı geçersiz yapar.
-- `credentials.json` **herhangi bir** izin taşıyorsa siz dışında biri için (grup veya diğer, okuma veya yazma), veya dizini siz dışında biri tarafından **yazılabilirse**, **reddedilir**, okunmaz ve Jev'in düzeltilene kadar kapalı kalır: dosya üzerinde `chmod 600`, dizin üzerinde `chmod 700` (veya yeniden bağlan, bu dosyayı `0600`'de yeniden yazar ve dizini yalnızca sahibine yapar). Diğer insanların yalnızca okuyabileceği bir dizin iyidir; yazabileceği dosyayı değiştirmesine izin verir.
-- Anahtar yalnızca beraber geldiği bağlantı makinedeyken sayılır: aynı FailproofAI Cloud için bir politika veya raporlama kimlik bilgisi **aynı anahtarla**, aynı dosyada. Birinin olmadan bırakılan Jev anahtarı yoksayılır ve Jev kapalı kalır. Eski bir failproofai'nin `config --disconnect` Jev anahtarını yerinde bıraktığında (kaldırmayı bilmez) veya eski bir failproofai'nin `config --token` başka bir anahtarla bağlandığında olur, bu FailproofAI Cloud'da başka bir kuruluşa ait olabilir. Jev'i geri açmak için, bir **makine** anahtarı ile yeniden bağlan.
-- Anahtar yalnızca doğrulandığı Cloud orijinine gönderilir. Başka yere işaret eden bir `jev.json` reddedilir.
-- **Makinedeki bir aracı bunu okuyabilir.** `credentials.json` yalnızca sahibine aittir ve aracı bu sahibi olarak çalışır. Failproofai'nin kendi dosyalarını okumak amaç üzerine izin verilir (yalnızca değiştirmek bloke edilir, `block-failproofai-commands` tarafından), bu yüzden bir aracı ve bu dosya arasındaki tek şey `block-read-outside-cwd` — bir *gözden geçirilebilir* politika — ve ev dizininizden başlatılan bir oturumda hiçbir şey değildir. `jev:evaluate` olan bir anahtar kuruluşunuzun Jev payını (günlük kaptan) nereye kullanılırsa oradan harcar, bu yüzden bir makine anahtarını herhangi bir harcama kimlik bilgisi gibi davranın: aracı bunu okumuş olabilirse, Anahtarlar sayfasında devre dışı bırakın ve yeni biri ile yeniden bağlan.
-- Yalnızca genel dosyalarınız bunu belirler. Depo Cloud Jev'i açamaz, başka yere işaret etmez veya anahtarını sağlamaz ve `FAILPROOFAI_JEV_API_KEY` bu rota için yoksayılır.
-- Jev değerlendirdiği her çağrı için, [kendi anahtarını getir sayfasının](/tr/reference/jev-providers#what-leaves-the-machine) listelediği (sırlar silindi) bir istek FailproofAI Cloud'a gider. FailproofAI Cloud bunu TypeSafe'e iletir ve kaydı tutmaz veya tutmaz.
+- Anahtar bir kez `~/.failproofai/credentials.json` (`0600`, sahibe özel dizinde) saklanır, diğer FailproofAI Cloud kimlik bilgileri yanında. `jev.json` bu rota için anahtarı tutmaz; oraya yazılanı config geçersiz kılar.
+- `credentials.json` sizden başkası için (grup veya diğer, oku veya yaz) **herhangi** izin taşırsa veya dizini sizden başkası tarafından **yazılabilirse**, **reddedilir**, okunmaz ve Jev kapalı kalır düzeltilene kadar: dosyada `chmod 600`, dizinde `chmod 700` (veya yeniden bağlanın, dosyayı `0600` yazarlar ve dizini sahibe özel yapar). Başkaları yalnızca okuyabilen bir dizin iyidir; yazabildikleri dosyayı değiştirmelerine izin verir.
+- Anahtar yalnızca geldiği bağlantı makinede açıkken sayılır: aynı FailproofAI Cloud için ilke veya raporlama kimlik bilgileri **aynı anahtarla**, aynı dosyada. Bir bağlantı olmadan bırakılan Jev anahtarı göz ardı edilir ve Jev kapalı kalır. Bu, eski failproofai'nin `config --disconnect` Jev anahtarını yerinde bıraktığında (kaldırılacağını bilmez) veya eski failproofai'nin `config --token` başka bir anahtarla bağlandığında olur, bu FailproofAI Cloud'da başka bir kuruluşa ait olabilir. Jev'i geri açmak için, **machine** anahtarı ile yeniden bağlanın.
+- Anahtar yalnızca doğrulandığı Bulut kaynağına gönderilir. Başka bir yere işaret eden `jev.json` reddedilir.
+- **Makinedeki bir ajan bunu okuyabilir.** `credentials.json` sahibe özel ve ajan bu sahibi olarak çalışır. Failproofai'nin kendi dosyalarını okumak amaca uygun olarak izin verilir (yalnızca değiştirmek `block-failproofai-commands` tarafından engellenir), bu nedenle ajan ile bu dosya arasında tek şey `block-read-outside-cwd` — **gözden geçirilebilir** ilke — ve ev dizininizde başlatılan oturumdan hiçbir şey yoktur. `jev:evaluate` taşıyan bir anahtar kuruluşunuzun Jev limitini (günlük sınıra kadar) kullanıldığı her yerden harcar, bu nedenle makine anahtarını herhangi bir harcama kimlik bilgisi gibi ele alın: bir ajan bunu okumuş olabilirse, Keys sayfasında devre dışı bırakın ve yeni birle yeniden bağlanın.
+- Yalnızca genel dosyalarınız buna karar verir. Depo Cloud Jev'i açamaz, başka yere işaret edemez veya anahtarını besleyemez ve `FAILPROOFAI_JEV_API_KEY` bu rota için göz ardı edilir.
+- Jev'in değerlendirdiği her çağrı için, bir istek FailproofAI Cloud'a gider, [kendi anahtarınızı getir sayfasında](/tr/reference/jev-providers#what-leaves-the-machine) listelenenleri taşır (sırlar temizlenir). FailproofAI Cloud bunu TypeSafe'e iletir ve kaydetmez veya tutmaz.
 
-## Kapat
+## Kapatın
 
-Bağlı bir makinede, Jev FailproofAI Cloud'un buna Jev politikası dağıtmadığında kapalıdır: orada Jev politikalarını kaldırın veya arşivleyin.
+Bağlı bir makinede, FailproofAI Cloud'un ona hiçbir Jev ilkesi dağıtmadığında Jev kapalıdır: orada Jev ilkelerini kaldırın veya arşivleyin.
 
 | Komut | Sonuç |
 | --- | --- |
-| Makinenin Jev politikalarını FailproofAI Cloud'da kaldırın | Cloud'un modu sonraki yoklamada `off` olur (yaklaşık 30 s): `jev.json` ne söylerse söylesin hiç Jev yok. |
-| `failproofai config --disconnect` | Makinenin bağlantısını kesin: anahtar kaldırılır ve FailproofAI Cloud'u adlandırdığında ve kapatılmadığında `jev.json` de silinir. Kendi uç noktanız için `jev.json` kalır. |
+| Makinenin Jev ilkelerini FailproofAI Cloud'da kaldırın | Cloud'un modu bir sonraki ankette (yaklaşık 30 s) `off` olur: hiçbir Jev, `jev.json` ne söylerse söylesin. |
+| `failproofai config --disconnect` | Makineyi kesin: anahtar kaldırılır ve FailproofAI Cloud'u adlandırdığında ve kapalı olmadığında `jev.json` de öyle. Kendi uç noktanız için `jev.json` kalır. |
 
-Sonraki araç çağrısından itibaren kancalar regex politikalarını tam olarak önceki gibi çalıştırır.
+Bir sonraki araç çağrısından kancalar normal ifade ilkelerini tam olarak önceki gibi çalıştırır.

@@ -1,111 +1,111 @@
 ---
 title: "Ứng dụng Slack"
-description: "Hỏi Failproof Assistant từ Slack, nhận biểu đồ trong luồng, và phê duyệt thay đổi bằng nút."
+description: "Hỏi Trợ lý Failproof từ Slack, nhận biểu đồ trong luồng tin nhắn, và phê duyệt thay đổi bằng một nút bấm."
 icon: "slack"
 ---
 
-Hỏi [Failproof Assistant](/vi/sessions/assistant) từ Slack. Đề cập ứng dụng trong một kênh, gửi tin nhắn trực tiếp cho nó, hoặc sử dụng `/failproof <câu hỏi>`. Câu trả lời sử dụng **quyền của bạn** trong Failproof AI, biểu đồ sẽ xuất hiện trong luồng, và bất cứ thứ gì có khả năng thay đổi sẽ yêu cầu bạn phê duyệt trước.
+Hỏi [Trợ lý Failproof](/vi/sessions/assistant) từ Slack. Đề cập đến ứng dụng trong một kênh, gửi tin nhắn trực tiếp cho nó, hoặc sử dụng `/failproof <question>`. Các câu trả lời sử dụng **quyền riêng của bạn** trong Failproof AI, biểu đồ xuất hiện trong luồng tin nhắn, và bất kỳ thay đổi nào sẽ yêu cầu bạn phê duyệt trước tiên.
 
 Có một ứng dụng chính thức. Nó hoạt động giống nhau cho dù Failproof AI Cloud của bạn được lưu trữ hay tự lưu trữ.
 
 <Note>
-  Câu trả lời được tạo bởi các mô hình AI và có thể không chính xác. Kiểm tra bất cứ thứ gì quan trọng so với dữ liệu nguồn được liên kết.
+  Các câu trả lời được tạo bởi các mô hình AI và có thể không chính xác. Hãy kiểm tra bất kỳ thông tin quan trọng nào so với dữ liệu nguồn được liên kết.
 </Note>
 
-## Kết nối một workspace
+## Kết nối một không gian làm việc
 
-Bạn cần quyền `settings:write` trong Failproof AI và trong Slack, bạn phải là quản trị viên hoặc chủ sở hữu workspace, hoặc là người thêm ứng dụng.
+Bạn cần có quyền `settings:write` trong Failproof AI và, trên Slack, phải là quản trị viên hoặc chủ sở hữu không gian làm việc, hoặc là người thêm ứng dụng.
 
 <Tabs>
   <Tab title="Từ Failproof AI">
-    1. Đi tới **Settings → Integrations** và chọn **Add to Slack**.
-    2. Phê duyệt ứng dụng trong Slack.
-    3. Quay lại Failproof AI, xác nhận kết nối workspace với tổ chức của bạn.
+    1. Đi đến **Settings → Integrations** và chọn **Add to Slack**.
+    2. Phê duyệt ứng dụng trên Slack.
+    3. Quay lại Failproof AI, xác nhận kết nối không gian làm việc với tổ chức của bạn.
   </Tab>
   <Tab title="Từ Slack">
     1. Thêm ứng dụng, sau đó mở tab **Home** của nó.
     2. Chọn **Continue with FailproofAI Cloud**, hoặc **Use my own URL** và nhập địa chỉ bạn đăng nhập.
-    3. Chọn nút tiếp tục, đăng nhập, chọn tổ chức, và xác nhận. Liên kết chỉ hoạt động một lần và hết hạn sau 10 phút.
+    3. Chọn nút tiếp tục, đăng nhập, chọn tổ chức, và xác nhận. Liên kết hoạt động một lần và hết hạn sau 10 phút.
   </Tab>
 </Tabs>
 
-Một workspace kết nối với một tổ chức, và một tổ chức kết nối với một workspace.
+Một không gian làm việc kết nối với một tổ chức, và một tổ chức kết nối với một không gian làm việc.
 
-Chưa có tài khoản? [Tạo một tài khoản](https://app.befailproof.ai/login) trước, sau đó kết nối.
+Chưa có tài khoản? [Tạo một tài khoản](https://app.befailproof.ai/login) trước tiên, sau đó kết nối.
 
-## Bạn là ai trong Slack
+## Danh tính của bạn trên Slack
 
 Lần đầu tiên bạn hỏi, ứng dụng sẽ xác định bạn là thành viên nào:
 
-- **Tự động, theo email**, khi bạn là thành viên toàn quyền của workspace được kết nối, email Slack của bạn được xác nhận, và chính xác một thành viên của tổ chức sử dụng email đó.
-- **Nếu không**, bạn nhận được nút **Link your account** riêng tư mở Failproof AI và liên kết người dùng Slack của bạn với tài khoản của bạn.
+- **Tự động, theo email**, khi bạn là thành viên đầy đủ của không gian làm việc được kết nối, email Slack của bạn được xác nhận, và chính xác một thành viên của tổ chức sử dụng email đó.
+- **Nếu không**, bạn sẽ nhận được một nút riêng tư **Link your account** mở Failproof AI và liên kết người dùng Slack của bạn với tài khoản của bạn.
 
 ## Hỏi một câu hỏi
 
-| Nơi | Cách |
+| Nơi | Cách thức |
 | --- | --- |
-| Một kênh | Đề cập ứng dụng. Trả lời trong luồng của nó để tiếp tục, không cần đề cập |
-| Tin nhắn trực tiếp | Nhắn tin cho ứng dụng |
-| Tin nhắn trực tiếp nhóm mà ứng dụng nằm trong đó | Đề cập nó, sau đó trả lời trong luồng của nó để tiếp tục |
-| Kênh Slack Connect | Đề cập ứng dụng |
-| Bất kỳ cuộc trò chuyện nào mà ứng dụng nằm trong đó | `/failproof <câu hỏi>` bắt đầu một luồng với câu trả lời |
-| `/failproof help` | Xem ứng dụng có thể làm gì |
-| `/failproof status` | Xem tổ chức nào được kết nối và bạn được liên kết là ai |
-| `/failproof link` | Xem tài khoản Failproof AI nào bạn được liên kết tới |
+| Một kênh | Đề cập đến ứng dụng. Trả lời trong luồng tin nhắn của nó để tiếp tục, không cần đề cập |
+| Một tin nhắn trực tiếp | Nhắn tin cho ứng dụng |
+| Một tin nhắn trực tiếp nhóm mà ứng dụng đang ở trong đó | Đề cập đến nó, sau đó trả lời trong luồng tin nhắn của nó để tiếp tục |
+| Một kênh Slack Connect | Đề cập đến ứng dụng |
+| Bất kỳ cuộc trò chuyện nào mà ứng dụng đang ở trong đó | `/failproof <question>` bắt đầu một luồng với câu trả lời |
+| `/failproof help` | Xem những gì ứng dụng có thể làm |
+| `/failproof status` | Xem tổ chức nào được kết nối và bạn được liên kết dưới dạng ai |
+| `/failproof link` | Xem tài khoản Failproof AI nào mà bạn được liên kết đến |
 
-Một luồng là một cuộc trò chuyện. Các đồng nghiệp có thể đề cập ứng dụng trong cùng một luồng, và nó trả lời mỗi người với quyền riêng của họ. Chỉ người bắt đầu luồng mới tiếp tục nó mà không cần đề cập.
+Một luồng là một cuộc trò chuyện. Các đồng nghiệp có thể đề cập đến ứng dụng trong cùng một luồng, và nó trả lời từng người với quyền riêng của họ. Chỉ người bắt đầu luồng mới tiếp tục nó mà không cần đề cập.
 
-Khi câu trả lời là dữ liệu, ứng dụng sẽ đăng một biểu đồ hoặc bảng có liên kết để mở nó trong Failproof AI.
+Khi câu trả lời là dữ liệu, ứng dụng sẽ đăng một biểu đồ hoặc bảng với liên kết để mở nó trong Failproof AI.
 
 ## Phê duyệt thay đổi
 
-Mỗi thay đổi mà trợ lý thực hiện đều hiển thị các nút **Approve** và **Cancel** trước, và Slack hỏi lại một lần nữa trước khi **Approve**. Chỉ người hỏi mới có thể trả lời chúng, các nút hết hạn sau 5 phút, và thay đổi được thực hiện với quyền của người đó.
+Mỗi thay đổi mà trợ lý thực hiện sẽ hiển thị các nút **Approve** và **Cancel** trước tiên, và Slack yêu cầu xác nhận thêm một lần trước khi **Approve**. Chỉ người hỏi mới có thể trả lời chúng, các nút hết hạn sau 5 phút, và thay đổi được thực hiện với quyền của người đó.
 
-Từ Slack, trợ lý có thể thay đổi các truy vấn và bảng điều khiển đã lưu, đánh giá, cảnh báo, kiểm toán, vấn đề và chính sách, và đề xuất sửa lỗi mã, mỗi cái nếu bạn có quyền. Nó không thể thay đổi khóa API, người dùng hoặc cài đặt.
+Từ Slack, trợ lý có thể thay đổi các truy vấn và bảng điều khiển đã lưu, đánh giá, cảnh báo, kiểm toán, vấn đề và chính sách, cũng như đề xuất sửa lỗi mã, nếu bạn có quyền cho mỗi mục. Nó không thể thay đổi khóa API, người dùng hoặc cài đặt.
 
 ## Xem trước liên kết
 
-Các liên kết vấn đề, phiên và đánh giá Failproof AI dán trong Slack sẽ giải nén thành thẻ trên Failproof AI Cloud được lưu trữ. Một thẻ chỉ hiển thị những gì người kích hoạt nó có thể thấy. Các liên kết đến địa chỉ tự lưu trữ không giải nén, mặc dù các thẻ trong các câu trả lời của chính trợ lý vẫn xuất hiện.
+Các liên kết vấn đề, phiên và đánh giá Failproof AI được dán trên Slack sẽ mở rộng thành các thẻ trên Failproof AI Cloud được lưu trữ. Một thẻ chỉ hiển thị những gì mà người kích hoạt nó có thể thấy. Các liên kết đến địa chỉ tự lưu trữ không mở rộng, mặc dù các thẻ trong các câu trả lời của chính trợ lý vẫn xuất hiện.
 
 ## Kênh Slack Connect
 
-Những người từ workspace khác có thể sử dụng ứng dụng nếu họ là thành viên của tổ chức, sau khi liên kết tài khoản của họ. Câu trả lời hiển thị cho mọi người trong cuộc trò chuyện, bao gồm những người không phải là thành viên của tổ chức của bạn, vì vậy hãy hỏi nơi mọi người có thể thấy câu trả lời.
+Những người từ một không gian làm việc khác có thể sử dụng ứng dụng nếu họ là thành viên của tổ chức, sau khi liên kết tài khoản của họ. Các câu trả lời được nhìn thấy bởi tất cả mọi người trong cuộc trò chuyện, bao gồm những người không phải là thành viên của tổ chức của bạn, vì vậy hãy hỏi nơi mọi người có thể nhìn thấy câu trả lời.
 
-Ứng dụng chỉ trả lời một lần khi các workspace khác trong kênh đã có ai đó được liên kết với tổ chức. Cho đến lúc đó, nó cho biết người hỏi lý do tại sao.
+Ứng dụng chỉ trả lời một lần khi mỗi không gian làm việc khác trong kênh có ai đó được liên kết với tổ chức. Cho đến lúc đó, nó sẽ cho biết người hỏi tại sao.
 
 ## Quyền mà ứng dụng yêu cầu
 
 | Quyền Slack | Lý do |
 | --- | --- |
-| `app_mentions:read` | Biết khi ai đó đề cập ứng dụng |
-| `channels:history`, `groups:history`, `im:history`, `mpim:history` | Nhận tin nhắn trực tiếp và trả lời trong luồng của ứng dụng. Ứng dụng bỏ qua các tin nhắn khác, và nó không bao giờ đọc các tin nhắn quá khứ của cuộc trò chuyện |
-| `channels:read`, `groups:read`, `im:read`, `mpim:read` | Kiểm tra loại cuộc trò chuyện nó ở đâu, vì vậy nó biết ai có thể thấy câu trả lời |
-| `chat:write` | Đăng câu trả lời và nút phê duyệt |
+| `app_mentions:read` | Biết khi nào ai đó đề cập đến ứng dụng |
+| `channels:history`, `groups:history`, `im:history`, `mpim:history` | Nhận tin nhắn trực tiếp và trả lời trong các luồng của ứng dụng. Ứng dụng bỏ qua các tin nhắn khác, và nó không bao giờ đọc các tin nhắn trong quá khứ của cuộc trò chuyện |
+| `channels:read`, `groups:read`, `im:read`, `mpim:read` | Kiểm tra loại cuộc trò chuyện nó ở trong đó, để nó biết ai có thể nhìn thấy một câu trả lời |
+| `chat:write` | Đăng câu trả lời và các nút phê duyệt |
 | `commands` | Cung cấp `/failproof` |
 | `files:write` | Đăng biểu đồ |
-| `links:read`, `links:write` | Hiển thị bản xem trước các liên kết Failproof AI được dán |
+| `links:read`, `links:write` | Hiển thị xem trước các liên kết Failproof AI được dán |
 | `users:read`, `users:read.email` | Khớp bạn với tài khoản Failproof AI của bạn, và hiển thị tên |
 
 ## Ngắt kết nối
 
-Đi tới **Settings → Integrations** và chọn **Disconnect**, sử dụng **Disconnect** trên tab **Home** của ứng dụng, hoặc xóa ứng dụng khỏi Slack.
+Đi đến **Settings → Integrations** và chọn **Disconnect**, sử dụng **Disconnect** trên tab **Home** của ứng dụng, hoặc xóa ứng dụng khỏi Slack.
 
-Bất cứ cái nào trong những cái này đều xóa kết nối workspace, mã thông báo bot, tài khoản được liên kết và bản ghi luồng. Các cuộc trò chuyện Slack quá khứ vẫn có thể đọc được trong bảng điều khiển. Tổ chức sau đó có thể kết nối bất kỳ workspace nào ngay lập tức.
+Bất kỳ cách nào trong số này sẽ xóa kết nối không gian làm việc, mã thông báo bot, tài khoản được liên kết và bản ghi luồng. Các cuộc trò chuyện Slack trong quá khứ vẫn có thể đọc được trong bảng điều khiển. Tổ chức sau đó có thể kết nối bất kỳ không gian làm việc nào ngay lập tức.
 
 ## Dữ liệu và quyền riêng tư
 
-Các câu hỏi và câu trả lời được lưu dưới dạng cuộc trò chuyện trong bảng điều khiển của tổ chức của bạn, dưới tên người bắt đầu luồng. Dữ liệu Slack không bao giờ được sử dụng để huấn luyện các mô hình AI. Xem [chính sách quyền riêng tư](https://befailproof.ai/privacy/) để biết ứng dụng nhận được gì và bao lâu nó được giữ.
+Các câu hỏi và câu trả lời được lưu dưới dạng các cuộc trò chuyện trong bảng điều khiển của tổ chức, dưới tên của người bắt đầu luồng. Dữ liệu Slack không bao giờ được sử dụng để đào tạo các mô hình AI. Xem [chính sách quyền riêng tư](https://befailproof.ai/privacy/) để biết ứng dụng nhận được gì và nó được giữ trong bao lâu.
 
 ## Khắc phục sự cố
 
-| Bạn thấy gì | Phải làm gì |
+| Những gì bạn thấy | Phải làm gì |
 | --- | --- |
-| "Workspace này chưa được kết nối với FailproofAI Cloud." | Quản trị viên workspace mở tab **Home** của ứng dụng và chọn một |
-| "Liên kết này đã hết hạn hoặc đã được sử dụng." | Chọn Cloud của bạn lại trên tab **Home** để lấy liên kết mới |
-| "Tổ chức này đã được kết nối với một workspace Slack." | Ngắt kết nối nó trong cài đặt trước |
-| "Workspace Slack đó được kết nối với một org khác." | Ngắt kết nối nó từ tổ chức đó trước |
-| "Liên kết tài khoản của bạn để sử dụng trợ lý." | Chọn nút và xác nhận trong Failproof AI |
-| Ứng dụng không trả lời trong tin nhắn trực tiếp nhóm | Thêm ứng dụng lại vào Slack để cấp quyền nhóm của nó. Kết nối của bạn được giữ lại |
-| "Tôi sẽ không đăng câu trả lời từ tổ chức của bạn ở đây" | Ai đó trong workspace đó là thành viên của tổ chức đề cập ứng dụng và liên kết tài khoản của họ |
+| "This workspace isn't connected to a FailproofAI Cloud yet." | Một quản trị viên không gian làm việc mở tab **Home** của ứng dụng và chọn một |
+| "This link expired or was already used." | Chọn Cloud của bạn lại trên tab **Home** để có một liên kết mới |
+| "This org is already connected to a Slack workspace." | Ngắt kết nối nó trong cài đặt trước tiên |
+| "That Slack workspace is connected to another org." | Ngắt kết nối nó từ tổ chức đó trước tiên |
+| "Link your account to use the assistant." | Chọn nút và xác nhận trong Failproof AI |
+| Ứng dụng không trả lời trong một tin nhắn trực tiếp nhóm | Thêm ứng dụng vào Slack lần nữa để cấp quyền nhóm của nó. Kết nối của bạn được giữ |
+| "I won't post answers from your organization here" | Ai đó trong không gian làm việc đó là thành viên của tổ chức đề cập đến ứng dụng và liên kết tài khoản của họ |
 
-Vẫn gặp sự cố? Gửi email tới [support@befailproof.ai](mailto:support@befailproof.ai).
+Vẫn còn bế tắc? Gửi email đến [support@befailproof.ai](mailto:support@befailproof.ai).

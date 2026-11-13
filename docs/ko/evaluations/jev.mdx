@@ -4,17 +4,17 @@ description: "Jev를 사용하여 정답이 있는 질문에 대해 완료된 �
 icon: "list-checks"
 ---
 
-Jev 평가는 **완료된 세션**을 읽고 0에서 1 사이의 점수를 부여합니다. "고객이 긴박감을 표현했는가?" 또는 "고객이 얼마나 불만스러워했는가?"와 같이 답이 미리 알려진 경우에 사용합니다. 여러 실행 간의 패턴을 파악하는 데 도움이 되며, 툴 호출을 중단하지는 않습니다. 툴이 실행되기 **전에** 결정이 필요한 경우에는 [Jev 정책](/ko/policies/jev)을 사용하세요.
+Jev 평가는 **완료된 세션**을 읽고 0에서 1 사이의 점수를 부여합니다. "고객이 긴박감을 표현했는가?" 또는 "고객이 얼마나 불만족스러워했는가?"처럼 답이 사전에 알려진 경우에 사용하세요. 여러 실행에서 패턴을 찾는 데 도움이 되며, 도구 호출을 중단하지는 않습니다. 도구가 실행되기 **전에** 내리는 결정에는 [Jev 정책](/ko/policies/jev)을 사용하세요.
 
 ## 대시보드에서 생성하기
 
 1. **Analyze → eval authoring**을 열고 **new eval**을 선택합니다.
-2. 하나의 질문과 가능한 답변을 설명합니다. 예: "에이전트가 환불 정책을 확인하기 전에 환불을 약속했는가? 예 또는 아니오로 답하세요." **draft**를 선택하고 결과가 분류기 점수로 나오는지 확인합니다.
-3. 최근 세션에서 [테스트](/ko/evaluations/test)한 후 [배포](/ko/evaluations/deploy)합니다. 새로 완료된 세션은 자동으로 채점되며, 기존 기록도 필요하다면 [백필](/ko/evaluations/deploy#score-sessions-you-already-have)할 수 있습니다.
+2. 질문 하나와 가능한 답변들을 작성합니다. 예시: "에이전트가 환불 정책을 확인하기 전에 환불을 약속했는가? yes 또는 no로 답하시오." **draft**를 선택하고 결과가 분류 점수인지 검토합니다.
+3. 최근 세션에서 [테스트](/ko/evaluations/test)한 후 [배포](/ko/evaluations/deploy)합니다. 새로 완료된 세션은 자동으로 채점되며, 이전 기록도 필요하다면 [백필](/ko/evaluations/deploy#score-sessions-you-already-have)을 사용하세요.
 
-![공유 eval 작성 폼. 정답이 정해진 질문을 설명하고, 초안을 검토한 후 테스트를 거쳐 배포합니다. 예시는 코드 평가이며, Jev 질문도 동일한 작성 흐름을 사용합니다.](/images/dashboard/eval-authoring-draft.png)
+![고정 답변 질문을 작성하고, 초안을 검토한 후 테스트를 거쳐 배포하는 공유 평가 작성 폼. 예시에는 코드 평가가 나타나 있으며, Jev 질문도 동일한 작성 흐름을 사용합니다.](/images/dashboard/eval-authoring-draft.png)
 
-어시스턴트는 코드, Jev 분류, [judge](/ko/evaluations/judge) 중에서 선택할 수 있습니다. 배포 전에 선택된 방식을 확인하세요. Jev는 산문 형식의 설명 없이 점수만 제공하므로, 설명이 필요한 경우에는 judge를 선택하세요. 질문 유형 및 점수 한계에 대한 자세한 내용은 [Jev 평가 레퍼런스](/ko/reference/jev-evaluations)를 참고하세요.
+어시스턴트는 코드, Jev 분류, [판정](/ko/evaluations/judge) 중에서 선택할 수 있습니다. 배포 전에 해당 선택을 확인하세요. Jev는 산문 형태의 추론 없이 점수만 제공합니다. 설명이 필요한 경우에는 판정을 선택하세요. 질문 유형과 점수 한계에 대한 자세한 내용은 [Jev 평가 레퍼런스](/ko/reference/jev-evaluations)를 참조하세요.
 
 ## 점수 확인하기
 
@@ -25,4 +25,4 @@ fp evals --since 7d
 fp evals --aggregate --since 7d
 ```
 
-Cloud CLI는 결과를 조회하는 용도이며, 작성 및 배포는 대시보드에서 진행합니다. 필터 옵션은 [Cloud CLI 레퍼런스](/ko/reference/cloud-cli#evaluations)를 참고하세요.
+Cloud CLI는 결과를 조회하는 데 사용하며, 작성과 배포는 대시보드에서 이루어집니다. 필터에 대한 자세한 내용은 [Cloud CLI 레퍼런스](/ko/reference/cloud-cli#evaluations)를 참조하세요.

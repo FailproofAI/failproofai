@@ -1,29 +1,31 @@
 ---
-title: "会话"
-description: "从一次智能体运行的完整记录开始。"
+title: "Sessions"
+description: "从单次 Agent 运行的完整记录开始排查。"
 icon: "workflow"
 ---
 
-当智能体出现意外行为时，会话是最佳的起点。它将同一次运行中的模型请求、响应、工具调用、人工交互、错误、评估和策略决策整合在一起。
+当 Agent 表现异常时，Session 是最佳的排查起点。它将属于同一次运行的模型请求、响应、工具调用、人工交互、错误、评估结果和策略决策汇聚在一起。
 
-无论使用哪种框架，会话的格式都是一致的。一次重写代码仓库的 Claude Code 运行、一个在 Slack 中回答客户的 Hermes 智能体，以及一个通过 SDK 进行插桩的 Python 服务，都会以相同的追踪格式落地，因此一个视图即可覆盖整个集群。
+无论由哪种运行环境产生，Sessions 的格式都保持一致。重写代码库的 Claude Code 运行、在 Slack 中回复客户的 Hermes Agent、以及通过 SDK 埋点的 Python 服务，都会落入相同的追踪格式，因此一个视图即可覆盖整个集群。
 
 <div style={{ position: "relative", width: "100%", paddingBottom: "56.25%", height: 0, overflow: "hidden", borderRadius: "12px", margin: "1.5rem 0" }}>
   <iframe src="https://www.youtube.com/embed/VWxukZc5k7s?rel=0&playsinline=1" title="Agent tracing with Failproof AI" allow="accelerometer; autoplay; encrypted-media; gyroscope; picture-in-picture; fullscreen" allowFullScreen style={{ position: "absolute", top: 0, left: 0, width: "100%", height: "100%", border: 0 }}></iframe>
 </div>
 
-跟踪一次智能体运行的完整过程——从目标设定，到模型调用、工具使用，直至最终响应。
+跟随单次 Agent 运行，从目标设定到模型调用、工具使用，直至最终响应。
 
-## 查找会话
+## 查找 Session
+
+如果某个 Session 在您达到运行配额后被存入冷存储，在同一计费周期内提高配额将按时间从旧到新依次释放符合条件的 Session。重新投递不会导致 Session 被重复计入配额。
 
 <Tabs>
-  <Tab title="控制台">
-    1. 在云端侧边栏中，前往 **Observe → Sessions**。
-    2. 设置时间范围，然后按环境、状态、智能体或会话 ID 进行筛选。
-    3. 需要按质量、成本、Token 数或延迟切片时，可添加分数或指标范围过滤条件。
-    4. 点击某一行以打开其追踪详情。分享时，使用会话 ID 旁边的复制按钮。
+  <Tab title="Dashboard">
+    1. 在 Cloud 侧边栏中，前往 **Observe → Sessions**。
+    2. 设置时间范围，然后按环境、状态、Agent 或 Session ID 进行筛选。
+    3. 若需要按质量、成本、Token 数或延迟切片，可添加评分或指标范围。
+    4. 点击某行可打开其追踪详情。如需分享，使用 Session ID 旁的复制按钮。
 
-    ![Sessions 列表，每次运行显示为一行，支持按环境、智能体、状态和评估分数进行筛选。](/images/dashboard/sessions-list.png)
+    ![Sessions 列表，每行对应一次运行，支持按环境、Agent、状态和评估分数筛选。](/images/dashboard/sessions-list.png)
   </Tab>
   <Tab title="CLI">
     ```bash
@@ -32,26 +34,26 @@ icon: "workflow"
     fp --json sessions --session-id <session-id>
     ```
 
-    添加 `--agents` 可展开多智能体运行，`--all` 可分页浏览，`--fields` 可选择输出列。
+    添加 `--agents` 可展开多 Agent 运行，`--all` 可分页浏览，`--fields` 可自定义输出列。
   </Tab>
 </Tabs>
 
-## 你可以做什么
+## 您可以做什么
 
-- 按智能体、环境、时间、模型、事件类型或错误状态查找运行记录。
-- 追踪产生某一结果的完整事件序列。
-- 对比成功和失败的运行。
-- 查看审计发现或告警事件所使用的证据。
-- 导出会话以获取离线记录。
+- 按 Agent、环境、时间、模型、事件类型或错误状态查找运行记录。
+- 追踪产生某个结果的完整事件序列。
+- 对比成功与失败的运行。
+- 查看审计发现或告警事件所依据的原始证据。
+- 导出 Session 以获取离线记录。
 
 ## 可靠的排查顺序
 
-1. 确认会话目标和运行环境。
-2. 找到第一个错误或意外决策——而不仅仅是最终的失败点。
-3. 检查该事件发生前的模型上下文和工具输入。
-4. 查看重试次数、延迟情况和人工干预记录。
+1. 确认 Session 的目标和运行环境。
+2. 找到第一个错误或异常决策——而不仅仅是最终的失败。
+3. 检查其发生前的模型上下文和工具输入。
+4. 查看重试情况、延迟和人工干预。
 5. 审查评估分数和策略决策。
 
-<Card title="读取追踪" icon="route" href="/zh/sessions/read-a-trace">
-  了解如何从会话摘要导航到引发结果的具体事件。
+<Card title="读懂追踪记录" icon="route" href="/zh/sessions/read-a-trace">
+  了解如何从 Session 摘要定位到导致最终结果的具体事件。
 </Card>

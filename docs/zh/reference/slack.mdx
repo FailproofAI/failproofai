@@ -1,111 +1,111 @@
 ---
 title: "Slack 应用"
-description: "从 Slack 向 Failproof 助手提问，在对话线程中获取图表，并通过按钮审批变更。"
+description: "在 Slack 中向 Failproof Assistant 提问，在消息串中获取图表，并通过按钮审批更改。"
 icon: "slack"
 ---
 
-从 Slack 使用 [Failproof 助手](/zh/sessions/assistant)。在频道中 @ 该应用、向其发送私信，或使用 `/failproof <问题>`。回答将使用**您自己的** Failproof AI 权限，图表会显示在对话线程中，任何会产生变更的操作都会先请您审批。
+在 Slack 中使用 [Failproof Assistant](/zh/sessions/assistant)。在频道中 @ 提及应用、直接给它发消息，或使用 `/failproof <问题>`。回答使用**您自己的** Failproof AI 权限，图表会出现在消息串中，任何涉及更改操作的请求都会先请您审批。
 
-官方只有一个应用，无论您的 Failproof AI Cloud 是托管版还是自托管版，使用方式完全相同。
+目前只有一个官方应用，无论您的 Failproof AI Cloud 是托管版还是自托管版，使用方式完全相同。
 
 <Note>
-  回答由 AI 模型生成，可能存在不准确之处。对于重要内容，请以关联的源数据为准进行核实。
+  回答由 AI 模型生成，可能存在不准确之处。重要内容请以链接的源数据为准。
 </Note>
 
 ## 连接工作区
 
-您需要在 Failproof AI 中拥有 `settings:write` 权限，并且在 Slack 中是工作区管理员或所有者，或者是添加应用的人员。
+您需要在 Failproof AI 中拥有 `settings:write` 权限，并且在 Slack 中是工作区管理员或所有者，或添加该应用的人。
 
 <Tabs>
-  <Tab title="从 Failproof AI 连接">
-    1. 前往 **设置 → 集成**，选择 **Add to Slack**。
+  <Tab title="从 Failproof AI 操作">
+    1. 进入 **设置 → 集成**，选择 **添加到 Slack**。
     2. 在 Slack 中授权该应用。
     3. 返回 Failproof AI，确认将工作区连接到您的组织。
   </Tab>
-  <Tab title="从 Slack 连接">
-    1. 添加应用后，打开其 **Home** 选项卡。
-    2. 选择 **Continue with FailproofAI Cloud**，或选择 **Use my own URL** 并输入您登录时使用的地址。
-    3. 点击继续按钮，登录，选择组织并确认。该链接只能使用一次，10 分钟后失效。
+  <Tab title="从 Slack 操作">
+    1. 添加应用后，打开其 **主页** 标签页。
+    2. 选择 **Continue with FailproofAI Cloud**，或选择 **Use my own URL** 并输入您的登录地址。
+    3. 点击继续按钮，登录后选择组织并确认。该链接只能使用一次，10 分钟后失效。
   </Tab>
 </Tabs>
 
-一个工作区对应一个组织，一个组织对应一个工作区。
+一个工作区对应一个组织，一个组织也只能对应一个工作区。
 
-还没有账号？请先[创建账号](https://app.befailproof.ai/login)，再进行连接。
+还没有账户？请先[创建账户](https://app.befailproof.ai/login)，再进行连接。
 
 ## 您在 Slack 中的身份
 
-首次提问时，应用会自动识别您的身份：
+首次提问时，应用会自动识别您的成员身份：
 
-- **通过邮箱自动识别**：当您是已连接工作区的正式成员、您的 Slack 邮箱已通过验证，且组织中恰好只有一位成员使用该邮箱时，会自动完成匹配。
-- **其他情况下**，您会收到一个私密的 **Link your account** 按钮，点击后将打开 Failproof AI 并将您的 Slack 用户与账号进行关联。
+- **通过邮箱自动匹配**：当您是已连接工作区的正式成员、Slack 邮箱已验证，且组织中有且仅有一名成员使用该邮箱时，系统会自动完成匹配。
+- **否则**，您将收到一个私信形式的 **Link your account** 按钮，点击后将跳转至 Failproof AI，将您的 Slack 用户与账户关联。
 
 ## 提问方式
 
-| 场景 | 方式 |
+| 场景 | 操作方式 |
 | --- | --- |
-| 频道 | @ 该应用；在其对话线程中回复可继续提问，无需再次 @ |
-| 私信 | 直接向该应用发消息 |
-| 包含该应用的群聊私信 | @ 该应用，然后在其对话线程中回复继续 |
-| Slack Connect 频道 | @ 该应用 |
-| 任何包含该应用的对话 | `/failproof <问题>` 会创建一个包含回答的线程 |
+| 频道 | @ 提及应用。在其消息串中回复即可继续对话，无需再次提及 |
+| 直接消息 | 直接给应用发消息 |
+| 应用所在的群组直接消息 | 提及应用，然后在消息串中回复以继续 |
+| Slack Connect 频道 | 提及应用 |
+| 应用所在的任何对话 | `/failproof <问题>` 会启动一个包含回答的消息串 |
 | `/failproof help` | 查看应用的功能说明 |
-| `/failproof status` | 查看已连接的组织及您的关联身份 |
-| `/failproof link` | 查看您关联的 Failproof AI 账号 |
+| `/failproof status` | 查看已连接的组织及您关联的账户 |
+| `/failproof link` | 查看您关联的 Failproof AI 账户 |
 
-一个线程对应一次对话。同事可以在同一线程中 @ 该应用，它会根据各自的权限分别作答。只有发起线程的人无需 @  即可继续对话。
+一个消息串即为一次对话。同事可以在同一消息串中 @ 提及应用，应用会根据各自的权限分别作答。只有发起消息串的人可以在无需提及的情况下继续对话。
 
-当回答涉及数据时，应用会发布图表或表格，并附上在 Failproof AI 中查看的链接。
+当回答涉及数据时，应用会发布图表或表格，并附上在 Failproof AI 中打开的链接。
 
-## 审批变更
+## 审批更改
 
-助手进行的每一项变更都会先显示 **Approve** 和 **Cancel** 按钮，点击 **Approve** 前 Slack 还会再次确认。只有提问者可以操作这些按钮，按钮在 5 分钟后失效，变更将以该人的权限执行。
+助手执行的每项更改都会先显示 **Approve** 和 **Cancel** 按钮，且 Slack 会在 **Approve** 前再次确认。只有提问者才能回应这些按钮，按钮在 5 分钟后失效，更改将以该用户的权限执行。
 
-在 Slack 中，助手可以修改已保存的查询和仪表盘、评估、告警、审计、问题及策略，并提出代码修复建议，前提是您拥有相应权限。它无法修改 API 密钥、用户或设置。
+在 Slack 中，助手可以在您拥有相应权限的情况下，更改已保存的查询和仪表盘、评估、告警、审计、问题和策略，并建议代码修复。它无法更改 API 密钥、用户或设置。
 
 ## 链接预览
 
-在托管版 Failproof AI Cloud 中，粘贴到 Slack 的 Failproof AI 问题、会话和评估链接会展开为卡片。卡片只显示触发者有权查看的内容。指向自托管地址的链接不会展开，但助手自身回答中的卡片仍会正常显示。
+在托管版 Failproof AI Cloud 中，粘贴到 Slack 的 Failproof AI 问题、会话和评估链接会展开为卡片。卡片仅显示触发者有权查看的内容。自托管地址的链接不会展开，但助手自身回答中的卡片仍会正常显示。
 
 ## Slack Connect 频道
 
-来自其他工作区的人员，在关联账号后，如果是该组织的成员，即可使用此应用。回答对对话中的所有人可见，包括非组织成员，因此请在所有人都可能看到回答的场合谨慎提问。
+来自其他工作区的人员在关联账户后，如果是该组织的成员，即可使用该应用。回答对对话中所有人可见，包括不属于您组织的人，请注意在所有人都能看到回答的场合谨慎提问。
 
-只有在频道中所有其他工作区都有成员关联到该组织后，应用才会作答。在此之前，它会告知提问者原因。
+只有当频道中其他所有工作区都有成员关联到该组织后，应用才会开始作答。在此之前，应用会告知提问者原因。
 
 ## 应用申请的权限
 
-| Slack 权限 | 用途 |
+| Slack 权限 | 用途说明 |
 | --- | --- |
-| `app_mentions:read` | 识别有人 @ 该应用 |
-| `channels:history`、`groups:history`、`im:history`、`mpim:history` | 接收私信及应用线程中的回复。应用会忽略其他消息，且不会读取对话的历史记录 |
-| `channels:read`、`groups:read`、`im:read`、`mpim:read` | 判断对话类型，以了解谁可以看到回答 |
+| `app_mentions:read` | 识别何时有人 @ 提及应用 |
+| `channels:history`、`groups:history`、`im:history`、`mpim:history` | 接收直接消息及应用消息串中的回复。应用会忽略其他消息，不会读取对话的历史记录 |
+| `channels:read`、`groups:read`、`im:read`、`mpim:read` | 检查所在对话的类型，以确定哪些人可以看到回答 |
 | `chat:write` | 发布回答和审批按钮 |
 | `commands` | 提供 `/failproof` 命令 |
 | `files:write` | 发布图表 |
-| `links:read`、`links:write` | 展示粘贴的 Failproof AI 链接预览 |
-| `users:read`、`users:read.email` | 将您与 Failproof AI 账号匹配，并显示姓名 |
+| `links:read`、`links:write` | 显示粘贴的 Failproof AI 链接预览 |
+| `users:read`、`users:read.email` | 将您与 Failproof AI 账户匹配，并显示姓名 |
 
 ## 断开连接
 
-前往 **设置 → 集成** 并选择 **Disconnect**，或在应用的 **Home** 选项卡上选择 **Disconnect**，或从 Slack 中移除该应用。
+前往 **设置 → 集成** 并选择 **断开连接**，在应用的 **主页** 标签页选择 **断开连接**，或直接从 Slack 中移除该应用。
 
-以上任一操作都会删除工作区的连接、机器人令牌、关联账号及线程记录。过去在 Slack 中的对话仍可在仪表盘中查看。组织随后可立即连接任何工作区。
+以上任意操作均会删除工作区的连接、机器人令牌、关联账户及消息串记录。过去的 Slack 对话仍可在仪表盘中查看。组织随后可立即连接任何工作区。
 
 ## 数据与隐私
 
-问答内容将作为对话保存在您的组织仪表盘中，归属于发起线程的人员。Slack 数据不会用于训练 AI 模型。请查阅[隐私政策](https://befailproof.ai/privacy/)了解应用接收的数据内容及保留时长。
+问答内容会以对话形式保存在您组织的仪表盘中，归属于发起消息串的人员。Slack 数据不会用于训练 AI 模型。有关应用接收的数据及保留时长，请参阅[隐私政策](https://befailproof.ai/privacy/)。
 
 ## 故障排查
 
-| 您看到的提示 | 处理方式 |
+| 您看到的内容 | 解决方法 |
 | --- | --- |
-| "This workspace isn't connected to a FailproofAI Cloud yet." | 工作区管理员打开应用的 **Home** 选项卡进行选择 |
-| "This link expired or was already used." | 在 **Home** 选项卡上重新选择您的 Cloud 以获取新链接 |
+| "This workspace isn't connected to a FailproofAI Cloud yet." | 工作区管理员打开应用的 **主页** 标签页并选择一个 Cloud |
+| "This link expired or was already used." | 在 **主页** 标签页重新选择您的 Cloud 以获取新链接 |
 | "This org is already connected to a Slack workspace." | 请先在设置中断开连接 |
 | "That Slack workspace is connected to another org." | 请先从该组织断开连接 |
 | "Link your account to use the assistant." | 点击按钮并在 Failproof AI 中确认 |
-| 应用在群聊私信中不作答 | 重新将应用添加到 Slack 以授予群组权限，您的连接将保留 |
-| "I won't post answers from your organization here" | 该工作区中一位组织成员 @ 该应用并关联其账号 |
+| 应用在群组直接消息中没有回复 | 重新将应用添加到 Slack 以授予群组权限，您的连接将保留 |
+| "I won't post answers from your organization here" | 该工作区中属于该组织成员的人 @ 提及应用并关联其账户 |
 
 仍有问题？请发送邮件至 [support@befailproof.ai](mailto:support@befailproof.ai)。

@@ -1229,7 +1229,7 @@
           "Auth"
         ],
         "description": "Describe the API key making this request: the organization it belongs to and the permissions it holds. Requires no permission of its own — any valid key may describe itself, and only itself. Intended to be called once when provisioning a machine, so a bad key, a missing permission and a wrong organization can be told apart before anything is sent. A key that has just been revoked or has just expired may still be reported as valid for up to a minute.",
-        "operationId": "handler",
+        "operationId": "get_auth_introspect",
         "responses": {
           "200": {
             "description": "The key is valid. Reports its organization and effective permissions."
@@ -2031,7 +2031,7 @@
         ],
         "summary": "The distinct environment names seen in this organization's evaluations.",
         "description": "Returns a bare JSON array of strings, suitable for an environment filter.\nRead from the evaluations dataset rather than the event store, so a key with\n`evaluations:read` but not `events:read` can still populate the filter.\nCached per organization for 60 seconds, so a brand-new environment can take\nup to a minute to show up here.",
-        "operationId": "list_environments",
+        "operationId": "get_evaluations_environments",
         "responses": {
           "200": {
             "description": "A JSON array of environment names, sorted."
@@ -2217,7 +2217,7 @@
         ],
         "summary": "Ingest a batch of events.",
         "description": "The body is newline-delimited JSON — one event object per line, not a JSON\narray. Malformed lines are SKIPPED, not rejected: the response reports\n`accepted` and `skipped` counts and the status is 200 even when every line\nwas bad. A 5xx means \"retry the whole batch\"; duplicate events are collapsed\nserver-side, so retrying is safe.",
-        "operationId": "handler",
+        "operationId": "post_events",
         "requestBody": {
           "description": "One JSON event object per line.",
           "content": {
@@ -2241,6 +2241,9 @@
           },
           "500": {
             "description": "Storage write failed — retry the batch."
+          },
+          "422": {
+            "description": "An event exceeds the storage JSON row limit; reduce its payload."
           }
         },
         "security": [
@@ -2283,7 +2286,7 @@
         ],
         "summary": "List the environment names this organization has actually sent events from.",
         "description": "A JSON array of strings, alphabetically sorted — the values accepted by the\n`environment` filter on `/events`, `/events/summary` and `/sessions`. Derived\nfrom stored events, so an environment appears only once something has been\ningested under it, and results are cached for up to a minute: a brand-new\nenvironment can take that long to show up.\n\nEither `events:read` or `evaluations:read` grants this, so session-only keys\ncan populate the same filter.",
-        "operationId": "list_environments",
+        "operationId": "get_events_environments",
         "responses": {
           "200": {
             "description": "The organization's environment names, sorted."
@@ -2869,7 +2872,7 @@
         ],
         "summary": "Liveness probe.",
         "description": "The only endpoint on `/v1` that needs no credential — it reports that the\nprocess is answering, nothing about your data.",
-        "operationId": "handler",
+        "operationId": "get_health",
         "responses": {
           "200": {
             "description": "The server is answering."
@@ -4017,7 +4020,7 @@
         ],
         "summary": "Describe the tables a query may read.",
         "description": "Returns `{schema, tables: [{name, columns: [{name, type}]}]}` — the same\nlisting the query editor's autocomplete and schema browser are built on.\nTypes are normalised display names (`string`, `int`, `float`, `timestamp`,\n`uuid`, `bool`), with a trailing `?` when the column is nullable.\n\nThe shape is the same for every organization; only the rows a query over\nthese tables returns are yours.",
-        "operationId": "get_schema",
+        "operationId": "get_queries_schema",
         "responses": {
           "200": {
             "description": "The queryable tables and their columns."
@@ -4528,7 +4531,7 @@
         ],
         "summary": "The setting catalogue — key, type, and constraints, with no values.",
         "description": "Registry metadata only, so it reads nothing per-organization and returns the\nsame document for every caller. Use it to render typed inputs without\nre-declaring the catalogue; use `GET /settings` when you also need values.",
-        "operationId": "get_schema",
+        "operationId": "get_settings_schema",
         "responses": {
           "200": {
             "description": "The setting definitions, under `settings`."
@@ -4938,6 +4941,103 @@
           },
           "409": {
             "description": "The user is not disabled."
+          }
+        },
+        "security": [
+          {
+            "api_key": []
+          }
+        ]
+      }
+    },
+    "/events/import": {
+      "post": {
+        "tags": [
+          "Events"
+        ],
+        "summary": "Import one file of agent events into the caller's organization.",
+        "description": "The body is the file itself, optionally gzipped (detected from its bytes).\nThe format is detected from the content unless `format` names it: our event\nJSONL, a Claude Code transcript, or a Codex rollout. Transcripts are\nconverted exactly as the failproofaid collector converts them live, secrets\nare redacted, and every event is stamped `ingest_source: \"upload\"` and\n`uploaded_by: <who>`. Sessions already present in the organization are\nskipped whole. `dry_run=true` reports what would happen and stores nothing.",
+        "operationId": "post_events_import",
+        "parameters": [
+          {
+            "name": "format",
+            "in": "query",
+            "description": "`auto` (default), `agenteye`, `claude` or `codex`.",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "path",
+            "in": "query",
+            "description": "The file's path relative to what was dropped, e.g.\n`-home-me-repo/0b5c….jsonl`. Claude and Codex take the session id from\nit, and a Claude subagent its parent session. A trailing `.gz` is ignored.",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "environment",
+            "in": "query",
+            "description": "Environment for events that do not name one. Default `upload`.",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "dry_run",
+            "in": "query",
+            "description": "Convert and report; store nothing.",
+            "required": false,
+            "schema": {
+              "type": "boolean"
+            }
+          },
+          {
+            "name": "existing_before",
+            "in": "query",
+            "description": "Unix milliseconds. A session counts as already present only when it has\nrows ingested before this. Pass the dry run's `checked_at`, so the later\nfiles of a session this import created are not skipped as \"existing\".\nDefault: now.",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          }
+        ],
+        "requestBody": {
+          "description": "One file: event JSONL, a Claude Code transcript or a Codex rollout. Gzip is accepted.",
+          "content": {
+            "application/octet-stream": {
+              "schema": {
+                "type": "string"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "File processed (or, with `dry_run`, previewed)."
+          },
+          "400": {
+            "description": "Bad `format`, `path` or `environment`."
+          },
+          "401": {
+            "description": "Missing, unknown, or disabled key."
+          },
+          "403": {
+            "description": "The key lacks `events:add`."
+          },
+          "413": {
+            "description": "The file exceeds MAX_BODY_BYTES after decompression."
+          },
+          "422": {
+            "description": "Unrecognized file format, or a converted event exceeds the storage JSON row limit."
+          },
+          "500": {
+            "description": "Storage failed — retry the file."
           }
         },
         "security": [

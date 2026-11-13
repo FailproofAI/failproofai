@@ -2,6 +2,10 @@
 
 ## 1.0.14-beta.0 — 2026-11-02
 
+### Fixes
+
+- Build and verify the `darwin-arm64` daemon on `macos-15`. GitHub retired the `macos-14` runner image on 2026-11-02, so that leg of `build-daemon.yml` and of `publish.yml`'s `verify-install` no longer got a runner, which would have stopped the next release (#999)
+
 ### Docs
 
 - Add public pages for the MCP server, the Slack app and product analytics, which the assistant and MCP server can now answer from (#982).

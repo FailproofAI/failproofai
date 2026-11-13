@@ -87,14 +87,15 @@ jobs:
             platform: linux-arm64
           # macOS cannot be cross-compiled reliably from Linux (system
           # framework linking), so both legs use real Apple Silicon / Intel
-          # runners. `macos-15-intel` rather than `macos-13`: GitHub retired
-          # the macOS 13 images, and an unknown runner label doesn't degrade
-          # — the leg never gets a runner at all.
+          # runners. `macos-15-intel` rather than `macos-13`, and `macos-15`
+          # rather than `macos-14`: GitHub retired the macOS 13 images, then
+          # the macOS 14 ones on 2026-11-02, and an unknown runner label
+          # doesn't degrade — the leg never gets a runner at all.
           - target: x86_64-apple-darwin
             os: macos-15-intel
             platform: darwin-x64
           - target: aarch64-apple-darwin
-            os: macos-14
+            os: macos-15
             platform: darwin-arm64
     runs-on: ${{ matrix.os }}
     # Nothing in this job has a bounded runtime of its own, and GitHub's default

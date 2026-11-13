@@ -287,6 +287,7 @@
                   "zh/start/first-policy",
                   "zh/start/setup",
                   "zh/start/concepts",
+                  "zh/start/use-jev",
                   {
                     "group": "Starter templates",
                     "expanded": false,
@@ -326,6 +327,7 @@
                 "group": "Plug in your agent",
                 "pages": [
                   "zh/start/integrations",
+                  "zh/agenteye/opentelemetry",
                   "zh/start/integrations/custom-agents",
                   "zh/start/integrations/langchain",
                   "zh/start/integrations/crewai",
@@ -344,6 +346,8 @@
                 "pages": [
                   "zh/evaluations/overview",
                   "zh/evaluations/write",
+                  "zh/evaluations/judge",
+                  "zh/evaluations/jev",
                   "zh/evaluations/test",
                   "zh/evaluations/deploy",
                   "zh/sessions/evaluations"
@@ -352,6 +356,7 @@
               {
                 "group": "Find and manage failures",
                 "pages": [
+                  "zh/sessions/sentiment",
                   "zh/audits/overview",
                   "zh/audits/local-audit",
                   "zh/audits/setup",
@@ -372,12 +377,14 @@
               {
                 "group": "Prevent repeat failures",
                 "pages": [
-                  "zh/policies/overview"
+                  "zh/policies/overview",
+                  "zh/policies/jev"
                 ]
               },
               {
                 "group": "Get a policy",
                 "pages": [
+                  "zh/policies/authority",
                   "zh/policies/editor",
                   "zh/policies/packs"
                 ]
@@ -405,7 +412,8 @@
                   "zh/admin/usage",
                   "zh/admin/keys-and-permissions",
                   "zh/admin/users-and-organizations",
-                  "zh/admin/settings-and-security"
+                  "zh/admin/settings-and-security",
+                  "zh/admin/product-analytics"
                 ]
               }
             ]
@@ -420,9 +428,26 @@
                   "zh/reference/overview",
                   "zh/reference/harnesses",
                   "zh/reference/custom-agents",
+                  "zh/reference/custom-agents-typescript",
                   "zh/reference/evaluator-sdk",
                   "zh/reference/policy-sdk",
                   "zh/reference/self-hosting"
+                ]
+              },
+              {
+                "group": "Connect your tools",
+                "pages": [
+                  "zh/reference/mcp",
+                  "zh/reference/slack"
+                ]
+              },
+              {
+                "group": "Jev reference",
+                "pages": [
+                  "zh/reference/jev",
+                  "zh/reference/jev-evaluations",
+                  "zh/reference/jev-providers",
+                  "zh/reference/jev-cloud"
                 ]
               },
               {
@@ -430,6 +455,7 @@
                 "expanded": false,
                 "pages": [
                   "zh/reference/failproof-cli",
+                  "zh/reference/otel",
                   "zh/reference/local-dashboard",
                   "zh/policies/local-configuration",
                   "zh/reference/cloud-cli",
@@ -460,6 +486,7 @@
                   "ja/start/first-policy",
                   "ja/start/setup",
                   "ja/start/concepts",
+                  "ja/start/use-jev",
                   {
                     "group": "Starter templates",
                     "expanded": false,
@@ -499,6 +526,7 @@
                 "group": "Plug in your agent",
                 "pages": [
                   "ja/start/integrations",
+                  "ja/agenteye/opentelemetry",
                   "ja/start/integrations/custom-agents",
                   "ja/start/integrations/langchain",
                   "ja/start/integrations/crewai",
@@ -517,6 +545,8 @@
                 "pages": [
                   "ja/evaluations/overview",
                   "ja/evaluations/write",
+                  "ja/evaluations/judge",
+                  "ja/evaluations/jev",
                   "ja/evaluations/test",
                   "ja/evaluations/deploy",
                   "ja/sessions/evaluations"
@@ -525,6 +555,7 @@
               {
                 "group": "Find and manage failures",
                 "pages": [
+                  "ja/sessions/sentiment",
                   "ja/audits/overview",
                   "ja/audits/local-audit",
                   "ja/audits/setup",
@@ -545,12 +576,14 @@
               {
                 "group": "Prevent repeat failures",
                 "pages": [
-                  "ja/policies/overview"
+                  "ja/policies/overview",
+                  "ja/policies/jev"
                 ]
               },
               {
                 "group": "Get a policy",
                 "pages": [
+                  "ja/policies/authority",
                   "ja/policies/editor",
                   "ja/policies/packs"
                 ]
@@ -578,7 +611,8 @@
                   "ja/admin/usage",
                   "ja/admin/keys-and-permissions",
                   "ja/admin/users-and-organizations",
-                  "ja/admin/settings-and-security"
+                  "ja/admin/settings-and-security",
+                  "ja/admin/product-analytics"
                 ]
               }
             ]
@@ -593,9 +627,25 @@
                   "ja/reference/overview",
                   "ja/reference/harnesses",
                   "ja/reference/custom-agents",
+                  "ja/reference/custom-agents-typescript",
                   "ja/reference/evaluator-sdk",
                   "ja/reference/policy-sdk",
                   "ja/reference/self-hosting"
+                ]
+              },
+              {
+                "group": "Connect your tools",
+                "pages": [
+                  "ja/reference/mcp",
+                  "ja/reference/slack"
+                ]
+              },
+              {
+                "group": "Jev reference",
+                "pages": [
+                  "ja/reference/jev",
+                  "ja/reference/jev-evaluations",
+                  "ja/reference/jev-providers"
                 ]
               },
               {
@@ -603,6 +653,7 @@
                 "expanded": false,
                 "pages": [
                   "ja/reference/failproof-cli",
+                  "ja/reference/otel",
                   "ja/reference/local-dashboard",
                   "ja/policies/local-configuration",
                   "ja/reference/cloud-cli",
@@ -633,6 +684,7 @@
                   "ko/start/first-policy",
                   "ko/start/setup",
                   "ko/start/concepts",
+                  "ko/start/use-jev",
                   {
                     "group": "Starter templates",
                     "expanded": false,
@@ -672,6 +724,7 @@
                 "group": "Plug in your agent",
                 "pages": [
                   "ko/start/integrations",
+                  "ko/agenteye/opentelemetry",
                   "ko/start/integrations/custom-agents",
                   "ko/start/integrations/langchain",
                   "ko/start/integrations/crewai",
@@ -690,6 +743,8 @@
                 "pages": [
                   "ko/evaluations/overview",
                   "ko/evaluations/write",
+                  "ko/evaluations/judge",
+                  "ko/evaluations/jev",
                   "ko/evaluations/test",
                   "ko/evaluations/deploy",
                   "ko/sessions/evaluations"
@@ -698,6 +753,7 @@
               {
                 "group": "Find and manage failures",
                 "pages": [
+                  "ko/sessions/sentiment",
                   "ko/audits/overview",
                   "ko/audits/local-audit",
                   "ko/audits/setup",
@@ -718,7 +774,8 @@
               {
                 "group": "Prevent repeat failures",
                 "pages": [
-                  "ko/policies/overview"
+                  "ko/policies/overview",
+                  "ko/policies/jev"
                 ]
               },
               {
@@ -751,7 +808,8 @@
                   "ko/admin/usage",
                   "ko/admin/keys-and-permissions",
                   "ko/admin/users-and-organizations",
-                  "ko/admin/settings-and-security"
+                  "ko/admin/settings-and-security",
+                  "ko/admin/product-analytics"
                 ]
               }
             ]
@@ -766,9 +824,25 @@
                   "ko/reference/overview",
                   "ko/reference/harnesses",
                   "ko/reference/custom-agents",
+                  "ko/reference/custom-agents-typescript",
                   "ko/reference/evaluator-sdk",
                   "ko/reference/policy-sdk",
                   "ko/reference/self-hosting"
+                ]
+              },
+              {
+                "group": "Connect your tools",
+                "pages": [
+                  "ko/reference/mcp",
+                  "ko/reference/slack"
+                ]
+              },
+              {
+                "group": "Jev reference",
+                "pages": [
+                  "ko/reference/jev",
+                  "ko/reference/jev-evaluations",
+                  "ko/reference/jev-providers"
                 ]
               },
               {
@@ -776,6 +850,7 @@
                 "expanded": false,
                 "pages": [
                   "ko/reference/failproof-cli",
+                  "ko/reference/otel",
                   "ko/reference/local-dashboard",
                   "ko/policies/local-configuration",
                   "ko/reference/cloud-cli",
@@ -806,6 +881,7 @@
                   "es/start/first-policy",
                   "es/start/setup",
                   "es/start/concepts",
+                  "es/start/use-jev",
                   {
                     "group": "Starter templates",
                     "expanded": false,
@@ -845,6 +921,7 @@
                 "group": "Plug in your agent",
                 "pages": [
                   "es/start/integrations",
+                  "es/agenteye/opentelemetry",
                   "es/start/integrations/custom-agents",
                   "es/start/integrations/langchain",
                   "es/start/integrations/crewai",
@@ -863,6 +940,8 @@
                 "pages": [
                   "es/evaluations/overview",
                   "es/evaluations/write",
+                  "es/evaluations/judge",
+                  "es/evaluations/jev",
                   "es/evaluations/test",
                   "es/evaluations/deploy",
                   "es/sessions/evaluations"
@@ -871,6 +950,7 @@
               {
                 "group": "Find and manage failures",
                 "pages": [
+                  "es/sessions/sentiment",
                   "es/audits/overview",
                   "es/audits/local-audit",
                   "es/audits/setup",
@@ -891,12 +971,14 @@
               {
                 "group": "Prevent repeat failures",
                 "pages": [
-                  "es/policies/overview"
+                  "es/policies/overview",
+                  "es/policies/jev"
                 ]
               },
               {
                 "group": "Get a policy",
                 "pages": [
+                  "es/policies/authority",
                   "es/policies/editor",
                   "es/policies/packs"
                 ]
@@ -924,7 +1006,8 @@
                   "es/admin/usage",
                   "es/admin/keys-and-permissions",
                   "es/admin/users-and-organizations",
-                  "es/admin/settings-and-security"
+                  "es/admin/settings-and-security",
+                  "es/admin/product-analytics"
                 ]
               }
             ]
@@ -939,9 +1022,26 @@
                   "es/reference/overview",
                   "es/reference/harnesses",
                   "es/reference/custom-agents",
+                  "es/reference/custom-agents-typescript",
                   "es/reference/evaluator-sdk",
                   "es/reference/policy-sdk",
                   "es/reference/self-hosting"
+                ]
+              },
+              {
+                "group": "Connect your tools",
+                "pages": [
+                  "es/reference/mcp",
+                  "es/reference/slack"
+                ]
+              },
+              {
+                "group": "Jev reference",
+                "pages": [
+                  "es/reference/jev",
+                  "es/reference/jev-evaluations",
+                  "es/reference/jev-providers",
+                  "es/reference/jev-cloud"
                 ]
               },
               {
@@ -949,6 +1049,7 @@
                 "expanded": false,
                 "pages": [
                   "es/reference/failproof-cli",
+                  "es/reference/otel",
                   "es/reference/local-dashboard",
                   "es/policies/local-configuration",
                   "es/reference/cloud-cli",
@@ -979,6 +1080,7 @@
                   "pt-br/start/first-policy",
                   "pt-br/start/setup",
                   "pt-br/start/concepts",
+                  "pt-br/start/use-jev",
                   {
                     "group": "Starter templates",
                     "expanded": false,
@@ -1018,6 +1120,7 @@
                 "group": "Plug in your agent",
                 "pages": [
                   "pt-br/start/integrations",
+                  "pt-br/agenteye/opentelemetry",
                   "pt-br/start/integrations/custom-agents",
                   "pt-br/start/integrations/langchain",
                   "pt-br/start/integrations/crewai",
@@ -1036,6 +1139,8 @@
                 "pages": [
                   "pt-br/evaluations/overview",
                   "pt-br/evaluations/write",
+                  "pt-br/evaluations/judge",
+                  "pt-br/evaluations/jev",
                   "pt-br/evaluations/test",
                   "pt-br/evaluations/deploy",
                   "pt-br/sessions/evaluations"
@@ -1044,6 +1149,7 @@
               {
                 "group": "Find and manage failures",
                 "pages": [
+                  "pt-br/sessions/sentiment",
                   "pt-br/audits/overview",
                   "pt-br/audits/local-audit",
                   "pt-br/audits/setup",
@@ -1064,12 +1170,14 @@
               {
                 "group": "Prevent repeat failures",
                 "pages": [
-                  "pt-br/policies/overview"
+                  "pt-br/policies/overview",
+                  "pt-br/policies/jev"
                 ]
               },
               {
                 "group": "Get a policy",
                 "pages": [
+                  "pt-br/policies/authority",
                   "pt-br/policies/editor",
                   "pt-br/policies/packs"
                 ]
@@ -1097,7 +1205,8 @@
                   "pt-br/admin/usage",
                   "pt-br/admin/keys-and-permissions",
                   "pt-br/admin/users-and-organizations",
-                  "pt-br/admin/settings-and-security"
+                  "pt-br/admin/settings-and-security",
+                  "pt-br/admin/product-analytics"
                 ]
               }
             ]
@@ -1112,9 +1221,26 @@
                   "pt-br/reference/overview",
                   "pt-br/reference/harnesses",
                   "pt-br/reference/custom-agents",
+                  "pt-br/reference/custom-agents-typescript",
                   "pt-br/reference/evaluator-sdk",
                   "pt-br/reference/policy-sdk",
                   "pt-br/reference/self-hosting"
+                ]
+              },
+              {
+                "group": "Connect your tools",
+                "pages": [
+                  "pt-br/reference/mcp",
+                  "pt-br/reference/slack"
+                ]
+              },
+              {
+                "group": "Jev reference",
+                "pages": [
+                  "pt-br/reference/jev",
+                  "pt-br/reference/jev-evaluations",
+                  "pt-br/reference/jev-providers",
+                  "pt-br/reference/jev-cloud"
                 ]
               },
               {
@@ -1122,6 +1248,7 @@
                 "expanded": false,
                 "pages": [
                   "pt-br/reference/failproof-cli",
+                  "pt-br/reference/otel",
                   "pt-br/reference/local-dashboard",
                   "pt-br/policies/local-configuration",
                   "pt-br/reference/cloud-cli",
@@ -1152,6 +1279,7 @@
                   "de/start/first-policy",
                   "de/start/setup",
                   "de/start/concepts",
+                  "de/start/use-jev",
                   {
                     "group": "Starter templates",
                     "expanded": false,
@@ -1191,6 +1319,7 @@
                 "group": "Plug in your agent",
                 "pages": [
                   "de/start/integrations",
+                  "de/agenteye/opentelemetry",
                   "de/start/integrations/custom-agents",
                   "de/start/integrations/langchain",
                   "de/start/integrations/crewai",
@@ -1209,6 +1338,8 @@
                 "pages": [
                   "de/evaluations/overview",
                   "de/evaluations/write",
+                  "de/evaluations/judge",
+                  "de/evaluations/jev",
                   "de/evaluations/test",
                   "de/evaluations/deploy",
                   "de/sessions/evaluations"
@@ -1217,6 +1348,7 @@
               {
                 "group": "Find and manage failures",
                 "pages": [
+                  "de/sessions/sentiment",
                   "de/audits/overview",
                   "de/audits/local-audit",
                   "de/audits/setup",
@@ -1237,12 +1369,14 @@
               {
                 "group": "Prevent repeat failures",
                 "pages": [
-                  "de/policies/overview"
+                  "de/policies/overview",
+                  "de/policies/jev"
                 ]
               },
               {
                 "group": "Get a policy",
                 "pages": [
+                  "de/policies/authority",
                   "de/policies/editor",
                   "de/policies/packs"
                 ]
@@ -1270,7 +1404,8 @@
                   "de/admin/usage",
                   "de/admin/keys-and-permissions",
                   "de/admin/users-and-organizations",
-                  "de/admin/settings-and-security"
+                  "de/admin/settings-and-security",
+                  "de/admin/product-analytics"
                 ]
               }
             ]
@@ -1285,9 +1420,26 @@
                   "de/reference/overview",
                   "de/reference/harnesses",
                   "de/reference/custom-agents",
+                  "de/reference/custom-agents-typescript",
                   "de/reference/evaluator-sdk",
                   "de/reference/policy-sdk",
                   "de/reference/self-hosting"
+                ]
+              },
+              {
+                "group": "Connect your tools",
+                "pages": [
+                  "de/reference/mcp",
+                  "de/reference/slack"
+                ]
+              },
+              {
+                "group": "Jev reference",
+                "pages": [
+                  "de/reference/jev",
+                  "de/reference/jev-evaluations",
+                  "de/reference/jev-providers",
+                  "de/reference/jev-cloud"
                 ]
               },
               {
@@ -1295,6 +1447,7 @@
                 "expanded": false,
                 "pages": [
                   "de/reference/failproof-cli",
+                  "de/reference/otel",
                   "de/reference/local-dashboard",
                   "de/policies/local-configuration",
                   "de/reference/cloud-cli",
@@ -1325,6 +1478,7 @@
                   "fr/start/first-policy",
                   "fr/start/setup",
                   "fr/start/concepts",
+                  "fr/start/use-jev",
                   {
                     "group": "Starter templates",
                     "expanded": false,
@@ -1364,6 +1518,7 @@
                 "group": "Plug in your agent",
                 "pages": [
                   "fr/start/integrations",
+                  "fr/agenteye/opentelemetry",
                   "fr/start/integrations/custom-agents",
                   "fr/start/integrations/langchain",
                   "fr/start/integrations/crewai",
@@ -1382,6 +1537,8 @@
                 "pages": [
                   "fr/evaluations/overview",
                   "fr/evaluations/write",
+                  "fr/evaluations/judge",
+                  "fr/evaluations/jev",
                   "fr/evaluations/test",
                   "fr/evaluations/deploy",
                   "fr/sessions/evaluations"
@@ -1390,6 +1547,7 @@
               {
                 "group": "Find and manage failures",
                 "pages": [
+                  "fr/sessions/sentiment",
                   "fr/audits/overview",
                   "fr/audits/local-audit",
                   "fr/audits/setup",
@@ -1410,12 +1568,14 @@
               {
                 "group": "Prevent repeat failures",
                 "pages": [
-                  "fr/policies/overview"
+                  "fr/policies/overview",
+                  "fr/policies/jev"
                 ]
               },
               {
                 "group": "Get a policy",
                 "pages": [
+                  "fr/policies/authority",
                   "fr/policies/editor",
                   "fr/policies/packs"
                 ]
@@ -1443,7 +1603,8 @@
                   "fr/admin/usage",
                   "fr/admin/keys-and-permissions",
                   "fr/admin/users-and-organizations",
-                  "fr/admin/settings-and-security"
+                  "fr/admin/settings-and-security",
+                  "fr/admin/product-analytics"
                 ]
               }
             ]
@@ -1458,9 +1619,26 @@
                   "fr/reference/overview",
                   "fr/reference/harnesses",
                   "fr/reference/custom-agents",
+                  "fr/reference/custom-agents-typescript",
                   "fr/reference/evaluator-sdk",
                   "fr/reference/policy-sdk",
                   "fr/reference/self-hosting"
+                ]
+              },
+              {
+                "group": "Connect your tools",
+                "pages": [
+                  "fr/reference/mcp",
+                  "fr/reference/slack"
+                ]
+              },
+              {
+                "group": "Jev reference",
+                "pages": [
+                  "fr/reference/jev",
+                  "fr/reference/jev-evaluations",
+                  "fr/reference/jev-providers",
+                  "fr/reference/jev-cloud"
                 ]
               },
               {
@@ -1468,6 +1646,7 @@
                 "expanded": false,
                 "pages": [
                   "fr/reference/failproof-cli",
+                  "fr/reference/otel",
                   "fr/reference/local-dashboard",
                   "fr/policies/local-configuration",
                   "fr/reference/cloud-cli",
@@ -1498,6 +1677,7 @@
                   "ru/start/first-policy",
                   "ru/start/setup",
                   "ru/start/concepts",
+                  "ru/start/use-jev",
                   {
                     "group": "Starter templates",
                     "expanded": false,
@@ -1537,6 +1717,7 @@
                 "group": "Plug in your agent",
                 "pages": [
                   "ru/start/integrations",
+                  "ru/agenteye/opentelemetry",
                   "ru/start/integrations/custom-agents",
                   "ru/start/integrations/langchain",
                   "ru/start/integrations/crewai",
@@ -1555,6 +1736,8 @@
                 "pages": [
                   "ru/evaluations/overview",
                   "ru/evaluations/write",
+                  "ru/evaluations/judge",
+                  "ru/evaluations/jev",
                   "ru/evaluations/test",
                   "ru/evaluations/deploy",
                   "ru/sessions/evaluations"
@@ -1563,6 +1746,7 @@
               {
                 "group": "Find and manage failures",
                 "pages": [
+                  "ru/sessions/sentiment",
                   "ru/audits/overview",
                   "ru/audits/local-audit",
                   "ru/audits/setup",
@@ -1583,12 +1767,14 @@
               {
                 "group": "Prevent repeat failures",
                 "pages": [
-                  "ru/policies/overview"
+                  "ru/policies/overview",
+                  "ru/policies/jev"
                 ]
               },
               {
                 "group": "Get a policy",
                 "pages": [
+                  "ru/policies/authority",
                   "ru/policies/editor",
                   "ru/policies/packs"
                 ]
@@ -1616,7 +1802,8 @@
                   "ru/admin/usage",
                   "ru/admin/keys-and-permissions",
                   "ru/admin/users-and-organizations",
-                  "ru/admin/settings-and-security"
+                  "ru/admin/settings-and-security",
+                  "ru/admin/product-analytics"
                 ]
               }
             ]
@@ -1631,9 +1818,26 @@
                   "ru/reference/overview",
                   "ru/reference/harnesses",
                   "ru/reference/custom-agents",
+                  "ru/reference/custom-agents-typescript",
                   "ru/reference/evaluator-sdk",
                   "ru/reference/policy-sdk",
                   "ru/reference/self-hosting"
+                ]
+              },
+              {
+                "group": "Connect your tools",
+                "pages": [
+                  "ru/reference/mcp",
+                  "ru/reference/slack"
+                ]
+              },
+              {
+                "group": "Jev reference",
+                "pages": [
+                  "ru/reference/jev",
+                  "ru/reference/jev-evaluations",
+                  "ru/reference/jev-providers",
+                  "ru/reference/jev-cloud"
                 ]
               },
               {
@@ -1641,6 +1845,7 @@
                 "expanded": false,
                 "pages": [
                   "ru/reference/failproof-cli",
+                  "ru/reference/otel",
                   "ru/reference/local-dashboard",
                   "ru/policies/local-configuration",
                   "ru/reference/cloud-cli",
@@ -1671,6 +1876,7 @@
                   "hi/start/first-policy",
                   "hi/start/setup",
                   "hi/start/concepts",
+                  "hi/start/use-jev",
                   {
                     "group": "Starter templates",
                     "expanded": false,
@@ -1710,6 +1916,7 @@
                 "group": "Plug in your agent",
                 "pages": [
                   "hi/start/integrations",
+                  "hi/agenteye/opentelemetry",
                   "hi/start/integrations/custom-agents",
                   "hi/start/integrations/langchain",
                   "hi/start/integrations/crewai",
@@ -1728,6 +1935,8 @@
                 "pages": [
                   "hi/evaluations/overview",
                   "hi/evaluations/write",
+                  "hi/evaluations/judge",
+                  "hi/evaluations/jev",
                   "hi/evaluations/test",
                   "hi/evaluations/deploy",
                   "hi/sessions/evaluations"
@@ -1736,6 +1945,7 @@
               {
                 "group": "Find and manage failures",
                 "pages": [
+                  "hi/sessions/sentiment",
                   "hi/audits/overview",
                   "hi/audits/local-audit",
                   "hi/audits/setup",
@@ -1756,12 +1966,14 @@
               {
                 "group": "Prevent repeat failures",
                 "pages": [
-                  "hi/policies/overview"
+                  "hi/policies/overview",
+                  "hi/policies/jev"
                 ]
               },
               {
                 "group": "Get a policy",
                 "pages": [
+                  "hi/policies/authority",
                   "hi/policies/editor",
                   "hi/policies/packs"
                 ]
@@ -1789,7 +2001,8 @@
                   "hi/admin/usage",
                   "hi/admin/keys-and-permissions",
                   "hi/admin/users-and-organizations",
-                  "hi/admin/settings-and-security"
+                  "hi/admin/settings-and-security",
+                  "hi/admin/product-analytics"
                 ]
               }
             ]
@@ -1804,9 +2017,26 @@
                   "hi/reference/overview",
                   "hi/reference/harnesses",
                   "hi/reference/custom-agents",
+                  "hi/reference/custom-agents-typescript",
                   "hi/reference/evaluator-sdk",
                   "hi/reference/policy-sdk",
                   "hi/reference/self-hosting"
+                ]
+              },
+              {
+                "group": "Connect your tools",
+                "pages": [
+                  "hi/reference/mcp",
+                  "hi/reference/slack"
+                ]
+              },
+              {
+                "group": "Jev reference",
+                "pages": [
+                  "hi/reference/jev",
+                  "hi/reference/jev-evaluations",
+                  "hi/reference/jev-providers",
+                  "hi/reference/jev-cloud"
                 ]
               },
               {
@@ -1814,6 +2044,7 @@
                 "expanded": false,
                 "pages": [
                   "hi/reference/failproof-cli",
+                  "hi/reference/otel",
                   "hi/reference/local-dashboard",
                   "hi/policies/local-configuration",
                   "hi/reference/cloud-cli",
@@ -1844,6 +2075,7 @@
                   "tr/start/first-policy",
                   "tr/start/setup",
                   "tr/start/concepts",
+                  "tr/start/use-jev",
                   {
                     "group": "Starter templates",
                     "expanded": false,
@@ -1883,6 +2115,7 @@
                 "group": "Plug in your agent",
                 "pages": [
                   "tr/start/integrations",
+                  "tr/agenteye/opentelemetry",
                   "tr/start/integrations/custom-agents",
                   "tr/start/integrations/langchain",
                   "tr/start/integrations/crewai",
@@ -1901,6 +2134,8 @@
                 "pages": [
                   "tr/evaluations/overview",
                   "tr/evaluations/write",
+                  "tr/evaluations/judge",
+                  "tr/evaluations/jev",
                   "tr/evaluations/test",
                   "tr/evaluations/deploy",
                   "tr/sessions/evaluations"
@@ -1909,6 +2144,7 @@
               {
                 "group": "Find and manage failures",
                 "pages": [
+                  "tr/sessions/sentiment",
                   "tr/audits/overview",
                   "tr/audits/local-audit",
                   "tr/audits/setup",
@@ -1929,12 +2165,14 @@
               {
                 "group": "Prevent repeat failures",
                 "pages": [
-                  "tr/policies/overview"
+                  "tr/policies/overview",
+                  "tr/policies/jev"
                 ]
               },
               {
                 "group": "Get a policy",
                 "pages": [
+                  "tr/policies/authority",
                   "tr/policies/editor",
                   "tr/policies/packs"
                 ]
@@ -1962,7 +2200,8 @@
                   "tr/admin/usage",
                   "tr/admin/keys-and-permissions",
                   "tr/admin/users-and-organizations",
-                  "tr/admin/settings-and-security"
+                  "tr/admin/settings-and-security",
+                  "tr/admin/product-analytics"
                 ]
               }
             ]
@@ -1977,9 +2216,26 @@
                   "tr/reference/overview",
                   "tr/reference/harnesses",
                   "tr/reference/custom-agents",
+                  "tr/reference/custom-agents-typescript",
                   "tr/reference/evaluator-sdk",
                   "tr/reference/policy-sdk",
                   "tr/reference/self-hosting"
+                ]
+              },
+              {
+                "group": "Connect your tools",
+                "pages": [
+                  "tr/reference/mcp",
+                  "tr/reference/slack"
+                ]
+              },
+              {
+                "group": "Jev reference",
+                "pages": [
+                  "tr/reference/jev",
+                  "tr/reference/jev-evaluations",
+                  "tr/reference/jev-providers",
+                  "tr/reference/jev-cloud"
                 ]
               },
               {
@@ -1987,6 +2243,7 @@
                 "expanded": false,
                 "pages": [
                   "tr/reference/failproof-cli",
+                  "tr/reference/otel",
                   "tr/reference/local-dashboard",
                   "tr/policies/local-configuration",
                   "tr/reference/cloud-cli",
@@ -2017,6 +2274,7 @@
                   "vi/start/first-policy",
                   "vi/start/setup",
                   "vi/start/concepts",
+                  "vi/start/use-jev",
                   {
                     "group": "Starter templates",
                     "expanded": false,
@@ -2056,6 +2314,7 @@
                 "group": "Plug in your agent",
                 "pages": [
                   "vi/start/integrations",
+                  "vi/agenteye/opentelemetry",
                   "vi/start/integrations/custom-agents",
                   "vi/start/integrations/langchain",
                   "vi/start/integrations/crewai",
@@ -2074,6 +2333,8 @@
                 "pages": [
                   "vi/evaluations/overview",
                   "vi/evaluations/write",
+                  "vi/evaluations/judge",
+                  "vi/evaluations/jev",
                   "vi/evaluations/test",
                   "vi/evaluations/deploy",
                   "vi/sessions/evaluations"
@@ -2082,6 +2343,7 @@
               {
                 "group": "Find and manage failures",
                 "pages": [
+                  "vi/sessions/sentiment",
                   "vi/audits/overview",
                   "vi/audits/local-audit",
                   "vi/audits/setup",
@@ -2102,12 +2364,14 @@
               {
                 "group": "Prevent repeat failures",
                 "pages": [
-                  "vi/policies/overview"
+                  "vi/policies/overview",
+                  "vi/policies/jev"
                 ]
               },
               {
                 "group": "Get a policy",
                 "pages": [
+                  "vi/policies/authority",
                   "vi/policies/editor",
                   "vi/policies/packs"
                 ]
@@ -2135,7 +2399,8 @@
                   "vi/admin/usage",
                   "vi/admin/keys-and-permissions",
                   "vi/admin/users-and-organizations",
-                  "vi/admin/settings-and-security"
+                  "vi/admin/settings-and-security",
+                  "vi/admin/product-analytics"
                 ]
               }
             ]
@@ -2150,9 +2415,26 @@
                   "vi/reference/overview",
                   "vi/reference/harnesses",
                   "vi/reference/custom-agents",
+                  "vi/reference/custom-agents-typescript",
                   "vi/reference/evaluator-sdk",
                   "vi/reference/policy-sdk",
                   "vi/reference/self-hosting"
+                ]
+              },
+              {
+                "group": "Connect your tools",
+                "pages": [
+                  "vi/reference/mcp",
+                  "vi/reference/slack"
+                ]
+              },
+              {
+                "group": "Jev reference",
+                "pages": [
+                  "vi/reference/jev",
+                  "vi/reference/jev-evaluations",
+                  "vi/reference/jev-providers",
+                  "vi/reference/jev-cloud"
                 ]
               },
               {
@@ -2160,6 +2442,7 @@
                 "expanded": false,
                 "pages": [
                   "vi/reference/failproof-cli",
+                  "vi/reference/otel",
                   "vi/reference/local-dashboard",
                   "vi/policies/local-configuration",
                   "vi/reference/cloud-cli",
@@ -2190,6 +2473,7 @@
                   "it/start/first-policy",
                   "it/start/setup",
                   "it/start/concepts",
+                  "it/start/use-jev",
                   {
                     "group": "Starter templates",
                     "expanded": false,
@@ -2229,6 +2513,7 @@
                 "group": "Plug in your agent",
                 "pages": [
                   "it/start/integrations",
+                  "it/agenteye/opentelemetry",
                   "it/start/integrations/custom-agents",
                   "it/start/integrations/langchain",
                   "it/start/integrations/crewai",
@@ -2247,6 +2532,8 @@
                 "pages": [
                   "it/evaluations/overview",
                   "it/evaluations/write",
+                  "it/evaluations/judge",
+                  "it/evaluations/jev",
                   "it/evaluations/test",
                   "it/evaluations/deploy",
                   "it/sessions/evaluations"
@@ -2255,6 +2542,7 @@
               {
                 "group": "Find and manage failures",
                 "pages": [
+                  "it/sessions/sentiment",
                   "it/audits/overview",
                   "it/audits/local-audit",
                   "it/audits/setup",
@@ -2275,12 +2563,14 @@
               {
                 "group": "Prevent repeat failures",
                 "pages": [
-                  "it/policies/overview"
+                  "it/policies/overview",
+                  "it/policies/jev"
                 ]
               },
               {
                 "group": "Get a policy",
                 "pages": [
+                  "it/policies/authority",
                   "it/policies/editor",
                   "it/policies/packs"
                 ]
@@ -2308,7 +2598,8 @@
                   "it/admin/usage",
                   "it/admin/keys-and-permissions",
                   "it/admin/users-and-organizations",
-                  "it/admin/settings-and-security"
+                  "it/admin/settings-and-security",
+                  "it/admin/product-analytics"
                 ]
               }
             ]
@@ -2323,9 +2614,26 @@
                   "it/reference/overview",
                   "it/reference/harnesses",
                   "it/reference/custom-agents",
+                  "it/reference/custom-agents-typescript",
                   "it/reference/evaluator-sdk",
                   "it/reference/policy-sdk",
                   "it/reference/self-hosting"
+                ]
+              },
+              {
+                "group": "Connect your tools",
+                "pages": [
+                  "it/reference/mcp",
+                  "it/reference/slack"
+                ]
+              },
+              {
+                "group": "Jev reference",
+                "pages": [
+                  "it/reference/jev",
+                  "it/reference/jev-evaluations",
+                  "it/reference/jev-providers",
+                  "it/reference/jev-cloud"
                 ]
               },
               {
@@ -2333,6 +2641,7 @@
                 "expanded": false,
                 "pages": [
                   "it/reference/failproof-cli",
+                  "it/reference/otel",
                   "it/reference/local-dashboard",
                   "it/policies/local-configuration",
                   "it/reference/cloud-cli",
@@ -2363,6 +2672,7 @@
                   "ar/start/first-policy",
                   "ar/start/setup",
                   "ar/start/concepts",
+                  "ar/start/use-jev",
                   {
                     "group": "Starter templates",
                     "expanded": false,
@@ -2402,6 +2712,7 @@
                 "group": "Plug in your agent",
                 "pages": [
                   "ar/start/integrations",
+                  "ar/agenteye/opentelemetry",
                   "ar/start/integrations/custom-agents",
                   "ar/start/integrations/langchain",
                   "ar/start/integrations/crewai",
@@ -2420,6 +2731,8 @@
                 "pages": [
                   "ar/evaluations/overview",
                   "ar/evaluations/write",
+                  "ar/evaluations/judge",
+                  "ar/evaluations/jev",
                   "ar/evaluations/test",
                   "ar/evaluations/deploy",
                   "ar/sessions/evaluations"
@@ -2428,6 +2741,7 @@
               {
                 "group": "Find and manage failures",
                 "pages": [
+                  "ar/sessions/sentiment",
                   "ar/audits/overview",
                   "ar/audits/local-audit",
                   "ar/audits/setup",
@@ -2448,12 +2762,14 @@
               {
                 "group": "Prevent repeat failures",
                 "pages": [
-                  "ar/policies/overview"
+                  "ar/policies/overview",
+                  "ar/policies/jev"
                 ]
               },
               {
                 "group": "Get a policy",
                 "pages": [
+                  "ar/policies/authority",
                   "ar/policies/editor",
                   "ar/policies/packs"
                 ]
@@ -2481,7 +2797,8 @@
                   "ar/admin/usage",
                   "ar/admin/keys-and-permissions",
                   "ar/admin/users-and-organizations",
-                  "ar/admin/settings-and-security"
+                  "ar/admin/settings-and-security",
+                  "ar/admin/product-analytics"
                 ]
               }
             ]
@@ -2496,9 +2813,26 @@
                   "ar/reference/overview",
                   "ar/reference/harnesses",
                   "ar/reference/custom-agents",
+                  "ar/reference/custom-agents-typescript",
                   "ar/reference/evaluator-sdk",
                   "ar/reference/policy-sdk",
                   "ar/reference/self-hosting"
+                ]
+              },
+              {
+                "group": "Connect your tools",
+                "pages": [
+                  "ar/reference/mcp",
+                  "ar/reference/slack"
+                ]
+              },
+              {
+                "group": "Jev reference",
+                "pages": [
+                  "ar/reference/jev",
+                  "ar/reference/jev-evaluations",
+                  "ar/reference/jev-providers",
+                  "ar/reference/jev-cloud"
                 ]
               },
               {
@@ -2506,6 +2840,7 @@
                 "expanded": false,
                 "pages": [
                   "ar/reference/failproof-cli",
+                  "ar/reference/otel",
                   "ar/reference/local-dashboard",
                   "ar/policies/local-configuration",
                   "ar/reference/cloud-cli",
@@ -2536,6 +2871,7 @@
                   "he/start/first-policy",
                   "he/start/setup",
                   "he/start/concepts",
+                  "he/start/use-jev",
                   {
                     "group": "Starter templates",
                     "expanded": false,
@@ -2575,6 +2911,7 @@
                 "group": "Plug in your agent",
                 "pages": [
                   "he/start/integrations",
+                  "he/agenteye/opentelemetry",
                   "he/start/integrations/custom-agents",
                   "he/start/integrations/langchain",
                   "he/start/integrations/crewai",
@@ -2593,6 +2930,8 @@
                 "pages": [
                   "he/evaluations/overview",
                   "he/evaluations/write",
+                  "he/evaluations/judge",
+                  "he/evaluations/jev",
                   "he/evaluations/test",
                   "he/evaluations/deploy",
                   "he/sessions/evaluations"
@@ -2601,6 +2940,7 @@
               {
                 "group": "Find and manage failures",
                 "pages": [
+                  "he/sessions/sentiment",
                   "he/audits/overview",
                   "he/audits/local-audit",
                   "he/audits/setup",
@@ -2621,12 +2961,14 @@
               {
                 "group": "Prevent repeat failures",
                 "pages": [
-                  "he/policies/overview"
+                  "he/policies/overview",
+                  "he/policies/jev"
                 ]
               },
               {
                 "group": "Get a policy",
                 "pages": [
+                  "he/policies/authority",
                   "he/policies/editor",
                   "he/policies/packs"
                 ]
@@ -2654,7 +2996,8 @@
                   "he/admin/usage",
                   "he/admin/keys-and-permissions",
                   "he/admin/users-and-organizations",
-                  "he/admin/settings-and-security"
+                  "he/admin/settings-and-security",
+                  "he/admin/product-analytics"
                 ]
               }
             ]
@@ -2669,9 +3012,26 @@
                   "he/reference/overview",
                   "he/reference/harnesses",
                   "he/reference/custom-agents",
+                  "he/reference/custom-agents-typescript",
                   "he/reference/evaluator-sdk",
                   "he/reference/policy-sdk",
                   "he/reference/self-hosting"
+                ]
+              },
+              {
+                "group": "Connect your tools",
+                "pages": [
+                  "he/reference/mcp",
+                  "he/reference/slack"
+                ]
+              },
+              {
+                "group": "Jev reference",
+                "pages": [
+                  "he/reference/jev",
+                  "he/reference/jev-evaluations",
+                  "he/reference/jev-providers",
+                  "he/reference/jev-cloud"
                 ]
               },
               {
@@ -2679,6 +3039,7 @@
                 "expanded": false,
                 "pages": [
                   "he/reference/failproof-cli",
+                  "he/reference/otel",
                   "he/reference/local-dashboard",
                   "he/policies/local-configuration",
                   "he/reference/cloud-cli",

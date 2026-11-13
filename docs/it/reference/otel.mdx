@@ -1,0 +1,77 @@
+---
+title: "OpenTelemetry CLI"
+description: "Abilita OTEL per gli agenti di codifica, ispeziona la consegna e ripristina le tue impostazioni precedenti."
+icon: "radio"
+---
+
+`failproofai otel` configura la segnalazione facoltativa di OpenTelemetry a FailproofAI Cloud. Per prima cosa connetti la tua macchina con `failproofai config` e chiedi a un amministratore dell'organizzazione di abilitare **Settings → OpenTelemetry**.
+
+L'installazione interattiva ti chiede informazioni su OpenTelemetry dopo il campo della chiave Cloud e il selettore dell'agente. Il passaggio facoltativo predefinito è No. Scegli Sì per selezionare gli agenti OTEL; lo stesso codice di abilitazione viene eseguito dopo che la connessione è stata scritta. Premi Esc prima dell'installazione per non applicare alcun cambiamento. L'installazione automatica, una chiave fornita, la modalità open-source e il mantenimento di una connessione salvata non ti iscrivono.
+
+## Abilita un agente
+
+```bash
+failproofai otel enable claude
+failproofai otel enable codex --local
+failproofai otel enable codex --no-content
+failproofai otel enable copilot
+failproofai otel enable all --yes
+```
+
+Gli agenti supportati sono `claude`, `codex` e `copilot` (VS Code). L'installazione di Copilot richiede un eseguibile VS Code o un'estensione Copilot installata. Una directory di impostazioni rimasta da sola non è sufficiente; l'installazione salta Copilot quando nessuno dei due è trovato.
+
+`--local` invia al relay locale invece di inviare direttamente a Cloud. Copilot utilizza il relay automaticamente perché le sue impostazioni non possono memorizzare l'intestazione di autenticazione.
+
+Il relay ascolta solo sulla tua macchina. Il daemon FailproofAI configurato rileva il cambiamento entro pochi secondi; non è necessario riavviarlo. Se un'altra applicazione possiede la porta del relay, lo stato la segnala come spenta e il daemon continua a funzionare.
+
+<Warning>
+L'acquisizione di testo è attivata per impostazione predefinita. Aggiungi `--no-content` per omettere i prompt e i dettagli degli strumenti. Le versioni degli agenti possono esporre diversi controlli di contenuto; rivedi cosa esporta il tuo agente prima di utilizzarlo con dati sensibili.
+</Warning>
+
+Codex esporta solo i registri di conversazione, non le tracce di runtime interne o le metriche. Un esplicito `log_user_prompt = false` nella tua configurazione di Codex rimane disattivato; enable stampa una nota quando preserva quella scelta.
+
+### Scegli un percorso di segnalazione
+
+Se la segnalazione della trascrizione è attivata per un agente, l'installazione chiede:
+
+> failproofai invia già le sessioni di Claude Code a Cloud. Inviarle con OTEL invece? Il caricamento della trascrizione per Claude Code si interrompe.
+
+L'impostazione predefinita è No. `--yes` accetta il cambio senza una richiesta. Gli altri agenti e l'applicazione delle politiche non sono interessati.
+
+L'installazione di Codex attende che il daemon confermi il cambiamento del raccoglitore prima di scrivere le sue impostazioni di esportazione. Se la conferma scade, l'installazione ti avverte di attendere prima di avviare Codex.
+
+Config v2 mantiene l'elenco di tracciamento memorizzato in `agents.selected` (e la cronologia di rilevamento in `agents.seen`). La preferenza di trascrizione per agente rimane in `collector.agents.<agent>.sessions`, la proprietà OTEL in `otel.agents` e le impostazioni di relay in `collector.otlp.enabled` / `collector.otlp.port`. Queste chiavi separate mantenevano le vecchie configurazioni OTEL leggibili: l'installazione può cambiare l'elenco di tracciamento senza perdere la preferenza di trasporto o lo stato necessario per ripristinare le impostazioni del tuo agente.
+
+## Ispeziona configurazione
+
+```bash
+failproofai otel status
+```
+
+Lo stato mostra ogni agente, se le sue impostazioni sono gestite da FailproofAI, la sua destinazione, l'interruttore di inserimento dell'organizzazione, lo stato del relay e il risultato dell'ultimo caricamento del relay.
+
+`unknown` per l'interruttore dell'organizzazione significa che il server non l'ha fornito o non è stato raggiunto. Non è un errore e non impedisce la configurazione su una versione più vecchia di Cloud.
+
+Se Cloud non supporta ancora OTEL, il relay mantiene le esportazioni rifiutate invece di scartarle. Se l'inserimento dell'organizzazione è disattivato, `enable` non scrive nulla ed esce con un errore; chiedi a un amministratore di attivarlo prima.
+
+## Stampa configurazione per un'applicazione
+
+```bash
+failproofai otel env --service my-agent
+failproofai otel env --service my-agent --local
+```
+
+L'output è un blocco di ambiente shell per un esportatore OTLP/HTTP. L'output Cloud imposta `OTEL_EXPORTER_OTLP_ENDPOINT` sulla base OTLP di Cloud, `https://<cloud>/otel`, e l'esportatore aggiunge `/v1/<signal>`; una variabile per segnale come `OTEL_EXPORTER_OTLP_LOGS_ENDPOINT` ha bisogno del full `https://<cloud>/otel/v1/logs`. L'output locale punta al relay, `http://127.0.0.1:<port>`. L'output Cloud include la chiave API configurata; trattala come un segreto. L'output locale omette la chiave. Per utilizzare l'output locale, abilita prima un agente locale in modo che il relay sia in esecuzione.
+
+## Ripristina impostazioni precedenti
+
+```bash
+failproofai otel disable claude
+failproofai otel disable all
+```
+
+Disable ripristina solo le impostazioni scritte da FailproofAI, mantiene i cambiamenti non correlati e ripristina la scelta precedente di segnalazione della trascrizione di ogni agente. Quando l'ultimo agente locale gestito è disabilitato, il relay smette di accettare esportazioni.
+
+Per Codex, disable registra anche `collector.agents.codex.sessions_resume_after` (epoch millisecondi). I byte di rollout esistenti sono trattati come consegnati in modo che le sessioni catturate con OTEL non vengano caricate di nuovo; gli allegati successivi continuano a fluire attraverso la segnalazione della trascrizione.
+
+Ogni comando supporta `--help`. Vedi [OpenTelemetry in Cloud](/it/agenteye/opentelemetry) per esempi di applicazioni e agenti di codifica.

@@ -1,0 +1,61 @@
+---
+title: "Análisis de producto"
+description: "La telemetría de uso que Failproof AI Cloud envía sobre sí mismo, qué nunca se recopila y cómo desactivarla."
+icon: "chart-no-axes-column"
+---
+
+Failproof AI Cloud envía telemetría de uso **sobre el propio software** a sus mantenedores. Nunca incluye los datos de tus agentes. En una instalación autohospedada está activada por defecto y puedes desactivarla.
+
+## Qué se recopila
+
+Cada evento lleva cinco dimensiones y nada que identifique a una persona:
+
+| Dimensión | Ejemplo | Qué es |
+| --- | --- | --- |
+| `product` | `agenteye` | Qué producto lo envió |
+| `component` | `dashboard`, `server`, `cli` | Qué parte del producto lo envió |
+| `app_version` | `0.0.1-beta.81` | La versión que estás ejecutando |
+| `deployment_kind` | `self_hosted` | Si se trata de una instalación de cliente, nuestra demo, nuestro QA o una máquina de desarrollo |
+| `org_id` | un UUID | En qué organización ocurrió la acción, como identificador opaco |
+
+Además de esas, los eventos registran **qué se usó, nunca qué contenía**: qué página se visualizó (como patrón de ruta tal que `/:org/sessions/:id`, nunca la URL real), cuántos filtros de qué tipo se aplicaron, si una acción tuvo éxito y cuánto tiempo tardó.
+
+La app de Slack registra conexiones y desconexiones de espacios de trabajo, vinculaciones de cuentas, preguntas realizadas, gráficos publicados, decisiones de aprobación y fallos por categoría fija. Nunca incluye el espacio de trabajo de Slack, IDs de usuario o canal, correo electrónico, preguntas, respuestas, SQL ni tokens.
+
+### El nombre de tu organización
+
+Junto al `org_id` opaco, registramos el nombre de tu organización, el slug de URL y la dirección del panel una sola vez, en un registro de organización en lugar de en cada evento. Nos permite saber a qué cuenta pertenece un patrón cuando analizamos la adopción o investigamos un problema que hayas reportado. Esta es la única información identificativa que el producto envía sobre ti.
+
+### Tus totales de uso
+
+El servidor reporta los totales de uso medido de cada organización, los mismos números que ves en la página de Uso. Son solo conteos: eventos, sesiones, agentes, entornos, ejecuciones de evaluación, puntuaciones, ejecuciones de auditoría, consultas guardadas, paneles, alertas, incidencias, claves API y miembros, además de las fechas de la ventana de medición. No contienen identificadores, nombres ni texto de consulta, y se envían independientemente de si alguien ha iniciado sesión.
+
+## Qué nunca se recopila
+
+- **Ningún prompt, respuesta de modelo ni contenido de evento**, ni como texto, prefijo ni hash
+- **Ningún identificador de sesión, agente o traza**
+- **Ningún nombre de puntuación de evaluador**
+- **Ningún mensaje de error, texto de excepción ni cuerpo de respuesta**, solo un código de estado y una categoría de una lista fija
+- **Ningún argumento de herramienta, SQL ni texto de consulta**
+- **Ningún detalle de app conectada.** Conectar o revocar un cliente MCP envía como máximo un recuento de permisos, nunca el nombre de la app ni ningún token
+- **Ninguna dirección de correo electrónico**
+- **Ninguna URL de referencia ni cadena de consulta**
+- **Ninguna grabación de pantalla, captura del DOM ni seguimiento de clics o cursor**
+
+## Desactivarla en una instalación autohospedada
+
+Establece `DO_NOT_TRACK=1` tanto en el panel como en el servidor. Cada uno decide de forma independiente, por lo que configurarlo solo en uno deja al otro reportando. Reinicia el servidor para que el cambio surta efecto.
+
+El README de tu versión describe los demás ajustes de exclusión voluntaria y cómo confirmar que la telemetría está desactivada.
+
+## Un ping al darte de baja
+
+Si te das de baja con un ajuste del producto en lugar de `DO_NOT_TRACK`, el panel puede enviar **un ping anónimo** que lo registre, con una probabilidad de 1 de cada 1000 por inicio de proceso. Nos indica cuántos operadores desactivan la telemetría. No contiene identificadores: ni organización, usuario, nombre de host, URL ni IP, solo el producto, componente, versión, tipo de despliegue y motivo. Un servidor dado de baja no envía nada.
+
+Nunca se envía cuando usas `DO_NOT_TRACK`, por eso ese es el ajuste que debes usar si tu política prohíbe cualquier telemetría saliente.
+
+## A dónde va
+
+A PostHog (`us.i.posthog.com`) sobre TLS en el puerto 443. Es un único nombre de host, por lo que también puedes bloquearlo con una sola regla de egreso.
+
+Para saber cómo gestionamos la información personal de forma más general, consulta la [política de privacidad](https://befailproof.ai/privacy/).

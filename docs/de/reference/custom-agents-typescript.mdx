@@ -1,0 +1,425 @@
+---
+title: "Eigene Agenten (TypeScript)"
+description: "Konfiguration, der Event-Katalog, die Scopes und die Framework-Adapter für @failproofai/sdk."
+icon: "square-js"
+---
+
+Beschreibung jeder Einstellung, Methode und jedes Felds im TypeScript SDK. Wer zum ersten Mal instrumentiert, startet mit dem Leitfaden — diese Seite dient als Nachschlagewerk.
+
+<Columns cols={2}>
+  <Card title="Leitfaden für eigene Agenten" icon="code" href="/de/start/integrations/custom-agents">
+    Installation, Instrumentierung, die Event-Methoden, ein ausgearbeitetes Beispiel und häufige Probleme.
+  </Card>
+  <Card title="Python im Einsatz?" icon="python" href="/de/reference/custom-agents">
+    Dieselben Events, dasselbe Wire-Format, derselbe Spool — aus Python.
+  </Card>
+</Columns>
+
+Node 20.9 oder neuer. ESM und CommonJS. Keine Laufzeitabhängigkeiten.
+
+<Note>
+  Dieses SDK und das Python-SDK schreiben **dieselben Events in denselben Spool**. Eine Flotte aus Node-Agenten und Python-Agenten erzeugt einen gemeinsamen Satz an Sessions, nicht zwei — und im Dashboard ist kein Unterschied erkennbar. Die Wahl ist eine pro Service, keine pro Unternehmen.
+</Note>
+
+## Installation
+
+```bash
+npm install @failproofai/sdk
+```
+
+```ts
+import * as failproofai from "@failproofai/sdk";
+
+await failproofai.agent("planner", { goal: question }, async () => {
+  const hits = await failproofai.toolCall("web_search", { input: { q } }, () => search(q));
+});
+```
+
+Die Framework-Adapter sind im Paket selbst enthalten. Die Frameworks sind **optionale Peer-Dependencies** — deklariert, damit die unterstützten Versionen sichtbar sind, werden sie niemals automatisch installiert und nur beim Aufruf von `instrument()` importiert.
+
+## Failproof-Daemon verbinden
+
+Identisch zum Python SDK: einen `events:add`-Schlüssel unter **Admin → Keys** anlegen, dann [den Daemon verbinden](/de/start/setup#connect-a-machine-to-cloud) auf dem Agenten-Rechner. Das SDK schreibt auf Disk; der Daemon liefert aus.
+
+## Konfiguration
+
+### OpenTelemetry-Spans (opt-in)
+
+OpenTelemetry separat installieren mit `npm install @opentelemetry/api @opentelemetry/sdk-trace-base`.
+Dann FailproofAI zu den Prozessoren des Providers hinzufügen:
+
+```ts
+import * as failproofai from "@failproofai/sdk";
+import { BasicTracerProvider } from "@opentelemetry/sdk-trace-base";
+import type { SpanProcessor } from "@opentelemetry/sdk-trace-base";
+
+const spanProcessors: SpanProcessor[] = [];
+await failproofai.instrument("otel", { spanProcessors });
+const provider = new BasicTracerProvider({ spanProcessors });
+const span = provider.getTracer("my-agent").startSpan("agent", {
+  attributes: { "gen_ai.operation.name": "invoke_agent" },
+});
+span.end();
+await provider.forceFlush();
+```
+
+Für einen bestehenden Provider die anderen Prozessoren in derselben Liste behalten. Provider, die `addSpanProcessor` anbieten, können stattdessen als `{ provider }` übergeben werden. Ohne Optionen registriert das Setup einen neuen Provider nur dann, wenn noch keiner registriert ist. `OtelSpanExporter` lässt sich auch direkt mit eigenem Prozessor verwenden.
+
+Exporte laufen über den verbundenen FailproofAI-Daemon; das SDK sendet keine Netzwerkanfragen und benötigt weder Schlüssel noch lokalen Listener. Ein Admin muss [OpenTelemetry-Ingest](/de/agenteye/opentelemetry) aktivieren. Ein einfaches `instrument()` aktiviert diesen Exporter nicht. `uninstrument("otel")` deaktiviert nur den eigenen Prozessor. Span-Attribute steuern die Inhaltserfassung; den Provider vor dem Beenden flushen. OpenTelemetry bleibt eine optionale Anwendungsabhängigkeit, keine feste SDK-Abhängigkeit.
+
+```ts
+failproofai.configure({
+  environment: "production",
+  flushInterval: 0.5,
+  baseDir: undefined,
+});
+```
+
+| Option | Funktion |
+| --- | --- |
+| `environment` | Das Label auf jedem Event — `production`, `staging`, `prod-eu`. Standard: `dev`. |
+| `flushInterval` | Wie oft der Timer auf Disk schreibt, in Sekunden. Standard: `0.5`. |
+| `baseDir` | Speicherort. Standard ist der Spool des Daemons — das ist das Richtige, außer man weiß es besser. |
+
+Nichts wird angewendet, solange nicht alles validiert ist. Ein abgelehnter Aufruf lässt das SDK genau wie es war, statt es mit einem neuen `baseDir` und altem Intervall zu hinterlassen.
+
+Alternativ per Umgebungsvariable setzen:
+
+| Variable | Funktion |
+| --- | --- |
+| `AGENTEYE_ENVIRONMENT` | Setzt `environment` ohne Codeänderung. Eine `configure()`-Option hat Vorrang. |
+| `FAILPROOFAI_HOME` | Verschiebt das Failproof AI-Stammverzeichnis, das den Spool enthält. |
+| `FAILPROOFAI_SDK_LOG_LEVEL` | `debug`, `info`, `warn` (Standard), `error`, `silent`. |
+| `FAILPROOFAI_SDK_STRICT` | `1` lässt Instrumentierungsfehler werfen statt sie zu loggen. |
+| `FAILPROOFAI_SDK_STRICT_INTEGRATIONS` | `1` lässt ein Framework-Kompatibilitätsproblem werfen statt zu warnen und weiterzumachen. |
+
+<Warning>
+  **Kein Komma in `environment`.** Der Ingest teilt dieses Feld an Kommas auf, um Filter aufzubauen, und überspringt jeden Event, dessen Label eines enthält — ein ganzer Run verschwindet dann lautlos. `prod-eu` schreiben, nicht `prod,eu`.
+
+  `configure({ environment: "prod,eu" })` wirft einen Fehler, damit man es sofort merkt. `AGENTEYE_ENVIRONMENT` kann nicht werfen — nichts ruft zurück — daher wird einmal gewarnt und auf `dev` zurückgefallen.
+</Warning>
+
+Die eigenen Log-Zeilen des SDK mit `failproofai.setLogger({ debug, info, warn, error })` in den eigenen Logger umleiten.
+
+## Herunterfahren
+
+Gepufferte Events werden bei `process.on("exit")` geflusht.
+
+Ein durch ein Signal beendeter Prozess erreicht das nie, und Nodes Standard für `SIGTERM` ist, ohne Ausführung von Exit-Handlern zu beenden — ein containerisierter Agent verliert also alles, was das letzte Intervall noch nicht geschrieben hatte.
+
+<Warning>
+  **Dieses SDK installiert keinen Signal-Handler für Sie.** Das Registrieren eines solchen ändert das Verhalten des Prozesses: Ein Listener unterdrückt Nodes Standard-Terminierung, sodass eine Bibliothek, die einen hinzufügt, Ctrl-C lautlos deaktivieren würde. Eigenen Handler hinzufügen:
+
+  ```ts
+  for (const signal of ["SIGINT", "SIGTERM"] as const) {
+    process.once(signal, () => {
+      failproofai.flushSync();
+      process.exit(0);
+    });
+  }
+  ```
+</Warning>
+
+Ein kurzlebiges Skript oder ein Serverless-Handler sollte `await failproofai.flush()` vor der Rückgabe aufrufen — das Intervall allein garantiert keine Zustellung.
+
+## Identität
+
+Jeder Event gehört zu einer Session und einem Agenten. **Die Scopes füllen beides aus**, daher werden sie selten manuell übergeben:
+
+```ts
+await failproofai.session(async () => {
+  await failproofai.agent("planner", async () => {
+    failproofai.event.toolUse({ toolName: "search", toolCallId: "c1" });
+  });
+});
+```
+
+`sessionId` oder `agentId` explizit zu übergeben funktioniert weiterhin und hat Vorrang. Ist weder gebunden noch übergeben, wirft der Aufruf einen Fehler, statt einen Event zu senden, den Cloud stillschweigend verwerfen würde.
+
+<Note>
+  Identität wird über `AsyncLocalStorage` übertragen. Sie folgt `await`, `.then()`, Timern und jedem innerhalb des Scopes erstellten Callback. Sie folgt **nicht** einem Callback, der in einem Run gespeichert und in einem anderen aufgerufen wird, oder Arbeit, die über eine `worker_threads`-Grenze übergeben wird — solche Fälle in `failproofai.propagate()` einwickeln, sonst landen ihre Events unzugeordnet.
+</Note>
+
+### Scopes
+
+| Scope | Sendet | Rückgabe |
+| --- | --- | --- |
+| `session(body)` | nichts — nur Identität | was auch immer `body` zurückgibt |
+| `agent(id, options?, body)` | `agent_start`, dann `agent_end` | was auch immer `body` zurückgibt |
+| `toolCall(name, options?, body)` | `tool_use`, dann `tool_result` | was auch immer `body` zurückgibt |
+
+Ein synchroner Body bleibt synchron: `agent("x", () => 1)` gibt `1` zurück, kein Promise.
+
+`toolCall` zeichnet den aufgelösten Rückgabewert des Bodys als `output` des Tools auf, außer man weist `call.output` selbst zu.
+
+<Accordion title="Exit-Semantik" icon="arrow-right-from-bracket">
+
+| Was passiert ist | Events | `outcome` |
+| --- | --- | --- |
+| Der Block hat zurückgegeben | `agent_end` | `"success"` oder eigenes `outcome` |
+| Der Block hat geworfen | `error`, dann `agent_end` | `"failed"` |
+| Ein `AbortError` | nur `agent_end` | `"cancelled"` |
+
+Der Fehler wird immer erneut geworfen.
+
+Ein Tool-Fehler wird auf dem Blatt aufgezeichnet — `tool_result` mit einem `error`-String — und sendet **keinen** run-level `error`-Event. Einer, den die Agenten-Schleife abfängt, ist kein Run-Fehler; einer, der sich ausbreitet, wird genau einmal gemeldet, vom umgebenden `agent()`.
+
+</Accordion>
+
+<Accordion title="Die using-Form" icon="brackets-curly">
+
+Wenn die Arbeit keine einzelne Funktion ist — ein Scope, der in einem Konstruktor geöffnet und in einem Teardown geschlossen wird, oder einer, der bestehenden Kontrollfluss überbrückt:
+
+```ts
+{
+  using span = failproofai.agent.open("planner", { goal });
+  using call = failproofai.toolCall.open("search", { input: { q } });
+  call.call.output = await search(q);
+}  // tool_result, then agent_end
+```
+
+Beide Formen senden byte-identische Events. Die Callback-Form ist vorzuziehen: sie läuft innerhalb von `AsyncLocalStorage.run()`, es gibt nichts abzuwickeln, und die gesamte Klasse der „hier geöffnet, dort geschlossen"-Bugs ist unerreichbar.
+
+Ein `using`-Block, der seinen eigenen Fehler abfängt, meldet ihn mit `span.fail(error)` — der Disposer hat keinen eigenen Exception-Kanal.
+
+</Accordion>
+
+## Event-Katalog
+
+Dieselben fünfzehn Methoden wie das Python SDK, in camelCase. Die meisten kommen in **Paaren** — man ruft den Öffner auf, dann den Schließer, und das SDK misst den Zeitunterschied.
+
+| | Öffnet | Schließt |
+| --- | --- | --- |
+| **Agenten** | `agentStart` | `agentEnd` |
+| | `agentPause` | `agentResume` |
+| **Modelle** | `modelRequest` | `modelResponse` |
+| **Tools** | `toolUse` | `toolResult` |
+| **Hooks** | `hookTriggered` | `hookCompleted` |
+| **Menschen** | `humanWait` | `humanInput` |
+
+Drei stehen für sich allein: `error`, `humanPause`, `humanInterrupt`.
+
+<Accordion title="Jedes Feld, pro Methode" icon="table">
+
+Jede Methode akzeptiert auch `sessionId` und `agentId`, die die Scopes automatisch befüllen. Ausgelassenes wird weggelassen statt als JSON `null` gesendet.
+
+| Methode | Erforderlich | Optional |
+| --- | --- | --- |
+| `agentStart` | — | `goal`, `parentId` |
+| `agentEnd` | — | `outcome`, `summary` |
+| `agentPause` | `pauseId` | `reason`, `userId` |
+| `agentResume` | `pauseId` | `reason`, `userId` |
+| `modelRequest` | — | `model`, `messages`, `system`, `tools`, `requestId` |
+| `modelResponse` | — | `model`, `stopReason`, `inputTokens`, `outputTokens`, `content`, `role`, `requestId` |
+| `toolUse` | `toolName`, `toolCallId` | `input` |
+| `toolResult` | `toolName`, `toolCallId` | `output`, `error` |
+| `hookTriggered` | `hookName`, `hookId` | `triggerEvent`, `input` |
+| `hookCompleted` | `hookName`, `hookId` | `outcome`, `output`, `error` |
+| `error` | `errorType`, `message` | `traceback` |
+| `humanWait` | `inputId` | `prompt`, `options`, `reason` |
+| `humanInput` | `inputId` | `response` |
+| `humanPause` | — | `reason`, `userId` |
+| `humanInterrupt` | — | `reason`, `userId`, `atStep` |
+
+Jeder weitere hinzugefügte Schlüssel wird zu einem benutzerdefinierten Payload-Feld. Framework-spezifisches mit `fw_*` benennen; ein Name, der mit einem deklarierten Feld kollidiert, wird abgelehnt statt eine beförderte Spalte lautlos zu überschreiben.
+
+</Accordion>
+
+<Warning>
+  **`duration_ms` wird berechnet, nicht akzeptiert.** Die vier schließenden Methoden messen den Zeitunterschied zu ihrem Öffner und lehnen ein vom Aufrufer übergebenes `duration_ms` ab — eine gemeldete Dauer muss unveränderbar sein.
+
+  Paare werden anhand der **Session** und der ID abgeglichen, niemals anhand des Agenten. Ein Tool, das unter `planner` geöffnet und unter `worker` geschlossen wird, wird trotzdem gepaart — das ist es, was verschachtelte Multi-Agenten-Runs tatsächlich tun.
+</Warning>
+
+## Framework-Adapter
+
+```ts
+await failproofai.instrument();              // whatever it can find
+await failproofai.instrument("langchain");   // exactly one
+failproofai.uninstrument();                  // put everything back
+```
+
+| Framework | Unterstützt | Einbindungsmethode |
+| --- | --- | --- |
+| **LangChain.js / LangGraph.js** | `@langchain/core` 0.3 – 1.x, LangGraph.js 0.4 – 1.x | `CallbackManager.configure`, sodass jedes `invoke`/`stream`/`batch` abgedeckt ist, ohne `callbacks:` irgendwo übergeben zu müssen — oder `langchainHandler()` selbst übergeben und nichts patchen. |
+| **Vercel AI SDK** | `ai` 4 – 7 | `telemetry()` an der Aufrufstelle, oder `instrument("ai")` für den gesamten Prozess auf `ai` 7 (auf 4–6 ist das opt-in — siehe unten). |
+| **Mastra** | `@mastra/core` 0.20 – 1.x | `Agent.generate`/`.stream`, die Modell- und Tool-Auflösung des Agenten sowie die Workflow-Run/Step-Engine. |
+| **LlamaIndex.TS** | `llamaindex` 0.11.4 – 0.x | `Settings.callbackManager` (abonniert) plus `AgentWorkflow.runStream`, für Workflow-Runs und ihre Steps. |
+
+Jeder Versionsbereich wird gegen echte Framework-Releases getestet, an beiden Enden, als ES-Modul und als CommonJS, bei jedem CI-Run.
+
+Das Mapping entspricht dem des Python SDK, sodass dasselbe Programm in beiden Sprachen denselben Baum zeichnet. Ein Konstrukt ist nur dann ein **Agent**, wenn es eine eigene LLM-Entscheidungsschleife besitzt — ein Graph- oder Chain-Run, ein AI SDK `generateText`/`streamText`-Aufruf, ein Mastra-Agent, ein LlamaIndex-Agent-Run. Ein LangGraph-Node oder ein Workflow-Step ist ein **Hook** (`hook_triggered`/`hook_completed`), niemals ein verschachtelter Agent. Modellaufrufe sind `model_request`/`model_response`-Paare mit Token-Zahlen; Tool-Aufrufe tragen die eigene Tool-Call-ID des Modells. Ein Fehler wird einmal aufgezeichnet, bei dem Event, in dem er aufgetreten ist.
+
+Ein Adapter, der sich nicht installieren lässt, wird geloggt und übersprungen; die anderen werden trotzdem installiert, denn ein defektes LlamaIndex soll nicht LangGraph kosten.
+
+<Note>
+  `instrument()` ohne Argument erkennt ein Framework daran, ob es sich **auflöst**, nicht daran, ob es bereits importiert ist — Node bietet kein Äquivalent zu Pythons `sys.modules` für ES-Module. Ein installiertes, aber ungenutztes Framework wird importiert und gepatcht. Das gewünschte Framework explizit benennen, wenn das von Bedeutung ist.
+</Note>
+
+<Note>
+  Die meisten dieser Frameworks liefern sowohl einen ES-Modul- als auch einen CommonJS-Build, die Node als zwei unabhängige Kopien lädt. Die Adapter patchen die Kopie, die die Anwendung lädt (und die CommonJS-Kopie zusätzlich, falls etwas sie bereits per `require` geladen hat), sodass beide Modulsysteme funktionieren. Ein Framework, das von esbuild oder webpack **in die eigene Ausgabe gebündelt** wurde, ist unerreichbar — dort die Call-Site-Helfer verwenden: `langchainHandler()`, `telemetry()`, `wrapTool()`.
+</Note>
+
+### LangChain ohne Patching
+
+```ts
+import { langchainHandler } from "@failproofai/sdk/langchain";
+await graph.invoke(input, { callbacks: [langchainHandler()] });
+```
+
+Der Handler funktioniert mit oder ohne `instrument()` und zeichnet nie doppelt auf. `instrument("langchain")` akzeptiert `sessionId`, `captureContent`, `includeChains`, `graphCallbacks` und `captureLimit`, wie der Python-Adapter; `metadata: { failproofai_sdk_session_id }` bei einem Aufruf wählt die Session für diese Ausführung.
+
+### Vercel AI SDK
+
+Das AI SDK exportiert einfache Funktionen aus einem ES-Modul, und ein ES-Modul-Namespace ist laut Spezifikation unveränderlich — es gibt keinen Ort zum Patchen. Es werden die Extension-Points verwendet, die das SDK selbst dokumentiert:
+
+```ts
+import { telemetry } from "@failproofai/sdk/ai";
+
+const { text } = await generateText({
+  model,
+  prompt,
+  experimental_telemetry: telemetry({ functionId: "answer-question" }),
+  // on ai 7, `telemetry: telemetry({ … })` — the same object, the new name
+});
+```
+
+Das ist die vollständige Integration: ein Agent-Span, ein Modell-Request/Response-Paar pro Step mit Token-Zahlen und jeder Tool-Aufruf. Eine einzige Aufrufstelle funktioniert auf jeder Major-Version — `ai` 4–6 liest den mitgelieferten Tracer, `ai` 7 die Telemetrie-Integration.
+
+`instrument("ai")` macht dasselbe prozessweit **auf `ai` 7**: jeden Aufruf, über die globale Telemetrie-Integrationsliste des AI SDK, die additiv ist und niemandem etwas wegnimmt.
+
+**Auf `ai` 4–6 zeichnet `instrument("ai")` alleine nichts auf und gibt einmal eine Warnung aus.** Der einzige prozessweite Hook dieser Major-Versionen ist der globale OpenTelemetry-Tracer-Provider — ein einzelner Slot, den OpenTelemetry nach Vergabe nicht mehr herausgibt. Das Registrieren des eigenen würde ein späteres `NodeSDK.start()` beim Start lautlos ablehnen und HTTP/Datenbank-Spans an einen Tracer senden, der nichts exportiert. `telemetry()` an der Aufrufstelle oder `wrapModel` dort verwenden. Läuft der Prozess kein eigenes OpenTelemetry, mit `instrument("ai", { registerGlobalTracer: true })` opt-in: dann wird jeder Aufruf aufgezeichnet, der `experimental_telemetry: { isEnabled: true }` übergibt, und der Slot wird nur belegt, wenn er noch frei ist. `registerGlobalTracer: false` behält den Standard bei und unterdrückt die Warnung.
+
+Wer das Modell lieber einmalig einwickeln möchte: `wrapModel` sieht nur Modellaufrufe, da Tool-Aufrufe oberhalb der Modellebene stattfinden. Ein verpacktes Modell, das ohne äußeren Kontext aufgerufen wird, wird als eigener Run aufgezeichnet. Ein gestreamter Aufruf schließt, wie der Stream endet — `stop_reason: "cancelled"` wenn der Consumer ihn abbricht, `"error"` mit dem Fehler bei einem Teilfehler:
+
+```ts
+import { wrapModel } from "@failproofai/sdk/ai";
+const model = await wrapModel(openai("gpt-4o"));
+```
+
+Beides gleichzeitig zu verwenden ist in Ordnung: die Middleware erkennt, dass der Aufruf bereits aufgezeichnet wird, und verzichtet, sodass jeder Aufruf genau einmal aufgezeichnet wird.
+
+`functionId` benennt den Agent-Span. Niedrige Kardinalität anstreben — er landet in `agent_id`, der primären Dashboard-Facette.
+
+### Next.js
+
+`next build` bündelt standardmäßig die Server-Abhängigkeiten, und ein ins Build gebündeltes Framework ist eine Kopie, die `instrument()` nicht erreichen kann. Die Konfiguration einmalig einwickeln und `instrument()` aus Nexts Startup-Hook aufrufen:
+
+```ts
+// next.config.ts
+import { withFailproofai } from "@failproofai/sdk/next";
+export default withFailproofai({ /* your config */ });
+```
+
+```ts
+// instrumentation.ts
+export async function register() {
+  if (process.env.NEXT_RUNTIME !== "nodejs") return;
+  const failproofai = await import("@failproofai/sdk");
+  await failproofai.instrument();
+}
+```
+
+`withFailproofai` fügt LangChain, Mastra, LlamaIndex und das SDK selbst zu `serverExternalPackages` hinzu und behält die eigene Liste dabei. Ohne es warnt `instrument()` einmal pro nicht erreichbarem Framework, statt lautlos zu scheitern; wer die Pakete selbst listet, setzt `FAILPROOFAI_NEXT_EXTERNALS=1`. Das Vercel AI SDK und die Call-Site-Helfer funktionieren in jedem Fall. Eine Edge-Route erhält einen No-Op-Build: Das SDK importieren ist sicher und zeichnet nichts auf.
+
+### Token-Zahlen bei gestreamten Aufrufen
+
+OpenAI-kompatible APIs melden die Nutzung bei einem Stream nur, wenn der Client es anfordert. LangChain und das Vercel AI SDK fordern es an; für LlamaIndex `additionalChatOptions: { stream_options: { include_usage: true } }` an sein `OpenAI`-LLM übergeben, und für Mastra das Modell mit aktivierter Nutzungserfassung erstellen (zum Beispiel `createOpenAICompatible({ includeUsage: true })`). Andernfalls tragen gestreamte Modellaufrufe keine Token-Zahlen.
+
+### Laufzeitumgebungen
+
+Node ≥ 20.9, Bun und Deno — jedes Framework, als ES-Modul und als CommonJS, wird jeweils gegen Nodes Trace getestet. Das SDK läuft neben dem `failproofaid`-Daemon, der ausliefert, was es schreibt.
+
+## Eigener Agent — kein Framework
+
+Für eine selbst geschriebene Agenten-Schleife oder ein Framework ohne Adapter. Die Events werden mit derselben API ausgesendet, die die Adapter intern verwenden, sodass der Trace dieselbe Form und Qualität hat.
+
+Man muss nicht wissen, wie der Agent organisiert ist. Jeder handgeschriebene Agent hat bereits drei Stellen, unabhängig davon, wie seine Funktionen heißen, und diese drei bilden die gesamte Integration:
+
+| Wo | Was hinzufügen | Sendet |
+| --- | --- | --- |
+| Wo **ein Run** startet und endet | `failproofai.agent("name", { goal }, async () => …)` | `agent_start` / `agent_end` |
+| Die **eine Funktion, die das Modell aufruft** | `event.modelRequest` davor, `event.modelResponse` danach — beide Hälften, auch bei Fehler | ein Paar pro Modell-Turn |
+| Die **eine Funktion, die Tools ausführt** | `failproofai.toolCall(name, { toolCallId, input }, () => run())` | `tool_use` / `tool_result` |
+
+```ts
+async function callModel(messages) {
+  const requestId = randomUUID();
+  const started = Date.now();
+  failproofai.event.modelRequest({ model: MODEL, requestId, messages });
+  try {
+    const reply = await client.chat.completions.create({ model: MODEL, messages, tools });
+    failproofai.event.modelResponse({
+      model: reply.model, requestId, stopReason: reply.choices[0].finish_reason,
+      inputTokens: reply.usage?.prompt_tokens, outputTokens: reply.usage?.completion_tokens,
+      duration_ms: Date.now() - started,
+    });
+    return reply.choices[0].message;
+  } catch (error) {
+    failproofai.event.modelResponse({ model: MODEL, requestId, stopReason: "error",
+      error: String(error), duration_ms: Date.now() - started });
+    throw error;
+  }
+}
+
+async function dispatch(call) {
+  const input = JSON.parse(call.function.arguments);
+  return failproofai.toolCall(call.function.name, { toolCallId: call.id, input },
+    () => runTool(call.function.name, input));
+}
+
+await failproofai.agent("inventory", { goal: question }, async () => {
+  for (;;) {
+    const message = await callModel(messages);
+    if (!message.tool_calls?.length) return message.content;
+    for (const call of message.tool_calls) await dispatch(call);
+  }
+});
+```
+
+Identität ist ambient: alles innerhalb von `agent()` landet auf der Session dieses Runs, ohne eine ID übergeben zu müssen, und nichts anderes im Programm ändert sich — einschließlich dessen, was der Agent bereits in seine eigene Datenbank schreibt.
+
+- **Ein Service oder ein Worker:** die eigene Request- oder Job-ID als `sessionId` übergeben, damit eine Session im Dashboard und der Datensatz in eigenen Logs oder der Datenbank denselben String haben.
+- **Sub-Agenten:** `agent()`-Aufrufe verschachteln. Der innere tritt der Session mit dem äußeren als `parent_id` bei.
+- **Die Paare senden.** Ein `modelRequest` ohne `modelResponse` ist ein Span, den das Dashboard als ewig laufend anzeigt — daher das `catch`.
+
+[`sdk/typescript/examples/research-agent.ts`](https://github.com/FailproofAI/failproofai/blob/main/sdk/typescript/examples/research-agent.ts) im Repository ist die vollständige, lauffähige Version: eine echte OpenAI-Tool-Schleife, genau so instrumentiert, bei jedem CI-Run als ES-Modul und als CommonJS ausgeführt.
+
+## Auswertungen
+
+```ts
+import { Evaluator, EvalResult, Score } from "@failproofai/sdk/evaluator";
+
+export const app = new Evaluator({ name: "my-evals", version: "1" });
+
+app.eval("tool_success_rate", { version: "1" }, (session) => {
+  const results = session.eventsOfType("tool_result");
+  const failures = results.filter((event) => event.payload.error != null).length;
+  return new EvalResult({
+    score: new Score(results.length === 0 ? 1 : 1 - failures / results.length),
+    reasoning: `${failures} of ${results.length} tool calls failed`,
+  });
+});
+```
+
+```bash
+FAILPROOFAI_EVALUATOR_URL=… FAILPROOFAI_EVALUATOR_TOKEN=… \
+  npx failproofai-evaluator ./my-evals.js
+```
+
+Weitere Informationen zum Protokoll, den Worker-Einstellungen und den Ergebnistypen in der [Evaluator SDK-Referenz](/de/reference/evaluator-sdk).
+
+<Warning>
+  **Eine Auswertung muss yielden.** Eine synchrone Funktion, die nie zurückkehrt, blockiert den einzigen Thread von Node, und kein Timeout kann feuern, solange das der Fall ist. Auswertungen `async` schreiben.
+</Warning>
+
+## Was es dem Prozess nicht antut
+
+| | |
+| --- | --- |
+| **Die Agenten-Schleife blockieren** | Events landen in einer In-Memory-Queue; ein Timer schreibt sie. Der Timer ist `unref`'d, sodass das Importieren dieses Pakets das Beenden eines Skripts nie verhindert. |
+| **Unbegrenzt wachsen** | Die Queue ist nach Anzahl *und* gemessenen Bytes begrenzt. Bei Überschreitung werden die ältesten Events verworfen und eine Warnung ausgegeben — ein Telemetrie-Ausfall darf kein OOM-Kill werden. |
+| **Den Prozess zum Absturz bringen** | Ein nicht kodierbarer Event wird einzeln verworfen, nicht der Batch um ihn herum. Ein werfender Getter, eine zirkuläre Referenz, ein `BigInt`, ein einzelnes Surrogate: jedes wird behandelt statt weitergegeben. |
+| **Einen halb geschriebenen Batch hinterlassen** | Inhalte werden vor einem atomaren Umbenennen per `fsync` gesichert, das Verzeichnis danach, und ein fehlgeschlagener Schreibvorgang bereinigt seine temporäre Datei. |
+| **Transkripte lesbar lassen** | Batches sind `0600` innerhalb eines `0700`-Verzeichnisses. Sie enthalten Ziele, Prompts, Tool-Argumente und Tool-Ausgaben. |
+| **Zugangsdaten versenden** | API-Keys, Tokens, JWTs, Bearer-Header und secret-förmige Zuweisungen werden geschwärzt, bevor die Bytes auf Disk gelangen. Der Daemon schwärzt erneut vor dem Upload. |

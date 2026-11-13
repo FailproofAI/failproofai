@@ -1,0 +1,45 @@
+---
+title: "Jev policies"
+description: "为受控工具调用添加 Jev 的实时审查，并在执行其决策前进行检查。"
+icon: "shield-check"
+---
+
+Jev 会根据用户向 Agent 下达的指令来审核工具调用。当字符串匹配策略阻止了有效操作，或遗漏了需要上下文才能判断的高风险操作时，可使用 Jev。它会与你的策略一起在 `PreToolUse` 或 `PermissionRequest` 门控环节给出答复。如需在会话结束**后**进行评分，请使用 [Jev evaluations](/zh/evaluations/jev)。
+
+## 从观察模式开始
+
+安装 Failproof AI 并将 hooks 附加到[受支持的运行环境](/zh/reference/harnesses)。请使用 failproofai 1.0.8-beta.0 或更高版本。
+
+Failproof AI 默认不包含任何 Jev 检查项。请以包的形式安装，否则 Jev 没有任何内容可查询，也不会被调用：
+
+```bash
+failproofai policies add FailproofAI/jev-policies
+```
+
+然后选择请求到达 Jev 的方式：
+
+| 路由 | 第一步 |
+| --- | --- |
+| FailproofAI Cloud | 使用携带 `jev:evaluate` 权限的**机器**密钥进行连接。在没有 Jev 配置的机器上，`failproofai config` 会以观察模式开启 Jev。 |
+| 自定义 Provider | 在本地仪表板中，打开 **Settings → Jev**，选择 provider，粘贴其 token，然后选择 **observe**。或者运行 `failproofai jev --url https://api.typesafe.ai/v1 --mode observe --key-stdin < ~/typesafe.key`。 |
+
+![本地仪表板的 Jev 设置页面：provider、端点、token 以及开启 Jev 前的观察模式。](/images/dashboard/jev-settings.png)
+
+```bash
+failproofai jev status
+failproofai jev test
+```
+
+`test` 用于检查端点连通性。若要检查 hook 路径，可让已附加 hook 的 Agent 使用其文件读取工具读取 `README.md`。确认该工具调用出现在会话中，然后在[本地仪表板](/zh/reference/local-dashboard#review-policy-activity)的 **Policies → Activity** 中进行检查。`status` 中的 Jev 计数应有所增加。观察模式会记录 Jev 本应做出的决策，同时仍以你现有的策略结果为准。
+
+## 决定何时执行
+
+**硬性**策略始终拥有最终决定权。Jev 只能撤销明确标记为**可审查**的策略所产生的拒绝决定，且仅在其检查了该策略所指定的关注项时才能撤销。在依赖撤销决定之前，请参阅[策略权限](/zh/policies/authority)。Jev 也可以自主发出警告或拒绝。如果 Jev 无法给出答复，则由策略结果决定该次调用。
+
+观察结果符合预期后，可在 **Settings → Jev** 中切换到执行模式，或运行：
+
+```bash
+failproofai jev setup --mode enforce
+```
+
+有关 provider URL、Cloud 密钥、配置、回退机制以及每次请求所发送的数据，请参阅 [Jev 集成参考文档](/zh/reference/jev)。

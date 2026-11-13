@@ -1,26 +1,26 @@
 ---
 title: "HTTP API"
-description: "Failproof AI Cloud `/v1` API'sine kimlik doğrulaması yapın ve oluşturulan endpoint referansını kullanın."
+description: "Failproof AI Cloud `/v1` API'sine kimlik doğrulama yapın ve oluşturulan endpoint referansını kullanın."
 icon: "braces"
 ---
 
-Genel API, Failproof AI kontrol paneli kaynağında `/v1` altında sunulur.
+Genel API, Failproof AI panonuzun kökeninde `/v1` altında sunulmaktadır.
 
 ## Anahtar oluşturun ve istek gönderin
 
 <Tabs>
   <Tab title="Dashboard">
-    1. **Administration → Keys** bölümünü açın, **Create key** seçeneğini tıklayın ve entegrasyon için gerekli olan en dar izin ön ayarını seçin.
-    2. Bireysel yetkiler yalnızca gerektiğinde ekleyin, anahtarı oluşturun ve tek seferlik sırrını kopyalayın.
-    3. `/v1/sessions` adresine test isteği gönderin ve anahtarın Keys sayfasında aktif kaldığını doğrulayın.
-    4. Entegrasyon sahipliği değiştiğinde anahtarı kendi eylem menüsünden döndürün veya devre dışı bırakın.
+    1. **Yönetim → Anahtarlar**'ı açın, **Anahtar oluştur**'u seçin ve entegrasyonunuzu kapsayan en dar izin ön ayarını seçin.
+    2. Gerektiğinde sadece bireysel izinler ekleyin, anahtarı oluşturun ve tek kullanımlık sırrını kopyalayın.
+    3. `/v1/sessions`'a bir test isteği gönderin ve anahtarın Anahtarlar sayfasında etkin kaldığını doğrulayın.
+    4. Entegrasyon sahipliği değiştiğinde, anahtarı kendi aksiyon menüsünden döndürün veya devre dışı bırakın.
 
-    ![Yeni API anahtarı çekmecesi, izin ön ayarları ve bireysel yetkilerle.](/images/dashboard/key-create.png)
+    ![Yeni API anahtarı çekmecesi izin ön ayarları ve bireysel izinlerle.](/images/dashboard/key-create.png)
 
-    Yukarıda oluşturma çekmecesi gösterilmektedir. Tek seferlik sıfır yalnızca **create** seçtikten sonra görünür; bu onay penceresi kapanmadan önce kopyalayın.
+    Yukarıda oluşturma çekmecesi gösterilmektedir. Tek kullanımlık sır, yalnızca **oluştur**'u seçtikten sonra görünür; onay penceresini kapatmadan önce kopyalayın.
   </Tab>
   <Tab title="CLI">
-    Okuma anahtarı oluşturun ve bunu `fp` veya `curl` ile doğrudan kullanın:
+    Bir okuma anahtarı oluşturun ve bunu `fp` veya `curl` ile doğrudan kullanın:
 
     ```bash
     fp keys create reliability-reader \
@@ -36,19 +36,19 @@ Genel API, Failproof AI kontrol paneli kaynağında `/v1` altında sunulur.
   </Tab>
 </Tabs>
 
-Anahtarlar bir kuruluş ve izin seti kapsamındadır. Endpoint'in gerekli iznine sahip olmayan bir istek `403` döndürür ve eksik izni belirtir.
+Anahtarlar bir kuruluş ve izin seti kapsamındadır. Uç noktanın gerekli iznine sahip olmayan bir istek `403` döndürür ve eksik iznini belirtir.
 
 ## Kuruluş seçimi
 
-Bir kuruluş anahtarı kuruluş üzerinde otomatik olarak çalışır. Örnek kapsamlı bir anahtar istek başına bir kuruluş seçebilir:
+Bir kuruluş anahtarı kuruluşunun üzerinde otomatik olarak işlem görür. Bir örnek kapsamındaki anahtar, istek başına bir kuruluş seçebilir:
 
 <Tabs>
   <Tab title="Dashboard">
-    Dashboard başlığında kuruluş değiştiricisini kullanın ve **Administration → Keys** bölümünü açmadan önce seçilmiş kuruluşa ait anahtarları oluşturun. URL'deki kuruluş slug'ını ve kimlik bilgisini otomasyon ortamına kopyalamadan önce anahtar ayrıntılarından doğrulayın.
+    Pano başlığındaki kuruluş değiştiricisini kullanın ve **Yönetim → Anahtarlar**'ı açmadan önce. Orada oluşturulan anahtarlar seçilen kuruluşa aittir. URL'deki kuruluş slug'ını ve kimlik bilgisini otomasyona kopyalamadan önce anahtar ayrıntısında doğrulayın.
 
   </Tab>
   <Tab title="CLI">
-    Komuttan önce `--org` kullanın veya örnek kapsamlı bir API anahtarı için kuruluş başlığı gönderin.
+    Komuttan önce `--org` kullanın veya örnek kapsamındaki bir API anahtarı için kuruluş başlığını gönderin.
 
     ```bash
     fp orgs list
@@ -63,12 +63,20 @@ Bir kuruluş anahtarı kuruluş üzerinde otomatik olarak çalışır. Örnek ka
   </Tab>
 </Tabs>
 
-Geçerli yollar, parametreler, izin gereksinimleri ve durum kodları için bu bölümdeki oluşturulan endpoint sayfalarını kullanın. Belirtim sunucu yolu ek açıklamalarından oluşturulur ve `/v1` yönlendiricisine karşı denetlenir.
+Mevcut yollar, parametreler, izin gereklilikleri ve durum kodları için bu bölümdeki oluşturulan uç nokta sayfalarını kullanın. Belirtim, sunucu rota açıklamalarından oluşturulur ve `/v1` yönlendiricisine karşı kontrol edilir.
 
-Mevcut belirtim tam rota, yöntem, parametre, izin ve durum kodu kapsamasına sahiptir. Sunucu bunları dinamik JSON olarak oluşturmaya devam ettiği için bazı yanıt gövdeleri kasten yazılmamıştır. Yanıt şeması olmayan bir endpoint etrafında kesin bir şekilde yazılı istemci oluşturmadan önce gerçek bir yanıtı inceleyin.
+Mevcut belirtim tam rota, yöntem, parametre, izin ve durum kodu kapsamına sahiptir. Sunucu hala onları dinamik JSON olarak oluşturduğu için bazı yanıt gövdeleri kasıtlı olarak yazılmamış durumda kalır. Yanıt şeması olmayan bir uç nokta etrafında güçlü şekilde yazılmış bir istemci oluşturmadan önce gerçek bir yanıtı inceleyin.
 
-JSON yazmaları için `Content-Type: application/json` kullanın. `401` değerini eksik veya geçersiz kimlik doğrulaması, `403` değerini gerekli izne sahip olmayan geçerli kimlik, `404` değerini eksik veya kuruluşa erişilemeyen kaynak, `409` değerini durum çatışması ve `422` değerini geçersiz alan veya izin değeri olarak değerlendirin. Hata yanıtları insan tarafından okunabilir bir mesaj içerir; izin hataları gerekli yetkiyi de adlandırır.
+JSON yazmaları için `Content-Type: application/json` kullanın. `401`'i eksik veya geçersiz kimlik doğrulama, `403`'ü geçerli kimlik ancak gerekli izin yok, `404`'ü eksik veya kuruluşa erişilemeyen kaynak, `409`'u durum çatışması ve `422`'yi geçersiz alan veya izin değeri olarak ele alın. Hata yanıtları insan tarafından okunabilir bir ileti içerir; izin başarısızlıkları ayrıca gerekli izni belirtir.
+
+Olay alımı satır sınırlı JSON kullanır: satır başına bir tam nesne. Başarılı bir yanıtta hem `accepted` hem de `skipped`'i kontrol edin. Ağ hatası veya HTTP 408, 429 veya 5xx yanıtından sonra tüm toplu işlemi yeniden deneyin; aynı olayları yeniden oynatmak güvenlidir. Geçmiş toplu işlemler birçok ayı kapsayabilir. Alım `422` döndürülürse `error: "event_too_large"` ile, ihlal eden olayın yükünü azaltın ve yeniden deneyin. Bir toplu işlemi daha küçük isteklere bölmek bireysel bir olayı küçültmez. Dosya alımları için, kısmen depolanan bir oturumun tamamlanabilmesi için yeniden denemeler sırasında orijinal `existing_before` kesme noktasını yeniden kullanın.
+
+## İstek Kimlikleri
+
+Her yanıt bir `X-Request-Id` başlığı taşır ve her JSON hata gövdesi `request_id` olarak aynı değeri içerir. Destek ile iletişim kurduğunuzda bunu alıntılayın: bu bir isteği tanımlar.
+
+Bir isteği kendi günlüklerinizle ilişkilendirmek için kendi `X-Request-Id`'nizi gönderebilirsiniz. Kırılmış şekilde bir UUID v4 gibi 32 küçük hekzadesimal karakter kullanın. Diğer tüm değerler yeni bir ID ile değiştirilir ve yanıtta döndürülür.
 
 <Warning>
-  İlke uygulanması dağıtımı kasıtlı olarak olağan genel `/v1` yüzeyi dışında yönetilir. Desteklenen Cloud dağıtım iş akışını kullanın.
+  İlke uygulaması dağıtımı kasıtlı olarak sıradan genel `/v1` yüzeyinin dışında yönetilir. Desteklenen Cloud dağıtım iş akışını kullanın.
 </Warning>

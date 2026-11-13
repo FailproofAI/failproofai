@@ -1,0 +1,114 @@
+---
+title: "Jev intent capture"
+description: "Hangi harness olayları Jev değerlendiricisine insanın ne istediğini, hangi alanın metni taşıdığını, hiçbir zaman sayılmayanları ve harness tarafından sağlanan prompt'a güvenmenin riski hakkında bilgi verir."
+icon: "message-square-quote"
+---
+
+[Jev policy review](/tr/policies/jev) yapılandırırken, değerlendiricinin her bir gated tool call'u **insanın ne istediğine** karşı değerlendirir, harness'in agent'ın önüne koyduğu metne karşı değil. "Evet, force-push et" gibi bir yanıt, bir **reviewable** politikayı temizleyebilir — bu değerlendiricinin tüm amacıdır, çünkü isteği okuyamayan bir regex gerçek işin üçte birini engeller.
+
+Bu metin bir yerden gelir: **harness'in hook'a prompt-submit olayında ilettiği prompt**. Failproof AI, insanın yazdığı kısmı — harness sarması çıkarılmış, sırları redakte edilmiş, sınırlanmış — kendi durum dizini altında bir `0600` dosyasına kaydeder. Diskten hiçbir şey sorgulanmaz: oturum transkripti, agent'ın tek bir komutla yeniden yazabileceği bir dosyadır, bu nedenle hiçbir zaman kimin bir prompt yazdığı sorulmaz.
+
+## Bu kabul edilen risk açıkça
+
+Zaten komut çalıştırabilen bir agent, harness'i bir prompt göndermeye zorlayabilir. `claude -p "…"`, `codex exec`, `copilot -p`, `cursor-agent -p`, `devin -p`, `droid -p`, `goose run -t` ve `pi -p` hepsi aynı prompt-submit olayını, aynı payload'ı, bir kişi yazdığı gibi tetikler, kontrol ettiği bir alt oturumda. Ayrıca Failproof AI'ın kendi hook binary'sini çalıştırabilir ve yazdığı bir payload'ı besleyebilir. Failproof AI içinde hiçbir şey ikisini ayırt edemez — ikisi de aynı programdır aynı stdin'i okuyan.
+
+**Dolayısıyla shell'e sahip bir agent kendi onayını sahte yapabilir.** Bu, 2026-09-23'te alınan kasıtlı bir değiş tokuştur ve işte her iki tarafı:
+
+- **Ne satın alır.** Alternatif inşa edildi ve ölçüldü: harness'in bir alanında bir insanı prompt'un yazarı olarak adlandırmasını ve aksi takdirde hiçbir şey kaydetmemeyi gerektir. Hiçbir sevkiyat yapılan harness böyle bir alan göndermez, bu nedenle o sürüm **hiç bir şey kaydetmedi, her harness'te** — Jev her call'u belirtilen niyetsiz değerlendirdi ve hiçbir zaman tek bir politikayı temizleyemedi. Hiçbir zaman tetiklenmeyen bir capture, daha güvenli bir ürün değildir, hiç bir ürün değildir.
+- **Ne yapmaz.** Kaydedilen bir prompt, sadece zaten **reviewable** işaretlenmiş bir politikayı temizleyebilir. Bir **hard** politika, Jev'in söylediği hiçbir şey tarafından asla temizlenmez, bu nedenle sahte bir prompt hard bir deny'yi asla allow'a çeviremez — ve hook'u atlamak da agent'a hiçbir şey kazandırmaz: harness, tool call için Failproof AI'ı bağımsız olarak çağırır.
+- **Tam boyutta ne yapabilir.** Yapabileceği en kötü şey, on beş reviewable yerleşik politikaterden birini temizlemektir — ve **on beşten on ikisi engeller**. `protect-env-vars`, `block-env-files`, `block-read-outside-cwd`, `block-rm-rf`, `block-force-push`, `block-secrets-write` ve altı infrastructure-CLI engeli (`block-kubectl`, `block-terraform`, `block-aws-cli`, `block-gcloud`, `block-az-cli`, `block-helm`) deny'lerdir, bu nedenle sahte bir onay gerçek bir deny'yi ortam gizli dizilerini yazdırma, `.env` dosyasını okuma, projenin dışında okuma, `rm -rf`, force-push, gizli dosya yazma veya canlı altyapıyı değiştirme konusunda allow'a çevirebilir. Sadece `warn-git-amend`, `warn-destructive-sql` ve `warn-global-package-install` nudge'lerdir. Varsayılan bir kurulum on ikiden ikisini, `protect-env-vars` ve `block-env-files`'ı açar; diğer on biri sadece birinin etkinleştirdiği bir makineye ulaşır. Hiçbir prompt'un ulaşmadığı şey tüm hard'larıdır — `block-sudo`, `block-curl-pipe-sh`, `block-push-master`, `block-work-on-main`, agent'ın Failproof AI'ı devre dışı bırakmasını durduran koruma ve reviewable olarak işaretlenmemiş diğer her built-in. [Policy authority](/tr/policies/authority) on beşinin tamamını ve her birinin neyle incelendiğini listeler.
+
+Yine de reddedilen şey, kontrol etmesi ucuz olan ve agent'ın sadece sorarak elde edemeyeceği her şeydir: harness'in kendi payload'ı makine tarafından gönderildikçe işaretlediği bir dönüş, bir sub-agent adlandıran payload, düz bir ad olmayan bir oturum id'si, prompt-submit olmayan bir olay ve hiçbir şey ama harness sarması olan metin — Failproof AI'ın kendi stop-gate sözcükleri dahil, birkaç harness bunları sonraki user turn olarak geri besler.
+
+## Harness başına tablo
+
+"Text field", Failproof AI'ın harness başına normalizasyonundan sonra stdin payload alanıdır. "Recorded", prompt'un insanın isteği olarak tutulup tutulmadığını söyler.
+
+| Harness | `--cli` | Prompt event → canonical | Text field | Recorded | Agent'ın son mesajı okunur |
+| --- | --- | --- | --- | --- | --- |
+| Claude Code | `claude` | `UserPromptSubmit` | `prompt` | Evet, payload'ın `source` hiç kimsenin göndermediği bir turn adlandırmadığı sürece (`loop_wakeup`, `schedule_wakeup`, `poll_event`, `system`). `user`, `sdk`, bilinmeyen bir değer ve kaynak göndermemeyen bir build'in tümü kaydedilir | oturum transkripti (`transcript_path`) |
+| Codex | `codex` | `user_prompt_submit` → `UserPromptSubmit` | `prompt` | Evet | rollout JSONL (`agent_message`, `AgentMessage`) |
+| GitHub Copilot CLI | `copilot` | `UserPromptSubmit` | `prompt` | Evet | `events.jsonl` (`assistant.message`) |
+| Cursor | `cursor` | `beforeSubmitPrompt` → `UserPromptSubmit` | `prompt` | Evet, `<user_query>` sarması tüm prompt olduğunda soyulur | agent transkripti JSONL |
+| OpenCode | `opencode` | `message.updated` (user role) → `UserPromptSubmit` | `prompt` | Evet — ancak mevcut OpenCode o olayda metin taşımaz, bu nedenle pratikte hiçbir şey kaydedilmez; aynı mesajın tekrarı bir kez kaydedilir | none (oturumlar SQLite) |
+| Pi | `pi` | `input` → `UserPromptSubmit` | `prompt` | Evet, `input_source` `extension` olmadığı sürece — başka bir extension'ın `sendUserMessage()`, metni model tarafından yazılmış veya repo'dan türetilmiş olabilir | Pi oturum JSONL |
+| Hermes | `hermes` | none | — | Hayır — Hermes'in hiçbir prompt-submit olayı yok | — |
+| OpenClaw | `openclaw` | `before_agent_run` → `UserPromptSubmit` | `prompt` | Evet, çalıştırma meta verisi çalıştırmayı bir makinenin oluşturduğu şekilde işaretlemedikçe: `user` dışında bir `trigger`, `external_user` dışında bir `inputProvenance.kind` veya `senderIsOwner: false` | none (`before_agent_run` transkript yolu taşımaz) |
+| Factory Droid | `factory` | `UserPromptSubmit` | `prompt` | Evet | droid oturum JSONL |
+| Devin CLI | `devin` | `UserPromptSubmit` | `prompt` | Evet | none (oturumlar SQLite) |
+| Antigravity CLI | `antigravity` | `PreInvocation` → `UserPromptSubmit` | none | Hayır — `PreInvocation` bir turn'ün *her* model call'undan önce tetiklenir ve prompt metni taşımaz | — |
+| Goose | `goose` | `UserPromptSubmit` | `message` | Evet | none (oturumlar SQLite) |
+
+İki harness hiçbir şey kaydetmez ve her iki durumda da aynı nedenle: olay insani metin sağlamaz. Hermes'in prompt-submit olayı yok — yerel eklentisi `pre_llm_call`'ı kendi işler ve sadece tool, oturum ve subagent olaylarını iletir. Antigravity'nin `PreInvocation` her model call'undan önce, insani turn'de ve sonrasındaki beşte tetiklenir ve prompt alanı taşımaz; hook'lar ayrıca aynı konuşmaya `userMessage` adımları enjekte edebilir. Her iki olayda da kaydedecek bir şey yoktur.
+
+## Bir prompt'u insanın yapan nedir
+
+1. **Olay.** Failproof AI, handler'ın `UserPromptSubmit` olarak kanonikleştirdiği harness'in prompt-submit olayı için çağrıldı.
+2. **Payload.** Harness bunu hook'un stdin'ine yazar ve yukarıda adlandırılan alanda metni taşır. Failproof AI'ya payload olmadan ulaşan bir call hiçbir şey kaydetmez.
+3. **Payload'daki hiçbir şey turn'ü hariç tutmaz.** Bir sub-agent adlandıran payload (`agent_id`) agent'ın kendisine prompt yapmasıdır. Makine tarafından gönderilen bir turn'ü adlandıran `source`, `input_source` veya OpenClaw çalıştırma işareti reddedilir. **Eksik** bir işaretleyici hiçbir şeyi hariç tutmaz — bu hiçbir şey kaydetmemeyen sürümden farkıdır, çünkü buradaki her işaretleyici her sevkiyat yapılan build'te eksiktir.
+4. **Sarma çıkarıldıktan sonra bir şey kalır** (aşağıya bakın).
+
+**Oturum transkripti bir prompt'u kimin yazdığının kanıtı değildir.** Bu sayfanın önceki sürümleri bir transkript çapraz kontrolünü tanımladı: prompt, model tarafından zamanlandığını gösterildiğinde ve transkript önceki prompt'un gördüğünü devam ettirmek zorundaysa reddedildi. O kontrol gitti. Transkript, agent'ın zaten shell'i olan bir dosyadır — kesilip, değiştirilebilir, okuma bütçesinin ötesine yastılanabilir, turn'ün başında anlık görüntüsü alınabilir ve sonunda geri yüklenebilir veya agent'ın yazdığı girişlerle yeniden iyi okunur hale getirilebilir. Sertleştirmenin her turunda başka bir aynı sahteciliğin yazımı izledi, bu nedenle tüm mekanizma onarılmak yerine kaldırıldı.
+
+Transkript yine de bir şey için okunur: **agent'ın son görünen mesajı**. Bu mesaj tanım gereği agent tarafından yazılmıştır, Jev'e söylenmiştir ve asla kendisi tarafından onay değildir.
+
+## Bir prompt'tan ne tutulur
+
+Harness'ler bir prompt'a insanın sözcüklerinden daha fazlasını koyar. Hiçbir şey depolanmadan önce:
+
+- `<system-reminder>` blokları çıkarılır ve etraflarındaki insanın sözcükleri tutulur.
+- Bir oturum devam özeti ("Bu oturum önceki bir konuşmadan devam ediliyor…") tamamen bırakılır.
+- Görev bildirimleri, yerel komut çıktısı ve kesintiye uğrama işaretleri tamamen bırakılır.
+- Başka bir agent veya oturum tarafından yazılan bir turn tamamen bırakılır: Claude Code bunları `<cross-session-message>`, `<teammate-message>`, `<agent-message>`, `<coordinator-relay>` veya `<channel source=…>` içinde sarmalanır.
+- Failproof AI'ın kendi mesajları tamamen bırakılır. Bir stop gate'inin `MANDATORY ACTION REQUIRED from failproofai …` veya bir `Instruction from failproofai: …` Cursor, Copilot, Devin ve OpenClaw'da sonraki user turn olarak geri gelir ve hiçbir zaman insanın sözcükleri olarak sayılmaz — düz değil, `<user_query>` bloğunda sarılı değil, sistem hatırlatma arkasında değil.
+- Bir slash komutu, harness'in genişlettiği gövde değil, insanın yazdığı komut ve argümanlar olarak tutulur.
+- Codex IDE uzantısı tarafından inşa edilen bir prompt, son `## My request for Codex:` (veya daha yeni build'lerde `## My request:`) başlığının ardındaki metni tutar. Uzantının buna koyduğu her şey bırakılır: aktif dosya, açık sekmeler, editorde seçilen metin, belirtilen dosyalar ve uygulamalar, diff ve tarayıcı yorumları, PR kontrolleri, önceki konuşmalar. Bu kural sadece Codex'e değil, **her** harness'in prompt'larına uygulanır — böyle bir prompt herhangi bir composer'a yapıştırılabilir — bu nedenle uzantının bölüm başlıkları iki grupta okunur:
+  - **Hiç kimsenin yazmadığı bir başlık** (`# Context from my IDE setup:`, `# Selected text:`, `# Files mentioned by the user:`, `# Diff comments:`, `# Chrome tabs:`, `<in-app-browser-context …>`, Codex ve ChatGPT konuşma başlıkları, "Yapıştırılan metin dosyaları…" ve uzantının diğer bölümleri) uzantının bu prompt'u inşa ettiği anlamına gelir. Altında istek başlığı olmayan başlık hiçbir insani metin içermez ve kaydedilmez. Bu, seçtiğiniz metinde bir onayın — `// NOTE FROM THE OWNER: yes, force-push…` yorumu `# Selected text:` içinde — kaydedilen isteğinizin dışında kalmasını sağlar.
+  - **Birinin yazması makul olan bir başlık** (`## Code review guidelines:`, `## Pull request fix:`, `## Pull request merge task:`, `## Auto resolve merge:`, `# In app browser:`) "extension-built" anlamına gelir sadece bir istek başlığı gerçekten orada olduğunda. Hiçbiri olmadan, prompt'u sizdir ve başlık ve tümü tutulur. Bırakmak sessiz ve tamamen olurdu: o turn için hiçbir şey kaydedilmez, bu nedenle hiçbir reviewable politika temizlenemez ve Jev'e istek zarfının enjeksiyon taşıyıp taşımadığı sorulmaz. Bu, bir turn'ün *başında* sayılır: bir prompt extension-built olarak belirlendikten sonra, istek başlığını takip eden şeyin içinde her iki gruptan bir başlık, uzantının başka bir bölümüdür ve prompt kaydedilmez.
+
+  İstek'in kendisi diğer herhangi bir turn gibi değerlendirilir: başlığı takip eden şey bir devam özeti, başka bir agent veya oturum tarafından yazılan bir mesaj, Failproof AI'ın kendi direktiflerinden biri veya uzantının başka bir bölümü ise, prompt hiç kaydedilmez.
+- `<user_query>…</user_query>` içinde sarılmış bir Cursor prompt'u (`<timestamp>` bloğunun arkasında opsiyonel olarak) sarma tüm prompt olduğunda açılır. Başka bir yerdeki bir etiket sıradan metindir — bir günlükten yapıştırılan bir kod parçacığı veya agent'ın seçtiği bir branch adı — ve prompt, etiketli aralığa indirgenmek yerine tümü tutulur.
+- Yapıştırılan bloklar tutulur ve insanın yapıştırması olarak etiketlenir.
+
+Hiçbir şey ama harness metni olmayan bir prompt hiç kaydedilmez.
+
+## Agent'ın son mesajı
+
+"Evet" gibi bir yanıt, yanıtladığı sorusuz hiçbir anlam taşımaz. Bir prompt kaydedildiğinde, Failproof AI ayrıca **o anda** oturum transkriptinden agent'ın son görünen mesajını okur ve prompt'la beraber depolar. Jev bunu kendi alanında alır, agent tarafından yazılmış olarak etiketlenir: kısa bir yanıtı açıklar ve asla kendi başına insanın isteği olarak sayılmaz. Transkriptin okunduğu tek şeydir ve yeniden yazılan transkript yapabileceği en kötü şey, agent tarafından yazılan bir mesajın beklenen bir alanına agent tarafından yazılan bir mesajı koymaktır.
+
+Transkriptin sonundan, en fazla son 4 MB'tan okunur. Desteklenen transkript biçimleri Claude Code, Codex rollout'ları (daha eski `agent_message` olayları ve daha yeni `AgentMessage` öğeleri), Cursor, Copilot `events.jsonl` ve Pi, Factory ve OpenClaw oturum JSONL'lerdir. Claude Code'un kendi sentetik ve API hata mesajları ile subagent (sidechain) mesajları atlanır. Oturumları SQLite'te tutan Goose ve OpenCode için anlık görüntü, transkripti tek bir JSON belgesi olan Devin için veya `before_agent_run` olayı transkript yolu taşımayan OpenClaw için yok.
+
+## Depolama
+
+| Property | Value |
+| --- | --- |
+| Konum | `~/.failproofai/state/semantic/sessions/<profile>/<session-id>.json`, burada `<profile>` prompt'un yazıldığı agent profilidir: FailproofAI'ın bildiği bir agent için `<integration>.<instance-id>` (Cloud politikalarının hedeflendiği kimlik) veya aksi takdirde sadece `<integration>` |
+| İzinler | dosya `0600`, dizin `0700`. Bununla ilgili tüm dizinler, `~/.failproofai`'a kadar, `jev.json`'un dizininin izlediği kuralla tutulur: başkası tarafından **yazılabilir** olan bir dizin yeniden adlandırılabilir ve değiştirilebilir, bu nedenle okuma yolu bu yazma bitlerini kaldırabildiği yerde kaldırır ve **kaldıramadığı** yerde hiçbir şey okumaz. Kaydedilen bir prompt daha sonra sahte değil eksiktir ve hiçbir şey temizlenmez |
+| Oturum başına tutulur | son 5 prompt; önceki prompt'la aynı olan bir prompt yeni bir slot almak yerine onu değiştirir |
+| Pencere | 6 saatten eski prompt'lar yok sayılır |
+| Boyut | her prompt ve agent mesajı 6.000 karakterle sınırlanır, başı ve kuyruğu tutar |
+| Gizli diziler | `sanitize-*` politikalarıyla aynı desenler kullanılarak herhangi bir şey yazılmadan önce redakte edilir. 48.000 karakterden uzun bir metin, ilk 28.800 ve son 19.200 karakteri ve gizli dizinin bölünmüş olabileceği bu kesintilerin yanındaki metin olarak redakte edilir ve hiçbir zaman depolanmaz |
+
+Harfler, rakamlar, `.`, `_` ve `-` dışında hiçbir şey içeren veya 128 karakterden uzun bir oturum ID'si hiçbir zaman dosya adı olarak kullanılmaz, bu nedenle onun için hiçbir şey kaydedilmez.
+
+Oturum dosyası, kendisinde bir prompt kaydedildikten sonra sadece bir kez bulunur. Prompt'ları ve başka hiçbir şeyi tutar — kaynak durum yok, transkript işareti yok — ve altı saat pencereden daha uzun sessiz kaldığında silinir, sonraki sefer yeni bir oturum ilk prompt'unu yazdığında.
+
+Prompt, kayıtlı olduğu aynı agent profili ve oturum ID'si için geri okunur. Oturum ID'leri agent'dan gelir, bu nedenle iki profil aynı olanı kullanabilir; profil tarafından anahtar tutma, bir profilin sözcüklerinin hiçbir zaman başka bir profinin isteği olarak sayılmamasını sağlar. Önceki düzen'den dosyalar (`sessions/<session-id>.json`) hangi profilin onları yazdığını söyleyemez, bu nedenle asla okunmaz ve altı saat penceresiyle sona erer.
+
+Bir Jev uç noktası yapılandırılmadığı sürece hiçbir şey kaydedilmez. Bir FailproofAI Cloud Jev modu altında, hiçbir Cloud Jev kontrolünün atanmadığı ve kurulu hiçbir paket'in kontrolünün gözden geçirmediği bir agent profili için hiçbir şey kaydedilmez.
+
+### Proje kökü
+
+"Proje içinde" — `read-outside-workspace` ve diğer yol kontrolleri neye karşı değerlendirirse — oturumun ilk gözden geçirilen call'unda olduğu proje içinde anlamına gelir. Kök o zaman tutturulur ve daha sonraki `cd` asla onu hareket ettiremez; `cd` yine de göreli bir yolu nasıl çözeceğini değiştirir. Bunu takip etmesine izin vermek, bir çağrıda `cd ~/.ssh` yapmayı sonraki çağrı için `~/.ssh`'i proje yapmaya izin verirdi.
+
+Pim, `{root, at}` tutan `~/.failproofai/state/semantic/roots/<session-id>.json` dosyasıdır: dosya `0600`, dizin `0700` ve yukarıdakiyle aynı oturum ID'si kuralı. 7 günden eski dosyalar yeni bir oturum kökünü tutturduğunda silinir. Diğer kullanıcılar tarafından yazılabilen bir `roots` dizini yok sayılır ve canlı dizinin kökü kullanılır. Bir oturumu yeniden tutturmak için dosyasını silin.
+
+## Bilinen sınırlamalar
+
+- **Bir prompt, hook çağırma kadar güvenilirdir.** Buradaki her şey, harness'in hook'un stdin'ine yazdığı payload'ı okur. Komut çalıştırabilen bir agent, harness'i headless'te çalıştırabilir (`claude -p` ve yukarıda listelenen diğer yedi) veya Failproof AI'ın hook binary'sini kendisi yazdığı bir payload'la çalıştırabilir ve kimsenin yazmadığı bir prompt kaydedebilir. Bu, bu sayfanın başında açıklanan kabul edilen değiş tokuştur: sadece reviewable politikaları temizler, hiçbir zaman hard'ı — ancak on beşten on ikisi reviewable built-in'leri deny'lerdir, bu nedenle sahte bir prompt gerçek bloğu bu on ikide allow'a çevirebilir.
+- **Sub-agent tespiti Claude şeklindedir.** `agent_id` taşıyan bir payload, herhangi bir harness'te hiçbir zaman kaydedilmez. Bu, Claude Code, Factory Droid ve Devin'in kullanacağı alandır. Codex, prompt olayını sub-agent iş parçacıklarının içinde tetikler, Copilot süreç içi yardımcıları çalıştırır, Goose'un `delegate` aracı var ve OpenClaw personalarını çalıştırır — bunların hiçbiri payload'ı bu şekilde tanınan bir şekilde işaretlemez, bu nedenle bu harness'lerde bir sub-agent prompt'u oturumun kendi adı olarak kaydedilir. OpenClaw'ın `openclaw.agentId` **bu** işaretleyici değildir: sevkiyat yapılan eklenti bunu her çalıştırmada ayarlar, sahibi dahil.
+- **İşaretleyici taşımayan zamanlayıcılar.** Claude Code'un `schedule_wakeup` ve `loop_wakeup`, ve OpenClaw'ın `cron` ve `heartbeat` tetikleyicileri reddedilir çünkü bu harness'ler payload'da bunu söyler. Goose'un kendi zamanlayıcısı (`goose schedule add`) ve Codex'in `codex exec` hiçbir şey söylemez, bu nedenle başlattıkları bir çalıştırma diğer gibi kaydedilir.
+- **Bir agent'ın son mesajı, agent'ın seçtiği bir mesaj olabilir.** Transkript doğrulanmaz, bu nedenle kendi transkriptini yazabilen bir agent "son mesajı"nın ne söylediğine karar verebilir. Agent tarafından yazılmış olarak etiketlenir ve asla kendi başına hiçbir şeyi temizlemez — ancak `decide.ts`'nin v1 yolu belirleyici bir şekilde "kullanıcı bu hedefi adlandırdı mı" kontrolünü tatmin etmesine izin verdiğini unutmayın, bu nedenle transkriptini kontrol eden bir agent, geçersiz kılmanın ihtiyaç duyduğu hedef adı sağlayabilir.
+- **Uzantının makine başlıklarından biriyle açılan bir prompt tamamen bırakılır.** Bir prompt'u `# Selected text:`, `# Diff comments:`, `# Chrome tabs:` veya yukarıdaki ilk grubtan başka bir bölüm başlığıyla başlatın ve hiçbir zaman `## My request:` başlığı yazmayın ve o turn için hiçbir şey kaydedilmez — bu nedenle onun için hiçbir şey temizlenmez de. Bu kasıtlıdır: bu bölümler başkasının kontrol ettiği metni taşır (seçtiğiniz kod, bir gözden geçirenin diff yorumu, bir sayfa başlığı) ve bunu sizin sözcükleriniz olarak kaydetmek daha kötü başarısızlıktır. Bir geliştirici yazması makul olan başlıklar ikinci grubundadır ve asla kendi başlarına bir prompt'u bırakmazlar.
+- **OpenCode pratikte hiçbir şey kaydetmez.** `message.updated` olayı mevcut OpenCode'da metin taşımaz ve ayrıca görev aracının oluşturduğu alt oturumlar için tetiklenir, bunların "user" mesajı üst agent tarafından yazılmıştır.
+- **`CODEX_HOME` honoured değildir** `lib/codex-sessions.ts`'deki rollout keşfi tarafından. Bu sadece bir agent mesajı anlık görüntüsünün nerede arandığını etkiler, asla bir prompt'un kaydedilip kaydedilmediğini değil.

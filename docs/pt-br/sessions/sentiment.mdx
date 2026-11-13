@@ -1,0 +1,43 @@
+---
+title: "Análise de sentimentos"
+description: "Encontre mensagens frustradas, confusas e corretivas com os scores de sentimento do Jev."
+icon: "smile"
+---
+
+O Jev atribui a cada mensagem enviada por uma pessoa aos seus agentes uma pontuação de 0 a 100 para quatro emoções — **raiva**, **frustração**, **felicidade** e **confusão** — e três sinais sobre o desempenho do agente:
+
+- **Corrigindo**: a pessoa indica que o agente errou algo.
+- **Resolvido**: a pessoa confirma que o agente solucionou o problema.
+- **Duvidoso**: a pessoa questiona se a resposta do agente é verdadeira, ou se ele realmente executou a tarefa.
+
+Use a análise de sentimentos para encontrar conversas em que as pessoas estão perdendo a paciência, agentes que precisam de correções frequentes e respostas bem recebidas. Esse é o scoring integrado do Jev; não é necessário criar uma avaliação. Para perguntas com respostas fixas, [crie uma avaliação Jev](/pt-br/evaluations/jev).
+
+<Note>
+  O sentimento fica desativado até que um administrador o ative para a organização. O Jev faz uma requisição de scoring por mensagem e recebe essa mensagem junto com a resposta do agente anterior a ela. O scoring consome o orçamento de modelos da sua organização.
+</Note>
+
+## Como ativar
+
+1. Acesse **Administração → Configurações**.
+2. Em **Sentimento de entrada humana**, ative a opção e salve.
+
+As mensagens do último dia são pontuadas primeiro. Depois disso, novas mensagens são pontuadas em um ou dois minutos após chegarem.
+
+## Encontrar uma conversa para revisar
+
+Abra **Observar → Sentimentos**. Filtre por período, ambiente, agente ou ID de sessão. O cabeçalho exibe a contagem de mensagens e sessões, mostra quantas mensagens estão **sinalizadas** e indica o principal sinal. Uma mensagem é sinalizada quando um score de raiva, frustração, correção, confusão ou dúvida atinge 35 de 100.
+
+![O painel de Sentimentos exibindo contagens de mensagens e sessões, mensagens sinalizadas e scores do Jev ao longo do tempo.](/images/dashboard/sentiment-overview.png)
+
+Use **Score ao longo do tempo** para comparar sinais. Escolha os scores a exibir e selecione um ponto para ver as mensagens daquele intervalo de tempo. A tabela **Por agente** mostra onde um sinal está concentrado. Em **Mensagens**, ordene pelo score negativo mais alto ou selecione um score individual. Abra uma mensagem na sua sessão para ler a conversa ao redor antes de decidir o que falhou.
+
+![A lista de mensagens de Sentimentos ordenada pelo score negativo mais alto, com link para cada sessão de origem.](/images/dashboard/sentiment-messages.png)
+
+## Quais mensagens são pontuadas
+
+Apenas mensagens escritas por uma pessoa:
+
+- Mensagens que seus agentes personalizados registram como entrada humana com o SDK.
+- Prompts digitados no Claude Code, Codex, OpenCode, pi, Hermes e OpenClaw, quando os transcritos de sessão são enviados (padrão). Tarefas agendadas, instruções injetadas, transferências entre sub-agentes e outros textos escritos pelo próprio runtime do agente não são pontuados. Também não são pontuadas execuções não interativas como `claude -p`, `codex exec` e `hermes -z`: esses prompts foram escritos por um script, não por uma pessoa.
+
+A pontuação avalia as próprias palavras da pessoa. Uma instrução curta e direta como "conserta isso" não é contada como raiva, e fazer uma pergunta não é contada como confusão. Um novo pedido não é uma correção, e um agradecimento isolado não conta como resolvido.

@@ -1,0 +1,135 @@
+---
+title: "OpenTelemetry"
+description: "通过 OTLP 将编码代理和应用程序遥测数据发送至 FailproofAI Cloud。"
+icon: "radio"
+---
+
+OpenTelemetry 允许您使用标准 OTLP/HTTP 协议将代理追踪、日志和指标发送到 FailproofAI Cloud。此功能为可选项，不启用它不会影响您现有的 FailproofAI 集成。
+
+## 为您的组织开启数据采集
+
+组织管理员进入 **Settings → OpenTelemetry**，开启数据采集。请使用具有 `events:add` 权限的 Cloud API 密钥，该权限与代理报告所用权限相同。
+
+若数据采集已关闭，Cloud 将拒绝 OTLP 导出请求，因此运行 `failproofai otel enable` 不会产生任何效果，您的代理仍将以常规方式发送会话数据。运行 `failproofai otel status` 可检查组织层面的开关状态，如需开启请联系管理员。
+
+## 连接编码代理
+
+通过 `failproofai config` 完成本机配置后，选择对应代理：
+
+```bash
+failproofai otel enable claude
+failproofai otel enable codex
+failproofai otel enable copilot
+```
+
+该配置命令支持 Claude Code、Codex 和 Copilot，并会根据实际情况选择直连 Cloud 或使用本地已认证的中继。Copilot 会自动使用本地中继。使用中继前，请先启动已配置好的 FailproofAI 守护进程。
+
+如果 FailproofAI 已在发送某个代理的会话记录，配置过程会询问是否将该代理切换到 OTEL 模式，默认选项为"否"。确认切换后，该代理的会话记录上传将停止，但不会影响策略执行或其他代理的报告。
+
+## 连接应用程序
+
+在应用程序的 OpenTelemetry 埋点中设置以下环境变量：
+
+```bash
+export OTEL_EXPORTER_OTLP_ENDPOINT=https://app.befailproof.ai/otel
+export OTEL_EXPORTER_OTLP_PROTOCOL=http/protobuf
+export OTEL_EXPORTER_OTLP_HEADERS='Authorization=Bearer%20<key>'
+export OTEL_SERVICE_NAME=my-agent
+```
+
+该端点是 Cloud 的 OTLP 基础路径 `https://app.befailproof.ai/otel`，您的导出器会自动在其后追加 `/v1/traces`、`/v1/logs` 或 `/v1/metrics`。对于按信号类型指定的变量（如 `OTEL_EXPORTER_OTLP_LOGS_ENDPOINT`），需提供完整路径，例如 `https://app.befailproof.ai/otel/v1/logs`。
+
+请将 `<key>` 替换为您的 API 密钥，并确保密钥不出现在 shell 历史记录、屏幕录像或提交的配置文件中。对于已完成本机配置的机器，运行 `failproofai otel env --service my-agent` 可输出包含现有密钥的完整配置块，注意该输出中含有凭据信息。
+
+Cloud 接受 traces、logs 和 metrics 的 OTLP/HTTP 导出，支持 protobuf 或 JSON 格式，以及 gzip 压缩请求，但不支持 OTLP/gRPC。
+
+指标会被确认接收以保证导出器兼容性，但不会被存储或展示。受支持的代理追踪和编码代理日志将转换为会话记录，代理未导出的字段将保持缺失状态。
+
+## 捕获提示词内容
+
+<Warning>
+内容捕获可能包含提示词、工具参数及其他敏感信息。`failproofai otel enable` 默认开启此功能。如需关闭提示词和工具详情捕获，请添加 `--no-content` 参数。
+</Warning>
+
+```bash
+failproofai otel enable claude --no-content
+failproofai otel enable codex --no-content
+```
+
+对于手动配置的代理，请使用其自身的内容捕获控制选项：
+
+<Tabs>
+  <Tab title="Claude Code">
+    在代理的环境变量中，于上述应用程序配置块的基础上添加以下变量：
+
+    ```bash
+    export CLAUDE_CODE_ENABLE_TELEMETRY=1
+    export OTEL_LOGS_EXPORTER=otlp
+    export OTEL_METRICS_EXPORTER=otlp
+    export OTEL_LOG_USER_PROMPTS=1
+    export OTEL_LOG_TOOL_DETAILS=1
+    ```
+
+    将两个内容相关的变量均设为 `0`，可避免捕获提示词和工具详情。
+  </Tab>
+  <Tab title="Codex">
+    在 Codex 的用户配置中，使用其 OTEL 设置：
+
+    ```toml
+    [otel]
+    log_user_prompt = true
+    exporter = { otlp-http = { endpoint = "https://app.befailproof.ai/otel/v1/logs", protocol = "json", headers = { Authorization = "Bearer <key>" } } }
+    ```
+
+    Codex 对话内容记录在日志中，内部运行时追踪和指标应保持禁用状态。Codex 使用您提供的完整端点路径。将 `log_user_prompt` 设为 `false` 可不捕获提示词；配置命令会保留显式设置的 `false` 值。
+  </Tab>
+  <Tab title="Gemini CLI">
+    通过本地中继使用 Gemini 的遥测设置：
+
+    ```json
+    {
+      "telemetry": {
+        "enabled": true,
+        "target": "local",
+        "otlpEndpoint": "http://127.0.0.1:4318",
+        "otlpProtocol": "http",
+        "useCollector": true,
+        "logPrompts": true
+      }
+    }
+    ```
+
+    Gemini CLI 不支持通过 `failproofai otel enable` 配置，请自行配置已认证的 collector 进行手动接入。将 `logPrompts` 设为 `false` 可不捕获提示词。
+  </Tab>
+  <Tab title="Copilot in VS Code">
+    使用以下 VS Code 用户设置：
+
+    ```json
+    {
+      "github.copilot.chat.otel.enabled": true,
+      "github.copilot.chat.otel.exporterType": "otlp-http",
+      "github.copilot.chat.otel.otlpEndpoint": "http://127.0.0.1:4318",
+      "github.copilot.chat.otel.captureContent": true
+    }
+    ```
+
+    运行 `failproofai otel enable copilot` 以启用已认证的中继。将 `captureContent` 设为 `false` 可不捕获内容。
+  </Tab>
+</Tabs>
+
+## 检查或撤销配置
+
+中继在遭遇临时网络故障或服务器故障时会保留遥测数据，并在恢复后自动重试。对于收到永久性 `400` 错误的情况（例如事件体积过大无法存储），需要修正数据负载。中继会保留被拒绝的批次以供检查，而不会反复尝试发送。
+
+收到 `401` 或 `403` 后，请将凭据替换为具有同一组织 `events:add` 权限的密钥。重新连接不会自动重发因凭据问题被拒绝的 OTLP 导出数据，如需恢复这些批次，请联系您的运维人员，并确保它们保留在原所属组织中。
+
+```bash
+failproofai otel status
+failproofai otel disable all
+```
+
+`status` 命令会区分由 FailproofAI 管理的配置与您在其他地方自行配置的遥测设置。`disable` 命令会恢复之前的托管配置以及代理的会话记录上传选项。
+
+<Card title="OpenTelemetry CLI" href="/zh/reference/otel" icon="terminal">
+  命令选项、本地中继配置及问题排查。
+</Card>

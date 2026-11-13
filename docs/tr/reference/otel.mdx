@@ -1,0 +1,77 @@
+---
+title: "OpenTelemetry CLI"
+description: "FailproofAI Cloud için OTEL'i etkinleştirin, iletimi inceleyin ve önceki ayarlarınızı geri yükleyin."
+icon: "radio"
+---
+
+`failproofai otel` FailproofAI Cloud'a isteğe bağlı OpenTelemetry raporlaması yapılandırır. Önce makinenizi `failproofai config` ile bağlayın ve bir kuruluş yöneticisinden **Ayarlar → OpenTelemetry** seçeneğini etkinleştirmesini isteyin.
+
+Etkileşimli kurulum, Cloud anahtarı alanı ve aracı seçicisinden sonra OpenTelemetry hakkında sorular sorar. İsteğe bağlı adım varsayılan olarak Hayır'dır. OTEL aracılarını seçmek için Evet'i seçin; bağlantı yazıldıktan sonra aynı etkinleştirme kodu çalışır. Kurulumdan önce Esc tuşuna basılması hiçbir değişiklik uygulamaz. Katılımsız kurulum, sağlanan bir anahtar, açık kaynak modu ve kaydedilmiş bir bağlantıyı tutmak sizi katılmaya dahil etmez.
+
+## Bir aracıyı etkinleştirin
+
+```bash
+failproofai otel enable claude
+failproofai otel enable codex --local
+failproofai otel enable codex --no-content
+failproofai otel enable copilot
+failproofai otel enable all --yes
+```
+
+Desteklenen aracılar `claude`, `codex` ve `copilot` (VS Code) şeklindedir. Copilot kurulumu bir VS Code yürütülebilir dosyası veya yüklü bir Copilot uzantısı gerektirir. Yalnızca kalan bir ayarlar dizini yeterli değildir; ne biri ne de diğeri bulunamazsa kurulum Copilot'u atlar.
+
+`--local` doğrudan Cloud yerine yerel röleleye gönderir. Copilot, kimlik doğrulama başlığını depolamadığı için röleleyi otomatik olarak kullanır.
+
+Röle yalnızca makinenizde dinler. Yapılandırılmış FailproofAI daemon değişikliği birkaç saniye içinde alır; yeniden başlatmanız gerekmez. Başka bir uygulama röle bağlantı noktasına sahipse, durum raporu onu kapalı olarak bildirir ve daemon çalışmaya devam eder.
+
+<Warning>
+Metin yakalaması varsayılan olarak açıktır. İstemleri ve araç ayrıntılarını atlamak için `--no-content` ekleyin. Aracı sürümleri farklı içerik denetimleri ortaya çıkarabilir; hassas verilerle kullanmadan önce aracınızın neleri dışa aktardığını gözden geçirin.
+</Warning>
+
+Codex yalnızca konuşma günlüklerini dışa aktarır, iç çalışma zamanı izlemeleri veya ölçümleri değil. Codex yapılandırmanızda açık bir `log_user_prompt = false` kapalı kalır; etkinleştir bu seçimi koruduğunda bir not yazdırır.
+
+### Bir raporlama yolunu seçin
+
+Bir aracı için transkript raporlaması açıksa, kurulum şunu sorar:
+
+> failproofai zaten Claude Code oturumlarını Cloud'a gönderiyor. Bunları OTEL ile mi gönderelim? Claude Code için transkript yükleme durur.
+
+Varsayılan Hayır'dır. `--yes` istemi olmadan anahtarı kabul eder. Diğer aracılar ve politika yaptırımı etkilenmez.
+
+Codex kurulumu daemon'un toplayıcı değişikliğini doğrulamasını bekler, ardından dışa aktarıcı ayarlarını yazar. Doğrulama zaman aşımına uğrarsa, kurulum Codex başlatmadan önce beklemeniz konusunda sizi uyarır.
+
+Config v2 hatırlanan izleme listesini `agents.selected` konumunda tutar (ve algılama geçmişini `agents.seen` konumunda). Aracı başına transkript tercihi `collector.agents.<agent>.sessions` konumunda, OTEL sahipliği `otel.agents` konumunda ve röle ayarları `collector.otlp.enabled` / `collector.otlp.port` konumunda kalır. Bu ayrı anahtarlar eski OTEL yapılandırmalarını okunabilir tutarlar: kurulum izleme listesini transport tercihini veya aracı ayarlarınızı geri yüklemek için gereken durumu kaybetmeden değiştirebilir.
+
+## Kurulumu inceleyin
+
+```bash
+failproofai otel status
+```
+
+Durum her aracıyı, ayarlarının FailproofAI tarafından yönetilip yönetilmediğini, hedefini, kuruluşun alma anahtarını, röle durumunu ve en son röle yükleme sonucunu gösterir.
+
+Kuruluş anahtarı için `unknown` sunucunun bunu sağlamadığını veya erişilemediğini anlamına gelir. Bu bir hata değildir ve eski bir Cloud sürümünde yapılandırmayı engellemez.
+
+Cloud henüz OTEL'i desteklemiyorsa, röle reddedilen dışa aktarımları atmak yerine tutar. Kuruluş alımı kapatıldıysa, `enable` hiçbir şey yazmaz ve bir hatayla çıkar; önce bir yöneticiden bunu açmasını isteyin.
+
+## Bir uygulama için yapılandırmayı yazdırın
+
+```bash
+failproofai otel env --service my-agent
+failproofai otel env --service my-agent --local
+```
+
+Çıktı bir OTLP/HTTP dışa aktarıcısı için bir kabuk ortamı bloğudur. Cloud çıktısı `OTEL_EXPORTER_OTLP_ENDPOINT` değerini Cloud'ın OTLP tabanı olan `https://<cloud>/otel` olarak ayarlar ve dışa aktarıcı `/v1/<signal>` ekler; `OTEL_EXPORTER_OTLP_LOGS_ENDPOINT` gibi sinyal başına değişken tam `https://<cloud>/otel/v1/logs` gerektirir. Yerel çıktı röleye işaret eder, `http://127.0.0.1:<port>`. Cloud çıktısı yapılandırılmış API anahtarını içerir; bunu bir gizli dizi olarak işleyin. Yerel çıktı anahtarı atlar. Yerel çıktıyı kullanmak için önce yerel bir aracıyı etkinleştirin, böylece röle çalışır.
+
+## Önceki ayarları geri yükleyin
+
+```bash
+failproofai otel disable claude
+failproofai otel disable all
+```
+
+Devre dışı bırak yalnızca FailproofAI tarafından yazılan ayarları geri yükler, ilgisiz değişiklikleri tutar ve her aracının önceki transkript raporlaması seçimini geri yükler. Son yönetilen yerel aracı devre dışı bırakıldığında, röle dışa aktarımları kabul etmeyi durdurur.
+
+Codex için devre dışı bırak aynı zamanda `collector.agents.codex.sessions_resume_after` öğesini kaydeder (epoch milisaniye). Mevcut dağıtım baytları teslim edilmiş olarak işlenir, böylece OTEL ile yakarlanan oturumlar tekrar yüklenmez; sonraki eklemeler transkript raporlaması aracılığıyla yine akış gerçekleştirir.
+
+Her komut `--help` destekler. Uygulama ve kodlama aracı örnekleri için [Cloud'daki OpenTelemetry](/tr/agenteye/opentelemetry) konusuna bakın.

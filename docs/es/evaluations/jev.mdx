@@ -1,0 +1,28 @@
+---
+title: "Evaluaciones Jev"
+description: "Usa Jev para puntuar una sesión finalizada con respuestas conocidas de antemano."
+icon: "list-checks"
+---
+
+Una evaluación Jev lee una **sesión finalizada** y asigna una puntuación de 0 a 1. Úsala cuando la respuesta se conoce de antemano, como "¿El cliente expresó urgencia?" o "¿Qué tan frustrado estaba el cliente?" Te ayuda a identificar patrones entre ejecuciones; no detiene una llamada a herramienta. Para decisiones tomadas **antes** de que se ejecute una herramienta, usa las [políticas Jev](/es/policies/jev).
+
+## Crea una en el panel de control
+
+1. Abre **Analyze → eval authoring** y selecciona **new eval**.
+2. Describe una pregunta con sus posibles respuestas. Por ejemplo: "¿El agente prometió un reembolso antes de verificar la política de reembolsos? Responde sí o no." Selecciona **draft** y verifica que el resultado sea una puntuación de clasificación.
+3. [Pruébala](/es/evaluations/test) en sesiones recientes y luego [despliégala](/es/evaluations/deploy). Las nuevas sesiones completadas serán puntuadas; realiza un [relleno retroactivo](/es/evaluations/deploy#score-sessions-you-already-have) si también necesitas el historial.
+
+![El formulario compartido de creación de evaluaciones, donde describes una pregunta de respuesta fija, revisas el borrador y despliegas tras las pruebas. El ejemplo mostrado es una evaluación de código; una pregunta Jev utiliza el mismo flujo de creación.](/images/dashboard/eval-authoring-draft.png)
+
+El asistente puede elegir entre código, clasificación Jev y un [juez](/es/evaluations/judge). Verifica su elección antes de desplegar. Jev proporciona una puntuación sin razonamiento en prosa; elige un juez cuando necesites una explicación. Consulta la [referencia de evaluaciones Jev](/es/reference/jev-evaluations) para conocer los tipos de preguntas y los límites de puntuación.
+
+## Lee las puntuaciones
+
+Abre **Observe → Evaluations** para visualizar los resultados por agente y tiempo. Desde una terminal, la Cloud CLI puede leer los mismos resultados:
+
+```bash
+fp evals --since 7d
+fp evals --aggregate --since 7d
+```
+
+La Cloud CLI lee los resultados; la creación y el despliegue ocurren en el panel de control. Consulta la [referencia de la Cloud CLI](/es/reference/cloud-cli#evaluations) para conocer los filtros disponibles.

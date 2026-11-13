@@ -1,0 +1,45 @@
+---
+title: "Jev policies"
+description: "Jev के लाइव रिव्यू को गेटेड टूल कॉल में जोड़ें, फिर इसके निर्णयों को लागू करने से पहले जांचें।"
+icon: "shield-check"
+---
+
+Jev एक टूल कॉल को उसके विरुद्ध पढ़ता है कि व्यक्ति ने एजेंट को क्या करने के लिए कहा है। इसका उपयोग तब करें जब स्ट्रिंग-मैचिंग पॉलिसी वैध काम को ब्लॉक करे या किसी जोखिमपूर्ण कार्य को छोड़ दे जिसके लिए संदर्भ की आवश्यकता है। यह `PreToolUse` या `PermissionRequest` गेट पर आपकी पॉलिसीज़ के साथ जवाब देता है। किसी सत्र के **बाद** स्कोर के लिए, [Jev evaluations](/hi/evaluations/jev) का उपयोग करें।
+
+## observe मोड में शुरुआत करें
+
+Failproof AI को इंस्टॉल करें और हुक को एक [समर्थित harness](/hi/reference/harnesses) से जोड़ें। failproofai 1.0.8-beta.0 या बाद का संस्करण उपयोग करें।
+
+Failproof AI कोई Jev चेक के साथ नहीं आता। उन्हें पैक के रूप में इंस्टॉल करें, अन्यथा Jev के पास पूछने के लिए कुछ नहीं होगा और इसे कभी कॉल नहीं किया जाएगा:
+
+```bash
+failproofai policies add FailproofAI/jev-policies
+```
+
+फिर चुनें कि अनुरोध Jev तक कैसे पहुंचते हैं:
+
+| Route | पहला कदम |
+| --- | --- |
+| FailproofAI Cloud | एक **machine** कुंजी के साथ कनेक्ट करें जिसमें `jev:evaluate` हो। Jev कॉन्फ़िग वाली कोई मशीन पर, `failproofai config` Jev को observe मोड में चालू करता है। |
+| आपका स्वयं का प्रदाता | स्थानीय डैशबोर्ड में, **Settings → Jev** खोलें, प्रदाता चुनें, इसकी टोकन पेस्ट करें, और **observe** का चयन करें। या `failproofai jev --url https://api.typesafe.ai/v1 --mode observe --key-stdin < ~/typesafe.key` चलाएं। |
+
+![स्थानीय डैशबोर्ड की Jev सेटिंग्स: प्रदाता, एंडपॉइंट, टोकन, और Jev को चालू करने से पहले observe मोड।](/images/dashboard/jev-settings.png)
+
+```bash
+failproofai jev status
+failproofai jev test
+```
+
+`test` एंडपॉइंट की जांच करता है। हुक पथ की जांच करने के लिए, एक hooked एजेंट से `README.md` पर अपने फाइल-पढ़ने वाले टूल का उपयोग करने के लिए कहें। पुष्टि करें कि टूल कॉल सत्र में दिखाई देता है, फिर [स्थानीय डैशबोर्ड](/hi/reference/local-dashboard#review-policy-activity) में **Policies → Activity** का निरीक्षण करें। `status` में Jev गिनती बढ़नी चाहिए। Observe मोड रिकॉर्ड करता है कि Jev ने क्या निर्णय लिया होता जबकि आपका मौजूदा पॉलिसी परिणाम अभी भी लागू होता है।
+
+## लागू करने का समय तय करें
+
+एक **hard** पॉलिसी हमेशा अंतिम निर्णय लेती है। Jev एक deny को केवल एक पॉलिसी से clear कर सकता है जो स्पष्ट रूप से **reviewable** चिह्नित है और केवल तभी जब इसने उस पॉलिसी की नामित चिंता की जांच की हो। clearance पर निर्भर होने से पहले [policy authority](/hi/policies/authority) देखें। Jev अपने आप पर भी चेतावनी दे सकता है या deny कर सकता है। यदि यह जवाब नहीं दे सकता, तो पॉलिसी परिणाम उस कॉल का निर्णय लेता है।
+
+एक बार observe परिणाम सही दिखाई दें, **Settings → Jev** में enforce मोड पर स्विच करें या चलाएं:
+
+```bash
+failproofai jev setup --mode enforce
+```
+
+प्रदाता URL, Cloud कुंजी, कॉन्फ़िगरेशन, fallbacks, और प्रत्येक अनुरोध के साथ भेजे गए डेटा के लिए, [Jev integration reference](/hi/reference/jev) देखें।

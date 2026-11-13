@@ -1,0 +1,91 @@
+---
+title: "LLM judges"
+description: "Évaluez vos sessions sur des critères que le code ne peut pas mesurer — exactitude, ton, respect d'une politique — en décrivant ce qu'un bon résultat implique et en laissant un modèle lire la conversation."
+icon: "scale"
+---
+
+Une évaluation Python hébergée peut compter et comparer : le nombre d'appels d'outils, le nombre d'erreurs, la durée d'une session. Elle ne peut pas vous dire si une réponse était *correcte*, si une réplique était impolie, ou si l'agent a vérifié une politique avant d'agir.
+
+Un **LLM judge** le peut. Vous décrivez ce qu'un bon résultat implique en langage naturel, et un modèle lit la session puis renvoie un score de 0 à 1 accompagné de son raisonnement.
+
+<Note>
+Un judge coûte un appel de modèle pour chaque session sur laquelle il s'exécute, tandis qu'une évaluation par code ne coûte rien. N'utilisez un judge que pour les questions qui nécessitent de *comprendre* la conversation — et donnez-lui une condition, afin qu'il ne s'exécute que sur les sessions réellement concernées par la question.
+</Note>
+
+## Lequel choisir ?
+
+| Question | Utiliser |
+| --- | --- |
+| A-t-il appelé le même outil deux fois ? | code |
+| Combien d'erreurs y a-t-il eu ? | code |
+| La session a-t-elle duré moins de 30 secondes ? | code |
+| Le client a-t-il exprimé de l'urgence ? | [classifier](/fr/evaluations/jev) |
+| Quel était le niveau de frustration du client ? | [classifier](/fr/evaluations/jev) |
+| La réponse était-elle vraiment correcte ? | **judge** |
+| La réplique était-elle impolie ou condescendante ? | **judge** |
+| A-t-il vérifié la politique de remboursement avant de promettre un remboursement ? | **judge** |
+
+La règle générale : **ce qui se compte → code, les réponses que l'on peut lister à l'avance → [classifier](/fr/evaluations/jev), ce qui demande une explication → judge.** Un judge est celui qui rédige un paragraphe sur ce qu'il a observé ; utilisez-le quand le chiffre seul amènerait quelqu'un à demander « pourquoi ? ».
+
+Vous n'avez pas besoin de décider à l'avance. Décrivez ce que vous souhaitez mesurer et l'assistant choisit, puis vous indique ce qu'il a choisi et pourquoi. Vous pouvez changer d'avis.
+
+## En créer un
+
+1. Accédez à **Analyze → eval authoring** et sélectionnez **new eval**.
+2. Décrivez ce que vous souhaitez évaluer, puis sélectionnez **draft**.
+3. Vérifiez les **criteria**, le **threshold** et la **condition**, puis déployez.
+
+### Criteria
+
+Une ou deux phrases, formulées comme une exigence plutôt que comme une question :
+
+> L'assistant ne doit pas promettre ni approuver un remboursement sans avoir d'abord vérifié la politique de remboursement.
+
+Soyez précis sur ce qui constituerait un *échec*. « La réponse était-elle bonne ? » vous donne un chiffre qui ne signifie rien ; la phrase ci-dessus vous en donne un sur lequel vous pouvez agir.
+
+### Threshold
+
+Le score à partir duquel la session est considérée comme réussie. `0.7` est un point de départ raisonnable. Le score complet de 0 à 1 est toujours enregistré, donc le threshold détermine uniquement le résultat succès/échec — vous pouvez visualiser la distribution et l'ajuster.
+
+### Condition
+
+La même condition Python que pour toute autre évaluation, et elle est bien plus importante ici. Sans condition, le judge s'exécute sur **chaque** session de votre organisation, à raison d'un appel de modèle par session :
+
+```python
+session.count("tool_use") > 0
+```
+
+```python
+session.agent_id == "support-bot" and session.count("error") > 0
+```
+
+Le tableau de bord vous avertit si vous déployez un judge sans condition. C'est parfois justifié — un agent à faible volume que vous souhaitez évaluer intégralement — mais cela doit être un choix délibéré, pas un accident.
+
+## Ce que le judge voit
+
+La conversation, sous forme de tours, du plus récent au plus ancien si la session est longue :
+
+- ce que l'utilisateur a dit
+- ce que l'assistant a répondu
+- **chaque outil appelé par l'agent, et ce que cet appel a retourné, dans l'ordre**
+
+Ce dernier point est ce qui rend la question « a-t-il fait X *avant* Y » parfaitement valide. Un appel d'outil en échec est affiché comme tel, donc « a-t-il récupéré correctement après une erreur » fonctionne également.
+
+Les sessions très longues sont tronquées pour s'adapter au contexte du modèle. Dans ce cas, le raisonnement le précise explicitement — vous ne verrez jamais un jugement rendu sur une partie d'une session présenté comme s'il portait sur la totalité.
+
+## Lire les résultats
+
+Un judge produit un **score** comme toute autre évaluation scorée : il s'affiche dans les graphiques, se filtre et déclenche des alertes de la même façon. En plus du chiffre, il enregistre le **raisonnement** du judge — le paragraphe expliquant ce qu'il a observé. Lisez-le en premier lorsqu'un score vous surprend ; il s'agit généralement soit d'une session genuinement intéressante, soit d'un signe que les criteria ont besoin d'être affinés.
+
+Les scores sont stables pour les cas clairs, mais ne sont pas déterministes au bit près. Traitez un score limite isolé comme une invitation à aller lire la session, non comme un verdict définitif.
+
+## Limites
+
+- **Les tests ne sont pas encore disponibles.** Un essai à blanc n'a pas d'affectation de session en arrière-plan, et c'est cette affectation qui autorise la consommation de votre budget de modèle — il n'y a donc rien à facturer pour un appel de test. Déployez sur une condition étroite et lisez les premiers résultats.
+- **Le remplissage rétroactif n'est pas disponible.** Appliquer rétroactivement une évaluation par code sur des mois d'historique est gratuit ; le faire avec un judge consommerait l'intégralité de votre budget en quelques minutes.
+- **Modifier les criteria publie une nouvelle version.** Les anciens et nouveaux scores ne sont pas comparables, ils sont donc séparés plutôt que mélangés dans une même courbe de tendance.
+- **Un judge produit toujours un score**, jamais une métrique ou une assertion.
+
+## Quand votre budget est épuisé
+
+Les judges consomment le budget de modèle de votre organisation. Lorsqu'il est épuisé, les évaluations par judge s'arrêtent avec un motif explicite plutôt que d'échouer silencieusement, et **les évaluations par code continuent de fonctionner normalement**. Augmentez le budget et elles reprennent à la prochaine session.

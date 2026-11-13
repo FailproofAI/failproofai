@@ -1,0 +1,77 @@
+---
+title: "OpenTelemetry CLI"
+description: "코딩 에이전트에 OTEL을 활성화하고, 전달 상태를 확인하며, 이전 설정을 복원합니다."
+icon: "radio"
+---
+
+`failproofai otel`은 Failproof AI Cloud에 대한 선택적 OpenTelemetry 리포팅을 구성합니다. 먼저 `failproofai config`로 머신을 연결하고, 조직 관리자에게 **Settings → OpenTelemetry** 활성화를 요청하세요.
+
+인터랙티브 설정은 Cloud 키 입력 및 에이전트 선택 이후에 OpenTelemetry에 대해 묻습니다. 이 선택적 단계의 기본값은 No입니다. Yes를 선택하면 OTEL 에이전트를 고를 수 있으며, 연결이 저장된 후 동일한 활성화 코드가 실행됩니다. 설정 도중 Esc를 누르면 아무것도 변경되지 않습니다. 비대화형 설정, 키를 직접 지정하는 경우, 오픈소스 모드, 저장된 연결 유지 시에는 자동으로 활성화되지 않습니다.
+
+## 에이전트 활성화
+
+```bash
+failproofai otel enable claude
+failproofai otel enable codex --local
+failproofai otel enable codex --no-content
+failproofai otel enable copilot
+failproofai otel enable all --yes
+```
+
+지원되는 에이전트는 `claude`, `codex`, `copilot`(VS Code)입니다. Copilot 설정에는 VS Code 실행 파일 또는 설치된 Copilot 확장이 필요합니다. 설정 디렉터리만 남아 있는 경우에는 충분하지 않으며, 둘 다 없으면 설정 중 Copilot을 건너뜁니다.
+
+`--local`은 Cloud에 직접 전송하는 대신 로컬 릴레이로 전송합니다. Copilot은 인증 헤더를 설정에 저장할 수 없기 때문에 자동으로 릴레이를 사용합니다.
+
+릴레이는 사용자 머신에서만 수신 대기합니다. 구성된 Failproof AI 데몬은 몇 초 내에 변경 사항을 감지하므로 재시작이 필요하지 않습니다. 다른 애플리케이션이 릴레이 포트를 사용 중인 경우, 상태는 비활성으로 표시되며 데몬은 계속 실행됩니다.
+
+<Warning>
+텍스트 캡처는 기본적으로 활성화되어 있습니다. 프롬프트 및 도구 세부 정보를 제외하려면 `--no-content`를 추가하세요. 에이전트 버전마다 다른 콘텐츠 제어 기능을 노출할 수 있으므로, 민감한 데이터와 함께 사용하기 전에 에이전트가 내보내는 항목을 검토하세요.
+</Warning>
+
+Codex는 내부 런타임 트레이스나 메트릭이 아닌 대화 로그만 내보냅니다. Codex 구성에 `log_user_prompt = false`가 명시적으로 설정된 경우 해당 설정은 유지되며, enable 실행 시 해당 선택이 보존되었음을 알리는 메시지가 출력됩니다.
+
+### 하나의 리포팅 경로 선택
+
+에이전트에 대한 트랜스크립트 리포팅이 활성화되어 있으면 설정 중 다음 메시지가 표시됩니다:
+
+> failproofai already sends Claude Code sessions to Cloud. Send them with OTEL instead? Transcript upload for Claude Code stops.
+
+기본값은 No입니다. `--yes`를 사용하면 프롬프트 없이 전환을 수락합니다. 다른 에이전트 및 정책 적용에는 영향을 미치지 않습니다.
+
+Codex 설정은 익스포터 설정을 작성하기 전에 데몬이 컬렉터 변경을 확인할 때까지 대기합니다. 확인이 타임아웃되면 Codex를 시작하기 전에 잠시 기다리라는 경고가 표시됩니다.
+
+Config v2는 기억된 트레이싱 목록을 `agents.selected`(감지 이력은 `agents.seen`)에 유지합니다. 에이전트별 트랜스크립트 기본 설정은 `collector.agents.<agent>.sessions`, OTEL 소유권은 `otel.agents`, 릴레이 설정은 `collector.otlp.enabled` / `collector.otlp.port`에 각각 저장됩니다. 이러한 개별 키 덕분에 이전 OTEL 구성을 읽을 수 있으며, 설정 시 전송 기본 설정이나 에이전트 설정 복원에 필요한 상태를 잃지 않고 트레이싱 목록을 변경할 수 있습니다.
+
+## 설정 확인
+
+```bash
+failproofai otel status
+```
+
+Status는 모든 에이전트, Failproof AI가 설정을 관리하는지 여부, 목적지, 조직의 수집 활성화 상태, 릴레이 상태, 마지막 릴레이 업로드 결과를 표시합니다.
+
+조직 스위치가 `unknown`으로 표시되는 경우는 서버가 해당 정보를 제공하지 않았거나 연결할 수 없었음을 의미합니다. 이는 오류가 아니며 이전 Cloud 버전에서의 구성을 방해하지 않습니다.
+
+Cloud가 아직 OTEL을 지원하지 않는 경우, 릴레이는 거부된 내보내기를 삭제하지 않고 보관합니다. 조직 수집이 비활성화된 경우 `enable`은 아무것도 작성하지 않고 오류와 함께 종료됩니다. 관리자에게 먼저 활성화를 요청하세요.
+
+## 애플리케이션용 구성 출력
+
+```bash
+failproofai otel env --service my-agent
+failproofai otel env --service my-agent --local
+```
+
+출력은 OTLP/HTTP 익스포터를 위한 쉘 환경 블록입니다. Cloud 출력은 `OTEL_EXPORTER_OTLP_ENDPOINT`를 Cloud의 OTLP 기본 주소인 `https://<cloud>/otel`로 설정하며, 익스포터가 `/v1/<signal>`을 추가합니다. `OTEL_EXPORTER_OTLP_LOGS_ENDPOINT`와 같은 신호별 변수는 `https://<cloud>/otel/v1/logs`와 같이 전체 경로가 필요합니다. 로컬 출력은 릴레이인 `http://127.0.0.1:<port>`를 가리킵니다. Cloud 출력에는 구성된 API 키가 포함되어 있으므로 시크릿으로 취급하세요. 로컬 출력에는 키가 포함되지 않습니다. 로컬 출력을 사용하려면 먼저 로컬 에이전트를 활성화하여 릴레이가 실행 중인 상태여야 합니다.
+
+## 이전 설정 복원
+
+```bash
+failproofai otel disable claude
+failproofai otel disable all
+```
+
+Disable은 Failproof AI가 작성한 설정만 복원하고, 관련 없는 변경 사항은 유지하며, 각 에이전트의 이전 트랜스크립트 리포팅 설정을 복원합니다. 마지막으로 관리되는 로컬 에이전트가 비활성화되면 릴레이는 내보내기 수락을 중단합니다.
+
+Codex의 경우, disable은 `collector.agents.codex.sessions_resume_after`(에포크 밀리초)도 기록합니다. 기존 롤아웃 바이트는 전달된 것으로 처리되어 OTEL로 캡처된 세션이 다시 업로드되지 않으며, 이후에 추가되는 내용은 여전히 트랜스크립트 리포팅을 통해 전달됩니다.
+
+모든 명령어는 `--help`를 지원합니다. 애플리케이션 및 코딩 에이전트 예제는 [OpenTelemetry in Cloud](/ko/agenteye/opentelemetry)를 참조하세요.

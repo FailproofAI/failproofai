@@ -1,0 +1,265 @@
+---
+title: "Jev 평가기 (자체 키 사용)"
+description: "TypeSafe의 Jev 분류기가 정규식 필터를 기반으로 에이전트의 도구 호출을 판단하도록, 본인 소유의 Jev 엔드포인트와 키를 사용합니다."
+icon: "key-round"
+---
+
+정규식 정책은 문자열을 매칭합니다. `rm -rf build/`처럼 직접 요청한 명령과 계획에 슬며시 끼어든 `rm -rf ~`를 구분하지 못하기 때문에, 한쪽에서는 지나치게 많이 차단하고 다른 쪽에서는 너무 적게 차단합니다. TypeSafe의 분류기인 **Jev**는 실제로 요청한 내용을 기준으로 호출을 읽고, 빠른 단일 요청으로 일련의 예/아니오 질문에 답합니다.
+
+본인 소유의 Jev 엔드포인트와 키를 구성하면, Failproof AI는 정규식 정책을 대체하는 것이 아니라 **함께** 각 도구 호출에 대해 Jev에 질의합니다:
+
+- **하드** 정책의 차단은 최종적입니다. Jev가 이를 해제할 수 없습니다. 검토 가능으로 명시되고 이를 커버하는 Jev 검사를 명시하지 않는 한 모든 정책은 하드입니다. 따라서 아무 내용도 명시하지 않은 커스텀, 팩, Cloud 정책은 하드이며, 항상 활성화된 자기 보호 가드도 항상 하드입니다.
+- **검토 가능** 정책의 차단은 해제될 수 있지만, Jev가 해당 정책이 다루는 정확한 우려 사항에 대해 질의받고 "여기 없음" 또는 "사용자가 이를 요청함"이라고 답한 경우에만 가능합니다. 사용자가 해당 호출을 요청하지 않았는데 해당 우려 사항이 실재한다고 판단하는 검사는, 그 자체 판정이 경고에 불과하더라도 차단을 유지합니다. 도구 호출 이전 단계에서 경고는 에이전트를 중단시키지 않기 때문입니다. 그리고 그 검사가 차단 가능한 종류(비밀 노출, 자격 증명 유출, 파괴적 삭제 등)인 경우, 해당 호출에 대해서는 아무것도 해제되지 않습니다.
+- 해당 호출이 부여한 작업의 단계이고 그 이상으로 나아가지 않는 경우, 차단은 여전히 **경고**로 완화될 수 있습니다. Jev는 자신의 차단을 경고로 완화하고, 그 경고—호출의 실제 문제를 명시하는—가 정책의 차단을 대체합니다.
+- Jev는 정규식으로 설명되지 않는 피해에 대해 자체적으로 경고하거나 차단할 수도 있습니다.
+- Jev가 답할 수 없는 경우(타임아웃, 속도 제한, 서버 오류, 크레딧 부족, 예상치 못한 모델 버전), 해당 호출은 Jev 없이와 정확히 동일한 정규식 결과를 받습니다.
+- Jev는 전체 호출을 읽고 정확한 우려 사항에 대해 질의받지 않는 한, 정책만 있을 때보다 호출을 더 허용적으로 만들지 않습니다. 그 이하—전체를 전송하기에 너무 큰 호출, 주입 의심—는 모든 해제를 취소하고 모든 차단을 유지합니다.
+
+<Note>
+Jev 설정이 없으면 아무것도 변경되지 않습니다: 훅은 항상 그래왔듯이 정규식 정책을 정확히 실행합니다. 설정이 곧 전체 옵트인입니다.
+</Note>
+
+<Tip>
+FailproofAI Cloud를 사용 중이신가요? 본인 소유의 키가 필요하지 않습니다: `jev:evaluate`를 포함한 키로 연결된 머신은 조직 플랜에서 Jev를 사용할 수 있습니다. [FailproofAI Cloud를 통한 Jev](/ko/policies/jev-cloud)를 참조하세요.
+</Tip>
+
+## 공급자 선택
+
+Jev는 다섯 가지 경로를 통해 접근할 수 있습니다. 그 중 하나에 대한 키를 준비하세요.
+
+| 공급자 | `--provider` | 엔드포인트 | 기본 모델 | 비고 |
+| --- | --- | --- | --- | --- |
+| TypeSafe | `typesafe` | `api.typesafe.ai/v1/systemone` | `jev-1.13.0` | 정확한 버전 고정. |
+| OpenRouter | `openrouter` | `openrouter.ai/api/v1/systemone` | `typesafe/jev-1.13` | 요청은 제로 데이터 보존 엔드포인트로만 라우팅되며, 다른 공급자로의 폴백은 없습니다. `typesafe/jev-1.13-20260917`과 같은 날짜 포함 버전을 보고합니다. |
+| Vercel AI Gateway | `vercel` | `ai-gateway.vercel.sh/typesafe/v1/systemone` | `typesafe-ai/jev` | 별칭으로만 Jev를 명명하므로, 응답 버전은 미검증으로 기록됩니다. |
+| Cloudflare Workers AI | `cloudflare` | `api.cloudflare.com/client/v4/accounts/<id>/ai/run` | `typesafe/jev` | `--account-id` 필요. 키당 초당 약 6회 호출이 HTTP 429 이전까지 측정되었습니다. |
+| 자체 엔드포인트 | `custom` | `<base-url>/systemone` | `jev-1.13.0` | TypeSafe의 요청 본문을 수용하고 어떤 모델이 응답했는지 보고하는 모든 엔드포인트. `https`만 가능; 섀도우 모드에서만 일반 `http://localhost`가 허용됩니다. |
+
+<Warning>
+Vercel의 자체 bring-your-own-key 기능을 사용하면, 실패한 요청이 Vercel의 자격 증명으로 자동 재시도됩니다. 모든 호출이 본인의 TypeSafe 계정에만 청구되고 보여야 한다면, TypeSafe를 직접 사용하세요.
+</Warning>
+
+## 설정하기
+
+명령 하나로 엔드포인트와 키를 설정합니다:
+
+```bash
+failproofai jev --url https://api.typesafe.ai/v1 --key-stdin < ~/typesafe.key
+```
+
+### URL이 공급자를 결정합니다
+
+공급자를 명시할 필요가 없습니다: URL의 **호스트**가 공급자를 결정합니다.
+
+| URL 호스트 | 공급자 | 추가 필요 사항 |
+| --- | --- | --- |
+| `api.typesafe.ai` | `typesafe` | — |
+| `openrouter.ai` | `openrouter` | — |
+| `ai-gateway.vercel.sh` | `vercel` | — |
+| `api.cloudflare.com` | `cloudflare` | `--account-id <32-hex-account-id>` |
+| 기타 모든 호스트 | `custom` | — 입력한 URL이 기본 URL이 됩니다 |
+
+이로부터 세 가지가 따릅니다:
+
+- **공급자 자체 API URL은 오버라이드를 기록하지 않습니다.** `--url https://api.typesafe.ai/v1`은 `--provider typesafe`와 정확히 동일한 설정을 생성합니다. 알려진 공급자에서 다른 경로나 호스트를 지정하면 `--base-url`이 저장하는 것처럼 기본 URL로 저장됩니다.
+- **`--provider`는 여전히 추론을 오버라이드합니다.** 이는 본인 소유 호스트에서 공급자의 API를 사용하는 프록시에 접근하는 방법입니다: `--url https://jev-proxy.internal/v1 --provider typesafe`.
+- **호스트와 모순되는 `--provider`는 거부됩니다.** 추측하지 않습니다. `--provider openrouter --url https://api.typesafe.ai/v1`은 아무것도 기록하지 않고 이유를 설명합니다: 두 지정이 키가 전송될 위치에 대해 일치하지 않습니다. `jev setup --base-url`과 대시보드의 Jev 설정에서도 동일한 쌍이 거부됩니다. (`--provider custom`은 모순이 아닙니다—"이 URL을 그 자체로 처리"를 의미합니다—단 계정별 엔드포인트에 커스텀 경로가 도달할 수 없는 Cloudflare 호스트는 제외.)
+
+`--url`은 설정 파일의 `baseUrl`과 정확히 동일하게 검증되며, 동일한 메시지로 거부됩니다: `https`, 또는 섀도우 모드에서만 `http://localhost`가 허용됩니다.
+
+### 키
+
+`--key-stdin`으로 파이프하거나, 터미널에서 해당 플래그 없이 명령을 실행하고 마스킹된 프롬프트에서 키를 붙여넣으세요. 어느 방식이든 키는 바로 설정 파일에 저장되며 다시 출력되지 않습니다.
+
+<Tabs>
+  <Tab title="TypeSafe">
+    ```bash
+    failproofai jev --url https://api.typesafe.ai/v1 --key-stdin < ~/typesafe.key
+    ```
+  </Tab>
+  <Tab title="OpenRouter">
+    ```bash
+    failproofai jev --url https://openrouter.ai/api/v1 --key-stdin < ~/openrouter.key
+    ```
+  </Tab>
+  <Tab title="Vercel">
+    ```bash
+    failproofai jev --url https://ai-gateway.vercel.sh/typesafe/v1 \
+      --key-stdin < ~/vercel-gateway.key
+    ```
+  </Tab>
+  <Tab title="Cloudflare">
+    ```bash
+    failproofai jev --url https://api.cloudflare.com/client/v4 \
+      --account-id <32-hex-account-id> --key-stdin < ~/cloudflare.token
+    ```
+  </Tab>
+  <Tab title="Custom">
+    ```bash
+    failproofai jev --url https://jev.internal.example.com/v1 --key-stdin < ~/jev.key
+    ```
+  </Tab>
+</Tabs>
+
+`failproofai jev setup`은 동일한 플래그를 사용하며, URL 대신 공급자를 명시하려는 경우 `setup --provider <kind>`를 사용하는 전체 표기입니다.
+
+### `--token`과 비용
+
+`--token <token>`은 명령줄에 키를 입력하는 방식으로, 머신을 구성하는 가장 빠른 방법이지만 설정 파일 외의 위치에 키를 남기는 유일한 표기입니다:
+
+```bash
+failproofai jev --url https://openrouter.ai/api/v1 --token <token>
+```
+
+<Warning>
+명령줄 인수는 이후 셸의 히스토리 파일에 남으며, 명령이 실행되는 동안 프로세스 목록에 있어 `/proc`에서 본인으로 실행 중인 모든 것이 읽을 수 있습니다. `setup`은 `--token`이 사용될 때마다 이를 알립니다. 공유 머신이나 녹화된 세션, 또는 히스토리 파일이 동기화되는 환경에서는 `--key-stdin`을 사용하고, 이 방식으로 전달한 키는 중요하다면 교체하세요.
+</Warning>
+
+`--token`, `--key-stdin`, `--key-from-env`는 상호 배타적입니다: 하나만 사용하세요.
+
+그런 다음 키, 엔드포인트, 응답한 Jev를 확인하기 위해 작은 실시간 요청을 전송합니다:
+
+```bash
+failproofai jev test
+```
+
+```text
+  failproofai jev test                                            ok · 523 ms
+
+  provider      cloudflare
+  model asked   typesafe/jev
+  answered by   jev-1.13.0 (Jev 1.13 family — verified)
+  latency       523 ms — within the 3000 ms timeout
+```
+
+`jev test`는 응답이 타임아웃 이후에 도착하거나(`timeout`으로 모든 훅이 정규식으로 폴백) 검사 질문에 잘못 답하면 제목에 표시하고 종료 코드 1로 종료합니다.
+
+훅은 모든 도구 호출마다 설정을 읽으므로 다음 호출부터 적용됩니다. 데몬 유무에 관계없이 재시작이 필요하지 않습니다.
+
+## 동작 확인
+
+```bash
+failproofai jev status
+failproofai jev status --json
+```
+
+`status`는 공급자, 엔드포인트, 모델, 모드, 설정 파일과 그 권한을 표시하며 키는 절대 표시하지 않습니다. 그 아래에는 최근 활동을 요약합니다: Jev가 평가한 호출 수, 정규식으로 폴백한 빈도와 이유, 지연 시간, 해제된 검토 가능 정책.
+
+## 섀도우 모드
+
+`enforce`가 기본값입니다. Jev가 어떤 결정도 변경하지 않으면서 동작을 관찰하려면 `shadow`로 전환하세요: Jev는 여전히 질의받고 그 판정이 기록되지만, 실제로 적용되는 것은 정규식 결과입니다.
+
+```bash
+failproofai jev setup --mode shadow
+failproofai jev setup --mode enforce
+failproofai jev setup --mode off
+```
+
+`off`는 설정—엔드포인트와 키—을 유지하고 Jev 질의를 중단합니다: 훅은 설정 없이와 정확히 동일하게 정규식 정책을 실행하며, `failproofai jev status`는 "off (switched off)"를 표시합니다. `--mode shadow` 또는 `--mode enforce`로 다시 전환할 수 있습니다.
+
+동일한 공급자에 대해 `setup`을 재실행하면 저장된 키가 유지되므로 모드 전환은 플래그 하나로 됩니다. 공급자를 전환하면 처음부터 시작하고 해당 공급자의 키를 요청합니다. 요청을 다른 호스트로 이동하는 `--base-url`도 마찬가지입니다: 저장된 키는 제공된 호스트 또는 해당 공급자의 자체 API로만 전송됩니다.
+
+## 설정 파일
+
+모든 것이 `~/.failproofai/jev.json` 하나의 파일에 저장되며, `setup`이 작성합니다:
+
+```json
+{
+  "provider": "cloudflare",
+  "apiKey": "<your key>",
+  "accountId": "<32-hex-account-id>",
+  "mode": "enforce",
+  "timeoutMs": 3000
+}
+```
+
+| 필드 | 의미 |
+| --- | --- |
+| `provider` | `typesafe`, `openrouter`, `vercel`, `cloudflare`, `custom` 중 하나—또는 `failproofai`로, 이 파일 대신 FailproofAI Cloud 연결에서 키를 가져옵니다([FailproofAI Cloud를 통한 Jev](/ko/policies/jev-cloud) 참조). |
+| `apiKey` | `Authorization: Bearer <key>`로 전송됩니다. |
+| `baseUrl` | `custom`에 필요; 그 외에는 공급자의 API 기본값을 대체합니다. `https`여야 합니다. `localhost`에 대한 일반 `http`는 `mode: shadow`에서만 허용됩니다: 로컬 포트를 인증하는 것이 없으므로, 프록시가 다운된 동안 에이전트를 포함한 머신의 모든 프로세스가 대신 응답할 수 있습니다. |
+| `accountId` | Cloudflare 전용: 32자 소문자 16진수. |
+| `model` | 공급자의 기본 모델 ID를 대체합니다. 버전이 지정된 ID는 Jev 1.13을 명명해야 합니다. API 키처럼 생긴 값은 거부되며(반복 출력되지 않음), `--model`에 붙여넣은 키는 절대 저장되거나 모델로 전송되지 않습니다. |
+| `timeoutMs` | 도구 호출이 정규식 결과를 사용하기 전에 Jev를 기다리는 시간. 100–10000, 기본값 3000. |
+| `mode` | `enforce`(기본값), `shadow`, 또는 `off`(설정 유지, Jev 실행 없음). |
+
+세 가지 규칙이 이를 보호합니다:
+
+- **소유자 전용.** 권한 `0600`으로 작성됩니다. 다른 사용자나 그룹이 읽거나 쓸 수 있는 복사본은 **거부**되며, `chmod 600 ~/.failproofai/jev.json`을 실행하거나 `setup`을 다시 실행할 때까지 훅은 정규식으로 폴백합니다. 디렉토리도 확인됩니다: `~/.failproofai`는 다른 사람이 **쓸 수 없어야** 합니다. 거기에 쓸 수 있는 사람은 파일 자체의 권한에 관계없이 파일을 교체할 수 있기 때문입니다. `setup`은 그런 쓰기 비트를 발견하면 제거합니다. `failproofai jev status`는 설정이 거부되었을 때 표시하고 파일이 명명하는 엔드포인트를 보여줍니다: 다른 사람이 변경했을 수 있으므로, `chmod` 전에 본인 것인지 확인하세요. 이런 파일에서 `setup`을 재실행하면 저장된 키는 공급자 자체 API로만 전달됩니다; 파일이 명명하는 다른 엔드포인트는 키를 다시 요구합니다(`--key-stdin`), 또는 `--base-url default`로 공급자로 요청을 돌려보내세요.
+- **전역 전용.** 저장소는 Jev를 켜거나, 다른 엔드포인트로 지정하거나, 모델을 선택할 수 없습니다: 프로젝트 내 `.failproofai/jev.json`은 무시되며, 공급자, URL, 모델, 계정 ID는 그 파일에서만 읽히고—저장소의 에이전트 설정이 설정할 수 있는 환경에서는 절대 읽히지 않습니다. (`FAILPROOFAI_HOME`은 우회 방법이 아닙니다: Jev만 리디렉션하는 것이 아니라 정책을 포함한 전체 failproofai 디렉토리를 이동합니다.)
+- **키만 환경에서 올 수 있습니다.** 파일에 `apiKey`가 없으면, `FAILPROOFAI_JEV_API_KEY`가 해당 세션에 대해 제공합니다(`setup --key-from-env`는 이런 파일을 작성합니다). 파일이 보유한 키를 절대 대체하지 않으며, 파일 없이 Jev를 켤 수 없습니다. 변수가 설정되지 않은 경우, Jev는 해당 셸에서 단순히 꺼집니다: `failproofai jev status`는 이를 표시하고, 종료 코드 0으로 종료하며 설정을 그대로 둡니다(`status --json`은 `"reason": "no-env-key"`와 함께 `"status": "key-missing"`을 보고합니다). `failproofaid` 데몬은 셸의 환경을 보지 못하므로, `failproofai config`로 설정된 머신에서는 파일에 키를 보관하세요.
+
+## 어떤 Jev가 응답하는가
+
+Failproof AI의 결정 임계값은 Jev 1.13에 맞춰 조정되었으므로, 해당 계열에서 온 경우에만 답변이 사용됩니다: `jev-1.13.x`, 또는 OpenRouter의 `typesafe/jev-1.13-<date>`. 공급자가 별칭으로만 Jev를 명명하고 버전을 보고하지 않는 경우(Vercel, 그리고 버전을 명시하지 않는 Cloudflare), 답변은 사용되고 미검증으로 기록됩니다. `custom` 엔드포인트는 응답한 모델을 보고해야 합니다; 단 하나의 예외는 설정한 버전 없는 `--model` 이름으로, 이것이 그대로 반환되면 동일하게 미검증으로 기록됩니다. 다른 버전을 보고하는 답변이나 버전을 보고하지 않는 `custom` 답변은 사용되지 않습니다: 해당 호출은 `model-mismatch` 이유로 정규식으로 폴백합니다.
+
+## Jev가 답할 수 없을 때
+
+다음 각각은 해당 호출에 대해 정규식 결과로 폴백하고 이유와 함께 기록되며, `failproofai jev status`가 집계합니다:
+
+| 이유 | 원인 |
+| --- | --- |
+| `timeout` | `timeoutMs` 내에 답변 없음. |
+| `http-429` | 공급자가 키를 속도 제한함. |
+| `rate-limited` | Failproof AI 자체 제한기가 전송 전에 호출을 보류함: 초당 5회, 최대 5회 버스트, 공급자가 `429`를 반환한 후 잠시 없음. 공급자가 아님. |
+| `http-500`, `http-502`, `http-503`, … | 공급자의 서버 오류. 정확한 상태가 기록됩니다. |
+| `out-of-credits` | HTTP 402: 공급자 계정에 크레딧이 없음. |
+| `provider-refused` | Cloudflare에서 "Model execution failed (Payment error)"를 읽는 HTTP 402: 공급자가 이 요청에 대해 모델 실행을 거부함. 보통 청구 문제가 아니므로 크레딧 충전으로 해결되지 않습니다. |
+| `http-401`, `http-403` | 키가 거부됨. |
+| `http-404` | `<base>/systemone`에 아무것도 서빙되지 않으므로 기본 URL이 잘못됨—`/systemone`이 기본 URL에 추가되며, 모든 공급자는 버전 루트에서 서빙합니다. `failproofai jev models`는 엔드포인트가 실제로 서빙하는 것을 보여줍니다. |
+| `network` | 엔드포인트에 연결할 수 없음. |
+| `http-301`, `http-302`, `http-307`, `http-308` | 엔드포인트가 리디렉션으로 응답함. 리디렉션은 절대 따르지 않으므로, 답변은 설정의 URL에서만 옵니다; `--base-url`을 최종 URL로 설정하세요. |
+| `malformed` | 엔드포인트가 응답했지만 Jev 답변이 아님—JSON이 아닌 본문, 또는 답변이 없는 본문. |
+| `cloudflare-error`, `cloudflare-incomplete` | Cloudflare의 엔벨로프가 실패를 보고하거나, 완료되지 않은 작업. |
+| `model-mismatch` | 1.13 외의 Jev 버전이 응답하거나, `custom` 엔드포인트가 응답한 모델을 명시하지 않음. |
+| `request-cut` | **장애가 아님.** Jev가 응답했지만 호출의 일부만 보여졌으므로 답변이 아무것도 해제하지 않음. [Jev가 답했지만 전체 호출이 아닌 경우](#when-jev-answered-but-not-on-the-whole-call) 참조. |
+
+`failproofai jev status`는 `upstream-error`(답변에 공급자 자체 오류가 포함됨) 또는 `config` 같은 드문 이유도 표시할 수 있으며, 명명할 수 없는 이유는 `other`로 합산합니다.
+
+`request-cut`은 `failproofai jev status`가 나머지와 함께 집계하고, 이 역시 모든 차단을 유지하기 때문에 이 표에 있습니다. 공급자에 대해 아무것도 말하지 않는 유일한 이유입니다: 요청이 도착했고 Jev가 응답했습니다. 위의 모든 행과 달리, 그 답변은 여전히 계산됩니다—Jev 자체의 차단이나 경고가 폐기되는 대신 정규식 결과 위에 적용됩니다. 따라서 연속적으로 발생한다면 호출이 전체를 전송하기에 너무 크게 평가기에 도달하고 있다는 의미이며, 엔드포인트가 문제가 있다거나 크레딧을 충전하거나 URL을 변경해서 해결될 문제가 아닙니다.
+
+## Jev가 답했지만 전체 호출이 아닌 경우
+
+두 가지 더 발생할 수 있으며, 둘 다 Jev가 답에 실패한 것이 아닙니다. 둘 다 호출 또는 대화의 얼마나 많은 부분이 하나의 요청에 맞는지에 관한 것입니다.
+
+**호출 자체의 일부가 맞지 않음.** 도구 호출은 고정된 예산 내에서 전송되며, 과도하게 큰 것—매우 큰 `Write`, 거대한 MCP 본문, 한도까지 채워진 명령—은 맞는 부분만 전송됩니다. Jev는 여전히 응답하고 그 답변은 여전히 계산됩니다: 자체 차단이나 경고가 평소대로 적용됩니다. 할 수 없는 것은 **해제**입니다. 호출의 일부에 대한 판정은 호출 전체에 대한 판정이 아니기 때문입니다. 따라서 모든 정책 차단이 유지되고, 호출은 `request-cut` 이유로 폴백으로 기록되며 `failproofai jev status`가 위의 이유들과 함께 집계합니다. 이 규칙이 의미하는 것: 호출을 더 크게 만드는 것은 해제를 잃을 수 있고, 해제를 살 수는 없습니다.
+
+**메시지가 맞지 않음.** 붙여넣은 긴 프롬프트, 에이전트의 마지막 메시지, 또는 이 평가기의 자체 저장소가 이미 한도를 초과한 프롬프트. **아무것도 변경되지 않습니다**: 호출은 다른 것과 정확히 동일하게 판단되고, 해제되고, 기록되며 폴백으로 계산되지 않습니다. 타이핑하는 내용의 길이는 절대 판정을 결정하지 않으며, 잘림이 동의를 만들 수 없습니다: 프롬프트가 이미 한도 초과된 상태로 도착한 경우, "당신이 이를 요청하지 않았다"는 결론을 전혀 도출할 수 없게 됩니다.
+
+둘의 경계는 누가 텍스트를 작성했는지입니다. 호출은 에이전트의 것이며, 길이가 심각성을 줄이는 규칙은 에이전트가 사용할 수 있는 규칙이 됩니다; 프롬프트는 본인 것이며, 그 길이를 신호로 취급하면 사양이나 스택 트레이스를 붙여넣는 것에만 불이익을 줄 뿐입니다.
+
+## 머신에서 나가는 것
+
+Jev가 평가하는 각 도구 호출에 대해, 하나의 요청이 공급자로 전송되며 다음을 포함합니다:
+
+- API 키, 베어러 토큰, `KEY=` 할당 등의 비밀이 편집된 도구 호출 자체;
+- 에이전트 하네스가 추가한 텍스트가 제거된 최근에 타이핑한 프롬프트;
+- 최신 프롬프트 이전 에이전트의 마지막 메시지, 에이전트 작성으로 표시;
+- 경로가 프로젝트 내에 있는지 여부 등 로컬에서 계산된 사실—첫 번째 검토된 호출 시 세션이 있던 위치로, [세션에 고정](/ko/reference/jev-intent#the-project-root)됨—및 현재 git 브랜치.
+
+설정의 엔드포인트로만, 본인 키 아래에서 전송됩니다.
+
+## 끄기
+
+```bash
+failproofai jev remove
+```
+
+이것은 `~/.failproofai/jev.json`을 삭제합니다. 다음 도구 호출부터 훅은 이전과 정확히 동일하게 정규식 정책을 실행합니다. `~/.failproofai/state/semantic/` 아래의 세션별 저장소(`sessions/`의 기록된 프롬프트, `roots/`의 프로젝트 루트)는 그대로 두고 자연히 만료됩니다. Jev 질의를 중단하되 설정을 유지하려면 대신 `failproofai jev setup --mode off`를 사용하세요.
+
+## 명령 참조
+
+| 명령 | 결과 |
+| --- | --- |
+| `failproofai jev --url <url> --key-stdin` | 명령 하나로 구성; 공급자는 URL의 호스트에서 결정 |
+| `failproofai jev --url <url> --token <token>` | 동일하지만 명령줄에 키를 입력—히스토리와 프로세스 목록에서 볼 수 있음 |
+| `failproofai jev setup --provider <kind> --key-stdin` | stdin으로 파이프된 키로 설정 작성 |
+| `failproofai jev setup --provider <kind>` | 동일하지만 마스킹된 프롬프트에서 키 요청 |
+| `failproofai jev setup --key-from-env` | 키를 저장하지 않음; 세션당 `FAILPROOFAI_JEV_API_KEY` 읽기 |
+| `failproofai jev setup --mode shadow` | 저장된 키를 유지하며 모드 전환(`enforce`, `shadow` 또는 `off`) |
+| `failproofai jev setup --model <id>` / `--base-url <url>` | 모델 또는 API 기반 오버라이드; `default`는 오버라이드 해제 |
+| `failproofai jev setup --timeout-ms <n>` | 호출당 예산 변경 |
+| `failproofai jev status [--json]` | 설정, 권한 및 최근 활동; 키 제외 |
+| `failproofai jev test [--json]` | 실시간 요청 하나: 지연 시간 및 응답한 버전 |
+| `failproofai jev models [--provider <kind>] [--url <base>] [--json]` | 해당 엔드포인트의 `/models`가 보고하는 모델 ID, 구성된 것을 표시 |
+| `failproofai jev remove` | 설정 삭제; Jev 꺼짐 |

@@ -1,0 +1,135 @@
+---
+title: "OpenTelemetry"
+description: "FailproofAI Cloud को OTLP के साथ कोडिंग-एजेंट और एप्लिकेशन टेलीमेट्री भेजें।"
+icon: "radio"
+---
+
+OpenTelemetry आपको मानक OTLP/HTTP प्रोटोकॉल का उपयोग करके एजेंट ट्रेस, लॉग और मेट्रिक्स को FailproofAI Cloud में भेजने देता है। यह वैकल्पिक है। आपके मौजूदा FailproofAI इंटीग्रेशन इसे सक्षम किए बिना काम करते रहेंगे।
+
+## अपने संगठन के लिए इनजेस्ट को चालू करें
+
+एक संगठन प्रशासक **Settings → OpenTelemetry** खोलता है और इनजेस्ट को चालू करता है। `events:add` अनुमति के साथ एक Cloud API कुंजी का उपयोग करें, जो एजेंट रिपोर्टिंग के लिए उपयोग की जाने वाली समान अनुमति है।
+
+यदि इनजेस्ट बंद है, तो Cloud OTLP निर्यात को अस्वीकार करता है, इसलिए `failproofai otel enable` कोई परिवर्तन नहीं करता है और आपके एजेंट सामान्य तरीके से सेशन भेजते रहते हैं। संगठन स्विच की जांच करने के लिए `failproofai otel status` चलाएं, और इसे चालू करने के लिए एक प्रशासक से पूछें।
+
+## कोडिंग एजेंट को कनेक्ट करें
+
+`failproofai config` के साथ अपनी मशीन को कनेक्ट करें, फिर एक एजेंट चुनें:
+
+```bash
+failproofai otel enable claude
+failproofai otel enable codex
+failproofai otel enable copilot
+```
+
+सेटअप कमांड Claude Code, Codex और Copilot को समर्थन करता है और जैसे आवश्यक हो Cloud या एक स्थानीय प्रमाणित रिले को चुनता है। Copilot स्वचालित रूप से स्थानीय रिले का उपयोग करता है। रिले का उपयोग करने से पहले अपना कॉन्फ़िगर किया गया FailproofAI डेमॉन शुरू करें।
+
+यदि FailproofAI पहले से ही किसी एजेंट के सेशन ट्रांसक्रिप्ट भेज रहा है, तो सेटअप पूछता है कि उस एजेंट को OTEL में स्विच करना है या नहीं। डिफ़ॉल्ट नहीं है। स्वीकार करने से उस एजेंट के लिए ट्रांसक्रिप्ट अपलोड बंद हो जाता है; यह नीति प्रवर्तन या अन्य एजेंटों से रिपोर्टिंग को नहीं बदलता है।
+
+## एक एप्लिकेशन को कनेक्ट करें
+
+इन पরिवेश चर के साथ अपनी एप्लिकेशन के OpenTelemetry इंस्ट्रुमेंटेशन का उपयोग करें:
+
+```bash
+export OTEL_EXPORTER_OTLP_ENDPOINT=https://app.befailproof.ai/otel
+export OTEL_EXPORTER_OTLP_PROTOCOL=http/protobuf
+export OTEL_EXPORTER_OTLP_HEADERS='Authorization=Bearer%20<key>'
+export OTEL_SERVICE_NAME=my-agent
+```
+
+एंडपॉइंट Cloud का OTLP आधार है, `https://app.befailproof.ai/otel`; आपका एक्सपोर्टर स्वयं `/v1/traces`, `/v1/logs` या `/v1/metrics` जोड़ता है। `OTEL_EXPORTER_OTLP_LOGS_ENDPOINT` जैसे प्रति-सिग्नल चर को जैसे-हैं उपयोग किया जाता है, इसलिए उन्हें पूर्ण पथ की आवश्यकता होती है, उदाहरण के लिए `https://app.befailproof.ai/otel/v1/logs`।
+
+`<key>` को अपनी API कुंजी से बदलें। गोपनीयता को शेल हिस्ट्री, स्क्रीन रिकॉर्डिंग और प्रतिबद्ध कॉन्फ़िगरेशन से दूर रखें। एक कॉन्फ़िगर की गई मशीन के लिए, `failproofai otel env --service my-agent` अपनी मौजूदा कुंजी के साथ ब्लॉक को प्रिंट करता है। इसके आउटपुट में एक क्रेडेंशियल होता है।
+
+Cloud ट्रेस, लॉग और मेट्रिक्स के लिए OTLP/HTTP निर्यात को स्वीकार करता है, जैसे protobuf या JSON, gzip-संपीड़ित अनुरोधों सहित। यह OTLP/gRPC को स्वीकार नहीं करता है।
+
+मेट्रिक्स एक्सपोर्टर संगतता के लिए स्वीकार किए जाते हैं लेकिन संग्रहीत या प्रदर्शित नहीं होते हैं। समर्थित एजेंट ट्रेस और कोडिंग-एजेंट लॉग सेशन बन जाते हैं; जो फ़ील्ड एजेंट निर्यात नहीं करता है वह अनुपस्थित रहता है।
+
+## प्रॉम्प्ट टेक्स्ट को कैप्चर करें
+
+<Warning>
+टेक्स्ट कैप्चर में प्रॉम्प्ट, टूल आर्गुमेंट और अन्य संवेदनशील सामग्री शामिल हो सकती है। `failproofai otel enable` इसे चालू करता है। प्रॉम्प्ट और टूल-डिटेल कैप्चर को बंद रखने के लिए `--no-content` जोड़ें।
+</Warning>
+
+```bash
+failproofai otel enable claude --no-content
+failproofai otel enable codex --no-content
+```
+
+एक एजेंट के लिए जिसे आप मैन्युअली कॉन्फ़िगर करते हैं, इसके अपने सामग्री-कैप्चर नियंत्रणों का उपयोग करें:
+
+<Tabs>
+  <Tab title="Claude Code">
+    ऊपर दिए गए एप्लिकेशन ब्लॉक के साथ अपने एजेंट के पर्यावरण में ये वेरिएबल जोड़ें:
+
+    ```bash
+    export CLAUDE_CODE_ENABLE_TELEMETRY=1
+    export OTEL_LOGS_EXPORTER=otlp
+    export OTEL_METRICS_EXPORTER=otlp
+    export OTEL_LOG_USER_PROMPTS=1
+    export OTEL_LOG_TOOL_DETAILS=1
+    ```
+
+    प्रॉम्प्ट और टूल विवरण को कैप्चर करने से बचने के लिए दोनों सामग्री वेरिएबल को `0` पर सेट करें।
+  </Tab>
+  <Tab title="Codex">
+    Codex के उपयोगकर्ता कॉन्फ़िगरेशन में, इसकी OTEL सेटिंग का उपयोग करें:
+
+    ```toml
+    [otel]
+    log_user_prompt = true
+    exporter = { otlp-http = { endpoint = "https://app.befailproof.ai/otel/v1/logs", protocol = "json", headers = { Authorization = "Bearer <key>" } } }
+    ```
+
+    Codex संवाद सामग्री लॉग में है; आंतरिक रनटाइम ट्रेस और मेट्रिक्स को अक्षम रखें। Codex आपके द्वारा प्रदान किया गया पूर्ण एंडपॉइंट का उपयोग करता है। प्रॉम्प्ट को छोड़ने के लिए `log_user_prompt` को `false` पर सेट करें; सेटअप कमांड एक स्पष्ट `false` को सुरक्षित रखता है।
+  </Tab>
+  <Tab title="Gemini CLI">
+    स्थानीय रिले के साथ Gemini की टेलीमेट्री सेटिंग का उपयोग करें:
+
+    ```json
+    {
+      "telemetry": {
+        "enabled": true,
+        "target": "local",
+        "otlpEndpoint": "http://127.0.0.1:4318",
+        "otlpProtocol": "http",
+        "useCollector": true,
+        "logPrompts": true
+      }
+    }
+    ```
+
+    Gemini CLI को `failproofai otel enable` द्वारा समर्थित नहीं है। इसे अपने स्वयं के एक प्रमाणित कलेक्टर के साथ मैन्युअली कॉन्फ़िगर करें। कोई प्रॉम्प्ट कैप्चर नहीं करने के लिए `logPrompts` को `false` पर सेट करें।
+  </Tab>
+  <Tab title="Copilot in VS Code">
+    ये VS Code उपयोगकर्ता सेटिंग का उपयोग करें:
+
+    ```json
+    {
+      "github.copilot.chat.otel.enabled": true,
+      "github.copilot.chat.otel.exporterType": "otlp-http",
+      "github.copilot.chat.otel.otlpEndpoint": "http://127.0.0.1:4318",
+      "github.copilot.chat.otel.captureContent": true
+    }
+    ```
+
+    प्रमाणित रिले को सक्षम करने के लिए `failproofai otel enable copilot` चलाएं। सामग्री को छोड़ने के लिए `captureContent` को `false` पर सेट करें।
+  </Tab>
+</Tabs>
+
+## सेटअप की जांच या पूर्ववत करें
+
+रिले अस्थायी नेटवर्क और सर्वर विफलताओं के माध्यम से टेलीमेट्री को बनाए रखता है और पुनरावृत्ति पुनरावृत्ति करता है। एक स्थायी `400` अस्वीकृति, जिसमें एक इवेंट भी शामिल है जो संग्रहीत करने के लिए बहुत बड़ा है, पेलोड को सही करने की आवश्यकता है। रिले इसे बार-बार भेजने के बजाय निरीक्षण के लिए अस्वीकृत बैच को रखता है।
+
+`401` या `403` के बाद, क्रेडेंशियल को `events:add` देने वाली कुंजी से बदलें उसी संगठन के लिए। पुनः कनेक्ट करने से क्रेडेंशियल के लिए अस्वीकार किए गए प्रतिधारित OTLP निर्यात को स्वचालित रूप से पुनः नहीं भेजा जाता है; उन बैचों को पुनः प्राप्त करने के लिए अपने ऑपरेटर से पूछें। उन्हें अपने मूल संगठन में रखें।
+
+```bash
+failproofai otel status
+failproofai otel disable all
+```
+
+स्थिति FailproofAI द्वारा प्रबंधित सेटिंग को आपके द्वारा अन्य स्थानों पर कॉन्फ़िगर की गई टेलीमेट्री से अलग करती है। अक्षम पिछली प्रबंधित सेटिंग और एजेंट की पिछली ट्रांसक्रिप्ट-अपलोड पसंद को पुनः स्थापित करता है।
+
+<Card title="OpenTelemetry CLI" href="/hi/reference/otel" icon="terminal">
+  कमांड विकल्प, स्थानीय रिले सेटअप और समस्या निवारण।
+</Card>

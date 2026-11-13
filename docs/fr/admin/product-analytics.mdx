@@ -1,0 +1,61 @@
+---
+title: "Analytiques produit"
+description: "La télémétrie d'utilisation qu'envoie Failproof AI Cloud sur lui-même, ce qui n'est jamais collecté, et comment la désactiver."
+icon: "chart-no-axes-column"
+---
+
+Failproof AI Cloud envoie de la télémétrie d'utilisation **sur le logiciel lui-même** à ses mainteneurs. Elle n'inclut jamais les données de vos agents. Sur une installation auto-hébergée, elle est activée par défaut et vous pouvez la désactiver.
+
+## Ce qui est collecté
+
+Chaque événement porte cinq dimensions, sans aucune information permettant d'identifier une personne :
+
+| Dimension | Exemple | Description |
+| --- | --- | --- |
+| `product` | `agenteye` | Quel produit l'a envoyé |
+| `component` | `dashboard`, `server`, `cli` | Quelle partie du produit l'a envoyé |
+| `app_version` | `0.0.1-beta.81` | La version en cours d'exécution |
+| `deployment_kind` | `self_hosted` | S'il s'agit d'une installation client, de notre démo, de notre QA ou d'une machine de développement |
+| `org_id` | un UUID | Dans quelle organisation l'action s'est produite, sous forme d'identifiant opaque |
+
+En plus de cela, les événements enregistrent **ce qui a été utilisé, jamais ce qu'il contenait** : quelle page a été consultée (sous forme de modèle de route tel que `/:org/sessions/:id`, jamais l'URL réelle), combien de filtres de quel type ont été appliqués, si une action a réussi, et combien de temps elle a pris.
+
+L'application Slack enregistre les connexions et déconnexions d'espaces de travail, les liaisons de comptes, les questions posées, les graphiques publiés, les décisions d'approbation et les échecs par catégorie fixe. Elle n'inclut jamais l'espace de travail Slack, les identifiants d'utilisateur ou de canal, les e-mails, les questions, les réponses, le SQL ou les tokens.
+
+### Le nom de votre organisation
+
+En plus de l'`org_id` opaque, nous enregistrons le nom de votre organisation, son slug d'URL et son adresse de tableau de bord une seule fois, sur un enregistrement d'organisation plutôt que sur chaque événement. Cela nous permet de déterminer à quel compte appartient un comportement lorsque nous analysons l'adoption ou que nous enquêtons sur un problème que vous avez signalé. C'est la seule information d'identification que le produit envoie vous concernant.
+
+### Vos totaux d'utilisation
+
+Le serveur rapporte les totaux d'utilisation mesurée de chaque organisation, les mêmes chiffres que vous voyez sur la page Utilisation. Ce sont uniquement des comptages : événements, sessions, agents, environnements, exécutions d'évaluation, scores, exécutions d'audit, requêtes sauvegardées, tableaux de bord, alertes, incidents, clés API et membres, ainsi que les dates de la fenêtre de mesure. Ils ne contiennent aucun identifiant, nom ou texte de requête, et ils arrivent qu'une personne soit connectée ou non.
+
+## Ce qui n'est jamais collecté
+
+- **Aucune invite, réponse de modèle ou contenu d'événement**, ni comme texte, préfixe ou hash
+- **Aucun identifiant de session, d'agent ou de trace**
+- **Aucun nom de score d'évaluateur**
+- **Aucun message d'erreur, texte d'exception ou corps de réponse**, uniquement un code de statut et une catégorie d'une liste fixe
+- **Aucun argument d'outil, SQL ou texte de requête**
+- **Aucun détail d'application connectée.** La connexion ou la révocation d'un client MCP envoie au plus un nombre de permissions, jamais le nom de l'application ni aucun token
+- **Aucune adresse e-mail**
+- **Aucune URL de référent ni chaîne de requête**
+- **Aucun enregistrement d'écran, capture du DOM, ni suivi des clics et du curseur**
+
+## Désactiver sur une installation auto-hébergée
+
+Définissez `DO_NOT_TRACK=1` sur le tableau de bord et sur le serveur. Ils décident séparément, donc le définir sur un seul laisse l'autre envoyer des rapports. Redémarrez le serveur pour que la modification prenne effet.
+
+Le README de votre version décrit les autres paramètres de désinscription et comment confirmer que la télémétrie est désactivée.
+
+## Un seul ping lors de la désinscription
+
+Si vous vous désinscrivez via un paramètre produit plutôt que `DO_NOT_TRACK`, le tableau de bord peut envoyer **un ping anonyme unique** l'enregistrant, avec une probabilité de 1 sur 1000 par démarrage de processus. Cela nous indique combien d'opérateurs désactivent la télémétrie. Il ne contient aucun identifiant : ni organisation, ni utilisateur, ni nom d'hôte, ni URL, ni IP — uniquement le produit, le composant, la version, le type de déploiement et la raison. Un serveur ayant opté pour la désinscription n'envoie rien.
+
+Il n'est jamais envoyé lorsque vous utilisez `DO_NOT_TRACK`, c'est pourquoi c'est le paramètre à utiliser si votre politique interdit toute télémétrie sortante.
+
+## Destination des données
+
+Vers PostHog (`us.i.posthog.com`) via TLS sur le port 443. C'est un seul nom d'hôte, vous pouvez donc également le bloquer avec une seule règle de sortie.
+
+Pour en savoir plus sur la façon dont nous traitons les informations personnelles de manière générale, consultez la [politique de confidentialité](https://befailproof.ai/privacy/).

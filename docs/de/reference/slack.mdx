@@ -1,0 +1,111 @@
+---
+title: "Slack-App"
+description: "Fragen Sie den Failproof Assistant aus Slack heraus, erhalten Sie Diagramme im Thread und genehmigen Sie Änderungen per Schaltfläche."
+icon: "slack"
+---
+
+Fragen Sie den [Failproof Assistant](/de/sessions/assistant) direkt aus Slack. Erwähnen Sie die App in einem Channel, senden Sie ihr eine Direktnachricht oder nutzen Sie `/failproof <Frage>`. Antworten verwenden **Ihre eigenen** Failproof AI-Berechtigungen, Diagramme erscheinen im Thread, und alles, was eine Änderung vornehmen würde, fragt Sie vorher um Genehmigung.
+
+Es gibt eine offizielle App. Sie funktioniert gleich, egal ob Ihr Failproof AI Cloud gehostet oder selbst gehostet ist.
+
+<Note>
+  Antworten werden von KI-Modellen generiert und können ungenau sein. Überprüfen Sie wichtige Informationen anhand der verlinkten Quelldaten.
+</Note>
+
+## Workspace verbinden
+
+Sie benötigen die Berechtigung `settings:write` in Failproof AI und müssen in Slack Workspace-Administrator oder -Inhaber sein oder die Person, die die App hinzufügt.
+
+<Tabs>
+  <Tab title="Aus Failproof AI heraus">
+    1. Öffnen Sie **Einstellungen → Integrationen** und wählen Sie **Add to Slack**.
+    2. Genehmigen Sie die App in Slack.
+    3. Bestätigen Sie in Failproof AI, den Workspace mit Ihrer Organisation zu verbinden.
+  </Tab>
+  <Tab title="Aus Slack heraus">
+    1. Fügen Sie die App hinzu und öffnen Sie dann den Tab **Home**.
+    2. Wählen Sie **Continue with FailproofAI Cloud** oder **Use my own URL** und geben Sie die Adresse ein, unter der Sie sich anmelden.
+    3. Klicken Sie auf die Schaltfläche „Weiter", melden Sie sich an, wählen Sie die Organisation aus und bestätigen Sie. Der Link ist einmalig verwendbar und läuft nach 10 Minuten ab.
+  </Tab>
+</Tabs>
+
+Ein Workspace wird mit einer Organisation verbunden und eine Organisation mit einem Workspace.
+
+Haben Sie noch kein Konto? [Erstellen Sie zuerst eines](https://app.befailproof.ai/login) und verbinden Sie es dann.
+
+## Ihre Identität in Slack
+
+Beim ersten Mal, wenn Sie eine Anfrage stellen, ermittelt die App, welches Mitglied Sie sind:
+
+- **Automatisch per E-Mail**, wenn Sie ein vollständiges Mitglied des verbundenen Workspace sind, Ihre Slack-E-Mail-Adresse bestätigt ist und genau ein Organisationsmitglied diese E-Mail-Adresse verwendet.
+- **Andernfalls** erhalten Sie eine private Schaltfläche **Link your account**, die Failproof AI öffnet und Ihren Slack-Benutzer mit Ihrem Konto verknüpft.
+
+## Eine Frage stellen
+
+| Wo | Wie |
+| --- | --- |
+| Ein Channel | Erwähnen Sie die App. Antworten Sie in deren Thread, um fortzufahren – ohne weitere Erwähnung |
+| Eine Direktnachricht | Schreiben Sie der App |
+| Eine Gruppen-Direktnachricht, in der die App ist | Erwähnen Sie sie und antworten Sie dann in deren Thread |
+| Ein Slack Connect-Channel | Erwähnen Sie die App |
+| Jede Unterhaltung, in der die App ist | `/failproof <Frage>` startet einen Thread mit der Antwort |
+| `/failproof help` | Zeigt, was die App kann |
+| `/failproof status` | Zeigt, welche Organisation verbunden ist und mit wem Sie verknüpft sind |
+| `/failproof link` | Zeigt, mit welchem Failproof AI-Konto Sie verknüpft sind |
+
+Ein Thread entspricht einer Unterhaltung. Kollegen können die App im selben Thread erwähnen, und sie antwortet jedem einzelnen mit dessen eigenen Berechtigungen. Nur die Person, die den Thread gestartet hat, kann ihn ohne Erwähnung fortsetzen.
+
+Wenn die Antwort Daten enthält, postet die App ein Diagramm oder eine Tabelle mit einem Link, um sie in Failproof AI zu öffnen.
+
+## Änderungen genehmigen
+
+Jede Änderung, die der Assistant vornehmen möchte, zeigt zunächst die Schaltflächen **Approve** und **Cancel** an, und Slack fragt vor **Approve** noch einmal nach. Nur die Person, die die Anfrage gestellt hat, kann antworten; die Schaltflächen laufen nach 5 Minuten ab, und die Änderung wird mit den Berechtigungen dieser Person durchgeführt.
+
+Über Slack kann der Assistant gespeicherte Abfragen und Dashboards, Auswertungen, Benachrichtigungen, Audits, Issues und Richtlinien ändern sowie Code-Korrekturen vorschlagen – jeweils sofern Sie die entsprechende Berechtigung besitzen. API-Schlüssel, Benutzer oder Einstellungen kann er nicht ändern.
+
+## Link-Vorschauen
+
+Links zu Failproof AI-Issues, -Sessions und -Auswertungen, die in Slack eingefügt werden, werden auf gehostetem Failproof AI Cloud als Karten aufgeklappt. Eine Karte zeigt nur das, was die Person sehen kann, die sie ausgelöst hat. Links zu einer selbst gehosteten Adresse werden nicht aufgeklappt, obwohl Karten in den eigenen Antworten des Assistants weiterhin erscheinen.
+
+## Slack Connect-Channels
+
+Personen aus einem anderen Workspace können die App nutzen, wenn sie Mitglieder der Organisation sind – nach der Verknüpfung ihres Kontos. Antworten sind für alle in der Unterhaltung sichtbar, auch für Personen, die keine Mitglieder Ihrer Organisation sind. Stellen Sie Fragen also dort, wo die Antwort für alle sichtbar sein darf.
+
+Die App antwortet erst, wenn jemand aus jedem anderen Workspace im Channel sein Konto mit der Organisation verknüpft hat. Bis dahin teilt sie der fragenden Person mit, warum.
+
+## Berechtigungen, die die App anfordert
+
+| Slack-Berechtigung | Zweck |
+| --- | --- |
+| `app_mentions:read` | Erkennen, wenn jemand die App erwähnt |
+| `channels:history`, `groups:history`, `im:history`, `mpim:history` | Direktnachrichten und Antworten in den Threads der App empfangen. Die App ignoriert andere Nachrichten und liest keine früheren Nachrichten einer Unterhaltung |
+| `channels:read`, `groups:read`, `im:read`, `mpim:read` | Prüfen, in welcher Art von Unterhaltung sie sich befindet, damit sie weiß, wer eine Antwort sehen kann |
+| `chat:write` | Antworten und Genehmigungsschaltflächen posten |
+| `commands` | `/failproof` bereitstellen |
+| `files:write` | Diagramme posten |
+| `links:read`, `links:write` | Vorschauen für eingefügte Failproof AI-Links anzeigen |
+| `users:read`, `users:read.email` | Sie Ihrem Failproof AI-Konto zuordnen und Namen anzeigen |
+
+## Verbindung trennen
+
+Öffnen Sie **Einstellungen → Integrationen** und wählen Sie **Disconnect**, verwenden Sie **Disconnect** im Tab **Home** der App oder entfernen Sie die App aus Slack.
+
+Jede dieser Aktionen löscht die Workspace-Verbindung, das Bot-Token, die verknüpften Konten und die Thread-Einträge. Vergangene Slack-Unterhaltungen bleiben im Dashboard lesbar. Die Organisation kann anschließend sofort einen beliebigen Workspace verbinden.
+
+## Daten und Datenschutz
+
+Fragen und Antworten werden als Unterhaltungen im Dashboard Ihrer Organisation gespeichert, unter der Person, die den Thread gestartet hat. Slack-Daten werden niemals zum Training von KI-Modellen verwendet. Lesen Sie die [Datenschutzrichtlinie](https://befailproof.ai/privacy/) für Details darüber, welche Daten die App empfängt und wie lange sie aufbewahrt werden.
+
+## Fehlerbehebung
+
+| Was Sie sehen | Was zu tun ist |
+| --- | --- |
+| „This workspace isn't connected to a FailproofAI Cloud yet." | Ein Workspace-Administrator öffnet den Tab **Home** der App und wählt eine Option |
+| „This link expired or was already used." | Wählen Sie Ihre Cloud erneut im Tab **Home** für einen neuen Link |
+| „This org is already connected to a Slack workspace." | Trennen Sie die Verbindung zuerst in den Einstellungen |
+| „That Slack workspace is connected to another org." | Trennen Sie die Verbindung zunächst von dieser Organisation |
+| „Link your account to use the assistant." | Klicken Sie auf die Schaltfläche und bestätigen Sie in Failproof AI |
+| Die App antwortet nicht in einer Gruppen-Direktnachricht | Fügen Sie die App erneut zu Slack hinzu, um ihre Gruppenberechtigungen zu erteilen. Ihre Verbindung bleibt erhalten |
+| „I won't post answers from your organization here" | Jemand in diesem Workspace, der Mitglied der Organisation ist, erwähnt die App und verknüpft sein Konto |
+
+Immer noch nicht weiter? Schreiben Sie an [support@befailproof.ai](mailto:support@befailproof.ai).

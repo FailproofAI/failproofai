@@ -1,0 +1,77 @@
+---
+title: "OpenTelemetry CLI"
+description: "Chọn tham gia OTEL cho các coding agents, kiểm tra quá trình phân phối, và khôi phục cài đặt trước đó của bạn."
+icon: "radio"
+---
+
+`failproofai otel` cấu hình báo cáo OpenTelemetry tùy chọn đến FailproofAI Cloud. Trước tiên, kết nối máy của bạn với `failproofai config` và yêu cầu quản trị viên tổ chức bật **Settings → OpenTelemetry**.
+
+Thiết lập tương tác sẽ hỏi về OpenTelemetry sau trường Cloud key và bộ chọn agent. Bước tùy chọn này mặc định là Không. Chọn Có để chọn các agent OTEL; cùng một mã kích hoạt sẽ chạy sau khi kết nối được ghi. Nhấn Esc trước khi thiết lập hoàn tất sẽ không áp dụng bất kỳ thay đổi nào. Thiết lập không được giám sát, một khóa được cung cấp, chế độ mã nguồn mở, và giữ lại kết nối đã lưu sẽ không kích hoạt tính năng này cho bạn.
+
+## Kích hoạt một agent
+
+```bash
+failproofai otel enable claude
+failproofai otel enable codex --local
+failproofai otel enable codex --no-content
+failproofai otel enable copilot
+failproofai otel enable all --yes
+```
+
+Các agent được hỗ trợ là `claude`, `codex`, và `copilot` (VS Code). Thiết lập Copilot yêu cầu một tệp thực thi VS Code hoặc một phần mở rộng Copilot được cài đặt. Chỉ có một thư mục cài đặt còn sót lại là không đủ; thiết lập sẽ bỏ qua Copilot khi không tìm thấy cái nào.
+
+`--local` gửi đến relay cục bộ thay vì gửi trực tiếp đến Cloud. Copilot sử dụng relay tự động vì cài đặt của nó không thể lưu trữ tiêu đề xác thực.
+
+Relay chỉ lắng nghe trên máy của bạn. Daemon FailproofAI được cấu hình của bạn sẽ nhận lấy thay đổi trong vòng vài giây; bạn không cần phải khởi động lại nó. Nếu một ứng dụng khác sở hữu cổng relay, báo cáo trạng thái sẽ hiển thị nó là tắt và daemon sẽ tiếp tục chạy.
+
+<Warning>
+Chức năng chụp văn bản được bật theo mặc định. Thêm `--no-content` để bỏ qua các lời nhắc và chi tiết công cụ. Các phiên bản agent có thể để lộ các điều khiển nội dung khác nhau; hãy xem lại những gì agent của bạn xuất ra trước khi sử dụng nó với dữ liệu nhạy cảm.
+</Warning>
+
+Codex chỉ xuất các nhật ký cuộc trò chuyện, không có các vết theo dõi hoặc số liệu runtime nội bộ. Một `log_user_prompt = false` rõ ràng trong cấu hình Codex của bạn sẽ giữ nguyên tắt; kích hoạt sẽ in ghi chú khi nó giữ lựa chọn đó.
+
+### Chọn một đường dẫn báo cáo
+
+Nếu báo cáo bản ghi âm được bật cho một agent, thiết lập sẽ hỏi:
+
+> failproofai đã gửi các phiên Claude Code đến Cloud. Gửi chúng với OTEL thay thế? Tải lên bản ghi âm cho Claude Code sẽ dừng lại.
+
+Mặc định là Không. `--yes` chấp nhận sự thay đổi mà không có lời nhắc. Các agent khác và thực thi chính sách không bị ảnh hưởng.
+
+Thiết lập Codex chờ daemon xác nhận thay đổi trình thu thập trước khi ghi cài đặt trình xuất của nó. Nếu xác nhận hết thời gian chờ, thiết lập sẽ cảnh báo bạn đợi trước khi bắt đầu Codex.
+
+Config v2 giữ danh sách tracing được ghi nhớ tại `agents.selected` (và lịch sử phát hiện tại `agents.seen`). Sở thích bản ghi âm cho từng agent vẫn ở `collector.agents.<agent>.sessions`, quyền sở hữu OTEL ở `otel.agents`, và cài đặt relay ở `collector.otlp.enabled` / `collector.otlp.port`. Những khóa riêng biệt này giữ cho các cấu hình OTEL cũ có thể đọc được: thiết lập có thể thay đổi danh sách tracing mà không mất sở thích vận chuyển hoặc trạng thái cần thiết để khôi phục cài đặt agent của bạn.
+
+## Kiểm tra thiết lập
+
+```bash
+failproofai otel status
+```
+
+Trạng thái hiển thị mọi agent, liệu cài đặt của nó có được quản lý bởi FailproofAI hay không, điểm đến của nó, công tắc nhập của tổ chức, trạng thái relay, và kết quả tải lên relay gần đây nhất.
+
+`unknown` cho công tắc tổ chức có nghĩa là máy chủ không cung cấp nó hoặc không thể tiếp cận. Đây không phải là lỗi và không ngăn cấu hình trên phiên bản Cloud cũ hơn.
+
+Nếu Cloud chưa hỗ trợ OTEL, relay sẽ giữ lại các xuất được từ chối thay vì loại bỏ chúng. Nếu nhập tổ chức bị tắt, `enable` sẽ không ghi gì và thoát với lỗi; yêu cầu quản trị viên bật nó trước.
+
+## In cấu hình cho một ứng dụng
+
+```bash
+failproofai otel env --service my-agent
+failproofai otel env --service my-agent --local
+```
+
+Kết quả đầu ra là một khối môi trường shell cho trình xuất OTLP/HTTP. Kết quả đầu ra Cloud đặt `OTEL_EXPORTER_OTLP_ENDPOINT` thành cơ sở OTLP của Cloud, `https://<cloud>/otel`, và trình xuất nối thêm `/v1/<signal>`; một biến cho từng tín hiệu như `OTEL_EXPORTER_OTLP_LOGS_ENDPOINT` cần `https://<cloud>/otel/v1/logs` đầy đủ. Kết quả đầu ra cục bộ trỏ đến relay, `http://127.0.0.1:<port>`. Kết quả đầu ra Cloud bao gồm khóa API được cấu hình; hãy coi đó là một bí mật. Kết quả đầu ra cục bộ bỏ qua khóa. Để sử dụng kết quả đầu ra cục bộ, trước tiên hãy kích hoạt một agent cục bộ để relay chạy.
+
+## Khôi phục cài đặt trước đó
+
+```bash
+failproofai otel disable claude
+failproofai otel disable all
+```
+
+Tắt chỉ khôi phục cài đặt mà FailproofAI đã ghi, giữ lại các thay đổi không liên quan, và khôi phục lựa chọn báo cáo bản ghi âm trước đó của mỗi agent. Khi agent cục bộ được quản lý cuối cùng bị tắt, relay sẽ dừng chấp nhận xuất.
+
+Đối với Codex, tắt cũng ghi lại `collector.agents.codex.sessions_resume_after` (epoch milliseconds). Các byte rollout hiện có được coi là đã phân phối nên các phiên được chụp với OTEL sẽ không được tải lên lại; các bổ sung sau này vẫn chảy qua báo cáo bản ghi âm.
+
+Mỗi lệnh hỗ trợ `--help`. Xem [OpenTelemetry in Cloud](/vi/agenteye/opentelemetry) để xem các ví dụ về ứng dụng và coding-agent.

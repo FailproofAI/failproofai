@@ -1,0 +1,43 @@
+---
+title: "Análisis de sentimientos"
+description: "Encuentra mensajes frustrados, confusos y correctivos con las puntuaciones de sentimiento de Jev."
+icon: "smile"
+---
+
+Jev puntúa cada mensaje que una persona envía a tus agentes en una escala del 0 al 100 para cuatro emociones — **enojado**, **frustrado**, **feliz** y **confundido** — y tres señales sobre el rendimiento del agente:
+
+- **Corrigiendo**: la persona indica que el agente se equivocó en algo.
+- **Resuelto**: la persona confirma que el agente solucionó su problema.
+- **Dudoso**: la persona cuestiona si la respuesta del agente es correcta, o si realmente realizó el trabajo.
+
+Usa el análisis de sentimientos para encontrar conversaciones donde las personas están perdiendo la paciencia, agentes que siguen siendo corregidos y respuestas que funcionan bien. Este es el sistema de puntuación integrado de Jev; no necesitas crear una evaluación. Para preguntas con respuesta fija propias, [crea una evaluación Jev](/es/evaluations/jev).
+
+<Note>
+  El análisis de sentimientos está desactivado hasta que un administrador lo active para la organización. Jev realiza una solicitud de puntuación por mensaje y recibe ese mensaje junto con la respuesta del agente anterior a él. La puntuación utiliza el presupuesto de modelos de tu organización.
+</Note>
+
+## Activarlo
+
+1. Ve a **Administración → Configuración**.
+2. En **Sentimiento de entrada humana**, actívalo y guarda los cambios.
+
+Los mensajes del último día se puntúan primero. Después, los nuevos mensajes se puntúan en uno o dos minutos tras llegar.
+
+## Encontrar una conversación para revisar
+
+Abre **Observar → Sentimiento**. Filtra por tiempo, entorno, agente o ID de sesión. El encabezado muestra el recuento de mensajes y sesiones, indica cuántos mensajes están **marcados** y nombra la señal principal. Un mensaje se marca cuando una puntuación de enojado, frustrado, corrigiendo, confundido o dudoso alcanza 35 de 100.
+
+![El panel de Sentimiento mostrando recuentos de mensajes y sesiones, mensajes marcados y puntuaciones Jev a lo largo del tiempo.](/images/dashboard/sentiment-overview.png)
+
+Usa **Puntuación en el tiempo** para comparar señales. Elige las puntuaciones a mostrar y luego selecciona un punto para ver los mensajes de ese intervalo de tiempo. La tabla **Por agente** muestra dónde se concentra una señal. En **Mensajes**, ordena por la puntuación negativa más alta o selecciona una puntuación individual. Abre un mensaje en su sesión para leer la conversación circundante antes de decidir qué falló.
+
+![La lista de mensajes de Sentimiento ordenada por la puntuación negativa más alta, con un enlace a cada sesión de origen.](/images/dashboard/sentiment-messages.png)
+
+## Qué mensajes se puntúan
+
+Solo los mensajes escritos por una persona:
+
+- Mensajes que tus agentes personalizados registran como entrada humana con el SDK.
+- Instrucciones escritas en Claude Code, Codex, OpenCode, pi, Hermes y OpenClaw, cuando se envían las transcripciones de sesión (el comportamiento predeterminado). Los trabajos programados, las instrucciones inyectadas, los traspasos entre sub-agentes y otro texto que escribe el propio entorno de ejecución del agente no se puntúan. Tampoco las ejecuciones no interactivas como `claude -p`, `codex exec` y `hermes -z`: esas instrucciones las escribió un script, no una persona.
+
+La puntuación evalúa las palabras propias de la persona. Una instrucción corta y directa como "arréglalo" no se cuenta como enojo, y hacer una pregunta no se cuenta como confusión. Una nueva solicitud no es una corrección, y dar las gracias por sí solo no cuenta como resuelto.

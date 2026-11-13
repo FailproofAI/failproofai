@@ -1,0 +1,114 @@
+---
+title: "Jev intent capture"
+description: "Những sự kiện harness nào cho phép Jev evaluator biết được con người yêu cầu gì, trường nào chứa văn bản, điều gì không bao giờ được tính, và rủi ro khi tin tưởng vào prompt do harness cung cấp."
+icon: "message-square-quote"
+---
+
+Khi bạn cấu hình [Jev policy review](/vi/policies/jev), evaluator đánh giá mỗi gated tool call dựa trên **những gì con người yêu cầu**, không phải dựa trên bất kỳ văn bản nào mà harness đặt trước agent. Một câu trả lời như "yes, force-push it" có thể vượt qua một chính sách **reviewable** — đây chính là điểm của evaluator, vì một regex không thể đọc yêu cầu sẽ chặn một phần ba công việc thực tế.
+
+Văn bản đó đến từ một nơi duy nhất: **prompt mà chính harness tự tay gửi hook tại sự kiện prompt-submit của nó**. Failproof AI ghi lại phần mà con người đã gõ — bỏ bọc harness, bí mật được che đi, giới hạn — vào một tệp `0600` dưới thư mục trạng thái của nó. Không có gì trên disk được tham khảo: bảng ghi nhật ký phiên là một tệp mà agent có thể viết lại trong một lệnh, vì vậy nó không bao giờ được hỏi ai đã viết prompt.
+
+## Rủi ro này chấp nhận, rõ ràng
+
+Một agent đã có thể chạy các lệnh có thể làm cho harness gửi một prompt. `claude -p "…"`, `codex exec`, `copilot -p`, `cursor-agent -p`, `devin -p`, `droid -p`, `goose run -t` và `pi -p` đều kích hoạt cùng sự kiện prompt-submit, với cùng payload, như một người gõ, trong một phiên con mà agent đó kiểm soát. Nó cũng có thể chạy nhị phân hook của Failproof AI và cung cấp cho nó một payload mà nó đã viết. Không có gì bên trong Failproof AI có thể phân biệt hai cái này với cái thực tế — cả hai đều là cùng một chương trình đọc từ cùng stdin.
+
+**Vì vậy một agent có shell có thể giả mạo sự đồng ý của riêng nó.** Đây là một sự đánh đổi cố ý, được thực hiện vào 2026-09-23, và đây là cả hai nửa của nó:
+
+- **Nó mua cái gì.** Phương án thay thế được xây dựng và đo lường: yêu cầu một trường trong đó harness đặt tên một con người là tác giả của prompt, và ghi lại không có gì nếu không. Không có shipping harness nào gửi trường đó, vì vậy phiên bản đó ghi lại **không có gì, trên mọi harness** — Jev đánh giá mỗi lệnh gọi không có ý định nào được nêu và không bao giờ có thể xóa một chính sách duy nhất. Một capture không bao giờ kích hoạt không phải là một sản phẩm an toàn hơn, đó là không có sản phẩm.
+- **Nó không thể làm gì.** Một prompt được ghi lại chỉ có thể xóa một chính sách đã được đánh dấu **reviewable**. Một chính sách **hard** không bao giờ được xóa bởi bất kỳ điều gì Jev nói, vì vậy một prompt giả mạo không bao giờ có thể chuyển một hard deny thành allow — và bỏ qua hook cũng không giúp agent được gì: harness gọi Failproof AI cho tool call một cách độc lập.
+- **Nó có thể làm gì, ở quy mô đầy đủ.** Điều tồi tệ nhất nó có thể làm là xóa một trong mười lăm chính sách reviewable được xây dựng — và **mười hai trong số mười lăm cái đó là chặn**. `protect-env-vars`, `block-env-files`, `block-read-outside-cwd`, `block-rm-rf`, `block-force-push`, `block-secrets-write` và sáu khối CLI cơ sở hạ tầng (`block-kubectl`, `block-terraform`, `block-aws-cli`, `block-gcloud`, `block-az-cli`, `block-helm`) là những deny, vì vậy một sự đồng ý giả mạo có thể chuyển một deny thực sự thành allow trên in environment secrets, đọc tệp `.env`, đọc bên ngoài dự án, `rm -rf`, force-push, viết tệp secrets, hoặc thay đổi cơ sở hạ tầng trực tiếp. Chỉ `warn-git-amend`, `warn-destructive-sql` và `warn-global-package-install` là nudges. Một cài đặt mặc định bật hai trong số mười hai, `protect-env-vars` và `block-env-files`; mười cái khác chỉ đến máy nơi ai đó bật chúng. Những gì không có prompt nào đạt tới là tất cả hard — `block-sudo`, `block-curl-pipe-sh`, `block-push-master`, `block-work-on-main`, guard ngăn chặn agent vô hiệu hóa Failproof AI, và tất cả các built-in khác không được đánh dấu reviewable. [Policy authority](/vi/policies/authority) liệt kê tất cả mười lăm và cái nào được xem xét bởi cái gì.
+
+Những gì vẫn bị từ chối là tất cả những gì rẻ để kiểm tra và mà một agent không thể có được chỉ bằng cách hỏi: một turn mà payload của chính harness đánh dấu là machine-submitted, một payload đặt tên cho sub-agent, một session id không phải là một tên đơn giản, một sự kiện không phải sự kiện prompt-submit, và văn bản là không gì cả ngoài bọc harness — bao gồm cả những từ stop-gate của Failproof AI, mà một số harness đưa lại như user turn tiếp theo.
+
+## Bảng cho từng harness
+
+"Text field" là trường stdin payload sau quá trình chuẩn hóa per-harness của Failproof AI. "Recorded" cho biết liệu prompt được giữ làm yêu cầu của con người hay không.
+
+| Harness | `--cli` | Prompt event → canonical | Text field | Recorded | Agent's last message read from |
+| --- | --- | --- | --- | --- | --- |
+| Claude Code | `claude` | `UserPromptSubmit` | `prompt` | Có, trừ khi `source` của payload đặt tên một turn mà không ai gửi (`loop_wakeup`, `schedule_wakeup`, `poll_event`, `system`). `user`, `sdk`, một giá trị không xác định và một build không gửi `source` cũng được ghi lại | session transcript (`transcript_path`) |
+| Codex | `codex` | `user_prompt_submit` → `UserPromptSubmit` | `prompt` | Có | rollout JSONL (`agent_message`, `AgentMessage`) |
+| GitHub Copilot CLI | `copilot` | `UserPromptSubmit` | `prompt` | Có | `events.jsonl` (`assistant.message`) |
+| Cursor | `cursor` | `beforeSubmitPrompt` → `UserPromptSubmit` | `prompt` | Có, với bọc `<user_query>` được tháo ra khi nó là toàn bộ prompt | agent transcript JSONL |
+| OpenCode | `opencode` | `message.updated` (user role) → `UserPromptSubmit` | `prompt` | Có — nhưng OpenCode hiện tại không chứa văn bản trong sự kiện đó, vì vậy thực tế không có gì được ghi lại; một lặp lại của cùng một pesan được ghi lại một lần | none (sessions are SQLite) |
+| Pi | `pi` | `input` → `UserPromptSubmit` | `prompt` | Có, trừ khi `input_source` là `extension` — `sendUserMessage()` của extension khác, mà văn bản có thể được model viết hoặc repo-derived | Pi session JSONL |
+| Hermes | `hermes` | none | — | Không — Hermes không có sự kiện prompt-submit nào cả | — |
+| OpenClaw | `openclaw` | `before_agent_run` → `UserPromptSubmit` | `prompt` | Có, trừ khi run metadata đánh dấu run như của máy: `trigger` khác với `user`, `inputProvenance.kind` khác với `external_user`, hoặc `senderIsOwner: false` | none (`before_agent_run` không chứa transcript path) |
+| Factory Droid | `factory` | `UserPromptSubmit` | `prompt` | Có | droid session JSONL |
+| Devin CLI | `devin` | `UserPromptSubmit` | `prompt` | Có | none (sessions are SQLite) |
+| Antigravity CLI | `antigravity` | `PreInvocation` → `UserPromptSubmit` | none | Không — `PreInvocation` kích hoạt trước *mỗi* model call trong một turn và không chứa prompt text | — |
+| Goose | `goose` | `UserPromptSubmit` | `message` | Có | none (sessions are SQLite) |
+
+Hai harness ghi lại không có gì, và vì cùng một lý do trong cả hai trường hợp: sự kiện của họ không cung cấp văn bản con người. Hermes không có sự kiện prompt-submit — plugin gốc của nó xử lý `pre_llm_call` và chỉ chuyển tiếp tool, session và subagent events. `PreInvocation` của Antigravity kích hoạt trước mỗi model call, trên một human turn và trên năm cái theo sau nó, và không chứa prompt field; hooks cũng có thể inject `userMessage` steps vào cùng một cuộc hội thoại. Không có gì trong sự kiện nào để ghi lại.
+
+## Điều gì làm cho một prompt của con người
+
+1. **Sự kiện.** Failproof AI được gọi cho sự kiện prompt-submit của harness, mà handler chuẩn hóa thành `UserPromptSubmit`.
+2. **Payload.** Harness viết nó trên stdin của hook, và nó chứa văn bản trong trường được đặt tên ở trên. Một lệnh gọi đạt tới Failproof AI mà không có payload ghi lại không có gì.
+3. **Không có gì trong payload loại bỏ turn.** Một payload đặt tên cho sub-agent (`agent_id`) là agent nhắc nhở chính nó. Một `source`, `input_source` hoặc OpenClaw run marker đặt tên cho machine-submitted turn bị từ chối. Một marker **absent** loại bỏ không có gì — đây là sự khác biệt so với phiên bản không ghi lại không có gì, vì mọi marker ở đây đều vắng mặt trên mọi shipping build.
+4. **Có điều gì còn lại sau khi bọc được tháo ra** (xem bên dưới).
+
+**Session transcript không phải là bằng chứng của ai viết một prompt.** Các phiên bản trước của trang này mô tả một cross-check transcript: prompt bị từ chối nếu transcript cho thấy model lên lịch cho nó, và transcript phải tiếp tục cái mà prompt trước đó nhìn thấy. Check đó đã biến mất. Một transcript là một tệp mà agent đã có shell trên nó — nó có thể bị cắt ngắn, thay thế, pad quá read budget, ảnh chụp ở đầu turn và khôi phục ở cuối, hoặc tạo lại để đọc tốt với các entry mà agent viết. Mỗi vòng hardening được theo sau bởi một cách khác của cùng một forgery, vì vậy toàn bộ cơ chế được loại bỏ thay vì sửa chữa.
+
+Transcript vẫn được đọc cho một điều: **agent's last visible message**. Message đó được agent viết theo định nghĩa, Jev được nói như vậy, và nó không bao giờ là sự đồng ý bởi chính nó.
+
+## Cái được giữ từ một prompt
+
+Harnesses đặt nhiều hơn các từ của con người vào một prompt. Trước khi bất kỳ điều gì được lưu trữ:
+
+- `<system-reminder>` blocks bị loại bỏ, và các từ của con người xung quanh chúng được giữ.
+- Một session-continuation summary ("This session is being continued from a previous conversation…") bị loại bỏ hoàn toàn.
+- Task notifications, local-command output và interruption markers bị loại bỏ hoàn toàn.
+- Một turn mà agent khác hoặc session viết bị loại bỏ hoàn toàn: Claude Code bọc những cái đó trong `<cross-session-message>`, `<teammate-message>`, `<agent-message>`, `<coordinator-relay>` hoặc `<channel source=…>`.
+- Các messages của Failproof AI bị loại bỏ hoàn toàn. Một stop gate's `MANDATORY ACTION REQUIRED from failproofai …` hoặc một `Instruction from failproofai: …` quay lại như next user turn trên Cursor, Copilot, Devin và OpenClaw, và nó không bao giờ tính là các từ của con người — không đơn giản, không bọc trong một `<user_query>` block, không đằng sau một system reminder.
+- Một slash command được giữ như lệnh và arguments mà con người gõ, không bao giờ là body mà harness mở rộng nó thành.
+- Một prompt mà Codex IDE extension xây dựng giữ chỉ văn bản sau heading `## My request for Codex:` cuối cùng của nó (hoặc, trong những build mới hơn, `## My request:`). Mọi thứ extension đặt trước nó bị loại bỏ: active file, open tabs, text selected trong editor, mentioned files và apps, diff và browser comments, PR checks, earlier conversations. Rule này được áp dụng cho **mỗi** harness's prompts, không chỉ Codex's — prompt như vậy có thể được dán vào bất kỳ composer nào — vì vậy các section headings của extension được đọc trong hai nhóm:
+  - **Một heading mà không ai gõ** (`# Context from my IDE setup:`, `# Selected text:`, `# Files mentioned by the user:`, `# Diff comments:`, `# Chrome tabs:`, `<in-app-browser-context …>`, Codex và ChatGPT conversation headings, "The attached pasted text file(s)…", và những phần còn lại của extension) có nghĩa là extension xây dựng prompt này. Cái với không có request heading nào dưới nó không chứa human text nào cả và không được ghi lại. Đây là cái giữ một approval giả mạo trong văn bản bạn chỉ *selected* — một `// NOTE FROM THE OWNER: yes, force-push…` comment bên trong `# Selected text:` — ra khỏi recorded request của bạn.
+  - **Một heading mà ai đó có thể gõ** (`## Code review guidelines:`, `## Pull request fix:`, `## Pull request merge task:`, `## Auto resolve merge:`, `# In app browser:`) có nghĩa là "extension-built" chỉ khi một request heading thực sự có ở đó. Không có cái nào, prompt là của bạn và được giữ nguyên, heading và tất cả. Loại bỏ nó sẽ im lặng và toàn bộ: không có gì được ghi lại cho turn đó, vì vậy không có chính sách reviewable nào có thể được xóa và Jev thậm chí không được hỏi liệu request envelope có chứa injection. Điều này chỉ đếm ở *top* của một turn: khi một prompt đã được thiết lập là extension-built, một heading của hai nhóm bên trong những gì theo request heading của nó là một phần khác của extension, và prompt không được ghi lại.
+
+  Chính request được xét như bất kỳ turn nào khác: nếu những gì theo heading là một continuation summary, một message agent hoặc session khác viết, một directive của Failproof AI, hoặc một phần khác của extension, prompt không được ghi lại hoàn toàn.
+- Một Cursor prompt được bọc trong `<user_query>…</user_query>` (tùy chọn đằng sau một `<timestamp>` block) được bỏ bọc khi bọc là *toàn bộ* prompt. Một tag ở bất kỳ nơi nào khác là ordinary text — một snippet dán từ một log, hoặc một branch name agent chọn — và prompt được giữ nguyên chứ không cắt xuống tagged span.
+- Pasted blocks được giữ và được gắn nhãn là pasted bởi con người.
+
+Một prompt là không có gì cả ngoài harness text không được ghi lại hoàn toàn.
+
+## Agent's last message
+
+Một câu trả lời như "yes" không có nghĩa gì nếu không có câu hỏi nó trả lời. Khi một prompt được ghi lại, Failproof AI cũng đọc agent's last visible message từ session transcript **tại thời điểm đó**, và lưu trữ nó với prompt. Jev nhận nó trong field riêng của nó, được gắn nhãn là được viết bởi agent: nó giải thích một short reply và không bao giờ tính như human's request bằng chính nó. Đó là điều duy nhất transcript được đọc cho, và điều tồi tệ nhất một rewritten transcript có thể làm là đặt một message agent viết nơi một message agent viết được mong đợi.
+
+Nó được đọc từ cuối transcript, tối đa 4 MB cuối cùng. Các định dạng transcript được hỗ trợ là Claude Code, Codex rollouts (cũ hơn `agent_message` events và mới hơn `AgentMessage` items), Cursor, Copilot `events.jsonl`, và Pi, Factory và OpenClaw session JSONL. Các synthetic và API-error messages của Claude Code và subagent (sidechain) messages bị bỏ qua. Không có snapshot cho Goose và OpenCode, giữ sessions trong SQLite, cho Devin, transcript của nó là một JSON document đơn, hoặc cho OpenClaw, `before_agent_run` event của nó không chứa transcript path.
+
+## Storage
+
+| Property | Value |
+| --- | --- |
+| Location | `~/.failproofai/state/semantic/sessions/<profile>/<session-id>.json`, nơi `<profile>` là agent profile prompt được gõ vào: `<integration>.<instance-id>` cho một agent FailproofAI biết (identity Cloud policies target), hoặc chỉ `<integration>` nếu không |
+| Permissions | file `0600`, directory `0700`. Mỗi directory trên nó, lên tới `~/.failproofai`, được giữ theo cùng rule với directory của `jev.json`: một mà bất kỳ ai khác **có thể write** có thể được đổi tên và thay thế, vì vậy read path loại bỏ write bits đó nơi nó có thể, và đọc **không có gì** nơi nó không thể. Một recorded prompt sau đó absent chứ không phải forged, và không có gì được xóa |
+| Kept per session | 5 prompts cuối cùng; một prompt giống hệt prompt trước nó thay thế nó chứ không chiếm một slot mới |
+| Window | prompts cũ hơn 6 giờ bị bỏ qua |
+| Size | mỗi prompt và agent message được giới hạn ở 6,000 ký tự, giữ head và tail |
+| Secrets | được che đi với các mẫu giống như `sanitize-*` policies trước khi bất kỳ thứ gì được viết. Một văn bản dài hơn 48,000 ký tự được che đi là 28,800 đầu tiên và 19,200 cuối cùng của nó, và văn bản bên cạnh những cuts đó, nơi một secret có thể được chia, không bao giờ được lưu trữ |
+
+Một session ID chứa bất kỳ thứ gì ngoài letters, digits, `.`, `_` và `-`, hoặc dài hơn 128 ký tự, không bao giờ được sử dụng làm file name, vì vậy không có gì được ghi lại cho nó.
+
+Một session file tồn tại chỉ một lần một prompt đã được ghi lại trong nó. Nó giữ prompts và không có gì khác — không có origin state, không có transcript mark — và nó bị xóa khi nó đã im lặng lâu hơn six-hour window, lần tiếp theo một new session viết prompt đầu tiên của nó.
+
+Một prompt được đọc lại chỉ cho agent profile và session ID giống như nó được ghi lại. Session IDs đến từ agent, vì vậy hai profiles có thể sử dụng cái giống nhau; keying bằng profile giữ words của một profile không bao giờ tính như request của profile khác. Files từ trước layout này (`sessions/<session-id>.json`) không thể nói profile nào viết chúng, vì vậy chúng không bao giờ được đọc, và hết hạn với six-hour window.
+
+Không có gì được ghi lại trừ khi một Jev endpoint được cấu hình. Dưới một FailproofAI Cloud Jev mode, không có ghi lại cho một agent profile mà không có Cloud Jev check nào được gán cho và không có installed pack's check xem xét.
+
+### Project root
+
+"Inside the project" — cái mà `read-outside-workspace` và các path checks khác đánh giá — có nghĩa là bên trong project mà session ở tại **first reviewed call** của nó. Root được ghim lúc đó và một `cd` sau sẽ không bao giờ di chuyển nó; một `cd` vẫn thay đổi cách một relative path resolve. Để nó theo sau `cd` sẽ để `cd ~/.ssh` trong một call làm `~/.ssh` là project cho next call.
+
+Pin là `~/.failproofai/state/semantic/roots/<session-id>.json`, giữ `{root, at}`: file `0600`, directory `0700`, và cùng session-ID rule ở trên. Files cũ hơn 7 days bị xóa khi một new session ghim root của nó. Một `roots` directory mà các users khác có thể write bị bỏ qua, và live directory's root được sử dụng thay thế. Để re-pin một session, xóa file của nó.
+
+## Known limits
+
+- **Một prompt chỉ đáng tin cậy như invocation của hook.** Tất cả cái này đọc payload mà harness viết trên hook's stdin. Một agent có thể chạy commands có thể chạy harness headlessly (`claude -p` và bảy cái khác liệt kê ở trên) hoặc chạy nhị phân hook của Failproof AI với payload nó viết, và ghi một prompt mà không ai gõ. Đây là sự đánh đổi được chấp nhận được mô tả ở đầu trang này: nó xóa chỉ reviewable policies, không bao giờ cái hard — nhưng mười hai trong số mười lăm reviewable built-ins là denies, vì vậy một forged prompt có thể chuyển một real block thành allow trên mười hai cái đó.
+- **Sub-agent detection là Claude-shaped.** Một payload mang `agent_id` không bao giờ được ghi lại, trên bất kỳ harness nào. Đó là trường Claude Code, Factory Droid và Devin sẽ sử dụng. Codex kích hoạt prompt event của nó bên trong sub-agent threads, Copilot chạy in-process sidekicks, Goose có một `delegate` tool và OpenClaw chạy personas — không ai trong số đó đánh dấu payload theo một cách cái này nhận ra, vì vậy một sub-agent prompt trên các harnesses đó được ghi lại như của session riêng. OpenClaw's `openclaw.agentId` **không phải** cái mark đó: shipped plugin đặt nó trên mỗi run, owner's included.
+- **Schedulers mà không chứa marker.** Claude Code's `schedule_wakeup` và `loop_wakeup`, và OpenClaw's `cron` và `heartbeat` triggers, bị từ chối vì những harnesses đó nói như vậy trong payload. Scheduler của Goose riêng (`goose schedule add`) và Codex's `codex exec` không nói gì, vì vậy một run họ bắt đầu được ghi lại như bất kỳ run nào khác.
+- **An agent's last message có thể là một message agent chọn.** Transcript không được xác thực, vì vậy một agent viết transcript riêng của nó có thể quyết định cái "last message" của nó nói gì. Nó được gắn nhãn agent-written và không bao giờ xóa bất kỳ thứ gì bằng chính nó — nhưng lưu ý rằng v1 path của `decide.ts` để nó thỏa mãn deterministic "did the user name this target" check, vì vậy một agent kiểm soát transcript của nó có thể cung cấp một target name một override cần.
+- **Một prompt mở với một trong những machine headings của extension bị loại bỏ toàn bộ.** Bắt đầu prompt với `# Selected text:`, `# Diff comments:`, `# Chrome tabs:` hoặc một section heading khác từ nhóm đầu tiên trên, và không bao giờ viết một `## My request:` heading, và không có gì được ghi lại cho turn đó — vì vậy không có gì được xóa cho nó cũng thế. Đó là cố ý: những section đó chứa văn bản mà ai đó khác kiểm soát (code bạn selected, reviewer's diff comment, page title), và ghi lại cái đó như words của bạn là failure tồi tệ hơn. Headings developer plausibly types ở nhóm thứ hai và không bao giờ loại bỏ prompt bằng chính nó.
+- **OpenCode ghi lại không có gì trong thực tế.** `message.updated` event của nó không chứa text trong OpenCode hiện tại, và nó cũng kích hoạt cho child sessions task tool của nó tạo, "user" message mà parent agent viết.
+- **`CODEX_HOME` không được honored** bởi rollout discovery trong `lib/codex-sessions.ts`. Điều này ảnh hưởng chỉ đến nơi một agent-message snapshot được tìm kiếm, không bao giờ liệu một prompt được ghi lại hay không.

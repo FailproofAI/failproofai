@@ -1,0 +1,111 @@
+---
+title: "Slack uygulaması"
+description: "Failproof Assistant'ı Slack'ten sorun, grafikleri konuda alın ve bir düğmeyle değişiklikleri onaylayın."
+icon: "slack"
+---
+
+[Failproof Assistant](/tr/sessions/assistant)'ı Slack'ten sorun. Uygulamayı bir kanalda etiketle, doğrudan mesaj gönder veya `/failproof <soru>` komutunu kullan. Yanıtlar **kendi** Failproof AI izinlerinizi kullanır, grafikler konuda görünür ve bir şeyi değiştirecek her şey önce onay istenir.
+
+Resmi bir uygulama vardır. Failproof AI Cloud'unuz barındırılı veya kendi kendine barındırılan olsun aynı şekilde çalışır.
+
+<Note>
+  Yanıtlar yapay zeka modelleri tarafından oluşturulur ve yanlış olabilir. Önemli olan her şeyi bağlantılı kaynak verilerine karşı kontrol edin.
+</Note>
+
+## Çalışma alanını bağla
+
+Failproof AI'da `settings:write` iznine ve Slack'te çalışma alanı yöneticisi veya sahibi olmaya veya uygulamayı ekleyen kişi olmaya ihtiyacın var.
+
+<Tabs>
+  <Tab title="Failproof AI'dan">
+    1. **Ayarlar → Entegrasyonlar** sayfasına git ve **Slack'e Ekle**'yi seç.
+    2. Slack'te uygulamayı onayla.
+    3. Failproof AI'ya geri dön ve çalışma alanını kuruluşunuza bağlamayı onayla.
+  </Tab>
+  <Tab title="Slack'ten">
+    1. Uygulamayı ekle, sonra **Home** sekmesini aç.
+    2. **FailproofAI Cloud ile Devam Et**'i seç veya **Kendi URL'mi Kullan**'ı seç ve oturum açtığın adresi gir.
+    3. Devam düğmesini seç, oturum aç, kuruluşu seç ve onayla. Link bir kez çalışır ve 10 dakika sonra geçer.
+  </Tab>
+</Tabs>
+
+Bir çalışma alanı bir kuruluşa bağlanır ve bir kuruluş bir çalışma alanına bağlanır.
+
+Hesabın yok mu? Önce [bir tane oluştur](https://app.befailproof.ai/login), sonra bağla.
+
+## Slack'te kimsin
+
+İlk kez sorduğunda, uygulama hangi üye olduğunu anlar:
+
+- **E-posta ile otomatik olarak**, bağlı çalışma alanının tam üyesi olduğunda, Slack e-postanız doğrulanır ve kuruluşun tam olarak bir üyesi bu e-postayı kullanır.
+- **Aksi takdirde**, özel bir **Hesabını Bağla** düğmesi alırsın ve bu Failproof AI'ı açıp Slack kullanıcını hesabına bağlar.
+
+## Soru sor
+
+| Nerede | Nasıl |
+| --- | --- |
+| Bir kanalde | Uygulamayı etiketle. Konu başlığında yanıt ver, hiçbir etiket gerekmez |
+| Doğrudan mesajda | Uygulamaya mesaj gönder |
+| Uygulamanın içinde olduğu grup doğrudan mesajda | Onu etiketle, sonra konu başlığında yanıt vermeye devam et |
+| Slack Connect kanalında | Uygulamayı etiketle |
+| Uygulamanın içinde olduğu herhangi bir konuşmada | `/failproof <soru>` cevabı içeren bir konu başlığı açar |
+| `/failproof help` | Uygulamanın neler yapabileceğini gör |
+| `/failproof status` | Hangi kuruluşun bağlı olduğunu ve kim olarak bağlı olduğunu gör |
+| `/failproof link` | Hangi Failproof AI hesabına bağlı olduğunu gör |
+
+Bir konu başlığı bir konuşmadır. Meslektaşlar aynı konu başlığında uygulamayı etiketleyebilir ve kendi izinleriyle her birine yanıt verir. Konu başlığını başlatan kişi hiçbir etiket olmadan bunu devam ettirir.
+
+Yanıt veriler olduğunda, uygulama Failproof AI'da açmak için bir bağlantı içeren bir grafik veya tablo gönderir.
+
+## Değişiklikleri onayla
+
+Asistan tarafından yapılan her değişiklik önce **Onayla** ve **İptal** düğmelerini gösterir ve Slack **Onayla** yapılmadan önce bir kez daha sorar. Sadece soruyu soran kişi bunları cevaplandırabiliyor, düğmeler 5 dakika sonra geçer ve değişiklik o kişinin izinleriyle yapılır.
+
+Slack'ten asistan, kaydedilmiş sorguları ve kontrol panellerini, değerlendirmeleri, uyarıları, denetim izlerini, sorunları ve politikaları değiştirebilir ve sahip olduğun izne bağlı olarak kod düzeltmeleri önerebilir. API anahtarlarını, kullanıcıları veya ayarları değiştiremez.
+
+## Bağlantı önizlemeleri
+
+Slack'e yapıştırılan Failproof AI sorunu, oturumu ve değerlendirme bağlantıları barındırılan Failproof AI Cloud'da kartlara ayrıntılı olarak gösterilir. Bir kart, onu tetikleyen kişinin görebileceği şeyleri gösterir. Kendi kendine barındırılan bir adrese yapılan bağlantılar ayrıntılı olarak gösterilmez, ancak asistanın kendi yanıtlarındaki kartlar yine de görünür.
+
+## Slack Connect kanalları
+
+Başka bir çalışma alanından gelen kişiler, kuruluşun üyesi iseler ve hesablarını bağlasalar, uygulamayı kullanabilir. Yanıtlar, kuruluşunun üyesi olmayan kişiler de dahil olmak üzere konuşmadaki herkes tarafından görünür, bu nedenle herkesin yanıtı görebileceği yerde sor.
+
+Uygulama sadece kanaldaki diğer çalışma alanlarının her birinde kuruluşa bağlı birisi olduğunda yanıt verir. O zamana kadar, soruyu soran kişiye neden olduğunu söyler.
+
+## Uygulamanın istediği izinler
+
+| Slack izni | Neden |
+| --- | --- |
+| `app_mentions:read` | Biri uygulamayı etiketlediğinde bilmek |
+| `channels:history`, `groups:history`, `im:history`, `mpim:history` | Doğrudan mesajları ve uygulamanın konularındaki yanıtları al. Uygulama diğer mesajları yoksayar ve hiçbir zaman bir konuşmanın geçmiş mesajlarını okumaz |
+| `channels:read`, `groups:read`, `im:read`, `mpim:read` | Hangi tür konuşma olduğunu kontrol et, böylece yanıtı kimin görebileceğini biliyor |
+| `chat:write` | Yanıtları ve onay düğmelerini gönder |
+| `commands` | `/failproof` komutunu sağla |
+| `files:write` | Grafikleri gönder |
+| `links:read`, `links:write` | Yapıştırılan Failproof AI bağlantılarının önizlemelerini göster |
+| `users:read`, `users:read.email` | Seni Failproof AI hesabına eşle ve adları göster |
+
+## Bağlantıyı kes
+
+**Ayarlar → Entegrasyonlar** sayfasına git ve **Bağlantıyı Kes**'i seç, uygulamanın **Home** sekmesinde **Bağlantıyı Kes**'i kullan veya Slack'ten uygulamayı kaldır.
+
+Bunlardan herhangi biri, çalışma alanının bağlantısını, bot jetonunu, bağlı hesapları ve konu kayıtlarını siler. Geçmiş Slack konuşmaları kontrol panelinde okunabilir kalır. Kuruluş daha sonra herhangi bir çalışma alanını doğrudan bağlayabilir.
+
+## Veri ve gizlilik
+
+Sorular ve yanıtlar konu başlığını başlatan kişinin altında kuruluşunun kontrol panelinde konuşmalar olarak kaydedilir. Slack verileri asla yapay zeka modellerini eğitmek için kullanılmaz. Uygulamanın ne alındığını ve ne kadar süre tutulduğunu öğrenmek için [gizlilik politikasına](https://befailproof.ai/privacy/) bakın.
+
+## Sorun giderme
+
+| Gördüğün şey | Ne yapacaksın |
+| --- | --- |
+| "Bu çalışma alanı henüz bir FailproofAI Cloud'a bağlı değil." | Çalışma alanı yöneticisi uygulamanın **Home** sekmesini açar ve birini seçer |
+| "Bu bağlantı geçti veya zaten kullanıldı." | **Home** sekmesinde Cloud'u tekrar seç ve yeni bir bağlantı al |
+| "Bu kuruluş zaten bir Slack çalışma alanına bağlı." | Önce ayarlarda bağlantıyı kes |
+| "Bu Slack çalışma alanı başka bir kuruluşa bağlı." | Önce o kuruluştan bağlantıyı kes |
+| "Asistanı kullanmak için hesabını bağla." | Düğmeyi seç ve Failproof AI'da onayla |
+| Uygulama grup doğrudan mesajında yanıt vermiyor | Grup izinlerini vermek için Slack'e uygulamayı tekrar ekle. Bağlantın korunur |
+| "Bu kuruluştan yanıtları buraya göndermeyeceğim" | O çalışma alanında kuruluşun üyesi olan biri uygulamayı etiketler ve hesabını bağlar |
+
+Hâlâ takılı mı? [support@befailproof.ai](mailto:support@befailproof.ai) adresine e-posta gönder.

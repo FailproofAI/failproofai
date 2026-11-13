@@ -1,29 +1,31 @@
 ---
 title: "Oturumlar"
-description: "Bir aracı çalışmasının tam kaydıyla başlayın."
+description: "Bir aracı çalıştırmasının tam kaydından başlayın."
 icon: "workflow"
 ---
 
-Bir oturum, bir aracı beklenmedik şekilde davrandığında başlamak için en iyi noktadır. Model isteklerini, yanıtlarını, araç çağrılarını, insan etkileşimlerini, hataları, değerlendirmeleri ve bir çalışmaya ait ilke kararlarını bir araya getirir.
+Bir oturum, bir aracı beklenmedik şekilde davrandığında başlamak için en iyi noktadır. Model isteklerini, yanıtlarını, araç çağrılarını, insan etkileşimlerini, hataları, değerlendirmeleri ve bir çalıştırmaya ait ilke kararlarını bir araya getirir.
 
-Oturumlar, bunları üreten araç ne olursa olsun aynı görünür. Bir depoyu yeniden yazan Claude Code çalışması, Slack'te müşteriye yanıt veren bir Hermes aracısı ve SDK ile enstrümente edilmiş bir Python hizmeti, hepsi aynı izleme biçimine ulaşır, bu nedenle bir görünüm tüm filo için yeterlidir.
+Oturumlar, onları üreten araçtan bağımsız olarak aynı görünür. Bir depoyu yeniden yazan Claude Code çalıştırması, Slack'te müşteriye yanıt veren bir Hermes aracısı ve SDK ile enstrüman edilen bir Python hizmeti hepsi aynı iz biçiminde kaydedilir, bu nedenle bir görünüm tüm filo için yeterlidir.
 
 <div style={{ position: "relative", width: "100%", paddingBottom: "56.25%", height: 0, overflow: "hidden", borderRadius: "12px", margin: "1.5rem 0" }}>
   <iframe src="https://www.youtube.com/embed/VWxukZc5k7s?rel=0&playsinline=1" title="Agent tracing with Failproof AI" allow="accelerometer; autoplay; encrypted-media; gyroscope; picture-in-picture; fullscreen" allowFullScreen style={{ position: "absolute", top: 0, left: 0, width: "100%", height: "100%", border: 0 }}></iframe>
 </div>
 
-Bir aracı çalışmasını hedefinizden model çağrıları, araçlar ve son yanıt aracılığıyla takip edin.
+Bir aracı çalıştırmasını hedefi üzerinden model çağrıları, araçlar ve son yanıt aracılığıyla takip edin.
 
-## Bir oturum bulun
+## Oturum bulma
+
+Bir oturum çalıştırma limitine ulaştıktan sonra soğuk depolamada tutulduysa, aynı faturalama penceresi içinde limiti yükseltmek uygun oturumları en eskileri önce yayınlar. Teslimat yeniden denemeleri bir oturumun limiti iki kez tüketmesine neden olmaz.
 
 <Tabs>
-  <Tab title="Pano">
-    1. Bulut kenar çubuğunda **Gözlemle → Oturumlar**'a gidin.
-    2. Zaman penceresini ayarlayın, ardından ortam, durum, aracı veya oturum kimliğine göre filtreleyin.
-    3. Kalite, maliyet, token veya gecikme dilimi gerektiğinde puan veya metrik aralıkları ekleyin.
-    4. İzlemeyi açmak için bir satır seçin. Paylaşırken oturum kimliğinin yanındaki kopyalama denetimini kullanın.
+  <Tab title="Kontrol Paneli">
+    1. Cloud kenar çubuğunda **Observe → Sessions** bölümüne gidin.
+    2. Zaman penceresini ayarlayın, ardından ortama, duruma, aracıya veya oturum kimliğine göre filtreleyin.
+    3. Kalite, maliyet, jeton veya gecikme dilimi gerektiğinde puan veya metrik aralıkları ekleyin.
+    4. İzini açmak için bir satır seçin. Oturum kimliğinin yanındaki kopyalama denetimini paylaşırken kullanın.
 
-    ![Oturumlar listesi ortam, aracı, durum ve değerlendirme puanı filtreleriyle her çalışma için bir satır gösteriyor.](/images/dashboard/sessions-list.png)
+    ![Ortam, aracı, durum ve değerlendirme puanı filtreleriyle çalıştırma başına bir satır gösteren Oturumlar listesi.](/images/dashboard/sessions-list.png)
   </Tab>
   <Tab title="CLI">
     ```bash
@@ -32,26 +34,26 @@ Bir aracı çalışmasını hedefinizden model çağrıları, araçlar ve son ya
     fp --json sessions --session-id <session-id>
     ```
 
-    Çok aracılı çalışmaları genişletmek için `--agents` ekleyin, sayfalandırmak için `--all` ekleyin veya çıktı sütunlarını seçmek için `--fields` ekleyin.
+    Çok aracılı çalıştırmaları genişletmek için `--agents`, sayfalandırmak için `--all` veya çıktı sütunlarını seçmek için `--fields` ekleyin.
   </Tab>
 </Tabs>
 
-## Yapabilecekleriniz
+## Neler yapabilirsiniz
 
-- Bir çalışmayı aracı, ortam, zaman, model, olay türü veya hata durumuna göre bulun.
-- Bir sonucu üreten kesin sırayı takip edin.
-- Başarılı ve başarısız çalışmaları karşılaştırın.
-- Bir denetim bulgusunun veya uyarı olayının kullandığı kanıtları açın.
-- Çevrimdışı bir kayda ihtiyaç duyduğunuzda bir oturum dışa aktarın.
+- Aracıya, ortama, zamana, modele, olay türüne veya hata durumuna göre bir çalıştırma bulun.
+- Sonuç üreten tam sırayı takip edin.
+- Başarılı ve başarısız çalıştırmaları karşılaştırın.
+- Bir denetim bulgusu veya uyarı olayı tarafından kullanılan kanıtı açın.
+- Çevrimdışı kayıta ihtiyaç duyduğunuzda bir oturum dışa aktarın.
 
 ## Güvenilir bir araştırma sırası
 
 1. Oturum hedefini ve ortamını onaylayın.
-2. İlk hatayı veya beklenmedik kararı bulun—sadece nihai hatayı değil.
-3. Hemen önceki model bağlamını ve araç girişini inceleyin.
+2. İlk hatayı veya beklenmedik kararı bulun—sadece son hatayı değil.
+3. Hemen öncesinde model bağlamı ve araç girdisini inceleyin.
 4. Yeniden denemeleri, gecikmeyi ve insan müdahalelerini kontrol edin.
 5. Değerlendirme puanlarını ve ilke kararlarını gözden geçirin.
 
-<Card title="İzlemeyi oku" icon="route" href="/tr/sessions/read-a-trace">
-  Oturum özetinden sonucu etkileyen olaya nasıl geçileceğini öğrenin.
+<Card title="İzi okuma" icon="route" href="/tr/sessions/read-a-trace">
+  Oturum özetinden sonucu neden olan olaya nasıl geçileceğini öğrenin.
 </Card>

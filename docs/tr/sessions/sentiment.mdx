@@ -1,0 +1,43 @@
+---
+title: "Duygu analizi"
+description: "Jev duygu puanları ile sinirli, kafa karışık ve düzeltici mesajları bulun."
+icon: "smile"
+---
+
+Jev, bir kişinin ajanlarınıza gönderdiği her mesajı dört duygu için 0 ile 100 arasında puanlar — **öfkeli**, **sinirli**, **mutlu** ve **kafa karışık** — ve ajanın performansıyla ilgili üç sinyali puanlar:
+
+- **Düzeltici**: kişi ajanın bir şeyi yanlış yaptığını söyler.
+- **Çözüldü**: kişi ajanın sorununu çözdüğünü onaylar.
+- **Şüpheli**: kişi ajanın cevabının doğru olup olmadığını veya işi gerçekten yapıp yapmadığını sorgular.
+
+Duygu analizini kullanarak sabırları tükenen kişilerin konuşmalarını, sürekli düzeltilen ajanları ve iyi tepki alan yanıtları bulun. Bu, yerleşik Jev puanlandırmasıdır; bir değerlendirme yazmanıza gerek yoktur. Kendi sabit-cevap sorunuz için [bir Jev değerlendirmesi oluşturun](/tr/evaluations/jev).
+
+<Note>
+  Duygu analizi, bir yönetici bunu kuruluş için açana kadar kapalı kalır. Jev, her mesaj için bir puanlama isteği yapar ve o mesajı ajanın yanıtıyla birlikte alır. Puanlama, kuruluşunuzun model bütçesini kullanır.
+</Note>
+
+## Açın
+
+1. **Yönetim → Ayarlar** seçeneğine gidin.
+2. **İnsan girdisi duygusu** altında **açın** ve kaydedin.
+
+Son günün mesajları önce puanlandırılır. Bundan sonra, yeni mesajlar gelişinden bir iki dakika içinde puanlandırılır.
+
+## İncelemek için bir konuşma bulun
+
+**Gözlemle → Duygu** seçeneğini açın. Zaman, ortam, ajan veya oturum kimliğine göre filtreleyebilirsiniz. Başlık mesaj ve oturum sayısını gösterir, kaç mesajın **bayraklı** olduğunu gösterir ve üst sinyali adlandırır. Öfkeli, sinirli, düzeltici, kafa karışık veya şüpheli puan 100 üzerinden 35'e ulaştığında bir mesaj bayraklı olarak işaretlenir.
+
+![Mesaj ve oturum sayılarını, bayraklı mesajları ve zaman içindeki Jev puanlarını gösteren Duygu panosu.](/images/dashboard/sentiment-overview.png)
+
+Sinyalleri karşılaştırmak için **Zaman içinde puan** kullanın. Gösterilecek puanları seçin, ardından o zaman bloğunun mesajlarını görmek için bir nokta seçin. **Ajan başına** tablosu sinyalin nerede yoğunlaştığını gösterir. **Mesajlar** bölümünde en güçlü negatif puana göre sırala veya tek bir puan seç. Başarısız olanı belirlemeden önce çevresindeki konuşmayı okumak için bir mesajı kendi oturumunda aç.
+
+![En güçlü negatif puana göre sıralanmış Duygu mesaj listesi ve her kaynak oturumunun bağlantısı.](/images/dashboard/sentiment-messages.png)
+
+## Hangi mesajlar puanlandırılır
+
+Yalnızca bir kişinin yazdığı mesajlar:
+
+- Özel ajanlarınızın SDK ile insan girdisi olarak kaydettiği mesajlar.
+- Claude Code, Codex, OpenCode, pi, Hermes ve OpenClaw'a yazılan istemler; oturum yazıtları gönderildiğinde (varsayılan). Zamanlanmış işler, enjekte edilen talimatlar, alt-ajan el değişimleri ve ajanın kendi çalışma zamanının yazdığı diğer metinler puanlandırılmaz. `claude -p`, `codex exec` ve `hermes -z` gibi etkileşimsiz çalışmalar da puanlandırılmaz: bir komut dosyası bu istemler yazıştı, bir kişi değil.
+
+Puanlama kişinin kendi sözlerini yargılar. "Düzelt" gibi kısa, keskin bir talimat öfke olarak sayılmaz ve bir soru sormak kafa karışıklığı olarak sayılmaz. Yeni bir istek düzeltme değildir ve teşekkür etmek kendi başına çözüldü olarak sayılmaz.

@@ -210,8 +210,6 @@ CASES = [
     (["plan"], "team_offer"),
     (["plan", "claim", "team_offer"], "team_offer"),
     (["otel", "status"], "support-service"),
-    (["otel", "enable"], "● enabled"),
-    (["otel", "disable"], "○ disabled"),
     (["slack", "status"], "Reliability"),
     (["slack", "disconnect"], "disconnected"),
     (["settings", "context-windows", "list"], "64000"),
@@ -235,8 +233,6 @@ def test_deliberate_human_command_views(logged_in, runner, monkeypatch, tmp_path
         result = runner.invoke(app, args)
     assert result.exit_code == 0, result.output
     assert expected in result.stdout, result.stdout
-    if argv[:2] != ["query", "export"] or "--out" in argv or "json" in argv:
-        assert result.stdout.lstrip().startswith("failproof ai"), result.stdout
     assert "\nFIELD\n" not in result.stdout and "\nVALUE\n" not in result.stdout
     for raw in ('"eval_key":', '"created":', '"permissions":', "dashboards  []", "{'"):
         assert raw not in result.stdout, result.stdout

@@ -44,8 +44,10 @@ def test_jev_permission_is_assignable_and_in_the_admin_preset_only():
     )
 
     assert "jev:evaluate" in ALL_PERMISSIONS
-    # In the server's declared order: after usage:read, and orgs:admin stays last.
-    assert ALL_PERMISSIONS.index("jev:evaluate") == ALL_PERMISSIONS.index("usage:read") + 1
+    # In the server's declared order (Permission::all): usage:read, billing:manage, jev:evaluate;
+    # orgs:admin stays last.
+    assert ALL_PERMISSIONS.index("jev:evaluate") == ALL_PERMISSIONS.index("billing:manage") + 1
+    assert ALL_PERMISSIONS.index("billing:manage") == ALL_PERMISSIONS.index("usage:read") + 1
     assert ALL_PERMISSIONS[-1] == "orgs:admin"
     # A machine key carries it, so it is grantable to a key as well as a member.
     assert "jev:evaluate" in ASSIGNABLE_PERMISSIONS
@@ -559,3 +561,18 @@ def test_query_delete_not_found_exits_6(logged_in, runner):
     respx.get(f"{BASE}/api/queries").mock(return_value=httpx.Response(200, json={"queries": [{"id": "q1", "name": "errs"}]}))
     result = runner.invoke(app, ["query", "delete", "ghost", "--yes"])
     assert result.exit_code == 6
+
+
+def test_code_fixes_and_billing_permissions_match_the_server():
+    from fp_cli.permissions import (ASSIGNABLE_PERMISSIONS, KEY_ASSIGNABLE_PERMISSIONS, PRESETS,
+                                    normalize_permissions)
+    # code_fixes:* are grantable to members and keys; billing:manage to members only.
+    for p in ("code_fixes:read", "code_fixes:write"):
+        assert p in ASSIGNABLE_PERMISSIONS and p in KEY_ASSIGNABLE_PERMISSIONS
+    assert "billing:manage" in ASSIGNABLE_PERMISSIONS
+    assert "billing:manage" not in KEY_ASSIGNABLE_PERMISSIONS
+    # code_fixes:read rides the ":read" suffix into read-only and standard, like the server's sets.
+    assert "code_fixes:read" in PRESETS["read-only"] and "code_fixes:read" in PRESETS["standard"]
+    assert "code_fixes:write" not in PRESETS["standard"]
+    # The server still parses the brief `fixes:*` spelling as policies:*.
+    assert normalize_permissions(["fixes:read", "fixes:write"]) == ["policies:read", "policies:write"]

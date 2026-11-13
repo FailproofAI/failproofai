@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import itertools
+import time
 from dataclasses import asdict
 from typing import List, Optional, Tuple
 
@@ -23,7 +25,7 @@ from .._context import (
     resolved_base_url,
 )
 from ..client import ClientContext, get_session_user, org_is_accessible
-from ..errors import ApiError, AuthError
+from ..errors import ApiError, AuthError, NetworkError
 
 
 def _resolve_login_org(
@@ -106,40 +108,187 @@ def _looks_like_email(value: str) -> bool:
     return "@" in s and " " not in s and "." in s.rsplit("@", 1)[-1] and len(s) >= 5
 
 
+_LINK_OPENING = "opening your browser — if nothing appears, open this link:"
+_LINK_ANYWHERE = "open this link on any device to authorize:"
+_NO_BROWSER_LOGIN = "this Cloud has no browser login yet — using an emailed code"
+_NO_LINK_NOW = "couldn't get a link right now — using an emailed code"
+_LINK_ENDED = {
+    "denied": "not authorized",
+    "expired": "that link expired",
+    "claimed": "that link was already used",
+}
+_SPINNER = "⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏"
+
+
+def _offer_link(url: str) -> None:
+    """The link goes on screen before any browser opens, so one that never appears strands
+    nobody. Over SSH or with no display it is the whole offer, and works from any device."""
+    opening = auth.can_open_browser()
+    output.print_unwrapped(_LINK_OPENING if opening else _LINK_ANYWHERE)
+    output.print_unwrapped(url)
+    if opening:
+        auth.open_url(url)
+
+
+def _browser_login_in_box(state: AppState, base: str, box: selectmod.LoginBox):
+    """Link → approval → session, inside the box. Returns ``(token, expires_in, user)``, or ``None``
+    with a note saying why when there's no link to offer. Tab raises ``SwitchSignIn``, and ``box.link`` keeps the
+    link for coming back: asking for another each time would spend the rate limit and open another
+    tab, and an approval given in the meantime would be lost."""
+    options = {"timeout": state.timeout, "verify": not state.insecure}
+    frames = itertools.cycle(_SPINNER)
+
+    def tick(left: float, offline: bool) -> None:
+        minutes, seconds = divmod(int(left), 60)
+        doing = "reconnecting" if offline else "waiting for you to authorize"
+        box.waiting(f"{next(frames)} {doing} · {minutes}:{seconds:02d}", "tab use email · esc cancel")
+        if box.wait_key(0.1) == "\t":
+            raise selectmod.SwitchSignIn()
+
+    try:
+        while True:
+            if box.link is not None:
+                box.show_link(_LINK_ANYWHERE, box.link.verification_url)
+            else:
+                box.working("asking for a link…")
+                try:
+                    box.link = auth.start_browser_login(base, **options)
+                except (ApiError, NetworkError):
+                    # The link is only the default. A rate limit or an outage of this one route
+                    # must not stand between a person and the emailed code.
+                    box.note(_NO_LINK_NOW)
+                    return None
+                if box.link is None:
+                    box.note(_NO_BROWSER_LOGIN)
+                    return None
+                # The link goes on screen before any browser opens, so one that never appears
+                # strands nobody. Over SSH or with no display it is the whole offer.
+                opening = auth.can_open_browser()
+                box.show_link(_LINK_OPENING if opening else _LINK_ANYWHERE, box.link.verification_url)
+                if opening:
+                    auth.open_url(box.link.verification_url)
+            # ponytail: Esc during a stalled poll waits out its 10s timeout (Ctrl-C doesn't);
+            # polling on a thread would fix that if it ever matters.
+            outcome = auth.await_browser_approval(base, box.link, tick=tick, **options)
+            # A key pressed during the last poll is still waiting to be read. Esc and Tab mean no
+            # session, and this is the last moment that can be honoured: the claim creates it.
+            # Anything else was pressed at a screen that's gone, and must not answer the next
+            # one: Enter would take a new link with "not authorized" on screen for no time.
+            # `is not None`: the first byte of a non-ASCII character reads as "".
+            left_for_email = False
+            while (key := box.wait_key(0)) is not None:
+                left_for_email = left_for_email or key == "\t"
+            if outcome == "approved":
+                if left_for_email:
+                    raise selectmod.SwitchSignIn()
+                box.working("finishing sign-in…")
+                return auth.claim_browser_login(base, box.link.poll_secret, **options)
+            box.link = None
+            box.link_ended(_LINK_ENDED.get(outcome, "that link can't be used any more"))
+    except KeyboardInterrupt:  # Ctrl-C during a request, outside `wait_key`
+        raise selectmod.LoginCancelled()
+
+
+def _browser_login_plain(state: AppState, base: str):
+    """The same, for a terminal with no raw mode (Windows). ``None`` when this Cloud has
+    no browser login. A link that ends ends the login: `fp login` is one command away."""
+    options = {"timeout": state.timeout, "verify": not state.insecure}
+    try:
+        login = auth.start_browser_login(base, **options)
+    except (ApiError, NetworkError):  # as in the box: the link is not the only way in
+        output.info(_NO_LINK_NOW)
+        return None
+    if login is None:
+        output.info(_NO_BROWSER_LOGIN)
+        return None
+    _offer_link(login.verification_url)
+    output.info("waiting for you to authorize — ctrl-c to cancel")
+    was_offline = False
+
+    def tick(_left: float, offline: bool) -> None:
+        nonlocal was_offline
+        if offline and not was_offline:
+            output.info("reconnecting…")
+        elif was_offline and not offline:
+            output.info("back online — still waiting for you to authorize")
+        was_offline = offline
+        time.sleep(0.25)
+
+    outcome = auth.await_browser_approval(base, login, tick=tick, **options)
+    if outcome == "approved":
+        if was_offline:
+            output.info("back online")
+        return auth.claim_browser_login(base, login.poll_secret, **options)
+    raise AuthError(
+        f"{_LINK_ENDED.get(outcome, 'That link cannot be used any more')}.".capitalize(),
+        hint="run fp login for a new link",
+    )
+
+
+def _email_code_in_box(state: AppState, base: str, box: selectmod.LoginBox, email_opt: Optional[str],
+                       *, typed: str = "", tab: bool = False):
+    """Email → code → verify, inside the box. Returns ``(token, expires_in, user)``. With ``tab``,
+    Tab at the email raises ``SwitchSignIn``; ``typed`` is what the field starts with."""
+    # email
+    if email_opt:
+        email = email_opt
+        box.note("email", email)
+    else:
+        keys = "enter send a code · tab SSO · esc cancel" if tab else "enter send a code · esc cancel"
+        email = box.text_step("email", helper=keys, validate=_looks_like_email,
+                              error_msg="that doesn't look like an email", value=typed, tab=tab)
+    # send the code
+    box.working("sending a code…")
+    auth.request_otp(base, email, timeout=state.timeout, verify=not state.insecure)
+    box.note("code sent")
+    # code → verify. A wrong/expired code is reported cleanly INSIDE the box (not a raw
+    # HTTP 500) with a relogin hint, then we exit — re-run `fp login` for a fresh code.
+    code = box.text_step("code", helper="enter the 6-digit code", slots=6, collapse=False)
+    box.working("verifying…")
+    try:
+        token, expires_in, user = auth.verify_otp(
+            base, email, code.strip(), timeout=state.timeout, verify=not state.insecure
+        )
+    except AuthError:
+        box.fail("that code didn't match or has expired", "sign in again with fp login")
+        raise typer.Exit(code=4)
+    except ApiError as exc:  # e.g. too many attempts (429)
+        box.fail(exc.message, "try fp login again in a bit")
+        raise typer.Exit(code=exc.exit_code)
+    box.note("code")  # collapse to `✓ code` — never echo the value
+    return token, expires_in, {**user, "email": user.get("email") or email}
+
+
+def _sign_in_in_box(state: AppState, base: str, box: selectmod.LoginBox, email_opt: Optional[str]):
+    """Start on a browser link, with Tab to an emailed code and back. Returns ``(method, creds)``."""
+    if email_opt:
+        return "email", _email_code_in_box(state, base, box, email_opt)
+    typed = ""
+    while True:
+        try:
+            creds = _browser_login_in_box(state, base, box)
+        except selectmod.SwitchSignIn:
+            try:
+                return "email", _email_code_in_box(state, base, box, None, typed=typed, tab=True)
+            except selectmod.SwitchSignIn as switch:
+                typed = switch.typed
+                continue
+        if creds:
+            return "browser", creds
+        return "email", _email_code_in_box(state, base, box, None, typed=typed)
+
+
 def _login_interactive(state: AppState, base: str, email_opt: Optional[str], org_opt: Optional[str]) -> None:
-    """The single-box interactive login (real TTY only): one redrawn-in-place panel — email → code →
-    (org picker) → signed-in. Mirrors the non-interactive orchestration below; only the UI differs.
-    Network/auth errors propagate (terminal restored on the way out) to the standard red error box."""
+    """The single-box interactive login (real TTY only): one redrawn-in-place panel — browser link
+    or email code → (org picker) → signed-in. Mirrors the non-interactive orchestration below; only the
+    UI differs. Network/auth errors propagate (terminal restored on the way out) to the standard red
+    error box."""
     saved = state.config.org
     persisted = False
+
     with selectmod.LoginBox() as box:
         try:
-            # email
-            if email_opt:
-                email = email_opt
-                box.note("email", email)
-            else:
-                email = box.text_step("email", validate=_looks_like_email,
-                                      error_msg="that doesn't look like an email")
-            # send the code
-            box.working("sending a code…")
-            auth.request_otp(base, email, timeout=state.timeout, verify=not state.insecure)
-            box.note("code sent")
-            # code → verify. A wrong/expired code is reported cleanly INSIDE the box (not a raw
-            # HTTP 500) with a relogin hint, then we exit — re-run `fp login` for a fresh code.
-            code = box.text_step("code", helper="enter the 6-digit code", slots=6, collapse=False)
-            box.working("verifying…")
-            try:
-                token, expires_in, user = auth.verify_otp(
-                    base, email, code.strip(), timeout=state.timeout, verify=not state.insecure
-                )
-            except AuthError:
-                box.fail("that code didn't match or has expired", "sign in again with fp login")
-                raise typer.Exit(code=4)
-            except ApiError as exc:  # e.g. too many attempts (429)
-                box.fail(exc.message, "try fp login again in a bit")
-                raise typer.Exit(code=exc.exit_code)
-            box.note("code")  # collapse to `✓ code` — never echo the value
+            method, (token, expires_in, user) = _sign_in_in_box(state, base, box, email_opt)
             # persist first (so we can read authoritative memberships), then resolve the org
             auth.persist_session(state.config, base, token, expires_in, user, insecure=state.insecure)
             persisted = True
@@ -181,32 +330,35 @@ def _login_interactive(state: AppState, base: str, email_opt: Optional[str], org
                 chosen = slugs[0] if slugs else None  # single/none → named only in the final block
             state.config.org = chosen
             cfgmod.save_config(state.config)
-            analytics.capture("logged_in")  # also count the interactive (real-TTY) login path
-            who = user.get("email") or email
-            box.finish(who, chosen)
+            analytics.capture("logged_in", {"method": method})  # also count the interactive (real-TTY) login path
+            box.finish(user.get("email"), chosen)
         except selectmod.LoginCancelled:
             box.cancel(persisted)  # calm close inside the same frame
 
 
 def login(
     ctx: typer.Context,
-    email: Optional[str] = typer.Option(None, "--email", "-e", help="Email to send the login code to (prompted if omitted)."),
+    email: Optional[str] = typer.Option(None, "--email", "-e", help="Send the sign-in code to this email, without asking for it."),
     org: Optional[str] = typer.Option(None, "--org", help="Org/tenant slug to sign in to — skips the picker. Must be one you can access."),
     force: bool = typer.Option(False, "--force", help="Re-authenticate even if you already have a valid session."),
 ) -> None:
-    """Sign in to the dashboard with an emailed one-time code.
+    """Sign in to the dashboard, from a browser or with an emailed one-time code.
 
-    You enter your email (or pass `--email`), the dashboard emails a 6-digit code, and you paste
-    it back. The session is saved to `~/.failproofai/fpcli/cli-auth.json` (mode 0600) and lasts ~24h — just
+    On a terminal it starts on a link, to sign in with your browser or SSO. It opens your browser
+    (over SSH or with no display it just shows the link, which works from any device); authorize
+    there and the terminal finishes on its own. Press **Tab** for a 6-digit code by email instead,
+    which is also what `--email`, `--json` and anything without a terminal use. A Cloud without
+    browser login uses the code by itself.
+    The session is saved to `~/.failproofai/fpcli/cli-auth.json` (mode 0600) and lasts ~24h — just
     re-run `login` when it expires. Already signed in? `login` shows who you are and exits 0
     without prompting; pass `--force` to re-authenticate anyway.
 
     The active org is chosen here and saved for later commands. With one org it's picked
-    automatically; with several you choose from a list once your email is verified (your last-used
+    automatically; with several you choose from a list once you're signed in (your last-used
     org is the Enter-to-keep default), or pass `--org <slug>` to skip the picker. Switch it later
     with `fp orgs switch <slug>`.
 
-    Both prompts are skippable: `--email` / `--org` provide the values up front, otherwise you're
+    The prompts are skippable: `--email` / `--org` provide the values up front, otherwise you're
     asked interactively. First time, set the dashboard URL with the global `--base-url` (saved for
     next time); add the global `--insecure` for a self-signed/internal dashboard.
 
@@ -216,9 +368,9 @@ def login(
 
     Examples:
 
-    * `fp login` — fully interactive: prompts for your email, then the org picker
+    * `fp login` — fully interactive: browser or email code, then the org picker
     * `fp --base-url https://fp.example.com login` — first time: set the dashboard URL, then sign in interactively
-    * `fp login --email you@example.com --org acme` — skip both prompts (email + org up front)
+    * `fp login --email you@example.com --org acme` — skip the menu and the picker (email code + org up front)
     * `fp --base-url https://dash.internal --insecure login` — self-signed / internal dashboard
     """
     state: AppState = ctx.obj
@@ -284,14 +436,29 @@ def login(
         _login_interactive(state, base, email, org)
         return
     output.auth_header()
-    if not email:
-        email = output.prompt("email")
-    auth.request_otp(base, email, timeout=state.timeout, verify=not state.insecure)
-    output.code_sent(email)
-    code = output.prompt("code")
-    token, expires_in, user = auth.verify_otp(
-        base, email, str(code).strip(), timeout=state.timeout, verify=not state.insecure
-    )
+    method = "email"
+    creds = None
+    # A terminal this can't draw the box on (Windows). Pipes, CI and `--json` skip this, and so
+    # does a redirected stderr: the link and the waiting would go to that file, out of sight.
+    if not state.json and not email and selectmod.stdin_is_tty() and selectmod.stderr_is_tty():
+        email = str(output.prompt("email, or just press enter for a browser link", default="")).strip()
+        if not email:
+            try:
+                creds = _browser_login_plain(state, base)
+            except KeyboardInterrupt:
+                output.info("cancelled — not signed in")
+                return
+            method = "browser" if creds else "email"
+    if creds is None:
+        if not email:
+            email = output.prompt("email")
+        auth.request_otp(base, email, timeout=state.timeout, verify=not state.insecure)
+        output.code_sent(email)
+        code = output.prompt("code")
+        creds = auth.verify_otp(
+            base, email, str(code).strip(), timeout=state.timeout, verify=not state.insecure
+        )
+    token, expires_in, user = creds
     # Persist the token first so we can query the session for authoritative memberships:
     # the OTP-verify payload is slim (no memberships / is_instance_admin) — only
     # GET /api/auth/session returns them.
@@ -354,7 +521,7 @@ def login(
                         f"{slugs[0]}`) or `fp orgs switch <slug>`.")
         raise typer.Exit(code=2)
 
-    analytics.capture("logged_in")  # name-only business event (no email/id/org value)
+    analytics.capture("logged_in", {"method": method})  # no email/id/org value
     if state.json:
         output.emit_json(
             {"logged_in": True, "email": who, "org": chosen, "expires_in_secs": expires_in}

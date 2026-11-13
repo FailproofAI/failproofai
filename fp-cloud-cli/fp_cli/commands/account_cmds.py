@@ -106,16 +106,6 @@ def otel_status(ctx: typer.Context) -> None:
     request(ctx, "GET", "/api/otel/status")
 
 
-def otel_enable(ctx: typer.Context) -> None:
-    """Enable OTEL ingestion for the Cloud org."""
-    request(ctx, "PUT", "/api/settings/otel.ingest_enabled", {"value": True})
-
-
-def otel_disable(ctx: typer.Context) -> None:
-    """Disable OTEL ingestion for the Cloud org."""
-    request(ctx, "PUT", "/api/settings/otel.ingest_enabled", {"value": False})
-
-
 def slack_status(ctx: typer.Context) -> None:
     """Show Slack connection status (session only)."""
     _cloud.session_only(ctx.obj, "slack status")
@@ -158,7 +148,7 @@ def register_context_windows(settings_app):
 def register(app):
     for name, help_text, commands in (
         ("roles", "Manage permission sets.", (("list", roles_list), ("show", roles_show), ("create", roles_create), ("update", roles_update), ("delete", roles_delete))),
-        ("otel", "Control Cloud OTEL ingest.", (("status", otel_status), ("enable", otel_enable), ("disable", otel_disable))),
+        ("otel", "Control Cloud OTEL ingest.", (("status", otel_status),)),
         ("slack", "Manage the Slack integration (session only).", (("status", slack_status), ("disconnect", slack_disconnect))),
     ):
         group = typer.Typer(no_args_is_help=True, help=help_text, context_settings={"help_option_names": ["-h", "--help"]})

@@ -72,7 +72,7 @@ Exactly one credential is in play per invocation, chosen in this order:
 ## Identity
 
 ### login / logout / whoami
-- `fp login [--email you@x.com] [--org <slug>]` — emails a one-time code; on a real TTY it's a single interactive box, else a plain prompt. Saves the session to `~/.failproofai/fpcli/cli-auth.json` (was `~/.fp/cli.json`; a session at the old path is adopted automatically on the next command, so an upgrade signs nobody out). **You cannot complete this for the user** (it needs the emailed code). `--org` picks the tenant at login. **Session-only** — exit 2 under a key.
+- `fp login [--email you@x.com] [--org <slug>]` — on a real TTY, a single interactive box asking browser (authorize a link) or email (a one-time code); `--email`, `--json` and anything without a terminal go straight to the code at a plain prompt. Saves the session to `~/.failproofai/fpcli/cli-auth.json` (was `~/.fp/cli.json`; a session at the old path is adopted automatically on the next command, so an upgrade signs nobody out). **You cannot complete this for the user** (it needs their browser or their emailed code). `--org` picks the tenant at login. **Session-only** — exit 2 under a key.
 - `fp logout` — clears the saved session. **Session-only** — exit 2 under a key (a key cannot be "logged out"; revoke it instead).
 - `fp whoami` — active org + your permissions. Run this first; exit 4 = no usable credential.
   **Under a key it answers a different question and still exits 0:** it reports that there is no signed-in user, names the auth mode, and gives the org it will act on. So branch on the auth mode, not on the absence of a user identity — and note that it does not prove the key is accepted or check any permission. Let the first real read do that.
@@ -385,8 +385,8 @@ Unknown-route 404s exit 6 with “not available on this FailproofAI Cloud yet”
 Missing-record 404s also exit 6 but preserve the server's record-not-found message;
 an empty response on a record-scoped request identifies the missing record path.
 Session-only commands exit 2 before HTTP in key mode.
-Human output uses mint/pink open screens and full ids; legacy `--full-ids`
-remains accepted. Exports refuse to overwrite existing files.
+Human output uses rounded panels and full ids, which wrap rather than being cut;
+legacy `--full-ids` remains accepted. Exports refuse to overwrite existing files.
 
 Use global `--json` for API objects or `--out` to save a session/query JSON
 export. Without either, human mode renders a readable view rather than raw
@@ -412,5 +412,5 @@ structures. CSV query export remains pipeable CSV.
 | `users delete ID` / `users defaults` | deletion is by id, not email |
 | `usage windows` / `plan` / `plan claim OFFER` | usage windows is API-key only; plan (offers + trial) and claim are session-only — each refuses the other mode before HTTP |
 | `settings context-windows list\|set MODEL TOKENS\|delete MODEL` | tokens 0–1000000; model names may contain `/` |
-| `otel status\|enable\|disable` | Cloud org switch `otel.ingest_enabled`, not local collector configuration |
+| `otel status` | Cloud OTLP ingest status (always on): events in 24h, last received, services. Not local collector configuration |
 | `slack status\|disconnect` | session only |

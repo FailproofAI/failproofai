@@ -22,6 +22,10 @@
 
 ## 1.0.14-beta.0 — 2026-11-02
 
+### Features
+
+- `fp login` can sign you in from a browser, as `failproofai config` does: on a terminal it starts on a link, Tab switches to a code by email, and either way you get your own session. New deliberate-run harness: `__tests__/e2e/layout/fp-login.sh`. (#981)
+
 ### Fixes
 
 - Build and verify the `darwin-arm64` daemon on `macos-15`. GitHub retired the `macos-14` runner image on 2026-11-02, so that leg of `build-daemon.yml` and of `publish.yml`'s `verify-install` no longer got a runner, which would have stopped the next release (#999)

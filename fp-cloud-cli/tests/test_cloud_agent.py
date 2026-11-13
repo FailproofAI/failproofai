@@ -65,7 +65,6 @@ def test_ask_artifacts_and_approvals(logged_in, runner, monkeypatch, json_mode, 
     else:
         assert "EVENT TOTAL" in result.output
         assert "42" in result.output
-        assert result.stdout.index("failproof ai v") < result.stdout.index("EVENT TOTAL")
         if tty:
             assert "alert a1" in result.output
             assert "Approve this change" in result.output
@@ -184,8 +183,7 @@ def test_approval_answer_failure_is_clean(logged_in, runner, json_mode, failure,
         assert data["exit_code"] == exit_code
         message = data["error"]
     else:
-        assert len(result.stderr.strip().splitlines()) == 1
-        message = result.stderr
+        message = " ".join(result.stderr.replace("│", " ").split())  # wrapped in the red error box
     assert "Assistant approval answer failed" in message
     assert "delivery unconfirmed" in message
     if failure == "404":
@@ -239,15 +237,13 @@ def test_ask_api_key_uses_session_only_wording(logged_in, runner, json_mode):
     if json_mode:
         assert json.loads(result.stdout)["error"] == expected
     else:
-        assert expected in result.stderr
-        assert len(result.stderr.strip().splitlines()) == 1
+        assert expected in " ".join(result.stderr.replace("│", " ").split())  # the red error box wraps it
 
 
-def test_artifact_header_precedes_title_once(capsys):
+def test_artifacts_render_in_order(capsys):
     from fp_cli.commands.agent_cmds import render_artifact
     output.configure(no_color=True)
     render_artifact({"title": "First artifact", "result": RESULT})
     render_artifact({"title": "Second artifact", "result": RESULT})
     rendered = capsys.readouterr().out
-    assert rendered.count("failproof ai v") == 1
-    assert rendered.index("failproof ai v") < rendered.index("FIRST ARTIFACT") < rendered.index("SECOND ARTIFACT")
+    assert rendered.index("FIRST ARTIFACT") < rendered.index("SECOND ARTIFACT")

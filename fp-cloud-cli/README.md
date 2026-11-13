@@ -34,16 +34,23 @@ uv run fp --help
 
 ## Authentication
 
-The CLI talks to your dashboard (set `--base-url` or `FP_DASHBOARD_URL`) and logs in with
-an emailed one-time code:
+The CLI talks to your dashboard (set `--base-url` or `FP_DASHBOARD_URL`) and signs you in
+from a browser or with an emailed one-time code:
 
 ```bash
-fp login --email you@example.com
-# enter the 6-digit code; the session is stored in
+fp login                           # opens a link to authorize; press tab for a code by email instead
+fp login --email you@example.com   # straight to the code; also what scripts and pipes use
+# either way the session is stored in
 # ~/.failproofai/fpcli/cli-auth.json (mode 0600)
 fp whoami
 fp logout
 ```
+
+`fp` starts on a link, to sign in with your browser or SSO, and opens it (over SSH or with no
+display it only shows it, and it works from any device). Authorize it and the terminal finishes
+on its own. That terminal gets your access in all your orgs until the session expires, so only
+authorize a link you just asked for. Press **tab** for a code by email instead, and tab again to
+go back. If there's no link to offer, as on a dashboard without browser login, it uses the code.
 
 Sessions expire (24h by default); re-run `fp login` when prompted.
 
@@ -306,7 +313,7 @@ fp usage windows
 fp plan                                           # session
 fp plan claim <offer>                             # session
 fp settings context-windows list|set <model> <tokens>|delete <model>
-fp otel status|enable|disable
+fp otel status
 fp slack status|disconnect                          # session
 ```
 
@@ -322,8 +329,8 @@ Unknown-route 404s exit 6 with “not available on this FailproofAI Cloud yet”
 Missing-record 404s also exit 6 but report that the record was not found.
 `plan` and `plan claim` require a signed-in person and deny API-key mode before
 HTTP with the standard `fp login` message.
-Human screens use the mint/pink wordmark, grey labels, open tables and full ids;
-existing JSON shapes are unchanged.
+Human screens use rounded panels, the purple `◆ fp` mark and full ids, which wrap
+rather than being cut; existing JSON shapes are unchanged.
 
 Human commands show summaries, tables and wrapped text rather than response
 objects. Use global `--json` for raw API results. For `sessions export` or

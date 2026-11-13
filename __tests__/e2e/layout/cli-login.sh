@@ -39,8 +39,10 @@ OUT=$(mktemp -d)
 PASS=0; FAIL=0
 ok()  { PASS=$((PASS+1)); printf '  \033[32mPASS\033[0m %s\n' "$1"; }
 bad() { FAIL=$((FAIL+1)); printf '  \033[31mFAIL\033[0m %s\n       %s\n' "$1" "${2:-}"; }
-has()   { if printf '%s' "$2" | grep -qF -- "$3"; then ok "$1"; else bad "$1" "missing [$3] in: $(printf '%s' "$2" | tr '\n' ' ' | tail -c 400)"; fi; }
-hasnt() { if printf '%s' "$2" | grep -qF -- "$3"; then bad "$1" "unexpected [$3]"; else ok "$1"; fi; }
+# Not `printf | grep -q`: on input bigger than a pipe buffer grep exits at the first match,
+# printf dies of SIGPIPE, and under pipefail a found string reads as a missing one.
+has()   { if [[ "$2" == *"$3"* ]]; then ok "$1"; else bad "$1" "missing [$3] in: $(printf '%s' "$2" | tr '\n' ' ' | tail -c 400)"; fi; }
+hasnt() { if [[ "$2" == *"$3"* ]]; then bad "$1" "unexpected [$3]"; else ok "$1"; fi; }
 eq()    { if [ "$2" = "$3" ]; then ok "$1"; else bad "$1" "want [$3] got [$2]"; fi; }
 head1() { printf '\n\033[1m── %s\033[0m\n' "$1"; }
 jqp() { python3 -c "import sys,json;d=json.load(sys.stdin);print(eval('d'+sys.argv[1]))" "$1" 2>/dev/null; }

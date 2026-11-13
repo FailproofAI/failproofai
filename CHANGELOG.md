@@ -2,6 +2,10 @@
 
 ## 1.0.14-beta.0 — 2026-11-02
 
+### Fixes
+
+- Build and verify the `darwin-arm64` daemon on `macos-15`. GitHub retired the `macos-14` runner image on 2026-11-02, so that leg of `build-daemon.yml` and of `publish.yml`'s `verify-install` no longer got a runner, which would have stopped the next release (#999)
+
 ### Docs
 
 - Add public pages for the MCP server, the Slack app and product analytics, which the assistant and MCP server can now answer from (#982).
@@ -10,6 +14,7 @@
 
 - Replace Dependabot's #965 and #955, neither of which could install, and clear every fixable Dependabot alert in the TypeScript SDK's integration fixtures. `mastra-1` takes `@mastra/mcp` 2.7.0 with the `@mastra/core` 1.81.0 and `@mastra/memory` 1.40.0 it needs, `mastra-0` stays on Mastra 0.x and clears `@hono/node-server`, `systeminformation`, `glob` and `minimatch`, `deepmerge` leaves three fixtures through `html-to-text` 10.0.1, and the nested zod 3 leaves two. None of these lockfiles ship in a published package (#966)
 - Stop Dependabot moving `@mastra/core` off the `mastra-0` floor to remove `@ai-sdk/provider-utils`. `.github/dependabot.yml` gives that package its own `ignore` range on `ai-4` and `mastra-0`, because a range is read only for the package being updated, not for a parent moved on its behalf (#966)
+- Clear both findings that had OSV-Scanner red on `main` and on every pull request: `rustix` 1.1.4 → 1.1.6 in `Cargo.lock` for RUSTSEC-2026-0486, and `oauthlib` 4.0.0 → 4.0.1 in `sdk/python/uv.lock`, the SDK's dev/test lockfile (transitive via `crewai` and `kubernetes`), for GHSA-3jp2-3mrg-2vxc. The same branch takes all thirteen open Dependabot updates, #983 to #995, so one merge brings every dependency up to date (#999)
 
 ## 1.0.13 — 2026-11-02
 

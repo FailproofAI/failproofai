@@ -4,19 +4,19 @@ description: "Configuration, providers, keys, request data, and failure behavior
 icon: "braces"
 ---
 
-Jev का Failproof AI में दो उपयोग हैं:
+Failproof AI में Jev के दो उपयोग हैं:
 
-| उपयोग | कब चलता है | क्या देता है | यहाँ शुरू करें |
+| उपयोग | कब चलता है | क्या return करता है | यहाँ शुरू करें |
 | --- | --- | --- | --- |
-| Session evaluation | एक सत्र समाप्त होने के बाद | एक निश्चित-उत्तर प्रश्न के लिए स्कोर | [Jev evaluations](/hi/evaluations/jev) |
-| Tool-call policy review | गेटेड टूल कॉल चलने से पहले | स्थापित नीतियों के साथ एक निर्णय | [Jev policies](/hi/policies/jev) |
+| Session evaluation | एक session समाप्त होने के बाद | fixed-answer question के लिए एक स्कोर | [Jev evaluations](/hi/evaluations/jev) |
+| Tool-call policy review | एक gated tool call चलने से पहले | installed policies के साथ एक verdict | [Jev policies](/hi/policies/jev) |
 
-## संदर्भ पृष्ठ
+## Reference pages
 
 | विषय | विवरण |
 | --- | --- |
-| [Evaluation questions](/hi/reference/jev-evaluations) | बूलियन और क्रमबद्ध-स्कोर मानदंड, परिणाम, सीमाएं और बैकफिल। |
-| [Provider comparison and own-key setup](/hi/reference/jev-providers) | TypeSafe, OpenRouter, Vercel, Cloudflare, और कस्टम एंडपॉइंट्स; URL अनुमान, मॉडल ID, `jev.json`, मोड्स, और फॉलबैक कोड। |
-| [FailproofAI Cloud route](/hi/reference/jev-cloud) | मशीन-कुंजी अनुमतियां, स्वचालित observe सेटअप, उपयोग सीमाएं, कनेक्शन स्थिति, और डेटा हैंडलिंग। |
+| [Evaluation questions](/hi/reference/jev-evaluations) | Boolean और ordered-score criteria, results, limits, और backfill। |
+| [Provider comparison और own-key setup](/hi/reference/jev-providers) | TypeSafe, OpenRouter, Vercel, Cloudflare, और custom endpoints; URL inference, model IDs, `jev.json`, modes, और fallback codes। |
+| [FailproofAI Cloud route](/hi/reference/jev-cloud) | Machine-key permissions, automatic observe setup, usage limits, connection state, और data handling। |
 
-स्थानीय CLI कमांड्स [Failproof AI CLI reference](/hi/reference/failproof-cli) में सूचीबद्ध हैं। [local dashboard reference](/hi/reference/local-dashboard#set-up-jev) इसकी Jev सेटिंग्स और गतिविधि दृश्य का वर्णन करता है।
+local CLI commands [Failproof AI CLI reference](/hi/reference/failproof-cli) में सूचीबद्ध हैं। [local dashboard reference](/hi/reference/local-dashboard#set-up-jev) इसकी Jev settings और activity view का वर्णन करता है।

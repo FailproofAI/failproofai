@@ -1,55 +1,55 @@
 ---
-title: "Người phán xét LLM"
-description: "Đánh giá các phiên làm việc dựa trên những thứ mã không thể đo được — tính chính xác, tông đề, liệu agent có tuân theo chính sách — bằng cách mô tả tiêu chí tốt và để một mô hình đọc cuộc hội thoại."
+title: "LLM judges"
+description: "Chấm điểm các phiên làm việc dựa trên những thứ mã không thể đo lường — tính chính xác, tone giao tiếp, liệu agent có tuân theo chính sách hay không — bằng cách mô tả tiêu chuẩn tốt và cho phép một mô hình đọc cuộc trò chuyện."
 icon: "scale"
 ---
 
-Một bài đánh giá Python được lưu trữ có thể đếm và so sánh: bao nhiêu lần gọi tool, bao nhiêu lỗi, phiên làm việc kéo dài bao lâu. Nhưng nó không thể cho bạn biết liệu câu trả lời có *chính xác*, liệu phản hồi có thô lỗ, hay liệu agent có kiểm tra chính sách trước khi hành động.
+Một quá trình đánh giá Python được lưu trữ có thể đếm và so sánh: bao nhiêu lệnh gọi công cụ, bao nhiêu lỗi, phiên làm việc mất bao lâu. Nhưng nó không thể cho bạn biết liệu một câu trả lời có *chính xác*, liệu câu trả lời có thô lỗ hay không, hoặc liệu agent có kiểm tra chính sách trước khi hành động hay không.
 
-Một **người phán xét LLM** có thể làm được điều đó. Bạn mô tả tiêu chí tốt bằng ngôn ngữ tự nhiên, và một mô hình đọc phiên làm việc rồi trả về điểm từ 0 đến 1 cùng với lý do giải thích.
+Một **LLM judge** có thể. Bạn mô tả tiêu chuẩn tốt bằng ngôn ngữ tự nhiên, và một mô hình sẽ đọc phiên làm việc và trả về điểm số từ 0 đến 1 kèm theo lý do giải thích.
 
 <Note>
-Một người phán xét tốn một lần gọi mô hình cho mỗi phiên làm việc, trong khi đánh giá mã không tốn gì. Chỉ sử dụng người phán xét cho những câu hỏi cần cuộc hội thoại phải được *hiểu rõ* — và đặt một điều kiện cho nó, để nó chỉ chạy trên những phiên làm việc mà câu hỏi thực sự liên quan.
+Một judge tốn một lệnh gọi mô hình cho mỗi phiên nó chạy, trong khi một đánh giá code không tốn gì. Chỉ sử dụng judge cho những câu hỏi cần cuộc trò chuyện được *hiểu* — và hãy cung cấp một điều kiện, để nó chỉ chạy trên các phiên mà câu hỏi thực sự liên quan.
 </Note>
 
-## Tôi nên dùng cái nào?
+## Tôi nên chọn cái nào?
 
-| Câu hỏi | Dùng |
+| Câu hỏi | Sử dụng |
 | --- | --- |
-| Nó có gọi cùng một tool hai lần không? | mã |
-| Có bao nhiêu lỗi? | mã |
-| Phiên làm việc có dưới 30 giây không? | mã |
-| Khách hàng có thể hiện sự khẩn cấp không? | [bộ phân loại](/vi/evaluations/jev) |
-| Khách hàng bực bội đến mức nào? | [bộ phân loại](/vi/evaluations/jev) |
-| Câu trả lời có thực sự chính xác không? | **người phán xét** |
-| Phản hồi có thô lỗ hoặc coi thường không? | **người phán xét** |
-| Nó có kiểm tra chính sách hoàn tiền trước khi hứa hoàn tiền không? | **người phán xét** |
+| Nó có gọi cùng một công cụ hai lần không? | code |
+| Có bao nhiêu lỗi? | code |
+| Phiên làm việc có dưới 30 giây không? | code |
+| Khách hàng có bày tỏ sự khẩn cấp không? | [classifier](/vi/evaluations/jev) |
+| Khách hàng bực bội đến mức nào? | [classifier](/vi/evaluations/jev) |
+| Câu trả lời có thực sự chính xác không? | **judge** |
+| Câu trả lời có thô lỗ hoặc khinh thường không? | **judge** |
+| Nó có kiểm tra chính sách hoàn tiền trước khi hứa hoàn tiền không? | **judge** |
 
-Nguyên tắc cơ bản: **có thể đếm được → mã, câu trả lời bạn có thể liệt kê trước → [bộ phân loại](/vi/evaluations/jev), cần giải thích → người phán xét.** Người phán xét là thứ viết các đoạn mô tả những gì nó thấy; hãy dùng nó khi con số sẽ khiến ai đó hỏi "tại sao?".
+Nguyên tắc chung: **có thể đếm → code, những câu trả lời bạn có thể liệt kê trước → [classifier](/vi/evaluations/jev), cần giải thích → judge.** Một judge là cái viết ra những lời giải thích về những gì nó thấy; hãy sử dụng nó khi con số sẽ khiến ai đó hỏi "tại sao?".
 
-Bạn không cần phải quyết định từ trước. Mô tả những gì bạn muốn đo lường và trợ lý sẽ chọn, sau đó cho bạn biết nó chọn cái nào và tại sao. Bạn có thể thay đổi nó.
+Bạn không phải quyết định trước. Mô tả những gì bạn muốn đo lường và trợ lý sẽ chọn, sau đó cho bạn biết nó đã chọn gì và tại sao. Bạn có thể thay đổi nó.
 
-## Viết một người phán xét
+## Viết một cái
 
 1. Đi tới **Analyze → eval authoring** và chọn **new eval**.
-2. Mô tả những gì bạn muốn được phán xét, và chọn **draft**.
-3. Kiểm tra **criteria**, **threshold**, và **condition**, sau đó triển khai.
+2. Mô tả những gì bạn muốn chấm điểm, và chọn **draft**.
+3. Xem xét **criteria**, **threshold**, và **condition**, sau đó triển khai.
 
-### Tiêu chí (Criteria)
+### Criteria
 
-Một hoặc hai câu, được viết dưới dạng yêu cầu chứ không phải câu hỏi:
+Một hoặc hai câu, được viết như một yêu cầu chứ không phải một câu hỏi:
 
-> Trợ lý không được hứa hoặc phê duyệt hoàn tiền mà không kiểm tra chính sách hoàn tiền trước.
+> Assistant không được hứa hay phê duyệt hoàn tiền mà không trước tiên kiểm tra chính sách hoàn tiền.
 
-Hãy cụ thể về những gì sẽ làm cho nó *thất bại*. "Phản hồi có tốt không?" sẽ cho bạn một con số không có ý nghĩa; câu trên sẽ cho bạn một con số bạn có thể hành động.
+Hãy cụ thể về những gì sẽ khiến nó *thất bại*. "Câu trả lời có tốt không?" cho bạn một con số không có ý nghĩa; câu ở trên cho bạn một con số bạn có thể hành động.
 
-### Ngưỡng (Threshold)
+### Threshold
 
-Điểm từ đó trở lên phiên làm việc vượt qua. `0.7` là một điểm bắt đầu hợp lý. Điểm đầy đủ từ 0 đến 1 luôn được lưu trữ, vì vậy ngưỡng chỉ quyết định pass/fail — bạn có thể thấy phân bố và điều chỉnh.
+Điểm số ở mức hoặc trên đó phiên làm việc vượt qua. `0.7` là một điểm khởi đầu hợp lý. Toàn bộ điểm 0-to-1 luôn được lưu trữ, vì vậy ngưỡng chỉ quyết định vượt qua/thất bại — bạn có thể xem phân phối và điều chỉnh.
 
-### Điều kiện (Condition)
+### Condition
 
-Cùng điều kiện Python như bất kỳ đánh giá nào khác, và nó quan trọng hơn nhiều ở đây. Nếu không có điều kiện, người phán xét sẽ chạy trên **mọi** phiên làm việc trong tổ chức của bạn, mỗi cái tốn một lần gọi mô hình:
+Điều kiện Python giống như bất kỳ đánh giá nào khác, và nó quan trọng hơn nhiều ở đây. Nếu không có điều kiện, judge sẽ chạy trên **mọi** phiên làm việc trong tổ chức của bạn, mỗi lần tốn một lệnh gọi mô hình:
 
 ```python
 session.count("tool_use") > 0
@@ -59,33 +59,33 @@ session.count("tool_use") > 0
 session.agent_id == "support-bot" and session.count("error") > 0
 ```
 
-Bảng điều khiển sẽ cảnh báo bạn nếu bạn triển khai một người phán xét mà không có điều kiện. Điều này đôi khi là đúng — một agent khối lượng thấp mà bạn muốn được phán xét hoàn toàn — nhưng nó phải là một quyết định, không phải một sự cố.
+Bảng điều khiển sẽ cảnh báo bạn nếu bạn triển khai một judge mà không có điều kiện. Đôi khi điều này là đúng — một agent có khối lượng thấp mà bạn muốn được chấm điểm đầy đủ — nhưng nó nên là một quyết định, chứ không phải một tai nạn.
 
-## Người phán xét thấy gì
+## Judge thấy được gì
 
-Cuộc hội thoại, dưới dạng các lượt trao đổi, mới nhất trước nếu phiên làm việc dài:
+Cuộc trò chuyện, dưới dạng các lượt, mới nhất trước nếu phiên làm việc dài:
 
 - những gì người dùng nói
-- những gì trợ lý trả lời
-- **mọi tool mà agent gọi, và kết quả của lệnh gọi đó, theo thứ tự**
+- những gì assistant trả lời
+- **mọi công cụ mà agent gọi, và những gì lệnh gọi đó trả về, theo thứ tự**
 
-Phần cuối cùng đó là những gì làm cho "liệu nó có làm X *trước* Y" là một câu hỏi công bằng để đặt ra. Một lệnh gọi tool thất bại được hiển thị dưới dạng thất bại, vì vậy "liệu nó có phục hồi tốt từ một lỗi" cũng hoạt động.
+Phần cuối cùng là những gì làm cho "nó có làm X *trước* Y không" trở thành một câu hỏi công bằng. Một lệnh gọi công cụ thất bại được hiển thị dưới dạng thất bại, vì vậy "nó có phục hồi một cách duyên dáng từ một lỗi không" cũng hoạt động.
 
-Các phiên làm việc rất dài sẽ bị cắt ngắn để phù hợp với ngữ cảnh của mô hình. Khi điều đó xảy ra, lý do giải thích sẽ nói rõ ràng — bạn sẽ không bao giờ thấy một phán xét được đưa ra trên một phần của phiên được trình bày như một phán xét trên toàn bộ nó.
+Các phiên làm việc rất dài được cắt ngắn để vừa với ngữ cảnh của mô hình. Khi điều đó xảy ra, lý do giải thích nói rõ ràng — bạn sẽ không bao giờ thấy một phán xét được đưa ra trên một phần phiên làm việc được trình bày như thể nó được đưa ra trên toàn bộ phiên.
 
-## Đọc các kết quả
+## Đọc kết quả
 
-Một người phán xét tạo ra một **điểm số** giống như bất kỳ đánh giá có điểm nào khác, vì vậy nó biểu đồ, lọc, và kích hoạt cảnh báo theo cách tương tự. Bên cạnh con số, nó lưu trữ **lý do giải thích** của người phán xét — đoạn văn giải thích những gì nó thấy. Hãy đọc điều đó trước khi một điểm số làm bạn ngạc nhiên; nó thường là một phiên làm việc thực sự thú vị hoặc một dấu hiệu là tiêu chí cần được làm sắc nét hơn.
+Một judge tạo ra một **score** giống như bất kỳ đánh giá nào có điểm khác, vì vậy nó biểu đồ, lọc và kích hoạt cảnh báo theo cách tương tự. Bên cạnh con số, nó lưu trữ **reasoning** của judge — đoạn văn giải thích những gì nó thấy. Hãy đọc nó trước khi một điểm bất ngờ; nó thường là một phiên làm việc thực sự thú vị hoặc dấu hiệu cho thấy criteria cần được làm sắc nét hơn.
 
-Điểm số ổn định đối với các trường hợp rõ ràng nhưng không hoàn toàn xác định từng bit. Coi một điểm số biên giới duy nhất như một gợi ý để đi đọc phiên làm việc, không phải như một phán quyết.
+Điểm số ổn định cho các trường hợp rõ ràng nhưng không hoàn toàn xác định từng bit. Coi một điểm số biên duy nhất như một gợi ý để đi và đọc phiên làm việc, không phải như một phán xét.
 
 ## Giới hạn
 
-- **Thử nghiệm chưa có sẵn.** Một bài chạy khô không có phân công phiên làm việc đằng sau nó, và phân công đó là những gì ủy quyền cho việc chi tiêu ngân sách mô hình của bạn — vì vậy không có gì để một lệnh gọi kiểm tra tính phí. Triển khai với một điều kiện hẹp và đọc một vài kết quả đầu tiên.
-- **Backfill không có sẵn.** Backfill một đánh giá mã trong nhiều tháng lịch sử là miễn phí; làm điều đó với một người phán xét sẽ chi tiêu toàn bộ ngân sách của bạn trong vài phút.
-- **Chỉnh sửa tiêu chí sẽ xuất bản một phiên bản mới.** Điểm cũ và mới không thể so sánh được, vì vậy chúng được giữ riêng thay vì trộn lẫn vào một đường xu hướng.
-- **Một người phán xét luôn tạo ra một điểm số**, không bao giờ là một chỉ số hay một khẳng định.
+- **Kiểm thử chưa khả dụng.** Một bài chạy thử không có phân bổ phiên làm việc đằng sau nó, và phân bổ đó là những gì cho phép chi tiêu ngân sách mô hình của bạn — vì vậy không có gì để một lệnh gọi kiểm thử tính phí. Triển khai dựa trên một điều kiện hẹp và đọc một vài kết quả đầu tiên.
+- **Backfill không khả dụng.** Điền lại một đánh giá code trong nhiều tháng lịch sử là miễn phí; làm điều đó với một judge sẽ chi tiêu toàn bộ ngân sách của bạn trong vài phút.
+- **Chỉnh sửa criteria xuất bản một phiên bản mới.** Điểm cũ và mới không thể so sánh, vì vậy chúng được giữ riêng biệt thay vì trộn lẫn vào một đường xu hướng.
+- **Một judge luôn tạo ra một score**, không bao giờ là một metric hoặc một assertion.
 
 ## Khi ngân sách của bạn hết
 
-Những người phán xét chi tiêu ngân sách mô hình của tổ chức bạn. Khi nó cạn kiệt, đánh giá người phán xét sẽ dừng lại với một lý do rõ ràng thay vì thất bại âm thầm, và **đánh giá mã tiếp tục chạy bình thường**. Tăng ngân sách và chúng sẽ tiếp tục trên phiên tiếp theo.
+Judges chi tiêu ngân sách mô hình của tổ chức bạn. Khi nó cạn kiệt, các đánh giá judge dừng lại với một lý do rõ ràng thay vì thất bại Im lặng, và **các đánh giá code tiếp tục chạy bình thường**. Tăng ngân sách và chúng sẽ tiếp tục trên phiên tiếp theo.

@@ -1,44 +1,44 @@
 ---
 title: "שימוש ב-Jev"
-description: "הגדר הערכות Jev עבור sessions שהסתיימו או מדיניויות Jev לבדיקה חיה של קריאות כלים."
+description: "הגדר הערכות Jev עבור הפעלות שנסתיימו או מדיניות Jev לבדיקת קריאות כלי בזמן אמת."
 icon: "sparkles"
 ---
 
-Jev עוזר בשתי נקודות בהפעלת agent: לדרג session שהסתיים מול תשובות ידועות, או לבדוק קריאת כלי בהקשר של מה שביקשת מה-agent לעשות.
+Jev עוזר בשתי נקודות בהפעלת סוכן: הוא משמש לדירוג הפעלה שנסתיימה כנגד תשובות ידועות, או לבדיקת קריאת כלי בהקשר של מה שביקשת מהסוכן לעשות.
 
 <Tabs>
   <Tab title="הערכות Jev">
-    השתמש בהערכת Jev כשניתן לדרג session שהסתיים מול שאלה עם כמה תשובות ידועות, כמו "האם הלקוח ביקש החזר? ענה כן או לא." זה עוזר לך למצוא דפוסים ב-sessions.
+    השתמש בהערכת Jev כאשר ניתן לדרג הפעלה שנסתיימה כנגד שאלה עם כמה תשובות ידועות, כגון "האם הלקוח ביקש החזר? ענה כן או לא." זה עוזר לך למצוא דפוסים על פני הפעלות.
 
     ## יצירת הערכה
 
-    בדashboard בענן, פתח **Analyze → eval authoring → new eval**. הזן שאלה אחת בתשובה קבועה, בחר **draft**, וודא שבחרת ניקוד classifier. [בדוק אותה](/he/evaluations/test) על sessions אמיתיות, ואז הפעל אותה.
+    בלוח הבקרה של Cloud, פתח את **Analyze → eval authoring → new eval**. הזן שאלה בתשובה קבועה אחת, בחר **draft**, ובדוק שהוא בחר דירוג מסווג. [בדוק אותה](/he/evaluations/test) על הפעלות אמיתיות, ולאחר מכן פרוס אותה.
 
-    ![טופס יצירת הערכה משותף שבו אתה מתאר שאלה, בודק את ה-draft, והופעל אותו. צילום זה מראה draft של קוד; השתמש בשאלה בתשובה קבועה עבור Jev.](/images/dashboard/eval-authoring-draft.png)
+    ![טופס יצירת הערכה משותף שבו אתה מתאר שאלה, בודק את הטיוטה ופורס אותה. צילום מסך זה מציג טיוטת קוד; השתמש בשאלה בתשובה קבועה עבור Jev.](/images/dashboard/eval-authoring-draft.png)
 
-    ## קרא את הניקודים
+    ## קריאת הדירוגים
 
-    לאחר השלמת session חדש, פתח **Observe → Evaluations** או השתמש ב-Cloud CLI:
+    לאחר השלמת הפעלה חדשה, פתח את **Observe → Evaluations** או השתמש ב-Cloud CLI:
 
     ```bash
     fp evals --since 7d
     fp evals --aggregate --since 7d
     ```
 
-    ה-CLI קורא ניקודים; יצירת הערכת Jev משתמשת כרגע בdashboard. ראה [הערכות Jev](/he/evaluations/jev) לסוגי שאלות ודוגמאות.
+    ה-CLI קורא דירוגים; יצירת הערכת Jev כרגע משתמשת בלוח הבקרה. ראה [הערכות Jev](/he/evaluations/jev) לסוגי שאלות ודוגמאות.
   </Tab>
-  <Tab title="מדיניויות Jev">
-    השתמש בבדיקת מדיניות Jev כשמדיניות התאמת strings צריכה את ההקשר של בקשתך כדי להחליט אם קריאת כלי בטוחה. התחל ב-mode **observe** כדי שתוכל לבדוק את התשובות של Jev בזמן שהמדיניויות המותקנות שלך עדיין מחליטות על כל קריאה.
+  <Tab title="מדיניות Jev">
+    השתמש בבדיקת מדיניות Jev כאשר מדיניות התאמה מחרוזת זקוקה להקשר של בקשתך כדי להחליט האם קריאת כלי היא בטוחה. התחל ב-**observe** mode כדי שתוכל לבדוק את התשובות של Jev בזמן שהמדיניות המותקנת שלך עדיין מחליטה על כל קריאה.
 
-    הבדיקות של Jev מגיעות מחבילה; Failproof AI לא משוגר עם אחת. עד שתתקין אותן, Jev לא שואל כלום, גם כשהוא מוגדר:
+    הבדיקות של Jev מגיעות מחבילה; Failproof AI לא משלח אף אחת. עד שתעביד אותן, Jev לא שואל כלום, גם כשהוא מוגדר:
 
     ```bash
     failproofai policies add FailproofAI/jev-policies
     ```
 
-    ## הגדר את Cloud Jev
+    ## הגדר Cloud Jev
 
-    בdashboard בענן, פתח **Administration → Keys** ויצור מפתח עם ה-preset **machine**. השתמש בו עם `failproofai config` כפי שמוצג ב-[quickstart](/he/start/quickstart). במכונה ללא תצורת Jev קיימת, זה מפעיל את Cloud Jev ב-observe mode. בדוק את החיבור עם:
+    בלוח הבקרה של Cloud, פתח את **Administration → Keys** וצור מפתח עם ההגדר המוגדר מראש של **machine**. השתמש בו עם `failproofai config` כמוצג ב-[quickstart](/he/start/quickstart). במכונה ללא תצורת Jev קיימת, זה מפעיל את Cloud Jev ב-observe mode. בדוק את החיבור עם:
 
     ```bash
     failproofai jev status
@@ -47,9 +47,9 @@ Jev עוזר בשתי נקודות בהפעלת agent: לדרג session שהסת
 
     ## השתמש בנקודת הקצה שלך
 
-    בdashboard המקומי, פתח **Settings → Jev**. בחר את ה-provider, הדבק את ה-token שלו, בחר **observe**, והפעל את Jev.
+    בלוח הבקרה המקומי, פתח את **Settings → Jev**. בחר את ספק השירות, הדבק את האסימון שלו, בחר **observe**, והדלק את Jev.
 
-    ![לוח הגדרות Jev המקומי עם provider, שדה token, וobserve mode נבחר.](/images/dashboard/jev-settings.png)
+    ![לוח הבקרה של הגדרות Jev המקומיות עם ספק שירות, שדה אסימון, ו-observe mode שנבחר.](/images/dashboard/jev-settings.png)
 
     או הגדר ובדוק את נקודת הקצה שלך מטרמינל:
 
@@ -58,6 +58,6 @@ Jev עוזר בשתי נקודות בהפעלת agent: לדרג session שהסת
     failproofai jev test
     ```
 
-    בקש מ-agent בו נתקלת לשתמש בכלי קריאת הקבצים שלו ב-`README.md`. אשר שקריאת הכלי מופיעה ב-session, ואז בדוק אותה תחת **Policies → Activity** בdashboard המקומי. ברגע שתוצאות ה-observe נראות נכונות, [מדיניויות Jev](/he/policies/jev) מסבירה מתי להפעיל. לפרטי provider והגדרות, ראה את [reference ההשתלבות](/he/reference/jev).
+    בקש מסוכן מחובר להשתמש בכלי קריאת הקבצים שלו על `README.md`. אשר שקריאת הכלי הזו מופיעה בהפעלה, ואז בדוק אותה תחת **Policies → Activity** בלוח הבקרה המקומי. ברגע שתוצאות ה-observe נראות נכונות, [מדיניות Jev](/he/policies/jev) מסבירה מתי להטיל. לפרטי ספק וקונפיגורציה, ראה את [ההפניה לשילוב](/he/reference/jev).
   </Tab>
 </Tabs>

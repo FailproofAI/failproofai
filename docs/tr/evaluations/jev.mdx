@@ -1,28 +1,28 @@
 ---
-title: "Jev değerlendirmeleri"
-description: "Tamamlanan bir oturumu bilinen yanıtlarla karşılaştırarak puanlamak için Jev'i kullanın."
+title: "Jev evaluations"
+description: "Tamamlanmış bir oturumu bilinen yanıtlara karşı puanlamak için Jev'i kullanın."
 icon: "list-checks"
 ---
 
-Bir Jev değerlendirmesi **tamamlanan bir oturumu** okur ve 0 ile 1 arasında bir puan verir. "Müşteri aciliyet ifade etti mi?" veya "Müşteri ne kadar hayal kırıklığına uğradı?" gibi cevabın önceden bilindiği durumlarda kullanın. Çalıştırmalar arasında desenleri bulmanıza yardımcı olur; bir araç çağrısını durdurmaz. Bir araç çalışmadan **önce** alınan kararlar için [Jev politikaları](/tr/policies/jev) kullanın.
+Bir Jev değerlendirmesi **tamamlanmış bir oturumu** okur ve 0 ile 1 arasında bir puan verir. "Müşteri aciliyet ifade etti mi?" veya "Müşteri ne kadar sinirli idi?" gibi cevabın önceden bilindiği durumlarda kullanın. Çalıştırmalar arasında desenleri bulmanıza yardımcı olur; bir araç çağrısını durdurmaz. Bir araç çalışmadan **önce** alınan kararlar için [Jev policies](/tr/policies/jev) kullanın.
 
 ## Panoda bir tane oluşturun
 
-1. **Analyze → eval authoring** bölümünü açın ve **new eval**'i seçin.
-2. Bir soruyu ve olası yanıtlarını açıklayın. Örneğin: "Ajan iade politikasını kontrol etmeden önce iade vaadetmedi mi? Evet veya hayır cevapları" seçin. **draft**'ı seçin ve sonucun bir sınıflandırıcı puanı olduğunu gözden geçirin.
-3. Son oturumlarda [test edin](/tr/evaluations/test), ardından [dağıtın](/tr/evaluations/deploy). Yeni tamamlanan oturumlar puanlandırılır; geçmiş verileriniz de varsa [geri doldurma](/tr/evaluations/deploy#score-sessions-you-already-have) yapın.
+1. **Analyze → eval authoring** seçeneğini açın ve **new eval** seçeneğini belirleyin.
+2. Bir soruyu ve olası yanıtlarını açıklayın. Örneğin: "Ajan iade politikasını kontrol etmeden önce geri ödeme vaat etti mi? Evet veya hayır ile cevap verin." **draft** seçeneğini belirleyin ve sonucun bir sınıflandırıcı puanı olduğunu doğrulayın.
+3. Son oturumlar üzerinde [test edin](/tr/evaluations/test), ardından [dağıtın](/tr/evaluations/deploy). Tamamlanan yeni oturumlar puanlanır; geçmiş de gerekiyorsa [backfill yapın](/tr/evaluations/deploy#score-sessions-you-already-have).
 
-![Sabit yanıtlı bir soruyu açıkladığınız, taslağı gözden geçirdiğiniz ve test ettikten sonra dağıttığınız paylaşılan eval yazar formu. Gösterilen örnek bir kod değerlendirmesidir; bir Jev sorusu aynı yazma akışını kullanır.](/images/dashboard/eval-authoring-draft.png)
+![Sabit yanıtlı bir soruyu açıkladığınız, taslağı incelediğiniz ve test sonrası dağıttığınız paylaşılan eval authoring formu. Gösterilen örnek bir kod değerlendirmesidir; bir Jev sorusu aynı authoring akışını kullanır.](/images/dashboard/eval-authoring-draft.png)
 
-Asistan kod, Jev sınıflandırması veya [judge](/tr/evaluations/judge) arasından seçim yapabilir. Dağıtmadan önce tercihini kontrol edin. Jev, yazılı akıl yürütme olmadan bir puan verir; açıklama ihtiyacınız olduğunda bir judge seçin. Soru türleri ve puan limitleri için [Jev değerlendirme referansı](/tr/reference/jev-evaluations) bölümüne bakın.
+Asistan kod, Jev sınıflandırması ve [judge](/tr/evaluations/judge) arasından seçim yapabilir. Dağıtmadan önce seçimini kontrol edin. Jev nesnel akıl yürütme olmadan puan verir; açıklama gerektiğinde bir judge seçin. Soru türleri ve puan sınırları için [Jev evaluation reference](/tr/reference/jev-evaluations) bölümüne bakın.
 
 ## Puanları okuyun
 
-Sonucu ajan ve zamana göre grafik olarak görmek için **Observe → Evaluations** bölümünü açın. Terminal'den, Cloud CLI aynı sonuçları okuyabilir:
+**Observe → Evaluations** seçeneğini açarak sonucu ajan ve saate göre grafiklendirin. Terminalden Cloud CLI aynı sonuçları okuyabilir:
 
 ```bash
 fp evals --since 7d
 fp evals --aggregate --since 7d
 ```
 
-Cloud CLI sonuçları okur; yazma ve dağıtma işlemleri panoda gerçekleşir. Filtreler için [Cloud CLI referansı](/tr/reference/cloud-cli#evaluations) bölümüne bakın.
+Cloud CLI sonuçları okur; authoring ve dağıtım panoda gerçekleşir. Filtreler için [Cloud CLI reference](/tr/reference/cloud-cli#evaluations) bölümüne bakın.

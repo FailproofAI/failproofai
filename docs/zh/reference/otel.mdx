@@ -1,12 +1,12 @@
 ---
 title: "OpenTelemetry CLI"
-description: "为编码智能体启用 OTEL，检查数据投递状态，并恢复之前的设置。"
+description: "为编程智能体启用 OTEL，检查数据传输状态，并恢复之前的设置。"
 icon: "radio"
 ---
 
-`failproofai otel` 用于配置向 FailproofAI Cloud 上报的可选 OpenTelemetry 功能。请先通过 `failproofai config` 将本机接入，并请组织管理员在 **Settings → OpenTelemetry** 中开启该功能。
+`failproofai otel` 用于配置向 FailproofAI Cloud 发送可选的 OpenTelemetry 报告。首先通过 `failproofai config` 连接您的机器，并请组织管理员启用 **Settings → OpenTelemetry**。
 
-交互式配置会在 Cloud 密钥字段和智能体选择器之后询问 OpenTelemetry 相关设置。该步骤为可选项，默认为否。选择是可进入 OTEL 智能体选择；连接写入后会运行相同的启用代码。在配置完成前按 Esc 不会应用任何更改。在无人值守模式、提供密钥、开源模式以及保留已有连接的情况下，均不会自动启用该功能。
+交互式设置会在 Cloud 密钥字段和智能体选择器之后询问 OpenTelemetry 相关选项。该步骤为可选，默认选择"否"。选择"是"可选择 OTEL 智能体；连接写入后将运行相同的启用代码。在设置完成前按 Esc 不会应用任何更改。非交互式设置、提供密钥、开源模式以及保留已保存的连接均不会自动启用该功能。
 
 ## 启用智能体
 
@@ -18,41 +18,41 @@ failproofai otel enable copilot
 failproofai otel enable all --yes
 ```
 
-支持的智能体包括 `claude`、`codex` 和 `copilot`（VS Code）。配置 Copilot 需要可用的 VS Code 可执行文件或已安装的 Copilot 扩展；仅存在遗留的 settings 目录并不够——若两者均未找到，配置将跳过 Copilot。
+支持的智能体包括 `claude`、`codex` 和 `copilot`（VS Code）。Copilot 的设置需要 VS Code 可执行文件或已安装的 Copilot 扩展。仅有残留的设置目录是不够的；若两者均未找到，设置将跳过 Copilot。
 
-`--local` 表示将数据发送至本地中继，而非直接发送至 Cloud。Copilot 会自动使用中继，因为其配置文件无法存储认证头。
+`--local` 将数据发送至本地中继，而非直接发送至 Cloud。Copilot 会自动使用中继，因为其设置无法存储认证头。
 
-中继仅监听本机。已配置的 FailproofAI 守护进程会在数秒内感知到变更，无需重启。如果其他应用占用了中继端口，状态将显示为离线，但守护进程会继续运行。
+中继仅在您的本机上监听。您配置的 FailproofAI 守护进程将在数秒内识别到变更，无需重启。如果另一个应用程序占用了中继端口，状态将显示为关闭，守护进程将继续运行。
 
 <Warning>
-默认开启文本捕获。添加 `--no-content` 可省略提示词和工具详情。不同版本的智能体可能暴露不同的内容控制项；在将其用于敏感数据前，请仔细确认该智能体会导出哪些内容。
+文本捕获默认开启。添加 `--no-content` 可省略提示词和工具详情。不同版本的智能体可能提供不同的内容控制选项；在将其用于敏感数据之前，请仔细查看您的智能体会导出哪些内容。
 </Warning>
 
-Codex 仅导出对话日志，不导出内部运行时追踪或指标。若你的 Codex 配置中明确设置了 `log_user_prompt = false`，该设置将保持关闭；启用时，若该选择被保留，配置程序会打印一条提示说明。
+Codex 仅导出对话日志，不导出内部运行时跟踪或指标。如果您的 Codex 配置中明确设置了 `log_user_prompt = false`，该设置将保持关闭状态；启用时，若保留了该选项，程序会打印一条提示信息。
 
-### 选择单一上报路径
+### 选择一种报告路径
 
-如果某个智能体已启用转录上报，配置程序会询问：
+如果某智能体已启用会话记录报告，设置将询问：
 
 > failproofai already sends Claude Code sessions to Cloud. Send them with OTEL instead? Transcript upload for Claude Code stops.
 
-默认为否。`--yes` 可在不出现提示的情况下直接确认切换。其他智能体和策略执行不受影响。
+默认选择"否"。使用 `--yes` 可在不提示的情况下接受切换。其他智能体和策略执行不受影响。
 
-Codex 配置在写入导出器设置前，会等待守护进程确认收集器变更。若确认超时，配置程序会提示你在启动 Codex 之前稍作等待。
+Codex 的设置会等待守护进程确认收集器变更后，再写入其导出器设置。如果确认超时，设置将提示您在启动 Codex 之前稍作等待。
 
-Config v2 将已记录的追踪列表保存在 `agents.selected`（检测历史保存在 `agents.seen`）。各智能体的转录偏好仍保存在 `collector.agents.<agent>.sessions`，OTEL 归属保存在 `otel.agents`，中继设置保存在 `collector.otlp.enabled` / `collector.otlp.port`。这些独立的键使旧版 OTEL 配置保持可读：配置程序可以在不丢失传输偏好或智能体设置恢复所需状态的情况下修改追踪列表。
+Config v2 将已记录的跟踪列表保存在 `agents.selected`（检测历史保存在 `agents.seen`）。各智能体的会话记录偏好保留在 `collector.agents.<agent>.sessions`，OTEL 所有权保留在 `otel.agents`，中继设置保留在 `collector.otlp.enabled` / `collector.otlp.port`。这些独立的键使旧版 OTEL 配置保持可读性：设置可以在不丢失传输偏好或恢复智能体设置所需状态的情况下更改跟踪列表。
 
-## 检查配置状态
+## 检查设置
 
 ```bash
 failproofai otel status
 ```
 
-Status 会显示每个智能体的配置是否由 FailproofAI 管理、其目标地址、组织的数据接入开关状态、中继状态以及最近一次中继上传结果。
+状态信息会显示每个智能体的情况，包括：其设置是否由 FailproofAI 管理、目标地址、组织的数据接收开关、中继状态以及最近一次中继上传结果。
 
-组织开关显示 `unknown` 表示服务器未返回该信息或无法访问。这不是错误，也不会阻止在旧版 Cloud 上进行配置。
+组织开关显示为 `unknown` 意味着服务器未提供该信息或无法访问。这不是错误，也不会阻止在旧版 Cloud 上进行配置。
 
-如果 Cloud 尚不支持 OTEL，中继会保留被拒绝的导出数据，而不会将其丢弃。如果组织的数据接入已关闭，`enable` 不会写入任何内容并以错误退出；请先请管理员将其开启。
+如果 Cloud 尚不支持 OTEL，中继将保留被拒绝的导出数据，而非直接丢弃。如果组织的数据接收功能已关闭，`enable` 将不写入任何内容并以错误退出；请先请管理员开启该功能。
 
 ## 为应用程序打印配置
 
@@ -61,7 +61,7 @@ failproofai otel env --service my-agent
 failproofai otel env --service my-agent --local
 ```
 
-输出为适用于 OTLP/HTTP 导出器的 shell 环境变量块。Cloud 模式下，`OTEL_EXPORTER_OTLP_ENDPOINT` 设置为 Cloud 的 OTLP 基础地址 `https://<cloud>/otel`，导出器会自动追加 `/v1/<signal>`；若使用 `OTEL_EXPORTER_OTLP_LOGS_ENDPOINT` 等按信号类型设置的变量，则需提供完整地址，如 `https://<cloud>/otel/v1/logs`。本地模式下指向中继地址 `http://127.0.0.1:<port>`。Cloud 模式输出包含已配置的 API 密钥，请将其视为机密信息。本地模式输出不包含密钥。如需使用本地模式输出，请先启用一个本地智能体以确保中继正在运行。
+输出为适用于 OTLP/HTTP 导出器的 shell 环境变量块。Cloud 输出将 `OTEL_EXPORTER_OTLP_ENDPOINT` 设置为 Cloud 的 OTLP 基础地址 `https://<cloud>/otel`，导出器会自动追加 `/v1/<signal>`；若使用 `OTEL_EXPORTER_OTLP_LOGS_ENDPOINT` 等按信号类型设置的变量，则需要完整路径 `https://<cloud>/otel/v1/logs`。本地输出指向中继地址 `http://127.0.0.1:<port>`。Cloud 输出包含已配置的 API 密钥，请将其视为机密信息。本地输出不包含密钥。如需使用本地输出，请先启用一个本地智能体以确保中继正在运行。
 
 ## 恢复之前的设置
 
@@ -70,8 +70,8 @@ failproofai otel disable claude
 failproofai otel disable all
 ```
 
-Disable 仅还原 FailproofAI 写入的设置，保留无关的更改，并恢复每个智能体之前的转录上报选择。当最后一个受管理的本地智能体被禁用时，中继将停止接受导出数据。
+Disable 仅恢复由 FailproofAI 写入的设置，保留无关的更改，并恢复每个智能体之前的会话记录报告选项。当最后一个受管理的本地智能体被禁用时，中继将停止接受导出数据。
 
-对于 Codex，disable 还会记录 `collector.agents.codex.sessions_resume_after`（Unix 毫秒时间戳）。现有的已推送字节被视为已投递，因此通过 OTEL 捕获的会话不会被重复上传；后续新增的内容仍会通过转录上报流转。
+对于 Codex，disable 还会记录 `collector.agents.codex.sessions_resume_after`（Unix 毫秒时间戳）。现有的已传输字节将被视为已投递，因此通过 OTEL 捕获的会话不会被再次上传；之后追加的内容仍会通过会话记录报告传输。
 
-所有命令均支持 `--help`。应用程序和编码智能体的使用示例请参阅 [OpenTelemetry in Cloud](/zh/agenteye/opentelemetry)。
+所有命令均支持 `--help`。有关应用程序和编程智能体的示例，请参阅 [OpenTelemetry in Cloud](/zh/agenteye/opentelemetry)。

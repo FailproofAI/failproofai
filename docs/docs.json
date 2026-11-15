@@ -446,7 +446,8 @@
                 "pages": [
                   "zh/reference/jev",
                   "zh/reference/jev-evaluations",
-                  "zh/reference/jev-providers"
+                  "zh/reference/jev-providers",
+                  "zh/reference/jev-cloud"
                 ]
               },
               {
@@ -781,7 +782,6 @@
               {
                 "group": "Get a policy",
                 "pages": [
-                  "ko/policies/authority",
                   "ko/policies/editor",
                   "ko/policies/packs"
                 ]
@@ -843,8 +843,7 @@
                 "pages": [
                   "ko/reference/jev",
                   "ko/reference/jev-evaluations",
-                  "ko/reference/jev-providers",
-                  "ko/reference/jev-cloud"
+                  "ko/reference/jev-providers"
                 ]
               },
               {

@@ -8,21 +8,21 @@ Une évaluation Jev lit une **session terminée** et attribue un score de 0 à 1
 
 ## Créer une évaluation depuis le tableau de bord
 
-1. Ouvrez **Analyze → eval authoring** et sélectionnez **new eval**.
-2. Décrivez une question et ses réponses possibles. Par exemple : « L'agent a-t-il promis un remboursement avant de vérifier la politique de remboursement ? Répondez par oui ou non. » Sélectionnez **draft** et vérifiez que le résultat est un score de classification.
-3. [Testez-la](/fr/evaluations/test) sur des sessions récentes, puis [déployez-la](/fr/evaluations/deploy). Les nouvelles sessions terminées sont notées ; effectuez un [remplissage rétroactif](/fr/evaluations/deploy#score-sessions-you-already-have) si vous avez également besoin de l'historique.
+1. Ouvrez **Analyse → Création d'évaluations** et sélectionnez **Nouvelle évaluation**.
+2. Décrivez une question et ses réponses possibles. Par exemple : « L'agent a-t-il promis un remboursement avant de vérifier la politique de remboursement ? Répondez par oui ou non. » Sélectionnez **Brouillon** et vérifiez que le résultat est bien un score de classification.
+3. [Testez-la](/fr/evaluations/test) sur des sessions récentes, puis [déployez-la](/fr/evaluations/deploy). Les nouvelles sessions terminées seront notées ; effectuez un [remplissage rétroactif](/fr/evaluations/deploy#score-sessions-you-already-have) si vous avez également besoin de l'historique.
 
-![Le formulaire partagé d'authoring d'évaluation, où vous décrivez une question à réponse fixe, examinez le brouillon et déployez après les tests. L'exemple présenté est une évaluation de code ; une question Jev utilise le même flux d'authoring.](/images/dashboard/eval-authoring-draft.png)
+![Le formulaire de création d'évaluation partagé, où vous décrivez une question à réponse fixe, examinez le brouillon et déployez après les tests. L'exemple présenté est une évaluation de code ; une question Jev utilise le même flux de création.](/images/dashboard/eval-authoring-draft.png)
 
-L'assistant peut choisir entre du code, la classification Jev et un [juge](/fr/evaluations/judge). Vérifiez son choix avant de déployer. Jev fournit un score sans raisonnement en prose ; choisissez un juge lorsque vous avez besoin d'une explication. Consultez la [référence des évaluations Jev](/fr/reference/jev-evaluations) pour les types de questions et les limites de score.
+L'assistant peut choisir entre du code, une classification Jev et un [juge](/fr/evaluations/judge). Vérifiez son choix avant de déployer. Jev attribue un score sans raisonnement en prose ; choisissez un juge lorsque vous avez besoin d'une explication. Consultez la [référence des évaluations Jev](/fr/reference/jev-evaluations) pour les types de questions et les limites de score.
 
 ## Consulter les scores
 
-Ouvrez **Observe → Evaluations** pour visualiser les résultats par agent et par période. Depuis un terminal, la CLI Cloud peut lire les mêmes résultats :
+Ouvrez **Observer → Évaluations** pour visualiser les résultats par agent et par période. Depuis un terminal, la CLI Cloud peut lire les mêmes résultats :
 
 ```bash
 fp evals --since 7d
 fp evals --aggregate --since 7d
 ```
 
-La CLI Cloud lit les résultats ; l'authoring et le déploiement s'effectuent dans le tableau de bord. Consultez la [référence de la CLI Cloud](/fr/reference/cloud-cli#evaluations) pour les filtres.
+La CLI Cloud lit les résultats ; la création et le déploiement s'effectuent depuis le tableau de bord. Consultez la [référence de la CLI Cloud](/fr/reference/cloud-cli#evaluations) pour les filtres disponibles.

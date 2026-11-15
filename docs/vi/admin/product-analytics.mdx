@@ -1,61 +1,61 @@
 ---
 title: "Phân tích sản phẩm"
-description: "Dữ liệu telemetry sử dụng mà Failproof AI Cloud gửi về chính nó, những gì không bao giờ được thu thập, và cách tắt nó."
+description: "Telemetry sử dụng mà Failproof AI Cloud gửi về chính nó, những gì không bao giờ được thu thập, và cách tắt nó."
 icon: "chart-no-axes-column"
 ---
 
-Failproof AI Cloud gửi telemetry sử dụng **về chính phần mềm** đến những người duy trì nó. Nó không bao giờ bao gồm dữ liệu của các agents của bạn. Trên một cài đặt tự lưu trữ, nó được bật theo mặc định và bạn có thể tắt nó.
+Failproof AI Cloud gửi telemetry sử dụng **về phần mềm của chính nó** cho những người duy trì nó. Nó không bao giờ bao gồm dữ liệu của các agent của bạn. Trên cài đặt tự lưu trữ, nó được bật theo mặc định, và bạn có thể tắt nó.
 
 ## Những gì được thu thập
 
-Mỗi sự kiện mang năm chiều và không có bất cứ điều gì định danh một người:
+Mỗi sự kiện mang năm chiều và không có bất cứ gì xác định một người:
 
 | Chiều | Ví dụ | Nó là gì |
 | --- | --- | --- |
-| `product` | `agenteye` | Sản phẩm nào gửi nó |
-| `component` | `dashboard`, `server`, `cli` | Phần nào của sản phẩm gửi nó |
+| `product` | `agenteye` | Sản phẩm nào đã gửi nó |
+| `component` | `dashboard`, `server`, `cli` | Phần nào của sản phẩm đã gửi nó |
 | `app_version` | `0.0.1-beta.81` | Bản dựng bạn đang chạy |
-| `deployment_kind` | `self_hosted` | Đây là cài đặt khách hàng, bản demo của chúng tôi, QA của chúng tôi, hay máy phát triển |
-| `org_id` | một UUID | Tổ chức nào mà hành động xảy ra, dưới dạng định danh mờ |
+| `deployment_kind` | `self_hosted` | Đây là cài đặt khách hàng, bản demo của chúng tôi, QA của chúng tôi, hay máy dev |
+| `org_id` | một UUID | Tổ chức nào mà hành động xảy ra, như một định danh không rõ |
 
-Ngoài những chiều đó, các sự kiện ghi lại **cái gì được sử dụng, không bao giờ cái gì trong đó**: trang nào được xem (dưới dạng mẫu đường dẫn như `/:org/sessions/:id`, không bao giờ URL thực tế), bao nhiêu bộ lọc loại nào được áp dụng, liệu một hành động có thành công không, và mất bao lâu.
+Ngoài những cái đó, các sự kiện ghi lại **những gì được sử dụng, không bao giờ những gì trong đó**: trang nào được xem (dưới dạng mẫu route như `/:org/sessions/:id`, không bao giờ URL thực tế), có bao nhiêu bộ lọc loại nào được áp dụng, liệu một hành động có thành công hay không, và nó mất bao lâu.
 
-Ứng dụng Slack ghi lại kết nối và ngắt kết nối không gian làm việc, liên kết tài khoản, câu hỏi được đặt, biểu đồ được đăng, quyết định phê duyệt, và lỗi theo một danh mục cố định. Nó không bao giờ bao gồm không gian làm việc Slack, ID người dùng hoặc kênh, email, câu hỏi, câu trả lời, SQL, hoặc token.
+Ứng dụng Slack ghi lại các kết nối và ngắt kết nối workspace, liên kết tài khoản, những câu hỏi được hỏi, biểu đồ được đăng, quyết định phê duyệt, và lỗi theo một danh mục cố định. Nó không bao giờ bao gồm ID workspace, người dùng hoặc kênh Slack, email, câu hỏi, câu trả lời, SQL, hoặc token.
 
-### Tên tổ chức của bạn
+### Tên của tổ chức bạn
 
-Cùng với `org_id` mờ, chúng tôi ghi lại tên tổ chức của bạn, slug URL, và địa chỉ dashboard một lần, trên một bản ghi tổ chức thay vì trên mỗi sự kiện. Nó cho phép chúng tôi phân biệt tài khoản nào mà một mẫu thuộc về khi chúng tôi xem xét việc áp dụng hoặc điều tra một vấn đề bạn báo cáo. Đây là một phần thông tin định danh duy nhất mà sản phẩm gửi về bạn.
+Cùng với `org_id` không rõ, chúng tôi ghi lại tên tổ chức, slug URL, và địa chỉ dashboard của bạn một lần, trong một bản ghi tổ chức chứ không phải trên mỗi sự kiện. Nó cho phép chúng tôi biết được tài khoản nào mà một mẫu thuộc về khi chúng tôi nhìn vào việc chấp nhận hoặc điều tra một vấn đề bạn đã báo cáo. Đây là thông tin xác định duy nhất mà sản phẩm gửi về bạn.
 
-### Tổng mức sử dụng của bạn
+### Tổng sử dụng của bạn
 
-Máy chủ báo cáo tổng mức sử dụng có đồng hồ đo của mỗi tổ chức, những con số giống nhau bạn thấy trên trang Sử dụng. Chúng chỉ là các bộ đếm: sự kiện, phiên, agents, môi trường, chạy đánh giá, điểm, chạy kiểm toán, truy vấn được lưu, bảng điều khiển, cảnh báo, vấn đề, khóa API, và thành viên, cộng với ngày của cửa sổ đo lường. Chúng không chứa định danh, tên, hoặc văn bản truy vấn, và chúng đến cho dù ai đó có đăng nhập hay không.
+Server báo cáo tổng sử dụng được đo lường của mỗi tổ chức, các số giống như bạn thấy trên trang Sử dụng. Đây chỉ là đếm: sự kiện, phiên, agent, môi trường, chạy đánh giá, điểm số, chạy kiểm toán, truy vấn được lưu, dashboard, cảnh báo, vấn đề, khóa API, và thành viên, cộng với ngày của cửa sổ đo lường. Chúng không chứa bất kỳ định danh, tên, hoặc văn bản truy vấn nào, và chúng đến cho dù có ai đăng nhập hay không.
 
 ## Những gì không bao giờ được thu thập
 
-- **Không có lời nhắc, phản hồi mô hình, hoặc nội dung sự kiện**, không phải dưới dạng văn bản, tiền tố, hoặc hash
-- **Không có định danh phiên, agent, hoặc dấu vết**
+- **Không có prompt, phản hồi mô hình, hoặc nội dung sự kiện**, không phải dưới dạng văn bản, tiền tố, hay hash
+- **Không có định danh phiên, agent, hoặc trace**
 - **Không có tên điểm đánh giá**
-- **Không có thông báo lỗi, văn bản ngoại lệ, hoặc nội dung phản hồi**, chỉ mã trạng thái và danh mục từ danh sách cố định
+- **Không có thông báo lỗi, văn bản ngoại lệ, hoặc phần thân phản hồi**, chỉ mã trạng thái và danh mục từ danh sách cố định
 - **Không có đối số công cụ, SQL, hoặc văn bản truy vấn**
-- **Không có chi tiết ứng dụng kết nối.** Kết nối hoặc thu hồi client MCP chỉ gửi số lượng quyền tối đa, không bao giờ tên ứng dụng hoặc bất kỳ token nào
+- **Không có chi tiết ứng dụng được kết nối.** Kết nối hoặc thu hồi một khách hàng MCP gửi một số lượng quyền tối đa, không bao giờ tên ứng dụng hoặc bất kỳ token nào
 - **Không có địa chỉ email**
-- **Không có URL người giới thiệu hoặc chuỗi truy vấn**
-- **Không có ghi hình màn hình, thu thập DOM, hoặc theo dõi nhấp chuột và con trỏ**
+- **Không có URL referrer hoặc chuỗi truy vấn**
+- **Không có ghi hình màn hình, quзахạt DOM, hoặc theo dõi nhấp chuột và con trỏ**
 
 ## Tắt nó trên cài đặt tự lưu trữ
 
-Đặt `DO_NOT_TRACK=1` trên cả dashboard và máy chủ. Chúng quyết định riêng biệt, vì vậy việc đặt nó chỉ trên một cái sẽ để cái còn lại báo cáo. Khởi động lại máy chủ để thay đổi có hiệu lực.
+Đặt `DO_NOT_TRACK=1` trên cả dashboard và server. Chúng quyết định riêng biệt, vì vậy đặt nó chỉ trên một cái để lại cái kia báo cáo. Khởi động lại server để thay đổi có hiệu lực.
 
-README phát hành của bạn mô tả các cài đặt từ chối khác và cách xác nhận telemetry bị tắt.
+README phát hành của bạn mô tả các cài đặt từ chối khác và cách xác nhận telemetry đã tắt.
 
-## Một lần ping khi bạn từ chối
+## Một ping khi bạn từ chối
 
-Nếu bạn từ chối bằng cài đặt sản phẩm thay vì `DO_NOT_TRACK`, dashboard có thể gửi **một ping ẩn danh** ghi lại điều đó, với xác suất 1 trên 1000 cho mỗi lần bắt đầu quy trình. Nó cho chúng tôi biết bao nhiêu nhà khai thác tắt telemetry. Nó không chứa định danh: không có tổ chức, người dùng, tên máy chủ, URL, hoặc IP, chỉ sản phẩm, thành phần, phiên bản, loại triển khai, và lý do. Máy chủ từ chối gửi không gì.
+Nếu bạn từ chối với cài đặt sản phẩm thay vì `DO_NOT_TRACK`, dashboard có thể gửi **một ping ẩn danh** ghi lại điều đó, với xác suất 1 trên 1000 cho mỗi bắt đầu quy trình. Nó cho chúng tôi biết có bao nhiêu nhà khai thác tắt telemetry. Nó không chứa bất kỳ định danh: không có tổ chức, người dùng, hostname, URL, hoặc IP, chỉ sản phẩm, thành phần, phiên bản, loại triển khai, và lý do. Một server từ chối không gửi bất cứ gì.
 
-Nó không bao giờ được gửi khi bạn sử dụng `DO_NOT_TRACK`, đó là lý do tại sao đây là cài đặt để sử dụng nếu chính sách của bạn cấm bất kỳ telemetry đi ra nào.
+Nó không bao giờ được gửi khi bạn sử dụng `DO_NOT_TRACK`, đó là lý do tại sao đó là cài đặt cần sử dụng nếu chính sách của bạn không cho phép bất kỳ telemetry đi ra nào.
 
 ## Nó đi đâu
 
-Đến PostHog (`us.i.posthog.com`) qua TLS trên cổng 443. Đây là một tên máy chủ, vì vậy bạn cũng có thể chặn nó bằng một quy tắc đi ra duy nhất.
+Đến PostHog (`us.i.posthog.com`) qua TLS trên cổng 443. Đó là một hostname, vì vậy bạn cũng có thể chặn nó bằng một quy tắc egress duy nhất.
 
-Để biết cách chúng tôi xử lý thông tin cá nhân rộng hơn, hãy xem [chính sách bảo mật](https://befailproof.ai/privacy/).
+Để biết cách chúng tôi xử lý thông tin cá nhân rộng hơn, xem [chính sách bảo mật](https://befailproof.ai/privacy/).

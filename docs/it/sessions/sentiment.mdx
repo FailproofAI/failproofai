@@ -1,6 +1,6 @@
 ---
-title: "Analisi del sentiment"
-description: "Trova messaggi frustrati, confusi e correttivi con i punteggi di sentiment di Jev."
+title: "Analisi del sentimento"
+description: "Trova messaggi frustrati, confusi e correttivi con i punteggi di sentimento di Jev."
 icon: "smile"
 ---
 
@@ -10,34 +10,34 @@ Jev assegna a ogni messaggio che una persona invia ai tuoi agenti un punteggio d
 - **Resolved**: la persona conferma che l'agente ha risolto il suo problema.
 - **Doubtful**: la persona mette in dubbio se la risposta dell'agente è vera, o se ha davvero funzionato.
 
-Usa l'analisi del sentiment per trovare conversazioni in cui le persone stanno perdendo pazienza, agenti che continuano a correggerle, e risposte che vanno bene. Questo è un punteggio Jev integrato; non devi creare una valutazione. Per una tua domanda a risposta fissa, [crea una valutazione Jev](/it/evaluations/jev).
+Usa l'analisi del sentimento per trovare conversazioni in cui le persone stanno perdendo pazienza, agenti che continuano a correggere, e risposte che vanno bene. Questo è il punteggio Jev integrato; non hai bisogno di scrivere una valutazione. Per la tua domanda con risposta fissa, [crea una valutazione Jev](/it/evaluations/jev).
 
 <Note>
-  Il sentiment è disattivato finché un amministratore non lo attiva per l'organizzazione. Jev effettua una richiesta di punteggio per messaggio e riceve quel messaggio con la risposta dell'agente prima di essa. Il punteggio utilizza il budget di modello della tua organizzazione.
+  Il sentimento è disattivato finché un amministratore non lo attiva per l'organizzazione. Jev effettua una richiesta di scoring per messaggio e riceve quel messaggio con la risposta dell'agente prima di esso. Lo scoring utilizza il budget del modello della tua organizzazione.
 </Note>
 
-## Attivarlo
+## Attivalo
 
 1. Vai a **Administration → Settings**.
-2. Sotto **Human input sentiment**, attivalo e salva.
+2. In **Human input sentiment**, attivalo e salva.
 
-I messaggi dell'ultimo giorno vengono punteggiati per primi. Dopo ciò, i nuovi messaggi vengono punteggiati entro un minuto o due dall'arrivo.
+I messaggi dell'ultimo giorno vengono scoring prima. Dopo di ciò, i nuovi messaggi vengono scoring entro un paio di minuti dall'arrivo.
 
-## Trovare una conversazione da rivedere
+## Trova una conversazione da esaminare
 
-Apri **Observe → Sentiment**. Filtra per tempo, ambiente, agente o ID sessione. L'intestazione conta i messaggi e le sessioni, mostra quanti messaggi sono **flagged** e nomina il segnale principale. Un messaggio viene flagged quando un punteggio di arrabbiato, frustrato, correttivo, confuso o dubbioso raggiunge 35 su 100.
+Apri **Observe → Sentiment**. Filtra per ora, ambiente, agente o ID sessione. L'intestazione conta i messaggi e le sessioni, mostra quanti messaggi sono **flagged**, e nomina il segnale principale. Un messaggio è flagged quando un punteggio arrabbiato, frustrato, correttivo, confuso o dubbioso raggiunge 35 su 100.
 
 ![La dashboard Sentiment che mostra i conteggi di messaggi e sessioni, i messaggi flagged e i punteggi di Jev nel tempo.](/images/dashboard/sentiment-overview.png)
 
-Usa **Score over time** per confrontare i segnali. Scegli i punteggi da visualizzare, quindi seleziona un punto per vedere i messaggi di quel bucket temporale. La tabella **By agent** mostra dove un segnale è concentrato. In **Messages**, ordina per il punteggio negativo più forte o seleziona un singolo punteggio. Apri un messaggio nella sua sessione per leggere la conversazione circostante prima di decidere cosa è andato storto.
+Usa **Score over time** per confrontare i segnali. Scegli i punteggi da mostrare, quindi seleziona un punto per vedere i messaggi di quel bucket di tempo. La tabella **By agent** mostra dove è concentrato un segnale. In **Messages**, ordina per il punteggio negativo più forte o seleziona un singolo punteggio. Apri un messaggio nella sua sessione per leggere la conversazione circostante prima di decidere cosa è fallito.
 
-![L'elenco di messaggi Sentiment ordinato per punteggio negativo più forte, con un collegamento a ogni sessione di origine.](/images/dashboard/sentiment-messages.png)
+![L'elenco dei messaggi Sentiment ordinato per il punteggio negativo più forte, con un link a ogni sessione sorgente.](/images/dashboard/sentiment-messages.png)
 
-## Quali messaggi vengono punteggiati
+## Quali messaggi vengono scoring
 
-Solo messaggi scritti da una persona:
+Solo messaggi che una persona ha scritto:
 
 - Messaggi che i tuoi agenti personalizzati registrano come input umano con l'SDK.
-- Prompt digitati in Claude Code, Codex, OpenCode, pi, Hermes e OpenClaw, quando i trascritti delle sessioni vengono inviati (impostazione predefinita). I lavori programmati, le istruzioni iniettate, i trasferimenti a sottoagenti e altri testi che il runtime dell'agente stesso scrive non vengono punteggiati. Neanche le esecuzioni non interattive come `claude -p`, `codex exec` e `hermes -z`: uno script ha scritto quei prompt, non una persona.
+- Prompt digitati in Claude Code, Codex, OpenCode, pi, Hermes e OpenClaw, quando i trascritti di sessione vengono inviati (l'impostazione predefinita). I lavori programmati, le istruzioni iniettate, i passaggi tra sotto-agenti e altro testo che il runtime dell'agente stesso scrive non vengono scoring. Nemmeno le esecuzioni non interattive come `claude -p`, `codex exec` e `hermes -z`: uno script ha scritto quei prompt, non una persona.
 
-Il punteggio giudica le parole della persona stessa. Un'istruzione breve e diretta come "fix it" non viene conteggiata come rabbia, e fare una domanda non viene conteggiata come confusione. Una nuova richiesta non è una correzione, e i ringraziamenti da soli non vengono conteggiati come risolto.
+Lo scoring giudica le proprie parole della persona. Un'istruzione breve e brusca come "fix it" non viene conteggiata come rabbia, e porre una domanda non viene conteggiata come confusione. Una nuova richiesta non è una correzione, e i ringraziamenti da soli non contano come risolti.

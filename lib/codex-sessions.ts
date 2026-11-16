@@ -15,7 +15,7 @@
  * parser produces (`lib/log-entries.ts`) so the existing log viewer renders
  * Codex sessions without any UI-side branching.
  */
-import { readFileSync, readdirSync, existsSync, writeFileSync, mkdirSync, statSync } from "node:fs";
+import { readFileSync, readdirSync, existsSync, writeFileSync, mkdirSync, statSync, renameSync, unlinkSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { homedir } from "node:os";
@@ -53,7 +53,22 @@ function writeCacheEntry(sessionId: string, path: string): void {
     mkdirSync(dirname(CACHE_PATH), { recursive: true });
     const cache = readCache();
     cache[sessionId] = path;
-    writeFileSync(CACHE_PATH, JSON.stringify(cache), "utf-8");
+    // Atomic write: dump to a per-process temp file, then rename over the
+    // cache. rename(2) is atomic on POSIX/NTFS, so a reader can never see a
+    // torn JSON payload, and two concurrent writers leave the last-complete
+    // file behind instead of an interleaved one.
+    const tmp = `${CACHE_PATH}.${process.pid}.tmp`;
+    try {
+      writeFileSync(tmp, JSON.stringify(cache), "utf-8");
+      renameSync(tmp, CACHE_PATH);
+    } catch (err) {
+      try {
+        unlinkSync(tmp);
+      } catch {
+        // temp file already gone
+      }
+      throw err;
+    }
   } catch {
     // Cache is best-effort
   }

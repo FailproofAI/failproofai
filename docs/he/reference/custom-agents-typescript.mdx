@@ -4,24 +4,24 @@ description: "Configuration, the event catalog, the scopes and the framework ada
 icon: "square-js"
 ---
 
-כל הגדרה, שיטה ושדה ב-SDK של TypeScript. אם אתה מכשיר לראשונה, התחל בהנחיה — דף זה לחיפוש הערכים.
+סקירה מלאה של כל הגדרה, שיטה ושדה ב-SDK של TypeScript. אם אתה משתמש בו לראשונה, התחל במדריך — עמוד זה מיועד לחיפוש מידע.
 
 <Columns cols={2}>
-  <Card title="Custom agents guide" icon="code" href="/he/start/integrations/custom-agents">
-    התקנה, כשור, שיטות הירויים, דוגמה מעובדת וגם בעיות נפוצות.
+  <Card title="מדריך Custom agents" icon="code" href="/he/start/integrations/custom-agents">
+    התקנה, הכנה, שיטות האירוע, דוגמה מעשית, ובעיות נפוצות.
   </Card>
-  <Card title="Using Python?" icon="python" href="/he/reference/custom-agents">
-    אותם ירויים, אותו פורמט חוט, אותו ספול — מ-Python.
+  <Card title="משתמש ב-Python?" icon="python" href="/he/reference/custom-agents">
+    אותם אירועים, אותה פורמט תקשורת, אותו spool — מ-Python.
   </Card>
 </Columns>
 
-Node 20.9 ומעלה. ESM ו-CommonJS. ללא תלויות זמן ריצה.
+Node 20.9 או חדש יותר. ESM ו-CommonJS. ללא תלויות בזמן ריצה.
 
 <Note>
-  ה-SDK הזה ה-Python מכתיבים **אותם ירויים לאותו ספול**. fleet עם agents של Node ו-agents של Python מייצר קבוצת sessions אחת, לא שתיים, ודבר בלוח הבקרה לא מבחין ביניהם. בחר לפי שירות, לא לפי חברה.
+  ה-SDK הזה ודומיו ב-Python כותבים **אותם אירועים לאותו spool**. צי עם agents ב-Node ו-agents ב-Python מייצר קבוצת sessions אחת, לא שתיים, והכלום בלוח הבקרה מבחין ביניהם. בחר לפי שירות, לא לפי חברה.
 </Note>
 
-## Install
+## התקנה
 
 ```bash
 npm install @failproofai/sdk
@@ -35,18 +35,18 @@ await failproofai.agent("planner", { goal: question }, async () => {
 });
 ```
 
-מתאמי המסגרת משתלחים בחבילה עצמה. המסגרות הן **תלויות עמיתות אופציונליות** — מוצהרות כך שהטווחים הנתמכים גלויים, לא מותקנים בשמך, ויובאו רק כאשר קוראים ל-`instrument()`.
+מתאמי הfirmware מגיעים בחבילה עצמה. הfirmworks הם **תלויות peer אופציונליות** — מוצהרות כדי שהטווחים הנתמכים יהיו גלויים, לעולם לא מותקנים בשמך, ומייובאים רק כשאתה קורא ל-`instrument()`.
 
-## חבר את daemon של Failproof
+## התחבור לדאימון Failproof
 
-זהה ל-SDK של Python: צור מפתח `events:add` תחת **Admin → Keys**, ואז [חבר את daemon](/he/start/setup#connect-a-machine-to-cloud) על מכונת ה-agent. ה-SDK כותב לדיסק; ה-daemon משלח.
+זהה ל-SDK של Python: צור מפתח `events:add` תחת **Admin → Keys**, ואז [התחבור לדאימון](/he/start/setup#connect-a-machine-to-cloud) על מכונת ה-agent. ה-SDK כותב לדיסק; הדאימון משלח.
 
-## Configuration
+## הגדרה
 
-### OpenTelemetry spans (opt in)
+### OpenTelemetry spans (קבלה אופציונלית)
 
-התקן OpenTelemetry בנפרד עם `npm install @opentelemetry/api @opentelemetry/sdk-trace-base`.
-לאחר מכן הוסף את FailproofAI למעבדי ספק שלך:
+התקן את OpenTelemetry בנפרד עם `npm install @opentelemetry/api @opentelemetry/sdk-trace-base`.
+לאחר מכן הוסף את FailproofAI למעבדי הספק שלך:
 
 ```ts
 import * as failproofai from "@failproofai/sdk";
@@ -63,12 +63,17 @@ span.end();
 await provider.forceFlush();
 ```
 
-לספק קיים, שמור על מעבדים אחרים שלו באותה רשימה. ספקים שחושפים `addSpanProcessor` יכולים במקום זאת להעביר כ-`{ provider }`. ללא אפשרויות, setup מרשם ספק חדש רק אם אין ספק שכבר רשום.
-`OtelSpanExporter` יכול גם לשמש ישירות עם המעבד שלך.
+עבור ספק קיים, שמור על המעבדים האחרים שלו באותה רשימה. ספקים
+החושפים `addSpanProcessor` יכולים במקום זאת להיות מועברים בתור `{ provider }`. ללא
+אפשרויות, ההגדרה רושמת ספק חדש רק אם אין ספק רשום כבר.
+`OtelSpanExporter` יכול גם להיות בשימוש ישיר עם המעבד שלך.
 
-הייצוא עובר דרך ה-daemon של FailproofAI המחובר; ה-SDK לא שולח בקשות רשת וזקוק למפתח או listener מקומי. בקש מ-admin להפעיל
-[OpenTelemetry ingest](/he/agenteye/opentelemetry). `instrument()` חוסי לא מפעיל את exporter זה. `uninstrument("otel")` מנטרל רק את המעבד שלו. תכונות span שלך שולטות בתפיסת תוכן; flush את ספק שלך לפני יציאה.
-OpenTelemetry נשאר תלות אפליקציה אופציונלית, לא תלות SDK קשה.
+הייצוא עובר דרך דאימון FailproofAI המחובר; ה-SDK לא שולח
+בקשות רשת ולא צריך מפתח או מיקום מקומי. בקש מאדמין להפעיל
+[OpenTelemetry ingest](/he/agenteye/opentelemetry). `instrument()` ריק אינו
+מפעיל מייצא זה. `uninstrument("otel")` משבית רק את המעבד שלו.
+תכניות ה-span שלך שולטות בהיקף הצילום; פרוק את הספק לפני יציאה.
+OpenTelemetry נשאר תלות יישום אופציונלית, לא תלות SDK קשה.
 
 ```ts
 failproofai.configure({
@@ -78,40 +83,40 @@ failproofai.configure({
 });
 ```
 
-| Option | What it does |
+| אפשרות | מה זה עושה |
 | --- | --- |
-| `environment` | התווית בכל ירוי — `production`, `staging`, `prod-eu`. ברירת המחדל היא `dev`. |
-| `flushInterval` | כמה פעמים המשימון כותב לדיסק, בשניות. ברירת המחדל היא `0.5`. |
-| `baseDir` | היכן לכתוב. ברירת המחדל היא ספול של daemon, שזה מה שאתה רוצה אלא אם אתה יודע אחרת. |
+| `environment` | התווית על כל אירוע — `production`, `staging`, `prod-eu`. ברירת המחדל היא `dev`. |
+| `flushInterval` | כמה לעתים קרובות טיימר כותב לדיסק, בשניות. ברירת המחדל היא `0.5`. |
+| `baseDir` | היכן לכתוב. ברירת המחדל היא spool של הדאימון, שזה מה שאתה רוצה אלא אם אתה יודע אחרת. |
 
-שום דבר לא מיושם אלא אם הכל מאומת, כך שקריאה דחויה משאירה את ה-SDK בדיוק כפי שהיה במקום `baseDir` חדש ומרווח ישן.
+כלום לא מיושם אלא אם הכל תקף, כך שקריאה שנדחתה משאירה את ה-SDK בדיוק כפי שהוא היה ולא עם `baseDir` חדש והמרווח הישן.
 
-קבע לפי משתנה סביבה במקום:
+הגדר לפי משתנה סביבה במקום:
 
-| Variable | What it does |
+| משתנה | מה זה עושה |
 | --- | --- |
-| `AGENTEYE_ENVIRONMENT` | קובע את `environment` ללא שינוי קוד. אפשרות `configure()` מנצחת עליה. |
-| `FAILPROOFAI_HOME` | מעביר את שורש Failproof AI שמחזיק את הספול. |
+| `AGENTEYE_ENVIRONMENT` | קובע `environment` ללא שינוי קוד. אפשרות `configure()` מנצחת אותה. |
+| `FAILPROOFAI_HOME` | מעביר את שורש Failproof AI שמחזיק את ה-spool. |
 | `FAILPROOFAI_SDK_LOG_LEVEL` | `debug`, `info`, `warn` (ברירת מחדל), `error`, `silent`. |
-| `FAILPROOFAI_SDK_STRICT` | `1` הופך שגיאות כשור לזורק במקום להיות רשום. |
-| `FAILPROOFAI_SDK_STRICT_INTEGRATIONS` | `1` הופך בעיית תאימות מסגרת לזורק במקום אזהרה והמשך. |
+| `FAILPROOFAI_SDK_STRICT` | `1` גורם לשגיאות ההכנה להשליך במקום להיות רישומים. |
+| `FAILPROOFAI_SDK_STRICT_INTEGRATIONS` | `1` גורם לבעיית תאימות firmware להשליך במקום להזהיר ולהמשיך. |
 
 <Warning>
-  **אין פסיקים ב-`environment`.** Ingest מפצל את השדה הזה על פסיקים כדי לבנות את המסננים שלו, וקופץ כל ירוי שתווית שלו מכילה אחד — כך ריצה שלמה נעלמת בשקט. כתוב `prod-eu`, לא `prod,eu`.
+  **אין פסיקים ב-`environment`.** Ingest מחלק את השדה הזה על פסיקים כדי לבנות את המסננים שלו, וחוטא כל אירוע שתווית שלו מכילה אחד — כל ריצה נעלמת בשתיקה. כתוב `prod-eu`, לא `prod,eu`.
 
-  `configure({ environment: "prod,eu" })` זורק כדי שתגלה מיד. `AGENTEYE_ENVIRONMENT` לא יכול לזרוק — לא אחד קוראה לך — כך שהוא מאיים פעם אחת ופוקד חזרה ל-`dev`.
+  `configure({ environment: "prod,eu" })` משליך כדי שתוכל לגלות מיד. `AGENTEYE_ENVIRONMENT` אינו יכול להשליך — כלום לא קורא לך — כל כך זה מזהיר פעם אחת וחוזר לברירת המחדל `dev`.
 </Warning>
 
-התווך לקווי רישום של ה-SDK עצמו לתוך הרשם שלך עם `failproofai.setLogger({ debug, info, warn, error })`.
+כוונן את שורות הרישום של ה-SDK עצמו לתוך הרישום שלך עם `failproofai.setLogger({ debug, info, warn, error })`.
 
-## Shutdown
+## כיבוי
 
-ירויים במאגר נשטפו על `process.on("exit")`.
+אירועים מחוצצים נשטפים על `process.on("exit")`.
 
-תהליך שנהרג בעל ידי סימן לעולם לא מגיע לזה, וברירת המחדל של Node ל-`SIGTERM` היא להסתיים ללא הפעלת מטפלי יציאה — כך agent בקונטיינר מאבד כל מה שהמרווח האחרון לא כתב.
+תהליך שנהרג על ידי אות לעולם לא מגיע לזה, וברירת המחדל של Node לפי `SIGTERM` היא סיום ללא הפעלת מטפלי יציאה — ה-agent ממוכל מאבד כל מה שהמרווח האחרון לא כתב.
 
 <Warning>
-  **SDK זה לא יתקין מטפל סימנים בשבילך.** רישום אחד משנה את התנהגות התהליך שלך: ממשך מעכב את ברירת ההנחה של Node, כך ספרייה שהוסיפה אחד תעצור בשקט את Ctrl-C מעבודה. הוסף שלך:
+  **ה-SDK הזה לא יתקין מטפל אות עבורך.** רישום אחד משנה את ההתנהגות של התהליך שלך: מאזין מדכא את ברירת המחדל של Node לסיום, כך שספריה שהוסיפה אחד היא שתשתיק בשתיקה הפסקה של Ctrl-C מעבודה. הוסף שלך:
 
   ```ts
   for (const signal of ["SIGINT", "SIGTERM"] as const) {
@@ -123,11 +128,11 @@ failproofai.configure({
   ```
 </Warning>
 
-סקריפט בעל חיים קצרים או handler של serverless צריך `await failproofai.flush()` לפני החזרה — המרווח לבדו לא מבטיח משלוח.
+סקריפט חיים קצרים או מטפל serverless צריך `await failproofai.flush()` לפני חזרה — המרווח בלבד לא מבטיח הספקה.
 
-## Identity
+## זהות
 
-כל ירוי שייך ל-session ול-agent. **ה-scopes ממלאים את שניהם**, כך שאתה רק לעתים קרובות מעביר אותם:
+כל אירוע שייך ל-session ול-agent. **ה-scopes ממלאים את שניהם**, כך שאתה רק מעט מעביר אותם:
 
 ```ts
 await failproofai.session(async () => {
@@ -137,61 +142,61 @@ await failproofai.session(async () => {
 });
 ```
 
-העברת `sessionId` או `agentId` במפורש עדיין עובדת ומנצחת. ללא כלא שיוגבל ולא עבר, הקריאה זורקת במקום לפוקד ירוי Cloud שיודבק בשקט.
+העברת `sessionId` או `agentId` בעדות עדיין עובדת וזוכה. ללא כל אחד כרוך או מועבר, הקריאה משליכה ולא פולטת אירוע שה-Cloud היה בשתיקה מסלק.
 
 <Note>
-  Identity רוכבת על `AsyncLocalStorage`. היא עוקבת `await`, `.then()`, timers וכל callback שנוצר בתוך ה-scope. היא **לא** עוקבת callback שמאוחסן במהלך ריצה אחת ונקרא במהלך אחרת, או עבודה שנסרקה על פני גבול `worker_threads` — עטוף אלה ב-`failproofai.propagate()` או הירויים שלהם נוחתים ללא קשר.
+  הזהות רוכבת על `AsyncLocalStorage`. זה עוקב אחרי `await`, `.then()`, טיימרים וכל callback שנוצר בתוך ה-scope. זה **אינו** עוקב אחרי callback שמאוחסן במהלך ריצה אחת והשקאו במהלך אחרת, או עבודה שהעברנו על גבול `worker_threads` — עטוף אלה ב-`failproofai.propagate()` או האירועים שלהם נוחתים ללא צורה.
 </Note>
 
 ### Scopes
 
-| Scope | Emits | Returns |
+| Scope | פולט | מחזיר |
 | --- | --- | --- |
-| `session(body)` | nothing — identity only | whatever `body` returns |
-| `agent(id, options?, body)` | `agent_start`, then `agent_end` | whatever `body` returns |
-| `toolCall(name, options?, body)` | `tool_use`, then `tool_result` | whatever `body` returns |
+| `session(body)` | כלום — זהות בלבד | כל מה ש-`body` מחזיר |
+| `agent(id, options?, body)` | `agent_start`, ואחריו `agent_end` | כל מה ש-`body` מחזיר |
+| `toolCall(name, options?, body)` | `tool_use`, ואחריו `tool_result` | כל מה ש-`body` מחזיר |
 
-גוף סינכרוני נשאר סינכרוני: `agent("x", () => 1)` חוזר `1`, לא הבטחה.
+גוף סינכרוני נשאר סינכרוני: `agent("x", () => 1)` מחזיר `1`, לא הבטחה.
 
-`toolCall` רושם את הערך שנפתר של הגוף כ-`output` של הכלי, אלא אם אתה מקצה `call.output` בעצמך.
+`toolCall` רושם את ערך הגוף שנפתר כ-`output` של הכלי, אלא אם אתה מקצה `call.output` בעצמך.
 
 <Accordion title="Exit semantics" icon="arrow-right-from-bracket">
 
-| What happened | Events | `outcome` |
+| מה קרה | אירועים | `outcome` |
 | --- | --- | --- |
-| הגוש הוחזר | `agent_end` | `"success"`, or your `outcome` |
-| הגוש זרק | `error`, then `agent_end` | `"failed"` |
-| ביטול `AbortError` | `agent_end` only | `"cancelled"` |
+| הבלוק חזר | `agent_end` | `"success"`, או ה-`outcome` שלך |
+| הבלוק השליך | `error`, ואחריו `agent_end` | `"failed"` |
+| `AbortError` | `agent_end` בלבד | `"cancelled"` |
 
-השגיאה תמיד מושלכת מחדש.
+השגיאה תמיד משוכללת מחדש.
 
-כשל בכלי נרשם על העלה — `tool_result` עם מחרוזת `error` — ואינו פוקד ירוי `error` ברמה הריצה. אחד שלולאת ה-agent תופסת אינה כשל ריצה, ואחד שמתפשט מדווח בדיוק פעם אחת, על ידי `agent()` של הכלל.
+כישלון כלי מתועד על העלה — `tool_result` עם מחרוזת `error` — ופולט **אף לא** אירוע `error` ברמת ריצה. אחד שלולאת ה-agent תופסת אינו כישלון ריצה, ואחד שמתפשט מדווח בדיוק פעם אחת, על ידי ה-`agent()` המוקיף.
 
 </Accordion>
 
-<Accordion title="The `using` form" icon="brackets-curly">
+<Accordion title="הטופס `using`" icon="brackets-curly">
 
-כאשר העבודה אינה פונקציה יחידה — scope שנפתח בקונסטרוקטור וסגור בפירוק, או אחד שרוכב על זרימת בקרה קיימת:
+כאשר העבודה אינה פונקציה יחידה — טווח שנפתח בקונסטרוקטור וסגור בפירוק, או אחד שחוצה זרימת בקרה קיימת:
 
 ```ts
 {
   using span = failproofai.agent.open("planner", { goal });
   using call = failproofai.toolCall.open("search", { input: { q } });
   call.call.output = await search(q);
-}  // tool_result, then agent_end
+}  // tool_result, ואחריו agent_end
 ```
 
-שתי הצורות פוקדות ירויים בדיוק בתוך בתים. עדיף צורת callback: היא עובדת בתוך `AsyncLocalStorage.run()`, כך שאין כלום להתרוקן וכל המעמד של באגים "נפתח כאן, סגור שם" בלתי משיג.
+שתי הצורות פולטות אירועים דומים בדיוק. העדף את הטופס callback: הוא פועל בתוך `AsyncLocalStorage.run()`, כל כך אין כלום להפטר ומחלקת הבאגים כולה של בחירת וביצוע הזרע אינה ניתנת להשגה.
 
-`using` בלוק שתופס את הכישלון שלו מדווח עם `span.fail(error)` — ל-disposer אין ערוץ יוצא מן הכלל שלו.
+בלוק `using` שתופס את הכישלון שלו משלח דוח עם `span.fail(error)` — למערוך אין ערוץ חריג משלו.
 
 </Accordion>
 
-## Event catalog
+## קטלוג אירועים
 
-אותם חמישה-עשר שיטות כמו Python SDK, ב-camelCase. רובם באים ב-**זוגות** — אתה קורא ל-opener, אחר כך ל-closer, וה-SDK מתזמן את הפער.
+אותן חמש עשרה שיטות כמו ה-SDK של Python, ב-camelCase. רוב מגיעים **בזוגות** — אתה קורא לפותח, לאחר מכן לסוגר, וה-SDK משעון את הפער.
 
-| | Opens | Closes |
+| | פותח | סוגר |
 | --- | --- | --- |
 | **Agents** | `agentStart` | `agentEnd` |
 | | `agentPause` | `agentResume` |
@@ -202,11 +207,11 @@ await failproofai.session(async () => {
 
 שלוש עומדות לבד: `error`, `humanPause`, `humanInterrupt`.
 
-<Accordion title="Every field, per method" icon="table">
+<Accordion title="כל שדה, לפי שיטה" icon="table">
 
-כל שיטה לוקחת גם `sessionId` ו-`agentId`, שה-scopes ממלאים עבורך. כל מה שמושמט נשמט במקום להשלח כ-JSON `null`.
+כל שיטה גם לוקחת `sessionId` ו-`agentId`, שה-scopes ממלאים עבורך. כל מה שמושמט מושלך ולא שלח כ-JSON `null`.
 
-| Method | Required | Optional |
+| שיטה | נדרש | אופציונלי |
 | --- | --- | --- |
 | `agentStart` | — | `goal`, `parentId` |
 | `agentEnd` | — | `outcome`, `summary` |
@@ -224,57 +229,57 @@ await failproofai.session(async () => {
 | `humanPause` | — | `reason`, `userId` |
 | `humanInterrupt` | — | `reason`, `userId`, `atStep` |
 
-כל מפתח אחר שתוסיף הופך לשדה payload מותאם אישית. Namespace כל דבר ספציפי למסגרת `fw_*`; שם שמתנגש עם שדה מוצהר מסורב במקום להשתנות בשקט עמודה שמקודמת.
+כל מפתח אחר שתוסיף הופך לשדה עומס מותאם אישית. Namespace כל דבר ספציפי למסגרת `fw_*`; שם שמתנגש עם שדה מוצהר מסולק ולא שרק שוכתב בשתיקה עמודה שהעלתה.
 
 </Accordion>
 
 <Warning>
-  **`duration_ms` מחושב, לא מקובל.** ארבע השיטות הסוגרות מתזמנות את הפער מ-opener שלהן וסורבות `duration_ms` שמסופק קורא — משך דיווח אינו בלתי זיוף.
+  **`duration_ms` מחושב, לא מקובל.** ארבע השיטות השוקלות משעון הפער מהפותח שלהן וחוטא לקריאה שסופקה `duration_ms` — משך זמן שדווח אינו ניתן להפרכה.
 
-  זוגות תואם בהתחשב ב-**session** ובה-id, לא על ה-agent. כלי שנפתח תחת `planner` וסגור תחת `worker` עדיין זוגות, שזה מה שהריצות מולטי-agent מקוננות בפועל עושות.
+  זוגות מתואמים על **session** ו-id, לעולם לא על ה-agent. כלי שנפתח תחת `planner` וסגור תחת `worker` עדיין מתאים, שזה מה שהריצות הרב-agent המקוננות בפועל עושות.
 </Warning>
 
-## Framework adapters
+## מתאמי Framework
 
 ```ts
-await failproofai.instrument();              // whatever it can find
-await failproofai.instrument("langchain");   // exactly one
-failproofai.uninstrument();                  // put everything back
+await failproofai.instrument();              // כל מה שהוא יכול למצוא
+await failproofai.instrument("langchain");   // בדיוק אחד
+failproofai.uninstrument();                  // שים הכל חזרה
 ```
 
-| Framework | Supported | How it attaches |
+| Framework | נתמך | איך זה מצורף |
 | --- | --- | --- |
-| **LangChain.js / LangGraph.js** | `@langchain/core` 0.3 – 1.x, LangGraph.js 0.4 – 1.x | `CallbackManager.configure`, כך שכל `invoke`/`stream`/`batch` מכוסה ללא העברה `callbacks:` כל מקום — או להעביר `langchainHandler()` עצמך ותיקה כלום. |
-| **Vercel AI SDK** | `ai` 4 – 7 | `telemetry()` בחזית הקריאה, או `instrument("ai")` לכל התהליך ב-`ai` 7 (ב-4–6 זה opt-in — ראה להלן). |
-| **Mastra** | `@mastra/core` 0.20 – 1.x | `Agent.generate`/`.stream`, מודל ה-agent וההחלטה כלי, ומנוע ריצת הזרימה/שלב. |
-| **LlamaIndex.TS** | `llamaindex` 0.11.4 – 0.x | `Settings.callbackManager` (subscribed) בתוספת `AgentWorkflow.runStream`, לריצה זרימה וצעדים שלהם. |
+| **LangChain.js / LangGraph.js** | `@langchain/core` 0.3 – 1.x, LangGraph.js 0.4 – 1.x | `CallbackManager.configure`, כך שכל `invoke`/`stream`/`batch` מכוסה ללא העברת `callbacks:` בכל מקום — או העבר `langchainHandler()` בעצמך ותקן שום דבר. |
+| **Vercel AI SDK** | `ai` 4 – 7 | `telemetry()` בנקודת הקריאה, או `instrument("ai")` לכל התהליך על `ai` 7 (על 4–6 זה הסכמה — ראה למטה). |
+| **Mastra** | `@mastra/core` 0.20 – 1.x | `Agent.generate`/`.stream`, המודל של ה-agent וריאולוציה כלי, ומנוע ריצת זרימת עבודה/שלב. |
+| **LlamaIndex.TS** | `llamaindex` 0.11.4 – 0.x | `Settings.callbackManager` (מנוי) בתוספת `AgentWorkflow.runStream`, עבור ריצות זרימת עבודה והשלבים שלהם. |
 
-כל טווח נבחן כנגד ביטויי מסגרת אמיתיים, בשני הקצוות, כמו מודול ES וכ-CommonJS, בכל ריצת CI.
+כל טווח מתבחן כנגד שחרורי framework אמיתיים, בשני הקצוות, כמו מודול ES ו-CommonJS, בכל ריצת CI.
 
-המיפוי הוא של Python SDK, כך שאותו תוכנית רומזת את אותה עץ בשפה אחת. קונסטרוקט הוא **agent** רק אם הוא בעלות לולאת החלטה LLM — ריצת גרף או שרשרת, ממשק SDK `generateText`/`streamText` קריאה, agent Mastra, ריצת agent LlamaIndex. קנה או שלב זרימה LangGraph הוא **hook** (`hook_triggered`/`hook_completed`), לעולם לא agent מקונן. קריאות מודל הן `model_request`/`model_response` זוגות עם ספירות token; קריאות כלי נושאות את מזהה קריאת הכלי של המודל. כשל נרשם פעם אחת, בירוי שהוא קרה.
+ההמפה היא של ה-SDK של Python, כך שאותו תוכנית מציירת אותו עץ בשפה אחת. קונסטרוקציה היא **agent** רק אם היא בעלכת לולאת ההחלטה של LLM — ריצת גרף או שרשרת, קריאה `generateText`/`streamText` של AI SDK, Mastra agent, ריצת LlamaIndex agent. צומת LangGraph או שלב זרימת עבודה הוא **hook** (`hook_triggered`/`hook_completed`), לעולם לא agent מקונן. קריאות מודל הן זוגות `model_request`/`model_response` עם ספירת אסימונים; קריאות כלי נושאות את מזהה קריאת הכלי שלו של המודל. כישלון מתועד פעם אחת, על האירוע שהיא קרתה בו.
 
-adapter שנכשלת להתקנה היא רשום וחקוקה; האחרים עדיין מתקנים, כי LlamaIndex שבור לא צריך לעלות לך LangGraph.
+מתאם שנכשל בהתקנה מוזהר ודלג; האחרים עדיין מותקנים, כי LlamaIndex שבור לא צריך לעלות ללך LangGraph.
 
 <Note>
-  `instrument()` ללא ארגומנט מגלה מסגרת ב-**resolves**, לא ב-whether היא כבר יובאה — Node חשפה שום שווה ערך ל-Python של `sys.modules` עבור מודולי ES. מסגרת שיש לך מותקנת אך לא משתמש תובא וחקוקה. שם את האחד שתרצה אם זה חשוב.
+  `instrument()` ללא טיעון מזהה framework על ידי אם הוא **יחליט**, לא על ידי אם הוא כבר מיובא — Node אינו חושף שום שקול שווה ערך של Python `sys.modules` עבור ES modules. framework שיש לך מותקנת אך לא משמשת יובאת ותוקנה. שם את זה שאתה רוצה אם זה משנה.
 </Note>
 
 <Note>
-  רוב ההטלות משלחות בנייה ES-module ובנייה CommonJS, שNode טוען כשתי עותקים ללא קשר. adapters תיקה את העותק שהיישום שלך טוען (ועותק CommonJS גם כן אם משהו כבר `require`ד זה), כך שני מערכות המודול עובדים. מסגרת **bundled לתוך התפוקה שלך** על ידי esbuild או webpack הוא מחוץ להישג — השתמש בעוזרים לאתר הקריאה שם: `langchainHandler()`, `telemetry()`, `wrapTool()`.
+  רוב הfireworks האלה משלחים בנייה של מודול ES וביצור של CommonJS, שצומת טוען כשתי עותקים לא קשורים. המתאמים תיקנו את העותק שהיישום שלך טוען (וגם את העותק של CommonJS אם משהו כבר `require`d אותו), כך שמערכות מודול שתיהן עובדות. framework **משולב בפלט שלך** על ידי esbuild או webpack הוא חוץ להישג יד — השתמש בעוזרי נקודת הקריאה שם: `langchainHandler()`, `telemetry()`, `wrapTool()`.
 </Note>
 
-### LangChain without patching
+### LangChain ללא תיקוף
 
 ```ts
 import { langchainHandler } from "@failproofai/sdk/langchain";
 await graph.invoke(input, { callbacks: [langchainHandler()] });
 ```
 
-ה-handler עובד עם או ללא `instrument()` ולא עולה לעולם על הרשמה. `instrument("langchain")` לוקח `sessionId`, `captureContent`, `includeChains`, `graphCallbacks` ו-`captureLimit`, כפי ש-adapter של Python עושה; `metadata: { failproofai_sdk_session_id }` בקריאה בורר את ה-session עבור אותו הודעה.
+המטפל עובד עם או ללא `instrument()` ולעולם לא רשם כפול. `instrument("langchain")` לוקח `sessionId`, `captureContent`, `includeChains`, `graphCallbacks` ו-`captureLimit`, כמו ה-Python adapter עושה; `metadata: { failproofai_sdk_session_id }` בקריאה בוחרת את ה-session לאותה invocation.
 
 ### Vercel AI SDK
 
-ה-SDK של AI מייצא פונקציות פשוטות מ-ES מודול, ומודול מודול ES אינו משתנה על פי מפרט — אין איפה לתיקה. הוא משתמש בנקודות הרחבה שהיא עצמה מסמיכה:
+ה-AI SDK מייצא פונקציות רגילות מ-ES module, ו-ES module namespace הוא בלתי ניתן לשינוי בפי — אין מקום לתקן. זה משתמש בנקודות ההרחבה שה-SDK עצמו מסמל:
 
 ```ts
 import { telemetry } from "@failproofai/sdk/ai";
@@ -283,35 +288,35 @@ const { text } = await generateText({
   model,
   prompt,
   experimental_telemetry: telemetry({ functionId: "answer-question" }),
-  // on ai 7, `telemetry: telemetry({ … })` — the same object, the new name
+  // על ai 7, `telemetry: telemetry({ … })` — אותו עצם, השם החדש
 });
 ```
 
-זה האינטגרציה השלמה: span של agent, זוג model request/response לכל שלב עם ספירות token, וכל קריאת כלי. חזית אחת עובדת בכל major — `ai` 4–6 קרא את tracer זה נושא, `ai` 7 את אינטגרציית telemetry.
+זו האינטגרציה המלאה: span agent, זוג בקשת מודל/תגובה לכל שלב עם ספירת אסימונים, וכל קריאת כלי. נקודת קריאה אחת פועלת בכל גדול — `ai` 4–6 קראו את tracer שהוא נושא, `ai` 7 את אינטגרציית telemetry.
 
-`instrument("ai")` עושה את אותו תהליך כל התהליך **ב-`ai` 7**: כל קריאה, דרך רשימת אינטגרציית telemetry גלובלית של AI SDK, שהיא תוספת ותופסת שום דבר מאחרים.
+`instrument("ai")` עושה אותו תהליך כללי על **`ai` 7**: כל קריאה, דרך רשימת אינטגרציית telemetry הגלובלית של ה-AI SDK, שהיא תוספת ולא לוקחת מכל אחד אחר.
 
-**ב-`ai` 4–6, `instrument("ai")` רושם כלום בעצמו, ויומן אחד אזהרה אומרת כך.** ה-hook כל-תהליך היחיד שיש לאלה הגדול הוא ספק tracer OpenTelemetry גלובלי — חניה אחת OpenTelemetry משתנה בחזרה אחד פעם התפוס. רישום שלנו סורב בשקט את `NodeSDK.start()` שלך מאוחר בהתחלה ושולח http/database spans שלך ל-tracer שייצא כלום. השתמש `telemetry()` בחזית הקריאה או `wrapModel` שם. אם התהליך לא מריץ OpenTelemetry שלו, בחר פנימה עם `instrument("ai", { registerGlobalTracer: true })`: הוא אז רושם כל קריאה שמעביר `experimental_telemetry: { isEnabled: true }`, ורק לוקח את החניה אם היא עדיין ריקה. `registerGlobalTracer: false` שומר ברירת מחדל וששתקות האזהרה.
+**על `ai` 4–6, `instrument("ai")` רושם כלום בעצמו, ורישומים אזהרה אחת שאומרת כך.** הקטע הגלובלי היחיד שלאותם עיקריים יש הוא ספק tracer OpenTelemetry גלובלי — שקט אחד OpenTelemetry מסרב להסכימו בפעם שלקחו. רישום שלנו היה בשתיקה מסרב ל-`NodeSDK.start()` שלך מוקדם יותר בהזדנות ולשלח את http/database spans שלך ל-tracer שלא מייצא כלום. השתמש `telemetry()` בנקודת הקריאה או `wrapModel` שם. אם התהליך לא מריץ OpenTelemetry של עצמו, הסכם עם `instrument("ai", { registerGlobalTracer: true })`: זה אז רושם כל קריאה שמעביר `experimental_telemetry: { isEnabled: true }`, ורק לוקח את הקט אם הוא עדיין ריק. `registerGlobalTracer: false` שומר על ברירת המחדל והשתיקה האזהרה.
 
-אם תרצה במקום זאת לעטוף את המודל פעם, `wrapModel` רואה שיחות מודל בלבד, כי קריאות כלי קורות מעל שכבת המודל. מודל עטוף קרא עם כלום סביבו נרשם כריצה משלו. קריאה משודרת סוגרת כיצד זרם עוצר — `stop_reason: "cancelled"` כאשר הצרכן מבטל זה, `"error"` עם השגיאה כאשר היא נכשלת חציוני:
+אם אתה עדיף לעטוף את המודל פעם אחת, `wrapModel` רואה רק קריאות מודל, כי קריאות כלי קורות מעל שכבת המודל. מודל מעוטף שקורא עם כלום סביבו מתועד כשלו בריצה. ריצה משודרת סוגרת כיצד הזרם עוצר — `stop_reason: "cancelled"` כשהצרכן משלל אותו, `"error"` עם השגיאה כשהיא נכשלת חלקית:
 
 ```ts
 import { wrapModel } from "@failproofai/sdk/ai";
 const model = await wrapModel(openai("gpt-4o"));
 ```
 
-השתמש בשניהם בסדר: ה-middleware מבחין את הקריאה כבר רשומה ודופקת, כך כל קריאה רשומה פעם אחת.
+השתמוש בשניהם בסדר: התוכנה מיקומית תופסת שהקריאה כבר מתועדת וקישי, כך שכל קריאה מתועדת פעם אחת.
 
-`functionId` שם את span agent. שמור את זה נמוך-cardinality — הוא נוחת ב-`agent_id`, facet לוח הבקרה קדמי.
+`functionId` שמות span ה-agent. שמור אותו בעלות נמוכה — זה נוחת ב-`agent_id`, פן הלוח הראשוני.
 
 ### Next.js
 
-`next build` חבילות תלויות של שרת שלך כברירת מחדל, ומסגרת חבילה לתוך הבנייה היא עותק `instrument()` לא יכול להגיע. עטוף את ה-config פעם אחת וקרא `instrument()` מ-hook התחלה של Next:
+`next build` משלבות תלויות של השרת כברירת מחדל, והfirmware משולב בתוך הבנייה הוא עותק `instrument()` אינו יכול להשיג. עטוף את התצורה פעם אחת וקרא ל-`instrument()` מתוך קרוק הסטארטאפ של Next:
 
 ```ts
 // next.config.ts
 import { withFailproofai } from "@failproofai/sdk/next";
-export default withFailproofai({ /* your config */ });
+export default withFailproofai({ /* תצורה שלך */ });
 ```
 
 ```ts
@@ -323,27 +328,27 @@ export async function register() {
 }
 ```
 
-`withFailproofai` מוסיף LangChain, Mastra, LlamaIndex וה-SDK עצמו ל-`serverExternalPackages`, שמירה רשימה שלך. ללא זה, `instrument()` מאיים פעם בחבילה לא יכול להגיע במקום כישלון שקט; אם אתה רשום החבילות בעצמך, קבע `FAILPROOFAI_NEXT_EXTERNALS=1`. ממשק SDK של Vercel ועוזרי קריאה-אתר עובדים כך או כמו. קצה קנה קבל בנייה לא-op: ייבוא SDK בטוח ורשום כלום.
+`withFailproofai` מוסיף LangChain, Mastra, LlamaIndex וה-SDK עצמו ל-`serverExternalPackages`, משמר את הרשימה שלך. ללא זה, `instrument()` מזהיר פעם אחת לכל firmware שהוא אינו יכול להשיג ולא נכשל בשתיקה; אם אתה מפרט את החבילות בעצמך, הגדר `FAILPROOFAI_NEXT_EXTERNALS=1`. ה-Vercel AI SDK ועוזרי נקודת הקריאה עובדים בשני מקומות. דרך Edge מקבלת בנייה ללא תפקוד: import ה-SDK בטוח ורושמים שום דבר.
 
-### Token counts on streamed calls
+### ספירת אסימונים בקריאות משודרות
 
-OpenAI-compatible APIs רק דיווח שימוש בזרם כאשר הלקוח שואל. LangChain וממשק SDK של Vercel שואל; ל-LlamaIndex להעביר `additionalChatOptions: { stream_options: { include_usage: true } }` ל-`OpenAI` LLM שלו, וביצוע Mastra את המודל עם שימוש מופעל (למשל `createOpenAICompatible({ includeUsage: true })`). אחרת זרימה קריאות מודל לשא ספירות token.
+APIs תואמים OpenAI בלבד דוחפים שימוש בזרם כשהלקוח שואל. LangChain וה-Vercel AI SDK שואלים; עבור LlamaIndex עבור `additionalChatOptions: { stream_options: { include_usage: true } }` ל-LLM `OpenAI` שלו, וב-Mastra בנה את המודל עם שימוש מופעל (למשל `createOpenAICompatible({ includeUsage: true })`). אחרת ריצות מודל משודרות אינן נושאות ספירת אסימונים.
 
-### Runtimes
+### זמנים
 
-Node ≥ 20.9, Bun ו-Deno — כל מסגרת, כמו ES מודול וכ-CommonJS, נבחן בכל נגד Node trace. ה-SDK רץ לצד daemon של `failproofaid`, שנושא מה זה כותב.
+Node ≥ 20.9, Bun ו-Deno — כל frameworks, כמו ES module וכ-CommonJS, מתבחנים בכל אחד כנגד Node's trace. ה-SDK פועל לצד דאימון `failproofaid`, שמשחרר את מה שהוא כותב.
 
-## Your own agent — no framework
+## ה-agent שלך — אין firmware
 
-לולאת agent שכתבת בעצמך, או מסגרת ללא adapter. אתה פוקד את הירויים עם אותו API ש-adapters משתמשות תחתון, כך זרמון יש את אותה צורה וכמות.
+עבור לולאת agent שכתבת בעצמך, או firmware ללא מתאם. אתה פולט את האירועים עם אותו API שהמתאמים משתמשים בתוך, כך שהעקבות יש אותו צורה וטיב.
 
-אתה לא צריך לדעת כיצד ה-agent מוארגן. כל agent ממכונה כבר יש שלוש מקומות, אלמה פונקציות שלו קוראים, ואלה שלוש כולה אינטגרציה:
+אתה לא צריך לדעת כיצד ה-agent מהמנגנון. כל agent בנוי בעצמך כבר יש שלושה מקומות, כל מה שהפונקציות שלו קוראות, ואלה שלוש הם האינטגרציה כלה:
 
-| Where | What to add | Emits |
+| איפה | מה להוסיף | פולט |
 | --- | --- | --- |
-| היכן **ריצה אחת** מתחילה ומסתיימת | `failproofai.agent("name", { goal }, async () => …)` | `agent_start` / `agent_end` |
-| **פונקציה אחת שקוראות למודל** | `event.modelRequest` לפני, `event.modelResponse` לאחר — שני חצאים, גם בכישלון | זוג אחד בכל סיבוב מודל |
-| **פונקציה אחת שמריצות כלים** | `failproofai.toolCall(name, { toolCallId, input }, () => run())` | `tool_use` / `tool_result` |
+| איפה **ריצה אחת** מתחילה וסתומה | `failproofai.agent("name", { goal }, async () => …)` | `agent_start` / `agent_end` |
+| **פונקציה אחת שקוראת לדגם** | `event.modelRequest` לפני, `event.modelResponse` אחרי — שני חצאים, אפילו בכישלון | זוג אחד לכל פנייה מודל |
+| **פונקציה אחת שמריצה כלים** | `failproofai.toolCall(name, { toolCallId, input }, () => run())` | `tool_use` / `tool_result` |
 
 ```ts
 async function callModel(messages) {
@@ -380,15 +385,15 @@ await failproofai.agent("inventory", { goal: question }, async () => {
 });
 ```
 
-זהות סביבתי: הכל בתוך `agent()` נוחתות בריצה של ה-session ללא לוקח id, ודבר אחר בתוכנית משתנה — כולל כל מה שה-agent כבר כותב למאגר שלו.
+זהות היא סביבתית: הכל בתוך `agent()` נוחת בריצה של אותו session ללא לוקח id, ושום דבר אחר בתוכנית משתנה — כולל כל מה שה-agent כבר כותב למסד הנתונים שלו.
 
-- **שירות או עובד:** להעביר בקשה או כלי שלך id כ-`sessionId`, כך session בלוח הבקרה וה-record בתוך יומנים או מסד נתונים שלך קו אחד.
-- **Sub-agents:** מקן `agent()` קריאות. הפנימי מצטרף ל-session עם החיצוני כ-`parent_id` שלו.
-- **פוקד את הזוגות.** `modelRequest` ללא `modelResponse` הוא span לוח הבקרה מראה כמו ריצה לעד — מכאן ה-`catch`.
+- **שרות או עובד:** להעביר את מזהה הבקשה או העבודה שלך כ-`sessionId`, כל שסט בלוח הבקרה וההתיעוד בתוך הרישומים או מסד הנתונים שלך הם אותה מחרוזת.
+- **תוכנות משנה:** קנן קריאות `agent()`. הפנימי משתתף בסט עם החיצוני בתור `parent_id`.
+- **פלוט הזוגות.** `modelRequest` עם לא `modelResponse` הוא טווח הלוח מראה כריצה לנצח — כן `catch`.
 
-[`sdk/typescript/examples/research-agent.ts`](https://github.com/FailproofAI/failproofai/blob/main/sdk/typescript/examples/research-agent.ts) במאגר הוא הגמור, runnable גרסה: לולאת כלי OpenAI אמיתית כלים בדיוק ככה, ריצה ב-CI בכל שינוי כמו ES מודול וכ-CommonJS.
+[`sdk/typescript/examples/research-agent.ts`](https://github.com/FailproofAI/failproofai/blob/main/sdk/typescript/examples/research-agent.ts) במחסן היא הגרסה המלאה, הריצה: לולאה אמיתית OpenAI tool מעוטפת בדיוק כמו זה, בריצה בCI בכל שינוי כמו ES module וכ-CommonJS.
 
-## Evaluations
+## הערכות
 
 ```ts
 import { Evaluator, EvalResult, Score } from "@failproofai/sdk/evaluator";
@@ -400,7 +405,7 @@ app.eval("tool_success_rate", { version: "1" }, (session) => {
   const failures = results.filter((event) => event.payload.error != null).length;
   return new EvalResult({
     score: new Score(results.length === 0 ? 1 : 1 - failures / results.length),
-    reasoning: `${failures} of ${results.length} tool calls failed`,
+    reasoning: `${failures} של ${results.length} קריאות כלי נכשלו`,
   });
 });
 ```
@@ -410,19 +415,19 @@ FAILPROOFAI_EVALUATOR_URL=… FAILPROOFAI_EVALUATOR_TOKEN=… \
   npx failproofai-evaluator ./my-evals.js
 ```
 
-ראה את [Evaluator SDK reference](/he/reference/evaluator-sdk) ל-protocol, הגדרות עובד וסוגי תוצאות.
+ראה את [הפניה ל-Evaluator SDK](/he/reference/evaluator-sdk) לפרוטוקול, הגדרות העובד וסוגי התוצאות.
 
 <Warning>
-  **הערכה חייבת להשיב.** פונקציה סינכרונית שאף פעם לא חוזרת חוסמת את החוט היחיד שיש ל-Node, וללא timeout יכול להגיע בזמן שהוא עושה. כתוב `async` הערכות.
+  **הערכה חייבת להניב.** פונקציה סינכרוני שלעולם אינה חוזרת חוטא את הניצ'י שיש ל-Node, ואף timeout אינו יכול להירות בזמן שזה עושה. כתוב הערכות `async`.
 </Warning>
 
-## What it will not do to your process
+## מה זה לא יעשה לתהליך שלך
 
 | | |
 | --- | --- |
-| **חסום לולאת ה-agent שלך** | ירויים נכנסים לתור בזיכרון; משימון כותב אותם. המשימון הוא `unref`'d, כך ייבוא חבילה זו לא עוצר סקריפט מיציאה. |
-| **גדל ללא קשור** | התור מיכל על ידי ספירה *ו*על ידי בתים שנמדדו. העבר לכל אחד, הירויים הקדומים מותחות ואזהרה אומרת כך — הפסקת telemetry חייבת לא להיות OOM הריגה. |
-| **קח את התהליך למטה** | ירוי אחד שלא ניתן להקליד מישור לבדו, לא אצווה סביבו. זורק getter, הפניה מעגלית, `BigInt`, surrogate לבד: כל אחד מטופל במקום להפץ. |
-| **השאר חצי-כתוב אצווה** | תוכן הוא `fsync`ed לפני שינוי אטומי, המדריך הוא `fsync`ed לאחר, וכישלון כתיבה מנקה קובץ זמני שלו. |
-| **עזוב תמלילים קריאים** | אצוות הן `0600` בתוך `0700` ספריה. הם נושאים מטרות, הנחיות, ויכוחים כלי וכלי פלט. |
-| **ship credentials** | API keys, tokens, JWTs, bearer headers וביטויים סודיים-צורה מחוקים לפני הבתים להגיע לדיסק. ה-daemon redacts שוב לפני upload. |
+| **חסימת לולאת ה-agent שלך** | אירועים כנסו בתור בזיכרון; טיימר כותב אותם. הטיימר הוא `unref`'d, כל כך ייבוא חבילה זו לעולם לא עוצר סקריפט יציאה. |
+| **גדל ללא קצבה** | התור מוגדל על ידי ספירה *ו*על ידי בתים שנמדדו. עבר כל אחד, האירועים הקדומים משולקים והאזהרה אומרת כך — הפסקת telemetry חייבת שלא תהפוך ל-OOM kill. |
+| **לקח את התהליך** | אירוע אחד שלא ניתן לקידוד משולק לבד, לא הקבוצה סביבו. getter זורק, הפניה מעגלית, `BigInt`, surrogate בודד: כל אחד מטופל ולא מופץ. |
+| **השאיר אמין חצי-כתוב** | תוכן הוא `fsync`ed לפני שינוי אטומי, הספרייה היא `fsync`ed אחרי, וכתיבה כושלת מנקה את הקובץ הזמני שלה. |
+| **השאיר תמליל קראה** | אמניות הן `0600` בתוך `0700` ספרייה. הם נושאים מטרות, הנחיות, טיעוני כלי וכלי פלט. |
+| **כלי אישורי** | מפתחות API, סימנים, JWTs, כותרי bearer וקצינה צורה-מטלות מסולקות לפני הבתים מגיעים לדיסק. הדאימון מסלק שוב לפני עלייה. |

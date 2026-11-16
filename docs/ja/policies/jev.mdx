@@ -1,45 +1,45 @@
 ---
 title: "Jev policies"
-description: "Jev のリアルタイムレビューをツール呼び出しのゲートに追加し、判断を適用する前に内容を確認します。"
+description: "Jevのライブレビューをツール呼び出しのゲートに追加し、判断を適用する前に内容を確認します。"
 icon: "shield-check"
 ---
 
-Jev はツール呼び出しを、ユーザーがエージェントに依頼した内容と照らし合わせて読み取ります。文字列マッチングポリシーが有効な作業をブロックしたり、コンテキストが必要なリスクのあるアクションを見逃したりする場合に使用してください。`PreToolUse` または `PermissionRequest` ゲートで、既存のポリシーと並行して判断を返します。セッション終了**後**のスコアには、[Jev evaluations](/ja/evaluations/jev) を使用してください。
+Jevはツール呼び出しを、ユーザーがエージェントに依頼した内容と照らし合わせて評価します。文字列マッチングポリシーが有効な操作をブロックしたり、コンテキストが必要なリスクのある操作を見逃したりする場合に活用してください。`PreToolUse` または `PermissionRequest` ゲートで、既存のポリシーと並行して判定を返します。セッション終了**後**にスコアを取得する場合は、[Jev evaluations](/ja/evaluations/jev) を使用してください。
 
-## オブザーブモードで開始する
+## observeモードで開始する
 
-Failproof AI をインストールし、[対応ハーネス](/ja/reference/harnesses)にフックをアタッチしてください。failproofai 1.0.8-beta.0 以降が必要です。
+Failproof AI をインストールし、[対応ハーネス](/ja/reference/harnesses)にフックをアタッチします。failproofai 1.0.8-beta.0 以降を使用してください。
 
-Failproof AI には Jev チェックが含まれていません。パックとしてインストールする必要があります。インストールしなければ Jev に問い合わせる内容がなく、呼び出されることもありません：
+Failproof AI にはJevチェックが同梱されていません。パックとしてインストールする必要があります。インストールしない場合、Jevに問い合わせる内容がなく、呼び出されることもありません。
 
 ```bash
 failproofai policies add FailproofAI/jev-policies
 ```
 
-次に、リクエストを Jev へ届けるルートを選択します：
+次に、リクエストをJevに送信する方法を選択します。
 
 | ルート | 最初のステップ |
 | --- | --- |
-| FailproofAI Cloud | `jev:evaluate` 権限を持つ **machine** キーで接続します。Jev の設定がないマシンでは、`failproofai config` を実行することで Jev がオブザーブモードで有効になります。 |
-| 独自プロバイダー | ローカルダッシュボードで **Settings → Jev** を開き、プロバイダーを選択してトークンを貼り付け、**observe** を選択します。または `failproofai jev --url https://api.typesafe.ai/v1 --mode observe --key-stdin < ~/typesafe.key` を実行します。 |
+| FailproofAI Cloud | `jev:evaluate` 権限を持つ **machine** キーで接続します。Jevの設定がないマシンでは、`failproofai config` を実行するとJevがobserveモードで有効になります。 |
+| 独自のプロバイダー | ローカルダッシュボードで **Settings → Jev** を開き、プロバイダーを選択してトークンを貼り付け、**observe** を選択します。または `failproofai jev --url https://api.typesafe.ai/v1 --mode observe --key-stdin < ~/typesafe.key` を実行します。 |
 
-![ローカルダッシュボードの Jev 設定画面：Jev を有効にする前のプロバイダー、エンドポイント、トークン、オブザーブモードの設定。](/images/dashboard/jev-settings.png)
+![ローカルダッシュボードのJev設定画面：プロバイダー、エンドポイント、トークン、およびJevを有効にする前のobserveモード。](/images/dashboard/jev-settings.png)
 
 ```bash
 failproofai jev status
 failproofai jev test
 ```
 
-`test` はエンドポイントを確認します。フックパスを確認するには、フックされたエージェントにファイル読み取りツールで `README.md` を参照するよう依頼してください。そのツール呼び出しがセッションに表示されることを確認し、[ローカルダッシュボード](/ja/reference/local-dashboard#review-policy-activity)の **Policies → Activity** で内容を確認します。`status` の Jev カウントが増加しているはずです。オブザーブモードでは、既存のポリシー結果はそのまま適用しながら、Jev がどのような判断を下したかを記録します。
+`test` はエンドポイントを確認します。フックのパスを確認するには、フックをアタッチしたエージェントに `README.md` のファイル読み取りツールを使用させてください。そのツール呼び出しがセッションに表示されることを確認し、[ローカルダッシュボード](/ja/reference/local-dashboard#review-policy-activity)の **Policies → Activity** で内容を確認します。`status` のJevカウントが増加しているはずです。observeモードでは、Jevが判断したであろう内容を記録しつつ、既存のポリシー結果がそのまま適用されます。
 
-## 適用するタイミングを決める
+## 適用タイミングを決定する
 
-**hard** ポリシーは常に最終決定権を持ちます。Jev が deny を解除できるのは、明示的に **reviewable** とマークされたポリシーに対してのみであり、かつそのポリシーが指定した懸念事項を Jev が確認した場合に限られます。クリアランスに依存する前に、[policy authority](/ja/policies/authority) を確認してください。Jev は独自に警告や拒否を行うこともできます。回答できない場合は、ポリシーの結果でそのツール呼び出しが決定されます。
+**hard** ポリシーは常に最終的な決定権を持ちます。Jevが deny を覆せるのは、明示的に **reviewable** とマークされたポリシーの deny に限られ、かつそのポリシーの指定された懸念事項をJevが確認した場合のみです。クリアランスに依存する前に、[policy authority](/ja/policies/authority) を確認してください。Jevは独自に警告や deny を発することもできます。Jevが回答できない場合は、ポリシーの結果がその呼び出しを決定します。
 
-オブザーブの結果が適切であることを確認したら、**Settings → Jev** でエンフォースモードに切り替えるか、次のコマンドを実行してください：
+observeの結果が適切であることを確認したら、**Settings → Jev** でenforceモードに切り替えるか、次のコマンドを実行してください。
 
 ```bash
 failproofai jev setup --mode enforce
 ```
 
-プロバイダー URL、Cloud キー、設定、フォールバック、各リクエストで送信されるデータについては、[Jev integration reference](/ja/reference/jev) を参照してください。
+プロバイダーURL、Cloudキー、設定、フォールバック、各リクエストで送信されるデータについては、[Jev integration reference](/ja/reference/jev) を参照してください。

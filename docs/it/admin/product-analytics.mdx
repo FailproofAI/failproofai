@@ -1,61 +1,61 @@
 ---
-title: "Analitiche dei prodotti"
-description: "La telemetria di utilizzo che Failproof AI Cloud invia su se stessa, cosa non viene mai raccolto e come disattivarla."
+title: "Product analytics"
+description: "La telemetria di utilizzo che Failproof AI Cloud invia su se stesso, cosa non viene mai raccolto e come disattivarla."
 icon: "chart-no-axes-column"
 ---
 
-Failproof AI Cloud invia telemetria di utilizzo **sul software stesso** ai suoi sviluppatori. Non include mai i dati dei tuoi agenti. Su un'installazione self-hosted è attiva per impostazione predefinita e puoi disattivarla.
+Failproof AI Cloud invia telemetria di utilizzo **sul software stesso** ai suoi manutentori. Non include mai i dati dei tuoi agenti. Su un'installazione self-hosted è attiva per impostazione predefinita e puoi disattivarla.
 
 ## Cosa viene raccolto
 
 Ogni evento contiene cinque dimensioni e nulla che identifichi una persona:
 
-| Dimensione | Esempio | Significato |
+| Dimensione | Esempio | Che cosa è |
 | --- | --- | --- |
-| `product` | `agenteye` | Quale prodotto lo ha inviato |
-| `component` | `dashboard`, `server`, `cli` | Quale parte del prodotto lo ha inviato |
+| `product` | `agenteye` | Quale prodotto l'ha inviato |
+| `component` | `dashboard`, `server`, `cli` | Quale parte del prodotto l'ha inviato |
 | `app_version` | `0.0.1-beta.81` | La build che stai eseguendo |
 | `deployment_kind` | `self_hosted` | Se si tratta di un'installazione cliente, della nostra demo, del nostro QA o di una macchina di sviluppo |
 | `org_id` | un UUID | In quale organizzazione è avvenuta l'azione, come identificatore opaco |
 
-Oltre a questi, gli eventi registrano **cosa è stato utilizzato, mai cosa conteneva**: quale pagina è stata visualizzata (come pattern di route come `/:org/sessions/:id`, mai l'URL reale), quanti filtri di quale tipo sono stati applicati, se un'azione è riuscita e quanto tempo ha impiegato.
+Oltre a questi, gli eventi registrano **cosa è stato utilizzato, mai quello che conteneva**: quale pagina è stata visualizzata (come pattern di route come `/:org/sessions/:id`, mai l'URL reale), quanti filtri di quale tipo sono stati applicati, se un'azione è riuscita e quanto tempo ha impiegato.
 
-L'app Slack registra i collegamenti e i scollegamenti dell'area di lavoro, i collegamenti dell'account, le domande poste, i grafici pubblicati, le decisioni di approvazione e i fallimenti per categoria fissa. Non include mai ID dell'area di lavoro, dell'utente o del canale Slack, email, domande, risposte, SQL o token.
+L'app Slack registra i connect e disconnect dell'area di lavoro, i collegamenti di account, le domande poste, i grafici pubblicati, le decisioni di approvazione e gli errori per categoria fissa. Non include mai gli ID dell'area di lavoro, dell'utente o del canale Slack, l'email, le domande, le risposte, SQL o token.
 
-### Nome dell'organizzazione
+### Il nome della tua organizzazione
 
-Insieme all'`org_id` opaco, registriamo il nome dell'organizzazione, lo slug dell'URL e l'indirizzo del dashboard una sola volta, su un record di organizzazione piuttosto che su ogni evento. Ci permette di capire a quale account appartiene un pattern quando esaminiamo l'adozione o indaghiamo su un problema che hai segnalato. Questo è l'unico dato identificativo che il prodotto invia su di te.
+Insieme all'`org_id` opaco, registriamo il nome della tua organizzazione, lo slug dell'URL e l'indirizzo del dashboard una sola volta, in un record dell'organizzazione piuttosto che su ogni evento. Ci consente di capire a quale account appartiene un pattern quando esaminiamo l'adozione o investigiamo su un problema che hai segnalato. Questo è l'unico dato identificativo che il prodotto invia su di te.
 
 ### I tuoi totali di utilizzo
 
-Il server segnala i totali di utilizzo misurato di ogni organizzazione, gli stessi numeri che vedi nella pagina Utilizzo. Si tratta solo di conteggi: eventi, sessioni, agenti, ambienti, esecuzioni di valutazione, punteggi, esecuzioni di audit, query salvate, dashboard, avvisi, problemi, chiavi API e membri, più le date della finestra di misurazione. Non contengono identificatori, nomi o testo di query e arrivano indipendentemente dal fatto che qualcuno sia connesso.
+Il server segnala i totali di utilizzo misurato di ogni organizzazione, gli stessi numeri che vedi nella pagina Utilizzo. Sono solo conteggi: eventi, sessioni, agenti, ambienti, esecuzioni di valutazione, punteggi, esecuzioni di audit, query salvate, dashboard, avvisi, problemi, chiavi API e membri, più le date della finestra di misurazione. Non contengono identificatori, nomi o testo di query e arrivano indipendentemente dal fatto che qualcuno sia connesso o meno.
 
 ## Cosa non viene mai raccolto
 
 - **Nessun prompt, risposta del modello o contenuto dell'evento**, non come testo, prefisso o hash
 - **Nessun identificatore di sessione, agente o traccia**
-- **Nessun nome di punteggio dell'evaluator**
-- **Nessun messaggio di errore, testo di eccezione o corpo di risposta**, solo un codice di stato e una categoria da un elenco fisso
+- **Nessun nome di punteggio valutatore**
+- **Nessun messaggio di errore, testo di eccezione o corpo della risposta**, solo un codice di stato e una categoria da un elenco fisso
 - **Nessun argomento di strumento, SQL o testo di query**
-- **Nessun dettaglio di app connessa.** Il collegamento o la revoca di un client MCP invia al massimo un conteggio delle autorizzazioni, mai il nome dell'app o alcun token
+- **Nessun dettaglio dell'app connessa.** Il collegamento o la revoca di un client MCP invia al massimo un conteggio delle autorizzazioni, mai il nome dell'app o alcun token
 - **Nessun indirizzo email**
 - **Nessun URL referrer o stringhe di query**
-- **Nessuna registrazione dello schermo, acquisizione del DOM o tracciamento di clic e cursore**
+- **Nessuna registrazione dello schermo, acquisizione DOM o tracciamento di clic e cursore**
 
-## Disattivala su un'installazione self-hosted
+## Disattivarla su un'installazione self-hosted
 
-Imposta `DO_NOT_TRACK=1` sia sul dashboard che sul server. Decidono separatamente, quindi impostarlo su uno solo lascia l'altro che continua a inviare dati. Riavvia il server per applicare la modifica.
+Imposta `DO_NOT_TRACK=1` sia sul dashboard che sul server. Decidono separatamente, quindi impostarlo solo su uno lascia l'altro segnalare. Riavvia il server affinché la modifica abbia effetto.
 
-Il README della tua versione descrive le altre impostazioni di opt-out e come confermare che la telemetria è disattivata.
+Il README della tua release descrive gli altri impostazioni di opt-out e come confermare che la telemetria è disattivata.
 
-## Un ping quando disattivi
+## Un ping quando escludi
 
-Se disattivi con un'impostazione del prodotto anziché `DO_NOT_TRACK`, il dashboard può inviare **un ping anonimo** registrando ciò, con una probabilità di 1 su 1000 per avvio del processo. Ci dice quanti operatori disattivano la telemetria. Non contiene identificatori: nessuna organizzazione, utente, hostname, URL o IP, solo il prodotto, il componente, la versione, il tipo di distribuzione e il motivo. Un server con opt-out non invia nulla.
+Se escludi con un'impostazione del prodotto piuttosto che `DO_NOT_TRACK`, il dashboard potrebbe inviare **un ping anonimo** registrando ciò, con una probabilità di 1 su 1000 per avvio del processo. Ci dice quanti operatori disattivano la telemetria. Non contiene identificatori: nessuna organizzazione, utente, nome host, URL o IP, solo il prodotto, il componente, la versione, il tipo di implementazione e il motivo. Un server escluso non invia nulla.
 
-Non viene mai inviato quando utilizzi `DO_NOT_TRACK`, ecco perché è l'impostazione da utilizzare se la tua politica vieta qualsiasi telemetria in uscita.
+Non viene mai inviato quando usi `DO_NOT_TRACK`, ecco perché è l'impostazione da usare se la tua policy vieta qualsiasi telemetria in uscita.
 
 ## Dove va
 
-A PostHog (`us.i.posthog.com`) su TLS sulla porta 443. È un singolo hostname, quindi puoi anche bloccarlo con una singola regola di uscita.
+A PostHog (`us.i.posthog.com`) su TLS sulla porta 443. È un solo hostname, quindi puoi anche bloccarlo con una singola regola di uscita.
 
-Per come trattiamo le informazioni personali più in generale, consulta la [politica sulla privacy](https://befailproof.ai/privacy/).
+Per come gestiamo le informazioni personali più in generale, consulta la [privacy policy](https://befailproof.ai/privacy/).

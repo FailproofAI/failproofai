@@ -9,7 +9,7 @@ This is the provider and configuration reference for [Jev policies](/ru/policies
 With your own Jev endpoint and key configured, Failproof AI asks Jev about each tool call **alongside** the regex policies, never instead of them:
 
 - A **hard** policy's deny is final. Jev cannot clear it. Every policy is hard unless it is explicitly marked reviewable and names the Jev checks that cover it, so a custom, pack or Cloud policy that says nothing is hard, and the always-on self-protection guard is always hard.
-- A **reviewable** policy's deny may be cleared, but only when Jev was asked about the exact concern that policy covers and answered nothing here or the user asked for this. A check that finds the concern real, when the user did not ask for the call, keeps the deny — even when its own verdict is only a warning, because before a tool call a warning does not stop the agent. And when that check is one that can deny (secret exposure, credential exfiltration, destructive deletion, …), nothing is cleared on that call.
+- A **reviewable** policy's deny may be cleared, but only when Jev was asked about the exact concern that policy covers and answered "nothing here" or "the user asked for this". A check that finds the concern real, when the user did not ask for the call, keeps the deny — even when its own verdict is only a warning, because before a tool call a warning does not stop the agent. And when that check is one that can deny (secret exposure, credential exfiltration, destructive deletion, …), nothing is cleared on that call.
 - A block can still become a **warning** when the call is a step of the task you gave and reaches no further: Jev softens its own deny to a warning, and that warning — naming what is actually wrong with the call — replaces the policy's block.
 - Jev can also warn or deny on its own, for harm no regex describes.
 - If Jev cannot answer (timeout, rate limit, server error, no credits, an unexpected model version), that call gets the regex result, exactly as without Jev.
@@ -69,7 +69,7 @@ Three things follow from that:
 
 - **A URL that is the provider's own API writes no override.** `--url https://api.typesafe.ai/v1` produces exactly the config `--provider typesafe` would have. Give a different path or host on a known provider and it is stored as the base URL, as `--base-url` would store it.
 - **`--provider` still overrides the inference**, which is how you reach a proxy that speaks a provider's API from a host of your own: `--url https://jev-proxy.internal/v1 --provider typesafe`.
-- **A `--provider` that contradicts the host is refused**, not guessed at. `--provider openrouter --url https://api.typesafe.ai/v1` writes nothing and says why: the two spellings disagree about where your key is about to be sent. The same pair is refused from `jev setup --base-url` and from the dashboard's Jev settings. (`--provider custom` is not a contradiction — it means treat this URL as itself — except on Cloudflare's host, whose per-account endpoint a custom route cannot reach.)
+- **A `--provider` that contradicts the host is refused**, not guessed at. `--provider openrouter --url https://api.typesafe.ai/v1` writes nothing and says why: the two spellings disagree about where your key is about to be sent. The same pair is refused from `jev setup --base-url` and from the dashboard's Jev settings. (`--provider custom` is not a contradiction — it means "treat this URL as itself" — except on Cloudflare's host, whose per-account endpoint a custom route cannot reach.)
 
 `--url` is validated exactly as the `baseUrl` in the config file is, and refused in the same words: `https`, or plain `http` to a loopback host (`localhost`, `127.0.0.1`, `::1`) in any mode. Risk: nothing authenticates a loopback server, so while it is down another local process could take its port and answer; use `https` outside local testing.
 
@@ -165,7 +165,7 @@ failproofai jev setup --mode enforce
 failproofai jev setup --mode off
 ```
 
-`off` keeps the config — the endpoint and the key — and stops asking Jev: hooks run the regex policies exactly as without a config, and `failproofai jev status` says off (switched off). Switch back with `--mode observe` or `--mode enforce`.
+`off` keeps the config — the endpoint and the key — and stops asking Jev: hooks run the regex policies exactly as without a config, and `failproofai jev status` says "off (switched off)". Switch back with `--mode observe` or `--mode enforce`.
 
 Re-running `setup` for the same provider keeps the stored key, so a mode switch is one flag. Switching provider starts over and asks for that provider's key. So does a `--base-url` that moves requests to a different host: a stored key is only sent to the host it was given for, or to its provider's own API.
 
@@ -214,7 +214,7 @@ Each of these falls back to the regex result for that call and is recorded with 
 | `rate-limited` | Failproof AI's own limiter held the call back before sending it: 5 requests a second, in bursts of up to 5, and none for a moment after the provider answers `429`. Not the provider. |
 | `http-500`, `http-502`, `http-503`, … | A server error at the provider. The exact status is recorded. |
 | `out-of-credits` | HTTP 402: the provider account has no credits left. |
-| `provider-refused` | HTTP 402 from Cloudflare reading Model execution failed (Payment error): the provider declined to run the model on this request. Usually not billing, so topping up will not move it. |
+| `provider-refused` | HTTP 402 from Cloudflare reading "Model execution failed (Payment error)": the provider declined to run the model on this request. Usually not billing, so topping up will not move it. |
 | `http-401`, `http-403` | The key was refused. |
 | `http-404` | Nothing is served at `<base>/systemone`, so the base URL is wrong — `/systemone` is appended to it, and every provider serves it at its version root. `failproofai jev models` shows what the endpoint does serve. |
 | `network` | The endpoint could not be reached. |
@@ -234,7 +234,7 @@ Two more things can happen, and neither is Jev failing to answer. Both are about
 
 **Part of the call itself did not fit.** A tool call is sent inside a fixed budget, and an outsized one — a very large `Write`, a huge MCP body, a command padded out to the cap — is sent with what fitted. Jev still answers, and its answer still counts: its own deny or warning applies as usual. What it cannot do is **clear** anything, because a verdict given on part of a call is not a verdict on the call. So every policy deny stands, and the call is recorded as a fallback with the reason `request-cut`, which `failproofai jev status` totals alongside the reasons above. The rule this gives you: making a call bigger can cost it its clearances, and can never buy one.
 
-**A message did not fit.** A long prompt you pasted, the agent's last message, or a prompt this evaluator's own store had already capped. **Nothing changes**: the call is judged, cleared and recorded exactly as any other, and it is not counted as a fallback. The length of what you type never decides a verdict, and a cut cannot manufacture consent: where a prompt arrived already capped, you did not ask for this stops being a conclusion that can be drawn from it at all, rather than becoming one.
+**A message did not fit.** A long prompt you pasted, the agent's last message, or a prompt this evaluator's own store had already capped. **Nothing changes**: the call is judged, cleared and recorded exactly as any other, and it is not counted as a fallback. The length of what you type never decides a verdict, and a cut cannot manufacture consent: where a prompt arrived already capped, "you did not ask for this" stops being a conclusion that can be drawn from it at all, rather than becoming one.
 
 The line between the two is who wrote the text. The call is the agent's, and a rule that let its length subtract severity would be a rule the agent can use; your prompt is yours, and treating its length as a signal only ever punished pasting a spec or a stack trace.
 

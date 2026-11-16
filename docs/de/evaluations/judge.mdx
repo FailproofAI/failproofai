@@ -1,15 +1,15 @@
 ---
-title: "LLM-Richter"
-description: "Bewerte Sitzungen anhand von Dingen, die Code nicht messen kann – Korrektheit, Ton, ob der Agent eine Richtlinie befolgt hat – indem du beschreibst, wie gut aussieht, und ein Modell die Konversation lesen lässt."
+title: "LLM-Judges"
+description: "Bewerten Sie Sitzungen anhand von Aspekten, die Code nicht messen kann – Korrektheit, Ton, ob der Agent eine Richtlinie eingehalten hat – indem Sie beschreiben, wie gutes Verhalten aussieht, und ein Modell das Gespräch lesen lassen."
 icon: "scale"
 ---
 
-Eine gehostete Python-Auswertung kann zählen und vergleichen: wie viele Tool-Aufrufe, wie viele Fehler, wie lange eine Sitzung gedauert hat. Sie kann dir nicht sagen, ob eine Antwort *korrekt* war, ob eine Antwort unhöflich war oder ob der Agent vor dem Handeln eine Richtlinie geprüft hat.
+Eine gehostete Python-Auswertung kann zählen und vergleichen: wie viele Tool-Aufrufe, wie viele Fehler, wie lange eine Sitzung dauerte. Sie kann Ihnen nicht sagen, ob eine Antwort *korrekt* war, ob eine Antwort unhöflich war oder ob der Agent vor einer Aktion eine Richtlinie geprüft hat.
 
-Ein **LLM-Richter** kann das. Du beschreibst in einfacher Sprache, wie gut aussieht, und ein Modell liest die Sitzung durch und gibt einen Wert von 0 bis 1 mit Begründung zurück.
+Ein **LLM-Judge** kann das. Sie beschreiben in einfacher Sprache, wie gutes Verhalten aussieht, und ein Modell liest die Sitzung und gibt einen Score zwischen 0 und 1 zusammen mit seiner Begründung zurück.
 
 <Note>
-Ein Richter kostet einen Modellaufruf für jede Sitzung, auf der er ausgeführt wird, während eine Code-Auswertung nichts kostet. Verwende einen Richter nur für Fragen, bei denen die Konversation *verstanden* werden muss – und gib ihm eine Bedingung, damit er nur auf den Sitzungen ausgeführt wird, um die es bei der Frage tatsächlich geht.
+Ein Judge kostet einen Modellaufruf pro Sitzung, auf der er ausgeführt wird, während eine Code-Auswertung nichts kostet. Verwenden Sie einen Judge nur für Fragen, bei denen das Gespräch *verstanden* werden muss – und geben Sie ihm eine Bedingung, damit er nur auf den Sitzungen ausgeführt wird, um die es bei der Frage tatsächlich geht.
 </Note>
 
 ## Welche Variante brauche ich?
@@ -18,38 +18,38 @@ Ein Richter kostet einen Modellaufruf für jede Sitzung, auf der er ausgeführt 
 | --- | --- |
 | Hat er dasselbe Tool zweimal aufgerufen? | Code |
 | Wie viele Fehler gab es? | Code |
-| War die Sitzung kürzer als 30 Sekunden? | Code |
-| Hat der Kunde Dringlichkeit geäußert? | [Klassifikator](/de/evaluations/jev) |
-| Wie frustriert war der Kunde? | [Klassifikator](/de/evaluations/jev) |
-| War die Antwort tatsächlich korrekt? | **Richter** |
-| War die Antwort unhöflich oder abweisend? | **Richter** |
-| Hat er die Rückerstattungsrichtlinie geprüft, bevor er eine Rückerstattung versprochen hat? | **Richter** |
+| Dauerte die Sitzung unter 30 Sekunden? | Code |
+| Hat der Kunde Dringlichkeit ausgedrückt? | [Classifier](/de/evaluations/jev) |
+| Wie frustriert war der Kunde? | [Classifier](/de/evaluations/jev) |
+| War die Antwort tatsächlich korrekt? | **Judge** |
+| War die Antwort unhöflich oder abweisend? | **Judge** |
+| Hat er die Rückerstattungsrichtlinie geprüft, bevor er eine Rückerstattung versprochen hat? | **Judge** |
 
-Die Faustregel lautet: **Zählbares → Code, Antworten, die du im Voraus auflisten kannst → [Klassifikator](/de/evaluations/jev), braucht eine Erklärung → Richter.** Ein Richter ist derjenige, der in Prosa beschreibt, was er gesehen hat; greife darauf zurück, wenn die Zahl jemanden dazu veranlasst zu fragen: „Warum?"
+Die Faustregel: **Zählbares → Code, Antworten, die man im Voraus auflisten kann → [Classifier](/de/evaluations/jev), erfordert eine Erklärung → Judge.** Ein Judge ist derjenige, der in Prosa beschreibt, was er gesehen hat; greifen Sie auf ihn zurück, wenn die Zahl jemanden dazu veranlasst zu fragen: „Warum?".
 
-Du musst dich nicht im Voraus entscheiden. Beschreibe, was gemessen werden soll, und der Assistent wählt aus, teilt dir dann mit, was er gewählt hat und warum. Du kannst es ändern.
+Sie müssen sich nicht im Voraus entscheiden. Beschreiben Sie, was gemessen werden soll, und der Assistent wählt aus und erklärt Ihnen, was er gewählt hat und warum. Sie können es jederzeit ändern.
 
-## Eine Auswertung erstellen
+## Einen Judge erstellen
 
-1. Gehe zu **Analyze → eval authoring** und wähle **new eval**.
-2. Beschreibe, was beurteilt werden soll, und wähle **draft**.
-3. Überprüfe die **Kriterien**, den **Schwellenwert** und die **Bedingung**, dann veröffentliche.
+1. Gehen Sie zu **Analyze → Eval Authoring** und wählen Sie **New Eval**.
+2. Beschreiben Sie, was bewertet werden soll, und wählen Sie **Draft**.
+3. Überprüfen Sie die **Kriterien**, den **Schwellenwert** und die **Bedingung**, und deployen Sie dann.
 
 ### Kriterien
 
-Ein oder zwei Sätze, formuliert als Anforderung und nicht als Frage:
+Ein oder zwei Sätze, formuliert als Anforderung statt als Frage:
 
 > Der Assistent darf keine Rückerstattung versprechen oder genehmigen, ohne zuvor die Rückerstattungsrichtlinie zu prüfen.
 
-Sei konkret, was dazu führen würde, dass die Auswertung *fehlschlägt*. „War die Antwort gut?" gibt dir eine Zahl, die nichts bedeutet; der Satz oben gibt dir eine, auf die du reagieren kannst.
+Seien Sie konkret darin, was einen *Fehler* auslösen würde. „War die Antwort gut?" liefert eine Zahl ohne Bedeutung; der obige Satz liefert eine, auf die Sie reagieren können.
 
 ### Schwellenwert
 
-Der Wert, ab dem eine Sitzung als bestanden gilt. `0.7` ist ein vernünftiger Ausgangspunkt. Der vollständige Wert von 0 bis 1 wird immer gespeichert, daher entscheidet der Schwellenwert nur über Bestanden/Nicht bestanden – du kannst die Verteilung einsehen und anpassen.
+Der Score, ab dem (einschließlich) eine Sitzung als bestanden gilt. `0.7` ist ein sinnvoller Ausgangspunkt. Der vollständige Score von 0 bis 1 wird immer gespeichert, sodass der Schwellenwert nur über Bestanden/Nicht bestanden entscheidet – Sie können die Verteilung einsehen und anpassen.
 
 ### Bedingung
 
-Dieselbe Python-Bedingung wie bei jeder anderen Auswertung – und sie ist hier noch viel wichtiger. Ohne eine Bedingung läuft der Richter für **jede** Sitzung in deiner Organisation, für jeweils einen Modellaufruf:
+Dieselbe Python-Bedingung wie bei jeder anderen Auswertung – und sie ist hier noch viel wichtiger. Ohne eine Bedingung läuft der Judge auf **jeder** Sitzung in Ihrer Organisation, jeweils mit einem Modellaufruf:
 
 ```python
 session.count("tool_use") > 0
@@ -59,33 +59,33 @@ session.count("tool_use") > 0
 session.agent_id == "support-bot" and session.count("error") > 0
 ```
 
-Das Dashboard warnt dich, wenn du einen Richter ohne Bedingung veröffentlichst. Das ist manchmal richtig – ein Agent mit geringem Volumen, den du vollständig beurteilt haben möchtest – sollte aber eine bewusste Entscheidung sein und kein Versehen.
+Das Dashboard warnt Sie, wenn Sie einen Judge ohne Bedingung deployen. Das kann manchmal richtig sein – ein Agent mit geringem Volumen, den Sie vollständig beurteilen möchten – aber es sollte eine bewusste Entscheidung sein, kein Versehen.
 
-## Was der Richter sieht
+## Was der Judge sieht
 
-Die Konversation, als Gesprächsrunden, bei langen Sitzungen beginnend mit den neuesten:
+Das Gespräch, als Turns, bei langen Sitzungen beginnend mit dem Neuesten:
 
-- was der Nutzer gesagt hat
+- was der Benutzer gesagt hat
 - was der Assistent geantwortet hat
-- **jedes Tool, das der Agent aufgerufen hat, und was dieser Aufruf zurückgegeben hat, in Reihenfolge**
+- **jeden Tool-Aufruf des Agents und was dieser Aufruf zurückgegeben hat, in der richtigen Reihenfolge**
 
-Dieser letzte Punkt macht „hat er X *vor* Y getan?" zu einer fairen Frage. Ein fehlgeschlagener Tool-Aufruf wird als Fehler angezeigt, daher funktioniert auch „hat er sich nach einem Fehler angemessen erholt".
+Dieser letzte Punkt macht „Hat er X *vor* Y getan?" zu einer fairen Frage. Ein fehlgeschlagener Tool-Aufruf wird als Fehler dargestellt, sodass auch „Hat er sich angemessen von einem Fehler erholt?" funktioniert.
 
-Sehr lange Sitzungen werden gekürzt, um in den Kontext des Modells zu passen. Wenn das passiert, wird es in der Begründung ausdrücklich erwähnt – du wirst nie ein Urteil sehen, das auf einem Teil einer Sitzung basiert, aber als auf der gesamten Sitzung basierend dargestellt wird.
+Sehr lange Sitzungen werden abgeschnitten, um in den Kontext des Modells zu passen. Wenn das passiert, gibt die Begründung dies explizit an – Sie werden nie ein Urteil sehen, das auf einem Teil einer Sitzung basiert, aber als vollständiges Urteil dargestellt wird.
 
-## Die Ergebnisse lesen
+## Ergebnisse lesen
 
-Ein Richter erzeugt wie jede andere bewertete Auswertung einen **Wert**, sodass er genauso in Diagrammen dargestellt wird, gefiltert werden kann und Benachrichtigungen auslöst. Neben der Zahl speichert er auch die **Begründung** des Richters – den Absatz, der erklärt, was er gesehen hat. Lies diesen zuerst, wenn dich ein Wert überrascht; es handelt sich meistens entweder um eine wirklich interessante Sitzung oder um ein Zeichen, dass die Kriterien geschärft werden müssen.
+Ein Judge erzeugt einen **Score** wie jede andere bewertete Auswertung – er wird also genauso in Diagrammen dargestellt, gefiltert und für Benachrichtigungen verwendet. Neben der Zahl speichert er auch die **Begründung** des Judges – den Absatz, der erklärt, was er gesehen hat. Lesen Sie diesen zuerst, wenn ein Score Sie überrascht; es handelt sich meistens entweder um eine wirklich interessante Sitzung oder um ein Zeichen, dass die Kriterien geschärft werden müssen.
 
-Werte sind bei eindeutigen Fällen stabil, aber nicht bitgenau deterministisch. Behandle einen einzelnen Grenzwert als Anlass, die Sitzung zu lesen, nicht als endgültiges Urteil.
+Scores sind bei eindeutigen Fällen stabil, aber nicht bitgenau deterministisch. Betrachten Sie einen einzelnen Grenzfall-Score als Anlass, die Sitzung selbst zu lesen – nicht als endgültiges Urteil.
 
 ## Einschränkungen
 
-- **Tests sind noch nicht verfügbar.** Ein Testlauf hat keine Sitzungszuweisung dahinter, und diese Zuweisung ist das, was die Nutzung deines Modellbudgets autorisiert – daher gibt es für einen Testaufruf nichts zu belasten. Veröffentliche mit einer engen Bedingung und lies die ersten paar Ergebnisse.
-- **Rückwirkendes Ausfüllen ist nicht verfügbar.** Das rückwirkende Ausfüllen einer Code-Auswertung über Monate von Verlaufsdaten hinweg ist kostenlos; dies mit einem Richter zu tun würde dein gesamtes Budget in Minuten aufbrauchen.
-- **Das Bearbeiten der Kriterien veröffentlicht eine neue Version.** Alte und neue Werte sind nicht vergleichbar und werden daher getrennt gehalten, anstatt in eine Trendlinie gemischt zu werden.
-- **Ein Richter erzeugt immer einen Wert**, niemals eine Metrik oder eine Behauptung.
+- **Testing ist noch nicht verfügbar.** Ein Testlauf hat keine Sitzungszuweisung dahinter, und diese Zuweisung ist das, was die Verwendung Ihres Modellbudgets autorisiert – daher gibt es nichts, dem ein Testaufruf zugerechnet werden könnte. Deployen Sie gegen eine enge Bedingung und lesen Sie die ersten Ergebnisse.
+- **Backfill ist nicht verfügbar.** Das Backfilling einer Code-Auswertung über Monate gespeicherter Daten ist kostenlos; mit einem Judge würde das Ihr gesamtes Budget in Minuten aufbrauchen.
+- **Das Bearbeiten der Kriterien veröffentlicht eine neue Version.** Alte und neue Scores sind nicht vergleichbar und werden daher getrennt gehalten, statt in eine gemeinsame Trendlinie gemischt zu werden.
+- **Ein Judge erzeugt immer einen Score**, niemals eine Metrik oder eine Assertion.
 
-## Wenn dein Budget aufgebraucht ist
+## Wenn Ihr Budget aufgebraucht ist
 
-Richter verbrauchen das Modellbudget deiner Organisation. Wenn es erschöpft ist, stoppen Richter-Auswertungen mit einem klaren Grund, anstatt still zu versagen, und **Code-Auswertungen laufen normal weiter**. Erhöhe das Budget, und sie werden bei der nächsten Sitzung wieder aufgenommen.
+Judges verbrauchen das Modellbudget Ihrer Organisation. Wenn es erschöpft ist, stoppen Judge-Auswertungen mit einer klaren Begründung, statt still zu scheitern, und **Code-Auswertungen laufen normal weiter**. Erhöhen Sie das Budget und sie werden bei der nächsten Sitzung wieder aufgenommen.

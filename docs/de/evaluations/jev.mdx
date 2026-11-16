@@ -4,25 +4,25 @@ description: "Verwende Jev, um eine abgeschlossene Sitzung anhand einer Frage mi
 icon: "list-checks"
 ---
 
-Eine Jev-Evaluierung liest eine **abgeschlossene Sitzung** und gibt einen Score von 0 bis 1 zurück. Verwende sie, wenn die Antwort im Voraus bekannt ist, zum Beispiel: „Hat der Kunde Dringlichkeit signalisiert?" oder „Wie frustriert war der Kunde?" Sie hilft dabei, Muster über mehrere Durchläufe hinweg zu erkennen; sie unterbricht keinen Tool-Aufruf. Für Entscheidungen, die **vor** dem Ausführen eines Tools getroffen werden, verwende [Jev policies](/de/policies/jev).
+Eine Jev-Evaluierung liest eine **abgeschlossene Sitzung** und gibt eine Bewertung von 0 bis 1 aus. Verwende sie, wenn die Antwort im Voraus bekannt ist, z. B. „Hat der Kunde Dringlichkeit ausgedrückt?" oder „Wie frustriert war der Kunde?" Sie hilft dabei, Muster über mehrere Ausführungen hinweg zu erkennen; sie stoppt keinen Tool-Aufruf. Für Entscheidungen, die **vor** der Ausführung eines Tools getroffen werden, verwende [Jev policies](/de/policies/jev).
 
 ## Eine Evaluierung im Dashboard erstellen
 
 1. Öffne **Analyze → eval authoring** und wähle **new eval**.
-2. Beschreibe eine Frage und ihre möglichen Antworten. Zum Beispiel: „Hat der Agent eine Rückerstattung versprochen, bevor er die Rückerstattungsrichtlinie geprüft hat? Antworte mit Ja oder Nein." Wähle **draft** und überprüfe, ob das Ergebnis ein Classifier-Score ist.
-3. [Teste sie](/de/evaluations/test) anhand aktueller Sitzungen, und [deploye sie](/de/evaluations/deploy) anschließend. Neu abgeschlossene Sitzungen werden automatisch bewertet; nutze [Backfill](/de/evaluations/deploy#score-sessions-you-already-have), wenn du auch historische Daten benötigst.
+2. Beschreibe eine Frage und ihre möglichen Antworten. Zum Beispiel: „Hat der Agent eine Rückerstattung versprochen, bevor er die Rückerstattungsrichtlinie geprüft hat? Antworte mit Ja oder Nein." Wähle **draft** und überprüfe, ob das Ergebnis ein Klassifikator-Score ist.
+3. [Teste sie](/de/evaluations/test) anhand aktueller Sitzungen und [deploye sie](/de/evaluations/deploy) anschließend. Neu abgeschlossene Sitzungen werden bewertet; führe ein [Backfill](/de/evaluations/deploy#score-sessions-you-already-have) durch, wenn du auch historische Daten benötigst.
 
 ![Das gemeinsame Eval-Authoring-Formular, in dem du eine Frage mit festen Antworten beschreibst, den Entwurf überprüfst und nach dem Testen deployest. Das gezeigte Beispiel ist eine Code-Evaluierung; eine Jev-Frage verwendet denselben Authoring-Ablauf.](/images/dashboard/eval-authoring-draft.png)
 
-Der Assistent kann zwischen Code, Jev-Klassifizierung und einem [Judge](/de/evaluations/judge) wählen. Überprüfe die Wahl, bevor du deployest. Jev liefert einen Score ohne erläuternde Begründung; wähle einen Judge, wenn du eine Erklärung benötigst. Siehe die [Jev-Evaluierungsreferenz](/de/reference/jev-evaluations) für Fragetypen und Score-Limits.
+Der Assistent kann zwischen Code, Jev-Klassifikation und einem [Judge](/de/evaluations/judge) wählen. Überprüfe seine Wahl vor dem Deployen. Jev liefert einen Score ohne Prosa-Begründung; wähle einen Judge, wenn du eine Erklärung benötigst. Siehe die [Jev-Evaluierungsreferenz](/de/reference/jev-evaluations) für Fragetypen und Score-Grenzen.
 
-## Die Scores auslesen
+## Die Scores lesen
 
-Öffne **Observe → Evaluations**, um das Ergebnis nach Agent und Zeitraum darzustellen. Über ein Terminal kann die Cloud CLI dieselben Ergebnisse auslesen:
+Öffne **Observe → Evaluations**, um das Ergebnis nach Agent und Zeitraum darzustellen. Über ein Terminal kann die Cloud CLI dieselben Ergebnisse abrufen:
 
 ```bash
 fp evals --since 7d
 fp evals --aggregate --since 7d
 ```
 
-Die Cloud CLI liest Ergebnisse aus; Authoring und Deployment erfolgen im Dashboard. Siehe die [Cloud-CLI-Referenz](/de/reference/cloud-cli#evaluations) für verfügbare Filter.
+Die Cloud CLI liest Ergebnisse; Authoring und Deployment erfolgen im Dashboard. Siehe die [Cloud CLI-Referenz](/de/reference/cloud-cli#evaluations) für Filter.

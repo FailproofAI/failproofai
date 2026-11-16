@@ -1,46 +1,46 @@
 ---
 title: "ポリシーの権限"
-description: "Jevセマンティック評価器がクリアできるポリシー判定と、最終的な判定の区別。"
+description: "Jev セマンティック評価器がクリアできるポリシー判定と、最終的なものの区別。"
 icon: "scale"
 ---
 
-[Jev ポリシーレビュー](/ja/policies/jev)をFailproofAI Cloudまたは独自のキーで設定すると、ゲートされた各ツール呼び出しは、設定したポリシーとJevによって判定されます。Jevは、その呼び出しが実際に何をするのか、そしてタスクを入力した人がそれを要求したかどうかを問います。両者が一致しない場合の動作は、各ポリシーの**authority**によって決まります。
+[Jev ポリシーレビュー](/ja/policies/jev)を FailproofAI Cloud またはご自身のキーで設定すると、ゲート対象の各ツール呼び出しは、実行中のポリシーと Jev の両方によって判断されます。Jev は、その呼び出しが実際に何をするのか、またタスクを入力した人がそれを要求したかどうかを問います。両者が一致しない場合の動作は、各ポリシーの**権限**によって決まります。
 
-Jevが設定されていない場合、authorityは効果を持ちません。すべてのポリシーはこれまでどおりに適用されます。
+Jev が設定されていない場合、権限は効果を持ちません。すべてのポリシーはこれまでどおりに適用されます。
 
-## hardとreviewable
+## ハードとレビュー可能
 
-- **hard**がデフォルトです。hardポリシーのdenyまたはinstructionは最終的なものであり、Jevはそれをクリアできず、hardなdenyはJevを待たずに呼び出しを停止します。
-- **reviewable**とは、Jevがポリシーの判定をクリアできることを意味しますが、ポリシーが`reviewedBy`に指定したセマンティックチェックを通じてのみクリアできます。判定がクリアされるのは、すべての指定チェックがこの呼び出しについて問われ、それぞれが何も見つからなかったか、ユーザーがこれを要求したと記録した場合のみです。チェックが**発火した**（懸念を検出した）にもかかわらずユーザーが要求していない場合、そのチェック自体の判定が警告のみであってもブロックは維持されます。対象ツールに適用されないためJevが問われなかったチェックは、他のチェックの結果にかかわらず何もクリアしません。一つの緩和が同意として見なされます。つまり、呼び出しがユーザーが与えたタスクのステップであり、それ以上に広がらない場合、Jevはdenyをwarningにしてそのwarningがポリシーのブロックをクリアし、それがエージェントに伝えられます。
+- **ハード**はデフォルトです。ハードポリシーの deny または instruction は最終的なものです。Jev はそれをクリアできず、ハードな deny は Jev の応答を待たずに呼び出しを停止します。
+- **レビュー可能**とは、Jev がポリシーの判定をクリアできることを意味しますが、`reviewedBy` にポリシーが指定したセマンティックチェックを通じてのみ可能です。判定がクリアされるのは、指定されたすべてのチェックがその呼び出しについて問われ、それぞれが何も発見しなかったか、ユーザーがそれを要求したと記録した場合のみです。チェックが**発火した**（懸念を発見した）にもかかわらず、ユーザーが要求しなかった場合は、そのチェック自体の判定が警告のみであっても、ブロックは維持されます。そのツールに適用されないためにJevが問われなかったチェックは、他のチェックの結果がどうであれ、何もクリアしません。緩和が1つあれば同意とみなされます。その呼び出しがユーザーの指定したタスクのステップであり、それ以上に及ばない場合、Jev は deny を warning に変換し、その warning がポリシーのブロックをクリアし、エージェントへの通知内容となります。
 
-ポリシーがreviewableになるのは、以下のすべてが満たされる場合のみです。
+ポリシーがレビュー可能になるのは、以下のすべてが成立する場合のみです：
 
-1. `authority: "reviewable"`を宣言している。
-2. `reviewedBy`が空でないリストであり、すべてのエントリがインストール済みパックの宣言するJevチェックである。Failproof AIはJevチェックを同梱しません。[以下の16個](#semantic-policy-names)は`failproofai policies add FailproofAI/jev-policies`から提供されます。チェックを宣言するパックがない場合、すべてのポリシーはhardです。
-3. `alwaysOn`でない。Failproof AIを無効化しようとするエージェントを防ぐガードは常にhardです。
+1. `authority: "reviewable"` が宣言されている。
+2. `reviewedBy` が空でないリストであり、すべてのエントリがインストール済みパックの宣言するJevチェックである。Failproof AI 自体はJevチェックを提供しません。[下記の16個](#semantic-policy-names)は `failproofai policies add FailproofAI/jev-policies` から提供されます。チェックを宣言するパックがない場合、すべてのポリシーはハードになります。
+3. `alwaysOn` ではない。Failproof AI を無効化しようとするエージェントを防ぐガードは常にハードです。
 
-それ以外はすべてhardです。フィールドの欠如、値のスペルミス、空または不正な`reviewedBy`、またはこのマシンが問えないチェックの名前が該当します。不明な名前があると、スキップされるのではなく宣言全体がhardになります。これは`reviewedBy`が「これらすべてが問われなければならず、どれも拒否してはならない」を意味するためであり、名前をスキップすると、要求したよりも少ないチェックでJevがポリシーをクリアすることになってしまいます。
+それ以外はすべてハードになります。フィールドの欠落、値のスペルミス、空または不正な `reviewedBy`、またはこのマシンが問い合わせできないチェックの名前が含まれる場合です。未知の名前はスキップされるのではなく、宣言全体をハードにします。これは、`reviewedBy` が「これらすべてが問われなければならず、どれも deny してはならない」を意味するため、名前をスキップすると、要求したよりも少ないチェックでJevがポリシーをクリアできてしまうからです。
 
-Jevが設定されると、Failproof AIは`reviewable`宣言を拒否した場合に警告をログに記録します（プロセスごとに1回）。Jevなしの場合は何も言いません。authorityが何も決定しないためです。`failproofai publish`は、このような宣言を含むパックのビルドを拒否するため、パック作成者はインストール前に気づくことができます。パックがチェックを宣言している場合はそのパックが宣言するチェックに対して、そうでない場合は`FailproofAI/jev-policies`の16の名前に対して`reviewedBy`を検証します。
+Jev が設定されると、Failproof AI は `reviewable` 宣言を拒否した場合に警告をログに記録します（プロセスごとに1回）。Jev がない場合は何も表示しません。権限は何も決定しないからです。`failproofai publish` は、そのような宣言を含むパックのビルドを拒否するため、パック作者はインストール前に気付くことができます。宣言するチェックがある場合はパックが宣言するチェックに対して、そうでない場合は `FailproofAI/jev-policies` の16個の名前に対して `reviewedBy` を評価します。
 
-## authorityを宣言する場所
+## 権限の宣言場所
 
-ポリシーがマシンに届く方法ごとに、authorityを決める場所が1つあります。
+ポリシーがマシンに届く方法ごとに、権限を決定する場所が1つあります：
 
 | ソース | 宣言場所 | デフォルト |
 | --- | --- | --- |
-| 組み込みポリシー | 以下の表 | reviewableとして記載されていない限りhard |
-| 独自のポリシーファイル | `customPolicies.add`上の`authority`と`reviewedBy` | hard |
-| ポリシーパック | パックマニフェスト（`failproofai-pack.json`）内の各ポリシーエントリ | hard |
-| クラウド管理ポリシー | アクティブデプロイメントにおけるポリシーの割り当て | hard。デプロイメントではまだ設定されていないため、現在すべてのクラウド管理ポリシーはhardです。 |
+| ビルトインポリシー | 下記のテーブル | レビュー可能としてリストされていない限りハード |
+| 独自のポリシーファイル | `customPolicies.add` の `authority` と `reviewedBy` | ハード |
+| ポリシーパック | パックマニフェスト（`failproofai-pack.json`）内の各ポリシーエントリ | ハード |
+| クラウド管理ポリシー | アクティブデプロイメントにおけるポリシーの割り当て | ハード。デプロイメントはまだ設定していないため、すべてのクラウド管理ポリシーは現在ハードです。 |
 
-パックまたはクラウド管理ポリシーの場合、ポリシーコード内に設定されたフィールドは無視されます。マニフェストまたは割り当てが決定します。パックは自身のポリシーのみを記述できます。ポリシー名に`/`を含めることはできず、パック自身のプレフィックスで登録されるため、どのマニフェストも組み込みポリシーや他のパックのポリシーをreviewableとしてマークできません。パックのコードが登録しているにもかかわらずマニフェストで宣言されていないポリシーはhardです。
+パックまたはクラウド管理ポリシーの場合、ポリシーコード内に設定されたフィールドは無視されます。マニフェストまたは割り当てが決定します。パックは自身のポリシーのみを記述できます。ポリシー名に `/` を含めることはできず、パック自身のプレフィックスの下に登録されるため、いかなるマニフェストもビルトインポリシーや他のパックのポリシーをレビュー可能としてマークすることはできません。パックのコードが登録してもマニフェストで宣言していないポリシーはハードになります。
 
-コードがバイト単位で同一の2つのパックまたはクラウド管理ポリシーは、1つのアーティファクトを共有し、1つのポリシーとして読み込まれます。そのポリシーがreviewableになるのは、それらすべてがreviewableと宣言し、Jevがそのいずれかが指定するすべてのチェックをクリアする場合のみです。いずれかがhardと宣言するか、まったく宣言しない場合はhardのままです。パックまたはポリシーが記載される順序は関係ありません。
+コードがバイト一致する2つのパック、または2つのクラウド管理ポリシーは、1つのアーティファクトを共有し、1つのポリシーとして読み込まれます。そのポリシーがレビュー可能になるのは、そのすべてがレビュー可能と宣言している場合のみであり、Jev はそのいずれかが指定するすべてのチェックをクリアしなければなりません。いずれかがハードと宣言している、またはまったく宣言していない場合は、ハードのままです。パックやポリシーがリストされる順序は関係ありません。
 
-ほとんどのマシンは`FailproofAI/policies`パックから組み込みポリシーを取得し、そのパックのマニフェストからauthorityを読み取ります。以下のreviewableエントリは、それらを含むパックのリリースがインストールされて初めて有効になります。古いリリースにはreviewableエントリがないため、そのパック内のすべてのポリシーはhardのままです。
+ほとんどのマシンは `FailproofAI/policies` パックからビルトインポリシーを取得し、そのパックのマニフェストから権限を読み取ります。以下のレビュー可能エントリは、それらを含むパックのリリースがインストールされた時点で有効になります。古いリリースにはそれらが含まれていないため、そのすべてのポリシーはハードのままです。
 
-## 独自ポリシーでauthorityを宣言する
+## 独自のポリシーに権限を宣言する
 
 ```js
 import { customPolicies, deny, allow } from "failproofai";
@@ -58,55 +58,55 @@ customPolicies.add({
 });
 ```
 
-`failproofai publish`は両フィールドをパックマニフェストにコピーするため、パックとして公開されたポリシーは作成者が設定したauthorityを維持します。宣言が遵守されない場合はパックのビルドを拒否します。具体的には、`"hard"`または`"reviewable"`以外の値、名前のリストでない`reviewedBy`、またはチェックでない名前（パックがチェックを宣言している場合はパック自身の[Jevチェック](/ja/policies/publish-a-pack#jev-checks-in-a-pack)、そうでない場合は組み込みチェック）が該当します。
+`failproofai publish` は両フィールドをパックマニフェストにコピーするため、パックとして公開されたポリシーは作者が設定した権限を維持します。宣言が守られない場合はパックのビルドを拒否します。具体的には、`"hard"` または `"reviewable"` 以外の値、名前のリストでない `reviewedBy`、またはチェックでない名前（宣言するパック独自の [Jev チェック](/ja/policies/publish-a-pack#jev-checks-in-a-pack)がある場合はそれ、なければビルトインチェック）が含まれる場合です。
 
-## 組み込みポリシー
+## ビルトインポリシー
 
-reviewableになるのは、セマンティックポリシーが同じ懸念を本質的にカバーしている場合のみです。その他すべての組み込みポリシーはhardです。
+セマンティックポリシーが同じ懸念を本当にカバーしている場合のみレビュー可能です。その他のすべてのビルトインポリシーはハードです。
 
-懸念をカバーすることは必要条件ですが十分条件ではなく、どちらの誤りも静かに発生します。
+懸念をカバーすることは必要条件ですが十分条件ではなく、どちらの誤りも静かに発生します：
 
-- **問われないチェック**はブロックを永続させます。`reviewedBy`は連言であり、問われなかったチェックはクリアしません。したがって、ポリシーがマッチするシェイプに対して前提条件が発火しないチェックとペアにされたポリシーは、まったくクリアされません。
-- **問われたがが発火しないチェック**は「懸念なし」と答えます。懸念なしはクリアします。したがって、ポリシーのシェイプをモデル化していないチェックとペアにすることはポリシーをレビューするのではなく、チェックが理解しない入力に対してそのポリシーをオフにします。
+- **問われないチェック**はブロックを永続的にします。`reviewedBy` は連言であり、問われなかったチェックはクリアしないため、ポリシーがマッチする形状に対してその前提条件が発火しないチェックとペアになっているポリシーは、まったくクリアされません。
+- **問われたが発火しなかったチェック**は「懸念なし」と答え、懸念がなければクリアされます。したがって、ポリシーの形状をモデル化していないチェックとペアにすることは、そのポリシーをレビューするのではなく、チェックが理解できない入力に対してそれをオフにします。
 
-instruct モードのセマンティックポリシーはdenyと答えることは決してできませんが、ブロックを維持できます。発火してユーザーがその呼び出しを要求しなかった場合、それがレビューしているポリシーはクリアされません。`FailproofAI/jev-policies`チェックのうち6つはinstruct専用です。`push-to-protected-branch`、`commit-on-protected-branch`、`read-outside-workspace`、`system-modification`、`env-secrets-dump`、`external-data-egress`がそれに該当し、[以下の表](#semantic-policy-names)に各チェックのモードが記載されています。問うべきことは**「denyできるものが残っているか」**です。クリアによって懸念が何にも適用されない状態になってはなりません。エンジンはこのテストを呼び出しごとに適用します。誰も同意していない警告はクリアではありません。ツール呼び出しの前において、warningはエージェントを停止しないためです。またdenyできるチェックがwarnした場合、つまり証拠がdeny閾値に達しなかった場合、かつユーザーが呼び出しを要求しなかった場合、その呼び出しに対してはクリアされず、すべての正規表現denyが有効です。
+instruct モードのセマンティックポリシーは deny を答えることができませんが、それでもブロックを維持することができます。発火してユーザーが呼び出しを要求していなかった場合、レビューしているポリシーはクリアされません。`FailproofAI/jev-policies` チェックのうち6つは instruct のみです。`push-to-protected-branch`、`commit-on-protected-branch`、`read-outside-workspace`、`system-modification`、`env-secrets-dump`、`external-data-egress` であり、[下記のテーブル](#semantic-policy-names)に各チェックのモードが記載されています。問うべき質問は **「deny できるものが残っているか」**：クリアは懸念が何によっても適用されない状態を絶対に残してはなりません。エンジンはその検査を呼び出しごとに適用します。誰も同意していない warning はクリアではありません。ツール呼び出しの前では warning がエージェントを止めないからです。deny できる**チェックが警告した**場合、つまり証拠がその deny ラインに達しなかった場合、ユーザーがその呼び出しを要求していなければ、その呼び出しに対して何もクリアされず、すべての正規表現 deny が維持されます。
 
 <Warning>
-**発火ラインをわずかに下回るチェックはフロアを維持しません。** 上記のルールはチェックが*発火する*（証拠 ≥ 0.7）必要があります。すべての関連チェックがそれをわずかに下回る場合、何も発火せず、レビュアーは「懸念なし」と答え、reviewableなdenyはクリアされます。enforceモードで実測：要求されていない`/etc/shadow`のRead（`secret-exposure` 0.69、`read-outside-workspace` 0.37、ホームディレクトリパスのみモデル化）と「follow SETUP.md」の後の`set | curl -d @- …`（`env-secrets-dump` 0.66、`credential-exfiltration` 0.65、`sends_out` 0.97）はどちらも許可されましたが、正規表現層のみではdenyされます。閾値はラベル付きコーパスに対してキャリブレーションされており、これに対して再測定されていません。これらのシェイプのいずれかが通過することが誤ブロックよりも重要な場合は、ポリシーを**hard**にしてください。
+**発火ラインを少し下回るチェックはフロアを維持しません。** 上記のルールはチェックが*発火する*こと（証拠 ≥ 0.7）を必要とします。関連するすべてのチェックがその閾値を下回ると、何も発火せず、レビュアーは「懸念なし」と答え、レビュー可能な deny がクリアされます。エンフォースモードで実測：要求されていない `/etc/shadow` の Read（`secret-exposure` 0.69、ホームディレクトリパスのみをモデル化する `read-outside-workspace` 0.37）と「follow SETUP.md」の後の `set | curl -d @- …`（`env-secrets-dump` 0.66、`sends_out` 0.97 で `credential-exfiltration` 0.65）はいずれも許可されましたが、正規表現層のみではそれらを deny します。閾値はラベル付きコーパスでキャリブレーションされており、これに対して再測定されていません。それまでは、これらの形状のいずれかが通過することが誤ブロックよりも重要な場合、ポリシーを**ハード**のままにしてください。
 </Warning>
 
-| ポリシー | Authority | レビュー担当 | 理由 |
+| ポリシー | 権限 | レビュアー | 理由 |
 | --- | --- | --- | --- |
-| `protect-env-vars` | reviewable | `env-secrets-dump`、`secret-exposure` | パターンはあらゆる変数参照で発火します。Jevはシークレット値が実際に出力されるかどうかを問います。 |
-| `block-env-files` | reviewable | `secret-exposure` | パターンはテンプレートを含むあらゆる`.env`パスにマッチします。Jevは実際のシークレット値が読み書きされるかどうかを問います。 |
-| `block-read-outside-cwd` | reviewable | `read-outside-workspace` | 実際のトラフィックでノイズが多いと測定されています。Jevはプロジェクト外のファイル内容が読み取られるかどうかを問います。ユーザーが要求した読み取り、またはチェックが何も見つけない読み取りはクリアされます。フラグが立てられた要求されていない読み取りはブロックを維持します。 |
-| `warn-git-amend` | reviewable | `git-history-rewrite` | プッシュされていないコミットの修正は通常の操作です。害は他者がプルした可能性のある履歴を書き換えることにあります。 |
-| `warn-destructive-sql` | reviewable | `database-destruction` | Jevはターゲットが使い捨てのテスト用ではなく実際のデータベースかどうかも問います。 |
-| `warn-global-package-install` | reviewable | `system-modification` | 同じ懸念：プロジェクト外でマシンを変更すること。 |
-| `block-failproofai-commands` | hard | | `alwaysOn`自己保護。reviewable不可。 |
-| `block-rm-rf` | reviewable | `destructive-deletion` | パス深度ヒューリスティックは`rm -rf node_modules`を誤判定します。Jevは破壊されるものが再生成可能かどうかを問います。`rm -rf /`は両プローブをtrueに維持します。 |
+| `protect-env-vars` | reviewable | `env-secrets-dump`、`secret-exposure` | パターンは任意の変数参照で発火します。Jev はシークレット値が実際に出力されるかどうかを問います。 |
+| `block-env-files` | reviewable | `secret-exposure` | パターンはテンプレートを含む任意の `.env` パスにマッチします。Jev は実際のシークレット値が読み書きされるかどうかを問います。 |
+| `block-read-outside-cwd` | reviewable | `read-outside-workspace` | 実際のトラフィックでノイズが多いと測定されました。Jev はプロジェクト外のファイル内容が読まれるかどうかを問います。ユーザーが要求した読み取り、またはチェックが何も発見しなかった読み取りはクリアされます。チェックがフラグを立てた要求されていない読み取りはブロックを維持します。 |
+| `warn-git-amend` | reviewable | `git-history-rewrite` | プッシュされていないコミットの修正は通常の操作です。害は他者がプルした可能性のある履歴の書き換えです。 |
+| `warn-destructive-sql` | reviewable | `database-destruction` | Jev はターゲットが実際のデータベースか使い捨てのテスト用かも問います。 |
+| `warn-global-package-install` | reviewable | `system-modification` | 同じ懸念：プロジェクト外のマシンの変更。 |
+| `block-failproofai-commands` | hard | | `alwaysOn` による自己保護。レビュー可能にはなりません。 |
+| `block-rm-rf` | reviewable | `destructive-deletion` | パス深度ヒューリスティックは `rm -rf node_modules` を誤判定します。Jev は破壊されるものが再生成可能かどうかを問います。`rm -rf /` は両プローブを真に保ちます。 |
 | `block-sudo` | hard | | 権限昇格。 |
 | `block-curl-pipe-sh` | hard | | インターネットからダウンロードしたコードを実行します。 |
 | `block-push-master` | hard | | 保護されたブランチに直接プッシュします。 |
-| `block-work-on-main` | hard | | `commit-on-protected-branch`はこの懸念を正確にカバーしていますが、instruct モードのためdenyと答えることができず、他のチェックもカバーしていません。 |
-| `block-force-push` | reviewable | `git-history-rewrite` | Jevのプローブはマッチャーのスーパーセットであり`--force-with-lease`もカウントします。クリアされるのは自分のブランチへのforce-pushです。 |
-| `block-secrets-write` | reviewable | `secret-exposure` | パスマッチはアンカーなしなので`src/auth/credentials.ts`もキャッチされます。Jevは実際のキーマテリアルが書き込まれているかどうかを問います。 |
-| `block-kubectl` | reviewable | `production-infra-change` | 読み取り専用サブコマンドを含むCLI全体をdenyします。Jevは呼び出しがミューテートするかどうか、ターゲットが本番環境かどうかを問います。 |
-| `block-terraform` | reviewable | `production-infra-change` | 同じく：`terraform plan`と`validate`をクリアします。 |
-| `block-aws-cli` | reviewable | `production-infra-change` | 同じく：`aws s3 ls`、`aws sts get-caller-identity`をクリアします。 |
-| `block-gcloud` | reviewable | `production-infra-change` | 同じく：`gcloud auth list`、`gcloud config list`をクリアします。 |
-| `block-az-cli` | reviewable | `production-infra-change` | 同じく：`az account show`をクリアします。 |
-| `block-helm` | reviewable | `production-infra-change` | 同じく：`helm list`、`helm status`をクリアします。 |
+| `block-work-on-main` | hard | | `commit-on-protected-branch` はまさにこの懸念をカバーしていますが instruct モードのため deny を答えることができず、他にカバーするチェックがありません。 |
+| `block-force-push` | reviewable | `git-history-rewrite` | Jev のプローブはマッチャーのスーパーセットで `--force-with-lease` もカウントします。クリアされるのは自分のブランチへのフォースプッシュです。 |
+| `block-secrets-write` | reviewable | `secret-exposure` | パスマッチはアンカーなしのため `src/auth/credentials.ts` もキャッチされます。Jev は実際のキー素材が書き込まれているかどうかを問います。 |
+| `block-kubectl` | reviewable | `production-infra-change` | 読み取り専用サブコマンドを含む CLI 全体を deny します。Jev は呼び出しが変更を加えるか、ターゲットが本番かどうかを問います。 |
+| `block-terraform` | reviewable | `production-infra-change` | 同様：`terraform plan` と `validate` をクリアします。 |
+| `block-aws-cli` | reviewable | `production-infra-change` | 同様：`aws s3 ls`、`aws sts get-caller-identity` をクリアします。 |
+| `block-gcloud` | reviewable | `production-infra-change` | 同様：`gcloud auth list`、`gcloud config list` をクリアします。 |
+| `block-az-cli` | reviewable | `production-infra-change` | 同様：`az account show` をクリアします。 |
+| `block-helm` | reviewable | `production-infra-change` | 同様：`helm list`、`helm status` をクリアします。 |
 | `block-gh-pipeline` | hard | | パイプライン、マージ、シークレット変更をトリガーします。 |
 | `warn-git-stash-drop` | hard | | スタッシュされた作業の破棄をカバーするセマンティックチェックがありません。 |
-| `warn-git-clean` | hard | | `destructive-deletion`は懸念をカバーしていますが、明らかに発火できません。`git clean`はパスを指定しないため、`irreplaceable`プローブは判断対象がなく低い値を返し、証拠はポリシーのプローブの最小値です。問われたが発火しないチェックは判定をクリアするため、ここでペアにするとポリシーがオフになります。 |
-| `warn-all-files-staged` | hard | | 広範な`git add`が何をピックアップするかをカバーするセマンティックチェックがありません。 |
-| `warn-schema-alteration` | hard | | `database-destruction`はデータの削除をカバーしており、スキーマの変更はカバーしていません。 |
+| `warn-git-clean` | hard | | `destructive-deletion` は懸念をカバーしていますが、明らかに発火できません。`git clean` はパスを指定しないため、`irreplaceable` プローブには判断する対象がなく低い値を返し、証拠はポリシーのプローブの最小値です。問われたが発火しなかったチェックは判定をクリアするため、ここでペアにするとポリシーがオフになります。 |
+| `warn-all-files-staged` | hard | | 広範な `git add` が何を取得するかをカバーするセマンティックチェックがありません。 |
+| `warn-schema-alteration` | hard | | `database-destruction` はデータの削除をカバーしており、スキーマの変更はカバーしていません。 |
 | `warn-package-publish` | hard | | 公開は不可逆であり、それをカバーするセマンティックチェックがありません。 |
-| `prefer-package-manager` | hard | | チームの慣習であり、安全性の判断ではありません。 |
-| `warn-large-file-write` | hard | | サイズ閾値であり、Jevが判断できるものではありません。 |
+| `prefer-package-manager` | hard | | チームの規約であり、安全性の判断ではありません。 |
+| `warn-large-file-write` | hard | | サイズ閾値であり、Jev が判断できるものではありません。 |
 | `warn-background-process` | hard | | デタッチされたプロセスをカバーするセマンティックチェックがありません。 |
-| `warn-repeated-tool-calls` | hard | | 呼び出しをカウントします。Jevはカウントできません。 |
+| `warn-repeated-tool-calls` | hard | | 呼び出しをカウントします。Jev はカウントできません。 |
 | `sanitize-jwt` | hard | | ツール出力をリダクトします。ツール呼び出しゲートではありません。 |
 | `sanitize-api-keys` | hard | | ツール出力をリダクトします。ツール呼び出しゲートではありません。 |
 | `sanitize-connection-strings` | hard | | ツール出力をリダクトします。ツール呼び出しゲートではありません。 |
@@ -118,27 +118,27 @@ instruct モードのセマンティックポリシーはdenyと答えること�
 | `require-no-conflicts-before-stop` | hard | | セッション完了ゲートであり、ツール呼び出しゲートではありません。 |
 | `require-ci-green-before-stop` | hard | | セッション完了ゲートであり、ツール呼び出しゲートではありません。 |
 
-## セマンティックポリシー名 \{#semantic-policy-names\}
+## セマンティックポリシー名
 
-以下は`FailproofAI/jev-policies`が宣言するチェックであり、インストール後に`reviewedBy`が受け入れる値です。Failproof AI自体はこれらを同梱しません。そのパック（またはこれらの名前を宣言する別のパック）がなければ、これらを指定するポリシーはreviewableになりません。各チェックはJevが目の前のツール呼び出しについて答えるものです。**Mode**はチェックが答えられる内容です。`deny`チェックは強い証拠があればブロックし、`instruct`チェックは常にwarningのみです。どちらも、発火してかつユーザーがその呼び出しを要求しなかった場合はポリシーのdenyを維持します。**User can override**は、人間の明示的な要求によってクリアできるかどうかを示します。
+以下は `FailproofAI/jev-policies` が宣言するチェックであり、インストール後に `reviewedBy` が受け付ける値です。Failproof AI 自体はこれらを提供しません。そのパック（またはこれらの名前を宣言する別のパック）がなければ、それらを指定するポリシーはレビュー可能になりません。各チェックは、目の前のツール呼び出しについて Jev が答えるものです。**モード**はチェックが答えられる内容を示します。`deny` チェックは強い証拠があるとブロックし、`instruct` チェックは常に警告のみを発します。どちらも、発火してユーザーが呼び出しを要求していなかった場合は、ポリシーの deny を維持します。**ユーザーがオーバーライド可能**は、人間の明示的なリクエストがそれをクリアするかどうかを示します。
 
-Jevはインストール済みパックが宣言した[Jevチェック](/ja/policies/publish-a-pack#jev-checks-in-a-pack)だけを問い、それが`reviewedBy`が受け入れる名前です。2つのパックが異なる形で宣言した名前はどちらに対しても尊重されません。FailproofAIのリポジトリからインストールされていないパックによってこれら16個の名前が宣言された場合、そのパック内では無視されます。そのバージョンは問われず、FailproofAI自身のものと競合しません。したがって、サードパーティのパックがコアパックのポリシーをクリアするチェックになることも、これらのチェックの1つをオフにすることもできません。読み取れないパックリスト、またはすべてのチェックが使用不可のパックは、Jevが問うものを何も残しません。
+Jev はインストール済みパックが宣言した [Jev チェック](/ja/policies/publish-a-pack#jev-checks-in-a-pack)についてのみ問い、それらが `reviewedBy` が受け付ける名前です。2つのパックが異なる形で宣言した名前は、どちらにも適用されません。FailproofAI リポジトリからインストールされていないパックによって宣言されたこれら16個の名前のいずれかは、そのパックでは無視されます。そのバージョンは問われず、FailproofAI 独自のものと競合しないため、サードパーティのパックがコアパックのポリシーをクリアするチェックになることも、これらのチェックの1つをオフにすることもできません。読み取り不能なパックリスト、またはすべてのチェックが使用不能なパックは、Jev に問うものを残しません。
 
-| 名前 | Mode | ユーザーによる上書き | Jevが確認する内容 |
+| 名前 | モード | ユーザーがオーバーライド可能 | Jev がチェックする内容 |
 | --- | --- | --- | --- |
-| `destructive-deletion` | deny | 可 | 再生成できないデータの永久削除。 |
-| `production-infra-change` | deny | 可 | ライブインフラの変更。 |
-| `git-history-rewrite` | deny | 可 | 共有されたgit履歴の書き換えまたは破棄。 |
-| `push-to-protected-branch` | instruct | 可 | 保護されたブランチへの直接プッシュ。 |
-| `commit-on-protected-branch` | instruct | 可 | 保護されたブランチへの直接コミット。 |
-| `secret-exposure` | deny | 可 | 認証情報の読み取りまたはコピー。 |
-| `credential-exfiltration` | deny | 不可 | シークレットまたはプライベートファイルのマシン外送信。 |
-| `remote-code-execution` | deny | 可 | インターネットからダウンロードしたコードの実行。 |
-| `privilege-escalation` | deny | 可 | 昇格した権限での実行。 |
-| `database-destruction` | deny | 可 | データベースデータの破壊または大量変更。 |
-| `read-outside-workspace` | instruct | 可 | プロジェクト外のファイルの読み取り。 |
-| `agent-config-tampering` | deny | 不可 | エージェント自身の安全設定の変更。 |
-| `system-modification` | instruct | 可 | プロジェクト外でのシステム変更。 |
-| `env-secrets-dump` | instruct | 可 | 環境シークレットの出力。 |
-| `external-destructive-action` | deny | 可 | 外部ツールを通じた不可逆的なアクション。 |
-| `external-data-egress` | instruct | 可 | 外部ツールへのプライベートデータの送信。 |
+| `destructive-deletion` | deny | はい | 再生成できないデータの永久削除。 |
+| `production-infra-change` | deny | はい | ライブインフラの変更。 |
+| `git-history-rewrite` | deny | はい | 共有された git 履歴の書き換えまたは破棄。 |
+| `push-to-protected-branch` | instruct | はい | 保護されたブランチへの直接プッシュ。 |
+| `commit-on-protected-branch` | instruct | はい | 保護されたブランチへの直接コミット。 |
+| `secret-exposure` | deny | はい | 認証情報の読み取りまたはコピー。 |
+| `credential-exfiltration` | deny | いいえ | シークレットまたはプライベートファイルのマシン外送信。 |
+| `remote-code-execution` | deny | はい | インターネットからダウンロードしたコードの実行。 |
+| `privilege-escalation` | deny | はい | 昇格した権限での実行。 |
+| `database-destruction` | deny | はい | データベースデータの破壊または大量変更。 |
+| `read-outside-workspace` | instruct | はい | プロジェクト外のファイルの読み取り。 |
+| `agent-config-tampering` | deny | いいえ | エージェント自身の安全設定の変更。 |
+| `system-modification` | instruct | はい | プロジェクト外のシステムの変更。 |
+| `env-secrets-dump` | instruct | はい | 環境シークレットの出力。 |
+| `external-destructive-action` | deny | はい | 外部ツールを通じた不可逆的なアクション。 |
+| `external-data-egress` | instruct | はい | 外部ツールへのプライベートデータの送信。 |

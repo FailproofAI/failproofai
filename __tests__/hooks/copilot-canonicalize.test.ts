@@ -60,6 +60,8 @@ describe("Copilot tool-input canonicalization (verified 1.0.71 captures)", () =>
     // permissionRequest delivers `toolName: "bash"` (lowercase) even on 1.0.71.
     expect(canonicalizeToolName("bash", "copilot")).toBe("Bash");
     expect(canonicalizeToolName("view", "copilot")).toBe("Read");
+    expect(canonicalizeToolName("task", "copilot")).toBe("Task");
+    expect(canonicalizeToolName("web_search", "copilot")).toBe("WebSearch");
   });
 
   it("only maps the three file tools (no accidental key rewrites elsewhere)", () => {

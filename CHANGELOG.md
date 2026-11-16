@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.0.14-beta.0 — 2026-11-16
+
+### Features
+
+- **`fp-cloud-cli` cuts `0.0.3` stable.** The `0.0.3b1` line opened after `0.0.3b0` had nothing land against it; it is cut stable rather than published, so `pipx install fp-cloud-cli` resolves the `fp` with browser sign-in without `--pre` (entries in `fp-cloud-cli/CHANGELOG.md`). This is the PyPI package's own line and does not move the npm version, which stays at `1.0.14-beta.0` (#1005)
+
 ## 1.0.14-beta.0 — 2026-11-10
 
 ### Fixes

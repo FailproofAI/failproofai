@@ -1,11 +1,25 @@
 # Changelog — `fp` CLI
 
-## 0.0.3b1 — 2026-11-16
+## 0.0.3 — 2026-11-16
 
-Open for the next release. `0.0.3b0` published on 2026-11-16 and the `bump` job
-moved the version here automatically; nothing has landed against `0.0.3b1` yet.
-Add entries as changes merge — this section becomes the GitHub Release body when
-it ships.
+**Stable release.** The `0.0.3b1` line the `bump` job opened after `0.0.3b0` is cut stable
+here rather than published: nothing landed against it, so `0.0.3` is the code `0.0.3b0`
+shipped, now what `pipx install fp-cloud-cli` resolves without `--pre`.
+
+The entries below are the entire diff from `0.0.2`, and the `bump` job opens `0.0.4b0`
+after the upload.
+
+### Added
+
+- `fp login` can sign you in from a browser. On a terminal it starts on a link, to use your browser or SSO: it opens where a browser can (over SSH or with no display it only shows it, and it works from any device), and the terminal finishes on its own once you authorize it. Press Tab for a 6-digit code by email instead, and Tab again to go back. `--email`, `--json` and anything without a terminal keep the code as they always did. If there's no link to offer, as on a dashboard without browser login, it uses the code and never creates a key. Either way you get the same session, with the same lifetime. (#981)
+
+### Changed
+
+- Back to the earlier look: rounded panels, the purple `◆ fp` mark, lowercase panel titles and red error boxes. Ids stay whole, wrapping instead of being cut, and screens added since keep their plain tables. `--json`, exit codes and messages are unchanged. (#981)
+
+### Dependencies
+
+- Accept `typer` up to `0.29.x` (`typer>=0.13,<0.30`, was `<0.28`). (#1000)
 
 ## 0.0.3b0 — 2026-10-25
 

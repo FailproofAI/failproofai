@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.0.15-beta.0 — 2026-11-16
+
+### Docs
+
+- **Policies suggested from your agents' code.** A new page under Prevent failures › Get a policy explains how connecting GitHub turns the rules your agents' code states into tested policies you deploy, in observe mode, with one yes (#1006)
+
 ## 1.0.14-beta.0 — 2026-11-16
 
 ### Features

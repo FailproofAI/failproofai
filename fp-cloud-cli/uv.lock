@@ -381,7 +381,7 @@ wheels = [
 
 [[package]]
 name = "posthog"
-version = "7.86.5"
+version = "7.91.1"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "backoff" },
@@ -389,9 +389,9 @@ dependencies = [
     { name = "requests" },
     { name = "typing-extensions" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/44/22/d08756559d55a460a7566632619efb394a93cbfd880a760133ca92472175/posthog-7.86.5.tar.gz", hash = "sha256:8e1ecb3161f46df8cb0cc73f40f4290e9075b77dcd9e2cdb81f444d7aea909c5", size = 915034, upload-time = "2026-11-10T02:18:32.336Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/d0/50/1acd1a03d0fb49b5b9c7617ec1eec7df86edf475538dec4e18d906166cab/posthog-7.91.1.tar.gz", hash = "sha256:e4b3d34854860d814c04b276057c52282bab8fa0d1636d01e44868b32037649c", size = 1000112, upload-time = "2026-11-13T14:22:48.829Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/bc/25/10ea306d32193709f2d5f6af40b5d3753dc3a1f857de7c9897777e3b603d/posthog-7.86.5-py3-none-any.whl", hash = "sha256:7353d88fa00613259e90dc16ce50d446b7dd5dd373b6fc9b0179034344a61292", size = 1058986, upload-time = "2026-11-10T02:18:29.982Z" },
+    { url = "https://files.pythonhosted.org/packages/89/1f/90c26e72e23cfae827dcff7a76ecad623f1a447d613079fbd0bc1c345c06/posthog-7.91.1-py3-none-any.whl", hash = "sha256:22ce67d6ea2adb523920edb00033a8c49377704c523513f6afe168eded5e0b98", size = 1150356, upload-time = "2026-11-13T14:22:46.537Z" },
 ]
 
 [[package]]
@@ -691,7 +691,7 @@ wheels = [
 
 [[package]]
 name = "typer"
-version = "0.29.0"
+version = "0.29.1"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "annotated-doc" },
@@ -700,9 +700,9 @@ dependencies = [
     { name = "rich" },
     { name = "shellingham" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/ed/db/401793a0d5345409a28de2c571d4ef8bea9a08700c20ea7f7b6af3b050d2/typer-0.29.0.tar.gz", hash = "sha256:6871960a1603fba66af2ff751be48a6735af6480a67660afaf2fab2f7e008ed4", size = 206371, upload-time = "2026-11-09T18:48:12.751Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/6c/aa/0de7986aa1fa856adb961c67345189b97d13f6e250b34ba68884df865f07/typer-0.29.1.tar.gz", hash = "sha256:ab6eb3880bf67ce96147734717f9ec333c06f66e361f3ea947d0be43da39f242", size = 205843, upload-time = "2026-11-11T09:18:39.782Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/c1/3d/cc08d3cb257764101c71c47f18e2f547782d013928edc877f155cb99229d/typer-0.29.0-py3-none-any.whl", hash = "sha256:b3c3de6e06a848274dc7bd56a433499e9cf25fa1d40aa3ba4eccfec4e1624c7b", size = 121058, upload-time = "2026-11-09T18:48:11.665Z" },
+    { url = "https://files.pythonhosted.org/packages/05/ff/51969745f31cea6bcd12151e668febcf979656316e67a7755942267c1273/typer-0.29.1-py3-none-any.whl", hash = "sha256:00dbc549c13428bec1be55fe1f4d0fb8c6637a310e4f178ef14abe9534ee7b58", size = 121064, upload-time = "2026-11-11T09:18:38.671Z" },
 ]
 
 [[package]]

@@ -1,0 +1,265 @@
+---
+title: "Jev evaluator (הביאו את המפתח שלכם)"
+description: "תנו ל-Jev classifier של TypeSafe לשפוט קריאות כלים של agents שלכם מעל קרקעית regex קשה, דרך endpoint ומפתח Jev משלכם."
+icon: "key-round"
+---
+
+מדיניות regex תואמת מחרוזות. הם לא יכולים להבחין בין `rm -rf build/` שביקשתם מ-`rm -rf ~` שהחליק לתוך תכנית, כך שהם חוסמים יותר מדי במקום אחד וקצת מדי בחזה. **Jev**, ה-classifier של TypeSafe, קורא את הקריאה מול מה שבעצם ביקשתם ועונה על סט של שאלות כן/לא עליה בבקשה אחת מהירה.
+
+עם endpoint ומפתח Jev משלכם מוגדרים, Failproof AI שואל את Jev על כל קריאת כלי **לצד** מדיניות ה-regex, לעולם לא במקום שלהם:
+
+- ה-deny של מדיניות **קשה** הוא סופי. Jev לא יכול להנקות אותו. כל מדיניות קשה אלא אם כן היא מסומנת בצורה מפורשת כ-reviewable ושמות בדיקות Jev שמכסות אותה, ולכן מדיניות custom, pack או Cloud שלא אומרת כלום היא קשה, וה-guard self-protection שתמיד פועל הוא תמיד קשה.
+- ה-deny של מדיניות **reviewable** עשוי להיקבע, אך רק כאשר Jev נשאל על הדאגה המדויקת שמדיניות זו מכסה וענה "אין כאן כלום" או "המשתמש ביקש את זה". בדיקה שמוצאת את הדאגה כממשית, כאשר המשתמש לא ביקש את הקריאה, שומרת על ה-deny — אפילו כאשר הפסק שלה הוא רק אזהרה, מכיוון שלפני קריאת כלי אזהרה לא עוצרת את ה-agent. וכאשר אותה בדיקה היא כזו שיכולה להכחיש (חשיפת סודות, כניסת אישורים, מחיקה הרסנית, ...), כלום לא מוקבע על קריאה זו.
+- בלוק עדיין יכול להיות **אזהרה** כאשר הקריאה היא צעד של המשימה שנתתם ולא מגיעה הלאה: Jev משנה את ה-deny שלו לאזהרה, ואותה אזהרה — המתארת מה בעצם לא בסדר עם הקריאה — מחליפה את הבלוק של המדיניות.
+- Jev יכול גם להתריע או להכחיש בעצמו, על נזק שאף regex לא מתאר.
+- אם Jev לא יכול לענות (timeout, rate limit, שגיאת שרת, אין credits, גרסה מודל בלתי צפויה), קריאה זו מקבלת את תוצאת ה-regex, בדיוק כמו ללא Jev.
+- Jev לעולם לא הופך קריאה למאפשרת יותר מהמדיניות שלכם בלבד אלא אם קרא את כל הקריאה ונשאל על הדאגה המדויקת. הכל פחות מזה — קריאה גדולה מדי לשליחה כמכלול, injection חשוד — משוך את ההסכמות ושומר על כל ה-deny.
+
+<Note>
+ללא הגדרת Jev כלום לא משתנה: hooks מפעילים את מדיניות ה-regex בדיוק כפי שתמיד עשו. ההגדרה היא ה-opt-in כולה.
+</Note>
+
+<Tip>
+על FailproofAI Cloud? אתה לא צריך מפתח משלך: מכונה המחוברת עם מפתח שנושא `jev:evaluate` יכולה להשתמש ב-Jev בתכנית הארגון שלך. ראה [Jev through FailproofAI Cloud](/he/policies/jev-cloud).
+</Tip>
+
+## בחר ספק
+
+Jev ניתן להשגה דרך חמש נתיבים. הביא מפתח לכל אחד מהם.
+
+| ספק | `--provider` | Endpoint | מודל ברירת מחדל | הערות |
+| --- | --- | --- | --- | --- |
+| TypeSafe | `typesafe` | `api.typesafe.ai/v1/systemone` | `jev-1.13.0` | סיכום גרסה מדויק. |
+| OpenRouter | `openrouter` | `openrouter.ai/api/v1/systemone` | `typesafe/jev-1.13` | הבקשות נתובות לנקודות קצה בעלות אפס שמירה של נתונים בלבד, ללא fallback לספק אחר. דו"ח גרסה בעלת תאריך כגון `typesafe/jev-1.13-20260917`. |
+| Vercel AI Gateway | `vercel` | `ai-gateway.vercel.sh/typesafe/v1/systemone` | `typesafe-ai/jev` | שם Jev רק לפי כינוי, כך שהגרסה המשיבה נרשמת כלא מוודאת. |
+| Cloudflare Workers AI | `cloudflare` | `api.cloudflare.com/client/v4/accounts/<id>/ai/run` | `typesafe/jev` | צורך `--account-id`. כ-שש קריאות בשנייה לכל מפתח נמדדו לפני HTTP 429. |
+| הendpoint שלך | `custom` | `<base-url>/systemone` | `jev-1.13.0` | כל endpoint המקבל את גוף הבקשה של TypeSafe ודו"ח איזה מודל ענה. `https` בלבד; `http://localhost` רגיל מתקבל בשיטת shadow בלבד. |
+
+<Warning>
+עם תכונת bring-your-own-key של Vercel, בקשה שנכשלה תיחזור שוב בשתיקה עם אישורים של Vercel. אם אתה צריך כל קריאה חויבת ונראות לחשבון TypeSafe שלך בלבד, השתמש ב-TypeSafe ישירות.
+</Warning>
+
+## הגדר את זה
+
+פקודה אחת, ה-endpoint והמפתח:
+
+```bash
+failproofai jev --url https://api.typesafe.ai/v1 --key-stdin < ~/typesafe.key
+```
+
+### ה-URL בוחר את הספק
+
+אתה לא צריך לשם את הספק: **הוסט** של ה-URL הוא איזה אחד זה.
+
+| URL host | ספק | גם צריך |
+| --- | --- | --- |
+| `api.typesafe.ai` | `typesafe` | — |
+| `openrouter.ai` | `openrouter` | — |
+| `ai-gateway.vercel.sh` | `vercel` | — |
+| `api.cloudflare.com` | `cloudflare` | `--account-id <32-hex-account-id>` |
+| כל הוסט אחר | `custom` | — ה-URL שנתת הוא ה-base URL |
+
+שלוש דברים נובעים מזה:
+
+- **ה-URL של ה-API של הספק עצמו לא כותב override.** `--url https://api.typesafe.ai/v1` מייצר בדיוק את ההגדרה שיש `--provider typesafe`. תן נתיב או הוסט אחרים בספק ידוע וזה מאוחסן כ-base URL, כמו `--base-url` היה מאחסן אותו.
+- **`--provider` עדיין דוחק את ההסקה**, וזו איך אתה מגיע לפרוקסי שמדבר ב-API של ספק מהוסט משלך: `--url https://jev-proxy.internal/v1 --provider typesafe`.
+- **`--provider` שמתנגד להוסט מסורב**, לא ניחוש. `--provider openrouter --url https://api.typesafe.ai/v1` לא כותב כלום ואומר למה: שתי הכתיבות לא מסכימות היכן המפתח שלך עומד להישלח. אותו זוג מסורב מ-`jev setup --base-url` ומהדוח המחומד של Jev settings. (`--provider custom` אינו סתירה — זה אומר "התייחס ל-URL זה כלעצמו" — למעט בהוסט של Cloudflare, אשר מסלול custom לא יכול להגיע אל ה-endpoint per-account שלו.)
+
+`--url` מוודא בדיוק כמו ש-`baseUrl` בקובץ הגדרה הוא, והסרב באותם מילים: `https`, או `http://localhost` רגיל בשיטת shadow בלבד.
+
+### המפתח
+
+Pipe אותו עם `--key-stdin`, או הפעל את הפקודה בטרמינל בלעדיו והדבק את המפתח בשאילתה מוסווה. בכל מקרה הוא נכנס ישירות לקובץ ההגדרה ולעולם לא מודפס בחזרה.
+
+<Tabs>
+  <Tab title="TypeSafe">
+    ```bash
+    failproofai jev --url https://api.typesafe.ai/v1 --key-stdin < ~/typesafe.key
+    ```
+  </Tab>
+  <Tab title="OpenRouter">
+    ```bash
+    failproofai jev --url https://openrouter.ai/api/v1 --key-stdin < ~/openrouter.key
+    ```
+  </Tab>
+  <Tab title="Vercel">
+    ```bash
+    failproofai jev --url https://ai-gateway.vercel.sh/typesafe/v1 \
+      --key-stdin < ~/vercel-gateway.key
+    ```
+  </Tab>
+  <Tab title="Cloudflare">
+    ```bash
+    failproofai jev --url https://api.cloudflare.com/client/v4 \
+      --account-id <32-hex-account-id> --key-stdin < ~/cloudflare.token
+    ```
+  </Tab>
+  <Tab title="Custom">
+    ```bash
+    failproofai jev --url https://jev.internal.example.com/v1 --key-stdin < ~/jev.key
+    ```
+  </Tab>
+</Tabs>
+
+`failproofai jev setup` לוקח את אותו הדגלים וזה ה-longhand לכל זה: `setup --provider <kind>` שם היית מעדיף לשם את הספק מאשר את ה-URL.
+
+### `--token`, ומה זה עולה
+
+`--token <token>` שם את המפתח בשורת הפקודה, שהיא הדרך הכי מהירה להגדיר מכונה וה-spelling היחידה שמשאירה את המפתח בכל מקום אלא בקובץ ההגדרה:
+
+```bash
+failproofai jev --url https://openrouter.ai/api/v1 --token <token>
+```
+
+<Warning>
+ארגומנט של שורת פקודה נמצא בקובץ ההיסטוריה של ה-shell שלך לאחר מכן, וכאשר הפקודה פועלת זה נמצא ברשימת התהליכים — ניתן קריאה מ-`/proc` על ידי כל דבר שפועל כמוך. `setup` אומר כן בכל פעם ש-`--token` משמש. עדיף `--key-stdin` על מכונה שאתה משתף, בהפעלה מוקלטת, או בכל מקום שקובץ ההיסטוריה מסונכרן; סובב מפתח שהעברת בדרך זו אם זה משנה.
+</Warning>
+
+`--token`, `--key-stdin` ו-`--key-from-env` זה מוציא זה את זה: תן אחד.
+
+אחר כך שלח בקשה חיה אחת קטנה כדי לבדוק את המפתח, ה-endpoint ואיזה Jev ענה:
+
+```bash
+failproofai jev test
+```
+
+```text
+  failproofai jev test                                            ok · 523 ms
+
+  provider      cloudflare
+  model asked   typesafe/jev
+  answered by   jev-1.13.0 (Jev 1.13 family — verified)
+  latency       523 ms — within the 3000 ms timeout
+```
+
+`jev test` יוצא 1, ואומר כן בכותרת שלו, כאשר התשובה מגיעה לאחר ה-timeout (כל hook היה חוזר לregex כ-`timeout`) או עונה לשאלת הבדיקה שלו בצורה שגויה.
+
+Hooks קוראים את ההגדרה בכל קריאת כלי, ולכן זה חל מהבאה. אין כלום להתחיל מחדש, עם או בלעדי ה-daemon.
+
+## בדוק מה זה עושה
+
+```bash
+failproofai jev status
+failproofai jev status --json
+```
+
+`status` מציג את הספק, ה-endpoint, המודל, המצב, קובץ ההגדרה וההרשאות שלו, ולעולם לא את המפתח. מתחתיו זה מסכם פעילות אחרונה: כמה קריאות Jev הערך, כמה פעמים זה חזר לregex ולמה, ה-latency שלו, ואילו מדיניות reviewable זה הנקה.
+
+## שיטת shadow
+
+`enforce` הוא ברירת המחדל. כדי לצפות ב-Jev מבלי לתת לו לשנות כל החלטה, עבור ל-`shadow`: Jev עדיין נשאל וההחלטות שלו נרשמות, אך תוצאת ה-regex היא מה שנאכף.
+
+```bash
+failproofai jev setup --mode shadow
+failproofai jev setup --mode enforce
+failproofai jev setup --mode off
+```
+
+`off` שמור על ההגדרה — ה-endpoint והמפתח — ומפסיק לשאול את Jev: hooks מפעילים את מדיניות ה-regex בדיוק כמו ללא הגדרה, ו-`failproofai jev status` אומר "off (switched off)". חזור עם `--mode shadow` או `--mode enforce`.
+
+הפעלה חוזרת של `setup` באותו ספק שומרת על המפתח המאוחסן, כך שתחליף מצב הוא דגל אחד. החלפת ספק מתחיל מחדש ושואל עבור המפתח של הספק הזה. כמו כן `--base-url` שמעביר בקשות לוסט אחר: מפתח מאוחסן נשלח רק להוסט שהוא ניתן עבורו, או אל ה-API של הספק שלו.
+
+## קובץ ההגדרה
+
+הכל גר בקובץ אחד, `~/.failproofai/jev.json`, כתוב על ידי `setup`:
+
+```json
+{
+  "provider": "cloudflare",
+  "apiKey": "<your key>",
+  "accountId": "<32-hex-account-id>",
+  "mode": "enforce",
+  "timeoutMs": 3000
+}
+```
+
+| שדה | משמעות |
+| --- | --- |
+| `provider` | `typesafe`, `openrouter`, `vercel`, `cloudflare` או `custom` — או `failproofai`, שלמפתח שלו מגיע מהחיבור של FailproofAI Cloud במקום קובץ זה (ראה [Jev through FailproofAI Cloud](/he/policies/jev-cloud)). |
+| `apiKey` | נשלח כ-`Authorization: Bearer <key>`. |
+| `baseUrl` | נדרש עבור `custom`; מחליף את ה-API base של הספק בעל כן. חייב להיות `https`. `http` רגיל אל `localhost` מתקבל רק עם `mode: shadow`: כלום לא מאמת יציאה מקומית, כך שבעוד הפרוקסי שלך למטה כל תהליך במכונה, כולל ה-agent שנשפט, יכול לענות במקומו. |
+| `accountId` | Cloudflare בלבד: 32 תווי hex קטנים. |
+| `model` | מחליף את ה-model id של ברירת המחדל של הספק. ה-id של גרסה חייב לשם Jev 1.13. ערך בצורת API key סורב (ולא חוזר), כך שמפתח הדביק למעבר `--model` לעולם לא מאוחסן או נשלח כמודל. |
+| `timeoutMs` | כמה זמן קריאת כלי מחכה אל Jev לפני שימוש בתוצאה regex. 100–10000, ברירת מחדל 3000. |
+| `mode` | `enforce` (ברירת מחדל), `shadow`, או `off` (שמור את ההגדרה, הפעל ללא Jev). |
+
+שלוש כללים מגנים עליו:
+
+- **רק בעלים.** זה כתוב עם הרשאות `0600`. עותק שכל משתמש או קבוצה אחרת יכולה לקרוא או לכתוב הוא **סרוב**, hooks חוזרים לregex עד שתפעיל `chmod 600 ~/.failproofai/jev.json` או `setup` שוב. הספרייה בדוקה גם: `~/.failproofai` לא צריכה להיות **כתובה** על ידי מישהו אחר, כי מי שיכול לכתוב שם יכול להחליף את הקובץ כל הרשאות משלו. `setup` מסיר את הביטים כתוב אלו אם זה מוצא אותם. `failproofai jev status` אומר כאשר הגדרה סורבה ומראה את ה-endpoint שהקובץ מייצג: מישהו אחר יכול היה לשנות אותו, כך לבדוק זה שלך לפני שתוביל `chmod`. הפעלה חוזרת של `setup` על קובץ כזה נושאת את המפתח המאוחסן שלו רק אל ה-API של הספק; כל endpoint אחר שהוא שם צריך את המפתח שוב (`--key-stdin`), או `--base-url default` לשלוח בקשות חזרה אל הספק.
+- **גלוברי בלבד.** מאגר לא יכול להפעיל את Jev, להצביע עליו בendpoint אחר או לבחור את המודל שלו: `.failproofai/jev.json` בתוך פרוייקט מתעלם, והספק, ה-URL, המודל והמזהה החשבון נקראים רק מקובץ זה — לעולם לא מהסביבה, שהגדרות agent של מאגר יכולות להגדיר. (`FAILPROOFAI_HOME` אינו דרך סביב זה: זה מעביר את כל ספריית failproofai, המדיניות שלך כלול, במקום להפנות Jev בעצמו.)
+- **רק המפתח לבדו יכול להגיע מהסביבה.** אם לקובץ אין `apiKey`, `FAILPROOFAI_JEV_API_KEY` מספק אותו לאותה הפעלה (`setup --key-from-env` כותב קובץ כזה). זה לעולם לא מחליף מפתח שהקובץ מחזיק, וזה לא יכול להפעיל את Jev ללא הקובץ. כאשר המשתנה לא מוגדר, Jev היא פשוט כבוי עבור אותה מעטפת: `failproofai jev status` אומר כן, יוצא 0 ועוזב את ההגדרה לבדה (`status --json` מדווח `"status": "key-missing"` עם `"reason": "no-env-key"`). ה-daemon `failproofaid` לא רואה את סביבת ה-shell שלך, כך על מכונה המגודרת עם `failproofai config`, שמור את המפתח בקובץ.
+
+## איזה Jev עונה
+
+סף ההחלטה של Failproof AI כויל על Jev 1.13, כך תשובה משמשת רק כאשר היא מגיעה מאותה משפחה: `jev-1.13.x`, או OpenRouter של `typesafe/jev-1.13-<date>`. כאשר ספק שם Jev רק לפי כינוי וא דו"ח ללא גרסה (Vercel, ו-Cloudflare כאשר זה לא אומר), התשובה משמשת ונרשמת כלא מוודאת. `custom` endpoint חייב לדווח את המודל שענה; החריג היחידי הוא `--model` שם לא גרסיון שהגדרת עבורו, אשר, הד בחזרה, נרשם כלא מוודא באותו הדרך. תשובה המדווחת כל גרסה אחרת, או תשובה `custom` שלא מדווחת כלום, אינה משמשת: קריאה זו חוזרת לregex עם הסיבה `model-mismatch`.
+
+## כאשר Jev לא יכול לענות
+
+כל אחד מאלה חוזר לתוצאת ה-regex עבור קריאה זו ורשום עם הסיבה שלו, אשר `failproofai jev status` סכומים:
+
+| סיבה | גורם |
+| --- | --- |
+| `timeout` | אין תשובה בתוך `timeoutMs`. |
+| `http-429` | הספק rate-limited את המפתח. |
+| `rate-limited` | ה-limiter של Failproof AI שלו עצר את הקריאה חזרה לפני שליחה: 5 בקשות בשנייה, בפרצים של עד 5, ואף אחד לרגע לאחר שהספק עונה `429`. לא הספק. |
+| `http-500`, `http-502`, `http-503`, … | שגיאת שרת בספק. הסטטוס המדויק נרשם. |
+| `out-of-credits` | HTTP 402: לחשבון הספק אין credits נותרו. |
+| `provider-refused` | HTTP 402 מ-Cloudflare קריאה "Model execution failed (Payment error)": הספק סירב להריץ את המודל בבקשה זו. בדרך כלל לא חיוב, כך טעינה תזיז אותו. |
+| `http-401`, `http-403` | המפתח סורב. |
+| `http-404` | כלום לא משמש ב-`<base>/systemone`, כך ה-base URL לא בסדר — `/systemone` מוסף אליו, וכל ספק משמש אותו בשורש גרסה שלו. `failproofai jev models` מציג מה ה-endpoint כן משרת. |
+| `network` | לא היה אפשר להגיע ל-endpoint. |
+| `http-301`, `http-302`, `http-307`, `http-308` | ה-endpoint ענה עם redirect. Redirects לא מעקבים, כך התשובה באה רק מה-URL בהגדרה שלך; קבע `--base-url` ל-URL הסופי. |
+| `malformed` | ה-endpoint ענה, אך לא עם תשובה Jev — גוף שאינו JSON, או אחד בלא תשובות בו. |
+| `cloudflare-error`, `cloudflare-incomplete` | מעטפת של Cloudflare דיווחה כשל, או עבודה שלא הסתיימה. |
+| `model-mismatch` | גרסה Jev אחרת מ-1.13 ענתה, או `custom` endpoint לא אמר איזה מודל ענה. |
+| `request-cut` | **לא הפסקה.** Jev ענתה; זה הוצג רק חלק מהקריאה, כך התשובה שלו נקתה כלום. ראה [כאשר Jev ענתה, אך לא על הקריאה כולה](#when-jev-answered-but-not-on-the-whole-call). |
+
+`failproofai jev status` יכול להציג כמה סיבות נדירות יותר גם כן, כגון `upstream-error` (התשובה נשאה את השגיאה של הספק שלו) או `config`, וסכומים כל סיבה שהוא לא יכול לשם כ-`other`.
+
+`request-cut` נמצא בטבלה זו כי `failproofai jev status` סוכם אותו עם השאר, ובגלל שגם זה משאיר כל ה-deny עומדות. זה סיבה היחידה כאן שלא אומרת כלום על הספק שלך: הבקשה הגיעה ו-Jev ענתה לה. בניגוד לכל שורה מעליו, התשובה הזו עדיין סופרת — ה-deny או ה-warning של Jev יחול על גבי תוצאת ה-regex במקום להיות מושלכת. כך ריצה של אלה אומר קריאות מגיעות להערך גדולה מדי לשליחה כמכלול, לא שה-endpoint שלך לא בסדר, וטעינה של credits או שינוי ה-URL לא יזיז את המספר.
+
+## כאשר Jev ענתה, אך לא על הקריאה כולה
+
+שני דברים נוספים יכולים לקרות, ואף אחד לא Jev כושל לענות. שניהם על כמה מהקריאה, או מהשיחה, התאימה לבקשה אחת.
+
+**חלק מהקריאה עצמה לא התאימה.** קריאה כלי נשלחת בתוך תקציב קבוע, וחריגה — `Write` גדולה מאוד, גוף MCP עצום, פקודה מרופדת עד הכיפה — נשלחת עם מה התאים. Jev עדיין עונה, והתשובה שלו עדיין סופרת: ה-deny או ה-warning שלו יחול כרגיל. מה זה לא יכול לעשות זה **קבוע** כלום, מכיוון שפסק נתון בחלק מקריאה אינו פסק בקריאה. כך כל ה-deny מדיניות עומדות, והקריאה נרשמת כ-fallback עם הסיבה `request-cut`, אשר `failproofai jev status` סוכמים לצד הסיבות לעיל. הכלל זה נותן לך: הגדלת קריאה יכול להוציא את ההסכמות שלו, וא פעם לא יכול לקנות אחד.
+
+**הודעה לא התאימה.** ביצוע ארוך שהדקת, הודעת ה-agent האחרונה, או פקודה מערך האחסון שלה הערך כבר כיפה. **כלום לא משתנה**: הקריאה נשפטת, נקתה ורשומה בדיוק כמו כל אחד אחר, וזה לא סופר כ-fallback. האורך של מה שאתה הקלדת לעולם לא מחליט אנו פסק, וקית לא יכול לייצור הסכמה: שם ביצוע הגיע כבר כיפה, "אתה לא ביקשת את זה" מפסיקה להיות מסקנה שיכול להיות מוצא ממנו בכלל, במקום להפוך לאחד.
+
+הקו בין השניים הוא מי כתב את הטקסט. הקריאה היא ה-agent, וכלל שתן אורך שלו להפחית חומרה יהיה כלל ה-agent יכול להשתמש; ביצוע שלך שלך, וטיפול באורך שלו כאות רק פעם אחת הענש הדביק מפרט או עקבת ערימה.
+
+## מה עוזב את המכונה
+
+עבור כל קריאה כלי Jev מערכי, בקשה אחת יוצא לספק שלך, נושא:
+
+- הקריאה עצמה, עם סודות כגון API keys, bearer tokens ו-`KEY=` הקצאות redacted;
+- הביצוע הקרוב שהקלדת, עם טקסט ה-agent harness הוסיף הוסר;
+- הודעת ה-agent האחרונה לפני הביצוע הקרוב שלך, מתויג כ-agent-written;
+- עובדות מחושבות מקומי, כגון האם נתיב בתוך הפרוייקט — זה הפעלה במפגש שלה הראשון בדוק בדוק, [pinned לפעלה](/he/reference/jev-intent#the-project-root) — וסניף git הנוכחי.
+
+זה יוצא רק ל-endpoint בהגדרה שלך, תחת המפתח שלך.
+
+## כבה אותו
+
+```bash
+failproofai jev remove
+```
+
+זה מחוק `~/.failproofai/jev.json`. מהקריאה הכלי הבאה, hooks מפעילים את מדיניות ה-regex בדיוק כמו לפני. ה-per-session מאחסן תחת `~/.failproofai/state/semantic/` (ביצוע נרשם ב-`sessions/`, שורשי פרוייקט ב-`roots/`) נשאר במקום וגיל החוצה. כדי להפסיק לשאול את Jev אך שמור את ההגדרה, השתמש `failproofai jev setup --mode off` במקום.
+
+## התייחסות לפקודה
+
+| פקודה | תוצאה |
+| --- | --- |
+| `failproofai jev --url <url> --key-stdin` | הגדר אותו בפקודה אחת; הספק בא מהוסט של ה-URL |
+| `failproofai jev --url <url> --token <token>` | זהה, עם המפתח בשורת הפקודה — ההיסטוריה והרשימת התהליכים שלך ראה זה |
+| `failproofai jev setup --provider <kind> --key-stdin` | כתוב את ההגדרה מ-key piped על stdin |
+| `failproofai jev setup --provider <kind>` | זהה, שאילתה עבור המפתח בשאילתה מוסווה |
+| `failproofai jev setup --key-from-env` | אל תאחסן מפתח; קרא `FAILPROOFAI_JEV_API_KEY` לכל הפעלה |
+| `failproofai jev setup --mode shadow` | חלופי מצב (`enforce`, `shadow` או `off`), שמור את המפתח המאוחסן |
+| `failproofai jev setup --model <id>` / `--base-url <url>` | דרוס את המודל או ה-API base; `default` מנקה את הדרוס |
+| `failproofai jev setup --timeout-ms <n>` | שנה את התקציב לכל קריאה |
+| `failproofai jev status [--json]` | הגדרה, הרשאות ופעילות אחרונה; לעולם לא את המפתח |
+| `failproofai jev test [--json]` | בקשה חיה אחת: latency וגרסה שענתה |
+| `failproofai jev models [--provider <kind>] [--url <base>] [--json]` | ה-model ids ש-`/models` של ה-endpoint מדווח, סימון ה-configured |
+| `failproofai jev remove` | מחוק את ההגדרה; Jev כבוי |

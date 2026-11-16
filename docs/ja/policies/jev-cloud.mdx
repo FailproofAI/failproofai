@@ -1,0 +1,117 @@
+---
+title: "FailproofAI Cloud を通じた Jev"
+description: "FailproofAI Cloud 経由でエージェントのツール呼び出しを Jev に判定させましょう。組織のプランで利用でき、TypeSafe のアカウントや独自のキーは不要です。"
+icon: "cloud"
+---
+
+TypeSafe のクラシファイアである [Jev](/ja/policies/jev-byok) は、各ツール呼び出しを実際の依頼内容と照らし合わせて読み取り、ポリシーと連携して判定を下します。ポリシーの代わりに動くのではなく、あくまで補完として機能します。**FailproofAI Cloud** を通じると、接続済みのマシンは既存の接続キーをそのまま使って Jev を利用できます。TypeSafe のアカウントも、追加のキーも、エンドポイントの設定も不要です。各呼び出しは組織の既存プランの利用枠に課金されます。
+
+Jev の動作は [BYOK セットアップ](/ja/policies/jev-byok)と変わりません。ハードポリシーは常に最終判定となり、レビュー可能なポリシーの deny は Jev がまさにその懸念点について問われた場合にのみ解除され、障害が発生した場合はその呼び出しの正規表現結果にフォールバックします。
+
+<Note>
+**failproofai 1.0.8-beta.0** 以降が必要です。1.0.7 は 1.0.7 ベータより新しいように見えますが、Jev は含まれていません。Jev の設定がない場合は何も変わりません。フックは従来どおり正規表現ポリシーのみを実行します。
+</Note>
+
+## 有効にする
+
+1. **Jev 付きのキーを作成します。** FailproofAI Cloud ダッシュボードで **Keys → Create key** を開き、**machine** プリセットを選択します。これによりマシンに必要な 3 つの権限が付与されます: `events:add`（アクティビティの送信）、`policies:pull`（ポリシーの受信）、`jev:evaluate`（Jev の利用、組織のプランに課金）。`jev:evaluate` は他の 2 つの権限なしには付与できません。
+2. そのキーで**マシンを接続**します:
+
+   ```bash
+   failproofai config --token <key>
+   ```
+
+   組織がホスト型ではなく独自の FailproofAI Cloud を運用している場合は、そのアドレスを追加してください: `--url https://<your dashboard host>`（または `FAILPROOFAI_CLOUD_URL` をエクスポート）。指定しないとキーはホスト型サービスに対して検証されるため、接続に失敗します。そのホストの証明書がプライベート CA によるものであれば、`NODE_EXTRA_CA_CERTS` だけでなく、マシンのシステムトラストストアに CA をインストールしてください（例: `update-ca-certificates` を使用）。イベントを送信してポリシーを取得するデーモンはシステムストアを参照します。詳しくは[トラブルシューティング](/ja/reference/troubleshooting)を参照してください。
+
+以上です。接続するとキーが保存され、マシンに Jev の設定が**ない**場合は、FailproofAI Cloud 経由で Jev が**shadow** モードでオンになります。ゲートされたすべてのツール呼び出しについて Jev に問い合わせが行われ、その判定が記録されますが、ポリシーの結果が実際に適用されます。出力にはその旨が表示されます:
+
+```text
+  Jev       on through FailproofAI Cloud, in shadow mode: logged, not enforced (~/.failproofai/jev.json).
+```
+
+**`--no-transcripts` を指定した場合、接続しても Jev はオンになりません。** Jev はチェック済みの各ツール呼び出しと最近のプロンプトを FailproofAI Cloud に送信しますが、これは decisions-only の接続が送信を求めるものより多い内容です。キーは保存され、出力には Jev が利用可能であることとオンにする方法が表示されます:
+
+```bash
+failproofai jev setup --provider failproofai
+```
+
+Jev を**オフにする**操作でもありません。マシンの `jev.json` がすでに FailproofAI Cloud 経由で Jev を実行している場合はそのまま維持され、Jev が引き続き各チェック済みツール呼び出しと最近のプロンプトを送信していることが出力に表示されます。オフにするには `failproofai jev setup --mode off` を使用してください。
+
+<Warning>
+接続操作は既存の `~/.failproofai/jev.json` を**上書きしません**。すでに独自の Jev エンドポイントを使用している場合は引き続きそちらが使われ、ファイルがそのまま残っていることが出力に表示されます。そのファイルが Jev をオフ（拒否、またはオフに切り替え済み）にしている場合は、その旨と修正方法も表示されます。そのマシンを FailproofAI Cloud に切り替えるには `failproofai jev setup --provider failproofai` を実行してください。
+</Warning>
+
+## shadow、enforce、off の切り替え
+
+shadow から始めてポリシーページで Jev がどのように動作するかを確認してから、実際に適用させましょう:
+
+```bash
+failproofai jev setup --mode enforce   # Jev の判定が適用される: レビュー可能な deny を解除し、独自の判定を追加できる
+failproofai jev setup --mode shadow    # Jev への問い合わせと記録のみ行い、ポリシーの結果が適用される
+failproofai jev setup --mode off       # 設定を保持したまま Jev への問い合わせを停止する
+```
+
+同じ切り替えはローカルダッシュボードの **Settings → Jev** にもあります。モードのみを書き換え、それ以外は変更しません。フックはツール呼び出しのたびに設定を読み込むため、変更は次の呼び出しから即座に反映されます。再起動は不要です。
+
+## 動作状況を確認する
+
+```bash
+failproofai jev status
+failproofai jev test
+```
+
+`status` はプロバイダーを **FailproofAI Cloud**、マシンが接続した Cloud ホスト、モード、キーのソースを **FailproofAI Cloud connection** として表示します（キー自体は表示しません）。FailproofAI Cloud の `jev.json` が存在するが Jev を実行できない場合は、その理由が表示されます:
+
+| `status` の表示 | `status --json` | 意味 |
+| --- | --- | --- |
+| **off — no Jev key is stored for this machine's FailproofAI Cloud connection** | `key-lacks-jev` | マシンは接続されているが、Jev キーが保存されていない: キーに `jev:evaluate` がないか、接続時に確認できなかった。同じキーで `failproofai config --token <key>` を再実行してください。権限がない場合は **machine** キーを使用してください。 |
+| **off — this machine is not connected to FailproofAI Cloud** | `not-connected` | このマシンに Jev キーが属する FailproofAI Cloud 接続が存在しない。 |
+
+`failproofai config --disconnect` の実行後、FailproofAI Cloud の `jev.json` はなくなります（オフに切り替えられていた場合はそのまま残ります）。そのため `status` は単に Jev がオフであると報告します。`status --json` も同じ情報を含みます（`provider: "failproofai"`、`keySource: "cloud"`、`cloudConnected`、`keyCarriesJev`）。設定がないか拒否された場合も同様です。`permissions` は常に `jev.json` のものです。`credentials.json` に関する拒否には `credentialsPermissions` が追加され、1 つのコマンドで修正できる場合は `fix` も含まれます。`test` はライブリクエストを 1 件送信し、レイテンシと応答した Jev のバージョンを報告します。フックのタイムアウト後に応答が届いた場合（フックは `timeout` と記録します）や、チェック質問に誤答した場合は、タイトルにその旨が表示され、終了コード 1 で終了します。
+
+ダッシュボードの **Settings → Jev** パネルにも **FailproofAI Cloud connection** が表示されます。マシンが属する組織と、そのキーが Jev を持っているかどうかが確認できます。これはマシン自身のファイルから読み取られ、ネットワーク呼び出しは発生しません。
+
+## ポリシーページに表示される内容
+
+マシンはすでにフックのアクティビティを FailproofAI Cloud に送信しています（`events:add`）。Jev がオンの場合、ゲートされた各呼び出しの記録には、実行された評価器、Jev の判定、解除されたポリシー、フォールバックした理由、レイテンシ、応答したモデルも含まれます。コマンドやプロンプトは含まれず、判定・コード・名前のみです。組織の**Policies** ページでは:
+
+- Jev 自身の判定で決定された呼び出し（enforce モード）は **Jev** に帰属し、判定チェックがパックから来た場合はそのパック名とバージョンも記録される
+- shadow モードでは、Jev の deny または warning は **would-have** として表示され、観察中のロールアウトの隣に表示される
+- Jev が解除した、または shadow モードで解除したであろうポリシーは、ポリシーごとにカウントされる
+
+## Jev が応答できない場合
+
+以下のいずれの場合も、その呼び出しのポリシー結果にフォールバックし、その理由とともに記録されます:
+
+| 理由 | 原因 |
+| --- | --- |
+| `out-of-credits` | 組織のプラン利用枠を使い切った。 |
+| `http-401`, `http-403` | キーが失効したか、`jev:evaluate` を持っていない。対応した権限を持つキーで再接続してください。 |
+| `http-429` | FailproofAI Cloud が組織の Jev をレート制限している。要求された待機時間（`Retry-After`、最大 60 秒）が経過するまで、マシンは何も送信せずすべての呼び出しが即座にフォールバックします。このように保留された呼び出しは `http-429` として記録されます。マシン自身のレート制限が先に適用された場合は `rate-limited` として記録されます。 |
+| `http-429`（日次制限） | 組織の日次 Jev 呼び出し上限に達した: **UTC 1 日あたり 10,000 回**（FailproofAI Cloud の運用者が別の制限を設定している場合を除く）。カウントが 00:00 UTC にリセットされるまで、すべての呼び出しがフォールバックします。マシンは最大 1 分に 1 回再試行するため、リセット後 1 分以内に検出されます。`failproofai jev test` は「Daily Jev limit for this org reached; resets at 00:00 UTC.」と表示します。 |
+| `http-422` | Jev がこの呼び出しのリクエストを拒否した。通常、ツール呼び出しに密度の高いテキスト（base64、hex、minified コード）が含まれており、Jev のトークン予算を超えているためです。この呼び出しは毎回フォールバックします。障害ではありません。 |
+| `http-502` | Jev が現在利用できない。 |
+| `http-503` | この Cloud は組織の Jev を提供できない: モデルゲートウェイがない、組織がまだプロビジョニングされていない、またはゲートウェイがダウンしている。管理者に問い合わせてください。フックは最大 1 分に 1 回再試行します。 |
+| `http-404` | この FailproofAI Cloud はまだ Jev を提供していない。 |
+| `timeout` | `timeoutMs`（デフォルト 3000）以内に応答がなかった。 |
+| `model-mismatch` | バージョン 1.13 以外の Jev が応答した。 |
+
+## キーの保存場所と送信先
+
+- キーは `~/.failproofai/credentials.json`（`0600`、所有者専用ディレクトリ）に一度だけ保存され、他の FailproofAI Cloud の認証情報と並置されます。このルートでは `jev.json` にキーは保存されません。そこにキーが書かれると設定が無効になります。
+- `credentials.json` に所有者以外（グループまたはその他、読み取りまたは書き込み）の権限がある場合、またはそのディレクトリが所有者以外から**書き込み**可能な場合、ファイルは**拒否**されて読み取られず、修正するまで Jev はオフのままになります: ファイルに `chmod 600`、ディレクトリに `chmod 700`（または再接続すると `0600` でファイルを書き直し、ディレクトリを所有者専用にします）。他者が読み取りのみ可能なディレクトリは問題ありません。書き込みが可能な場合はファイルの入れ替えが可能になります。
+- キーは接続とセットの場合にのみ有効です: 同じ FailproofAI Cloud への同じキーによるポリシーまたは報告の認証情報が、同じファイルに存在する必要があります。接続なしに残された Jev キーは無視され、Jev はオフのままです。これは、古い failproofai の `config --disconnect` が Jev キーをそのままにした場合（削除方法を知らないため）や、古い failproofai の `config --token` が別のキーで接続した場合（FailproofAI Cloud 上では別の組織に属する可能性がある）に発生します。Jev を再度オンにするには、**machine** キーで再接続してください。
+- キーは検証された Cloud オリジンにのみ送信されます。別の場所を指す `jev.json` は拒否されます。
+- **マシン上のエージェントがキーを読み取ることができます。** `credentials.json` は所有者専用ですが、エージェントはその所有者として実行されます。failproofai 自身のファイルの読み取りは意図的に許可されています（変更のみ `block-failproofai-commands` によってブロックされます）。そのため、エージェントとこのファイルの間にあるのは `block-read-outside-cwd`（*レビュー可能な*ポリシー）のみです。ホームディレクトリから開始されたセッションからは、何も遮るものはありません。`jev:evaluate` 権限を持つキーは、使用される場所を問わず組織の Jev 利用枠（日次上限まで）を消費します。そのため、マシンキーは他の支出認証情報と同様に扱ってください。エージェントがキーを読み取った可能性がある場合は、Keys ページで無効化し、新しいキーで再接続してください。
+- これを制御するのはグローバルファイルのみです。リポジトリから Cloud Jev をオンにしたり、別の場所を指定したり、キーを提供したりすることはできません。また、このルートでは `FAILPROOFAI_JEV_API_KEY` は無視されます。
+- Jev が評価する各呼び出しについて、FailproofAI Cloud への 1 件のリクエストが送信されます。内容は [BYOK ページ](/ja/policies/jev-byok#what-leaves-the-machine)に記載されているもの（シークレットはリダクション済み）です。FailproofAI Cloud はそれを TypeSafe に転送し、記録や保持は行いません。
+
+## オフにする
+
+| コマンド | 結果 |
+| --- | --- |
+| `failproofai jev setup --mode off` | 設定を保持したまま Jev への問い合わせを停止する。**これが持続的な切り替えです:** 再接続しても既存の `jev.json` は上書きされないため、`--mode shadow` で戻すまで Jev はオフのままです。 |
+| `failproofai jev remove` | `~/.failproofai/jev.json` を削除し、Jev をオフにする。ただし、次に `jev:evaluate` 権限を持つキーで `failproofai config --token` を実行すると、`jev.json` が存在しないため shadow モードで Jev が再度オンになります（`--no-transcripts` での実行を除く）。オフのままにするには `--mode off` を使用してください。 |
+| `failproofai config --disconnect` | マシンを切断する: キーが削除され、`jev.json` が FailproofAI Cloud を指定していてかつオフになっていない場合は `jev.json` も削除されます。独自エンドポイント用の `jev.json` はそのまま残り、オフに切り替えられたものも残るため、再接続後も Jev はオフのままです。 |
+
+次のツール呼び出しから、フックは従来どおり正規表現ポリシーのみを実行します。

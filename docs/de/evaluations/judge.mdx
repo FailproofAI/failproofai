@@ -1,0 +1,91 @@
+---
+title: "LLM-Judges"
+description: "Bewerten Sie Sitzungen anhand von Aspekten, die Code nicht messen kann – Korrektheit, Ton, ob der Agent eine Richtlinie eingehalten hat – indem Sie beschreiben, wie gutes Verhalten aussieht, und ein Modell das Gespräch lesen lassen."
+icon: "scale"
+---
+
+Eine gehostete Python-Auswertung kann zählen und vergleichen: wie viele Tool-Aufrufe, wie viele Fehler, wie lange eine Sitzung dauerte. Sie kann Ihnen nicht sagen, ob eine Antwort *korrekt* war, ob eine Antwort unhöflich war oder ob der Agent vor einer Aktion eine Richtlinie geprüft hat.
+
+Ein **LLM-Judge** kann das. Sie beschreiben in einfacher Sprache, wie gutes Verhalten aussieht, und ein Modell liest die Sitzung und gibt einen Score zwischen 0 und 1 zusammen mit seiner Begründung zurück.
+
+<Note>
+Ein Judge kostet einen Modellaufruf pro Sitzung, auf der er ausgeführt wird, während eine Code-Auswertung nichts kostet. Verwenden Sie einen Judge nur für Fragen, bei denen das Gespräch *verstanden* werden muss – und geben Sie ihm eine Bedingung, damit er nur auf den Sitzungen ausgeführt wird, um die es bei der Frage tatsächlich geht.
+</Note>
+
+## Welche Variante brauche ich?
+
+| Frage | Verwende |
+| --- | --- |
+| Hat er dasselbe Tool zweimal aufgerufen? | Code |
+| Wie viele Fehler gab es? | Code |
+| Dauerte die Sitzung unter 30 Sekunden? | Code |
+| Hat der Kunde Dringlichkeit ausgedrückt? | [Classifier](/de/evaluations/jev) |
+| Wie frustriert war der Kunde? | [Classifier](/de/evaluations/jev) |
+| War die Antwort tatsächlich korrekt? | **Judge** |
+| War die Antwort unhöflich oder abweisend? | **Judge** |
+| Hat er die Rückerstattungsrichtlinie geprüft, bevor er eine Rückerstattung versprochen hat? | **Judge** |
+
+Die Faustregel: **Zählbares → Code, Antworten, die man im Voraus auflisten kann → [Classifier](/de/evaluations/jev), erfordert eine Erklärung → Judge.** Ein Judge ist derjenige, der in Prosa beschreibt, was er gesehen hat; greifen Sie auf ihn zurück, wenn die Zahl jemanden dazu veranlasst zu fragen: „Warum?".
+
+Sie müssen sich nicht im Voraus entscheiden. Beschreiben Sie, was gemessen werden soll, und der Assistent wählt aus und erklärt Ihnen, was er gewählt hat und warum. Sie können es jederzeit ändern.
+
+## Einen Judge erstellen
+
+1. Gehen Sie zu **Analyze → Eval Authoring** und wählen Sie **New Eval**.
+2. Beschreiben Sie, was bewertet werden soll, und wählen Sie **Draft**.
+3. Überprüfen Sie die **Kriterien**, den **Schwellenwert** und die **Bedingung**, und deployen Sie dann.
+
+### Kriterien
+
+Ein oder zwei Sätze, formuliert als Anforderung statt als Frage:
+
+> Der Assistent darf keine Rückerstattung versprechen oder genehmigen, ohne zuvor die Rückerstattungsrichtlinie zu prüfen.
+
+Seien Sie konkret darin, was einen *Fehler* auslösen würde. „War die Antwort gut?" liefert eine Zahl ohne Bedeutung; der obige Satz liefert eine, auf die Sie reagieren können.
+
+### Schwellenwert
+
+Der Score, ab dem (einschließlich) eine Sitzung als bestanden gilt. `0.7` ist ein sinnvoller Ausgangspunkt. Der vollständige Score von 0 bis 1 wird immer gespeichert, sodass der Schwellenwert nur über Bestanden/Nicht bestanden entscheidet – Sie können die Verteilung einsehen und anpassen.
+
+### Bedingung
+
+Dieselbe Python-Bedingung wie bei jeder anderen Auswertung – und sie ist hier noch viel wichtiger. Ohne eine Bedingung läuft der Judge auf **jeder** Sitzung in Ihrer Organisation, jeweils mit einem Modellaufruf:
+
+```python
+session.count("tool_use") > 0
+```
+
+```python
+session.agent_id == "support-bot" and session.count("error") > 0
+```
+
+Das Dashboard warnt Sie, wenn Sie einen Judge ohne Bedingung deployen. Das kann manchmal richtig sein – ein Agent mit geringem Volumen, den Sie vollständig beurteilen möchten – aber es sollte eine bewusste Entscheidung sein, kein Versehen.
+
+## Was der Judge sieht
+
+Das Gespräch, als Turns, bei langen Sitzungen beginnend mit dem Neuesten:
+
+- was der Benutzer gesagt hat
+- was der Assistent geantwortet hat
+- **jeden Tool-Aufruf des Agents und was dieser Aufruf zurückgegeben hat, in der richtigen Reihenfolge**
+
+Dieser letzte Punkt macht „Hat er X *vor* Y getan?" zu einer fairen Frage. Ein fehlgeschlagener Tool-Aufruf wird als Fehler dargestellt, sodass auch „Hat er sich angemessen von einem Fehler erholt?" funktioniert.
+
+Sehr lange Sitzungen werden abgeschnitten, um in den Kontext des Modells zu passen. Wenn das passiert, gibt die Begründung dies explizit an – Sie werden nie ein Urteil sehen, das auf einem Teil einer Sitzung basiert, aber als vollständiges Urteil dargestellt wird.
+
+## Ergebnisse lesen
+
+Ein Judge erzeugt einen **Score** wie jede andere bewertete Auswertung – er wird also genauso in Diagrammen dargestellt, gefiltert und für Benachrichtigungen verwendet. Neben der Zahl speichert er auch die **Begründung** des Judges – den Absatz, der erklärt, was er gesehen hat. Lesen Sie diesen zuerst, wenn ein Score Sie überrascht; es handelt sich meistens entweder um eine wirklich interessante Sitzung oder um ein Zeichen, dass die Kriterien geschärft werden müssen.
+
+Scores sind bei eindeutigen Fällen stabil, aber nicht bitgenau deterministisch. Betrachten Sie einen einzelnen Grenzfall-Score als Anlass, die Sitzung selbst zu lesen – nicht als endgültiges Urteil.
+
+## Einschränkungen
+
+- **Testing ist noch nicht verfügbar.** Ein Testlauf hat keine Sitzungszuweisung dahinter, und diese Zuweisung ist das, was die Verwendung Ihres Modellbudgets autorisiert – daher gibt es nichts, dem ein Testaufruf zugerechnet werden könnte. Deployen Sie gegen eine enge Bedingung und lesen Sie die ersten Ergebnisse.
+- **Backfill ist nicht verfügbar.** Das Backfilling einer Code-Auswertung über Monate gespeicherter Daten ist kostenlos; mit einem Judge würde das Ihr gesamtes Budget in Minuten aufbrauchen.
+- **Das Bearbeiten der Kriterien veröffentlicht eine neue Version.** Alte und neue Scores sind nicht vergleichbar und werden daher getrennt gehalten, statt in eine gemeinsame Trendlinie gemischt zu werden.
+- **Ein Judge erzeugt immer einen Score**, niemals eine Metrik oder eine Assertion.
+
+## Wenn Ihr Budget aufgebraucht ist
+
+Judges verbrauchen das Modellbudget Ihrer Organisation. Wenn es erschöpft ist, stoppen Judge-Auswertungen mit einer klaren Begründung, statt still zu scheitern, und **Code-Auswertungen laufen normal weiter**. Erhöhen Sie das Budget und sie werden bei der nächsten Sitzung wieder aufgenommen.

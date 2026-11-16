@@ -1,0 +1,88 @@
+---
+title: "Tham chiếu đánh giá Jev"
+description: "Các loại câu hỏi, điểm số được hiệu chỉnh, giới hạn và điền lại cho các đánh giá phiên Jev."
+icon: "list-checks"
+---
+
+Trang này mô tả các hình dạng câu hỏi và quy tắc chấm điểm của [đánh giá Jev](/vi/evaluations/jev). Một số câu hỏi yêu cầu mô hình *đọc* cuộc trò chuyện, nhưng không cần *viết* về nó. "Khách hàng có bày tỏ sự khẩn cấp không?" có hai câu trả lời. "Họ bực bội đến mức nào?" có một vài câu, theo thứ tự. Bạn biết mọi câu trả lời trước khi hỏi.
+
+**Đánh giá phân loại** là dành cho những câu hỏi như vậy. Bạn viết câu hỏi và các câu trả lời mà nó có thể đưa ra, và một mô hình nhỏ được xây dựng dành riêng cho phân loại sẽ trả về một con số được hiệu chỉnh — không bao giờ là văn bản tự do.
+
+<Note>
+Giống như một thẩm phán, đánh giá phân loại tốn một lệnh gọi mô hình trên mỗi phiên. Khác với thẩm phán ở chỗ đây là một mô hình nhỏ, mục đích duy nhất thay vì một mô hình tổng quát, do đó nó nhanh hơn và rẻ hơn — nhưng nó sẽ không bao giờ giải thích chính nó. Nếu bạn cần lý do, hãy sử dụng [thẩm phán](/vi/evaluations/judge).
+</Note>
+
+## Tôi muốn cái nào?
+
+| Câu hỏi | Sử dụng |
+| --- | --- |
+| Có bao nhiêu lệnh gọi công cụ? | code |
+| Phiên có dưới 30 giây không? | code |
+| Khách hàng có bày tỏ sự khẩn cấp không? | **phân loại** |
+| Đội nào nên xử lý: thanh toán, kỹ thuật hay bán hàng? | **phân loại** |
+| Khách hàng bực bội đến mức nào? | **phân loại** |
+| Câu trả lời có thực sự chính xác không? | **thẩm phán** |
+| Nó có tuân theo chính sách escalation của chúng tôi không, và tại sao bạn lại nghĩ vậy? | **thẩm phán** |
+
+Quy tắc chung: **có thể đếm được → code, các câu trả lời bạn có thể liệt kê → phân loại, cần giải thích → thẩm phán.**
+
+Bạn không phải quyết định trước. Mô tả những gì bạn muốn đo lường và trợ lý sẽ chọn, cho bạn biết nó đã chọn cái nào và tại sao, và bạn có thể chuyển đổi.
+
+## Hai loại câu hỏi
+
+### `noul` — cái này có đúng không?
+
+Hai câu trả lời, và bạn mô tả cả hai. Kết quả là xác suất mà mô tả "đúng" phù hợp:
+
+```json
+{
+  "instructions": "Did the assistant promise a refund without first checking the refund policy?",
+  "criteria": {
+    "true":  "A refund was promised or issued with no prior policy check or approval",
+    "false": "No refund was promised, or every refund followed a policy check"
+  }
+}
+```
+
+Mô tả cả hai phía. "Không bày tỏ sự khẩn cấp" là một câu trả lời thực sự và nói như vậy làm cho câu kia rõ ràng hơn.
+
+### `score` — có bao nhiêu cái này?
+
+Một thang đánh giá có thứ tự, **tệ nhất trước tiên**. Kết quả là nơi phiên đó nằm trên nó, được chia tỷ lệ thành 0–1:
+
+```json
+{
+  "instructions": "How frustrated is the customer?",
+  "criteria": ["Calm", "Frustrated", "Very angry"]
+}
+```
+
+**Một thang đánh giá có từ ba đến năm mức, và chúng phải tất cả khác nhau.** Cả hai giới hạn được đo lường, không phải theo phong cách:
+
+- **Hai mức** sụp đổ thành những gì `noul` đã làm tốt hơn, và **nhiều hơn năm** làm cho mô hình có xu hướng suy suyễn về phía giữa thay vì cam kết. Câu hỏi tương tự trên cùng một phiên được chấm 0,00 với hai mức, 0,01 với ba mức, và 0,55 với mười mức.
+- **Các mức lặp lại** chia câu trả lời một cách tùy tiện giữa chúng. Một phiên rõ ràng là tức giận được chấm 1,00 so với `["Calm", "Frustrated", "Very angry"]` và 0,66 so với `["Angry", "Angry", "Angry"]` — một con số được hình thành tốt không có ý nghĩa.
+
+Các danh mục không có thứ tự — "thanh toán, kỹ thuật, hoặc bán hàng" — không phải là một thang đánh giá. Hỏi chúng dưới dạng `noul` trên mỗi danh mục, hoặc sử dụng một thẩm phán.
+
+## Đọc kết quả
+
+Một bộ phân loại tạo ra một **điểm số** từ 0 đến 1, chính xác như một thẩm phán, vì vậy nó biểu đồ, lọc và kích hoạt cảnh báo theo cách tương tự. Hai sự khác biệt đáng chú ý:
+
+- **Không có lý do nào.** Trường này trống, cố ý. Mô hình này không giải thích chính nó, và bày tỏ một giải thích sẽ là một sự viễn vông thay vì một tính năng.
+- **Sự không chắc chắn được dán nhãn.** Một câu hỏi `score` báo cáo độ tin cậy của nó, và một kết quả mà mô hình không chắc chắn được gắn thẻ `low_confidence` — vì vậy "cái nào trong những cái này một con người nên xem xét" là một bộ lọc thay vì một đoán. Một câu hỏi `noul` không báo cáo độ tin cậy, vì vậy nó không bao giờ được gắn thẻ.
+
+Các phiên rất dài được đọc trong các đoạn trích và kết hợp. Khi một phiên quá dài để đọc đầy đủ, kết quả cho biết có bao nhiêu lượt bị bỏ qua — bạn sẽ không bao giờ thấy một phán quyết được đưa ra trên một phần của phiên được trình bày như thể nó được đưa ra trên tất cả nó.
+
+## Giới hạn
+
+- **Ba đến năm mức thang đánh giá, tất cả khác biệt.** Xem phía trên; cả hai giới hạn được thực thi tại thời điểm tác giả.
+- **Một câu hỏi trên mỗi đánh giá.** Hỏi hai điều và bạn nhận được hai đánh giá, đây cũng là những gì bạn muốn trên một biểu đồ.
+- **Chỉnh sửa câu hỏi xuất bản một phiên bản mới.** Điểm cũ và mới không so sánh được, vì vậy chúng được giữ riêng thay vì trộn thành một đường xu hướng.
+- **Một bộ phân loại luôn tạo ra một điểm số**, không bao giờ là một chỉ số hoặc một khẳng định.
+- **Không có lý do**, như phía trên. Nếu một con số sẽ làm cho ai đó hỏi "tại sao?", hãy viết một thẩm phán thay thế.
+
+## Kiểm tra và điền lại
+
+Khác với một thẩm phán, đánh giá phân loại **có thể** được kiểm tra trước khi bạn triển khai nó — [kiểm tra nó](/vi/evaluations/test) so với các phiên thực tế theo cách tương tự như bạn sẽ kiểm tra đánh giá code, và đọc các điểm số trước khi bất cứ điều gì trực tiếp.
+
+Nó cũng có thể được [điền lại](/vi/evaluations/deploy#score-sessions-you-already-have) trên các phiên bạn đã có. Nó tốn một lệnh gọi mô hình trên mỗi phiên, vì vậy hãy xác định phạm vi cửa sổ cố ý thay vì phát lại mọi thứ.

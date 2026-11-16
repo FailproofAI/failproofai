@@ -1,0 +1,135 @@
+---
+title: "OpenTelemetry"
+description: "Gửi telemetry của coding-agent và ứng dụng tới FailproofAI Cloud bằng giao thức OTLP."
+icon: "radio"
+---
+
+OpenTelemetry cho phép bạn gửi agent traces, logs và metrics tới FailproofAI Cloud bằng giao thức OTLP/HTTP tiêu chuẩn. Đây là tùy chọn. Các tích hợp FailproofAI hiện tại của bạn sẽ tiếp tục hoạt động mà không cần bật nó.
+
+## Bật thu thập cho tổ chức của bạn
+
+Một quản trị viên tổ chức mở **Settings → OpenTelemetry** và bật thu thập. Sử dụng Cloud API key có quyền `events:add`, quyền tương tự được dùng để báo cáo agent.
+
+Nếu thu thập bị tắt, Cloud sẽ từ chối xuất OTLP, vì vậy `failproofai otel enable` không có tác dụng và các agent của bạn sẽ tiếp tục gửi sessions theo cách thông thường. Chạy `failproofai otel status` để kiểm tra công tắc tổ chức và yêu cầu quản trị viên bật nó lên.
+
+## Kết nối một coding agent
+
+Kết nối máy của bạn bằng `failproofai config`, sau đó chọn một agent:
+
+```bash
+failproofai otel enable claude
+failproofai otel enable codex
+failproofai otel enable copilot
+```
+
+Lệnh thiết lập hỗ trợ Claude Code, Codex và Copilot, đồng thời chọn Cloud hoặc một relay được xác thực cục bộ phù hợp. Copilot sử dụng relay cục bộ tự động. Khởi động daemon FailproofAI đã cấu hình của bạn trước khi sử dụng relay.
+
+Nếu FailproofAI đã gửi transcript sessions của agent, setup sẽ hỏi liệu bạn có muốn chuyển agent đó sang OTEL không. Mặc định là Không. Nếu chấp nhận sẽ dừng tải lên transcript cho agent đó; nó không thay đổi việc thực thi chính sách hoặc báo cáo từ các agent khác.
+
+## Kết nối một ứng dụng
+
+Sử dụng OpenTelemetry instrumentation của ứng dụng bạn với các biến môi trường này:
+
+```bash
+export OTEL_EXPORTER_OTLP_ENDPOINT=https://app.befailproof.ai/otel
+export OTEL_EXPORTER_OTLP_PROTOCOL=http/protobuf
+export OTEL_EXPORTER_OTLP_HEADERS='Authorization=Bearer%20<key>'
+export OTEL_SERVICE_NAME=my-agent
+```
+
+Điểm cuối là cơ sở OTLP của Cloud, `https://app.befailproof.ai/otel`; exporter của bạn sẽ tự thêm `/v1/traces`, `/v1/logs` hoặc `/v1/metrics`. Các biến theo signal như `OTEL_EXPORTER_OTLP_LOGS_ENDPOINT` được sử dụng nguyên trạng, vì vậy chúng cần đường dẫn đầy đủ, ví dụ `https://app.befailproof.ai/otel/v1/logs`.
+
+Thay thế `<key>` bằng API key của bạn. Giữ bí mật ra khỏi shell history, screen recordings và cấu hình đã commit. Đối với một máy đã cấu hình, `failproofai otel env --service my-agent` in khối với key hiện tại của nó. Output của nó chứa một thông tin xác thực.
+
+Cloud chấp nhận xuất OTLP/HTTP cho traces, logs và metrics, dưới dạng protobuf hoặc JSON, bao gồm các yêu cầu được nén gzip. Nó không chấp nhận OTLP/gRPC.
+
+Metrics được xác nhận để tương thích exporter nhưng không được lưu trữ hoặc hiển thị. Agent traces được hỗ trợ và coding-agent logs trở thành sessions; các trường agent không xuất sẽ vắng mặt.
+
+## Ghi lại văn bản prompt
+
+<Warning>
+Ghi lại văn bản có thể bao gồm prompts, đối số tool và nội dung nhạy cảm khác. `failproofai otel enable` bật nó lên. Thêm `--no-content` để giữ ghi lại prompt và tool-detail bị tắt.
+</Warning>
+
+```bash
+failproofai otel enable claude --no-content
+failproofai otel enable codex --no-content
+```
+
+Đối với một agent bạn cấu hình thủ công, sử dụng các điều khiển ghi lại nội dung của nó:
+
+<Tabs>
+  <Tab title="Claude Code">
+    Thêm các biến này vào môi trường của agent cùng với khối ứng dụng ở trên:
+
+    ```bash
+    export CLAUDE_CODE_ENABLE_TELEMETRY=1
+    export OTEL_LOGS_EXPORTER=otlp
+    export OTEL_METRICS_EXPORTER=otlp
+    export OTEL_LOG_USER_PROMPTS=1
+    export OTEL_LOG_TOOL_DETAILS=1
+    ```
+
+    Đặt cả hai biến nội dung thành `0` để tránh ghi lại prompts và chi tiết tool.
+  </Tab>
+  <Tab title="Codex">
+    Trong cấu hình người dùng của Codex, sử dụng cài đặt OTEL của nó:
+
+    ```toml
+    [otel]
+    log_user_prompt = true
+    exporter = { otlp-http = { endpoint = "https://app.befailproof.ai/otel/v1/logs", protocol = "json", headers = { Authorization = "Bearer <key>" } } }
+    ```
+
+    Nội dung hội thoại Codex nằm trong logs; giữ traces runtime nội bộ và metrics bị tắt. Codex sử dụng điểm cuối hoàn chỉnh bạn cung cấp. Đặt `log_user_prompt` thành `false` để bỏ qua prompts; lệnh setup giữ nguyên một `false` rõ ràng.
+  </Tab>
+  <Tab title="Gemini CLI">
+    Sử dụng cài đặt telemetry của Gemini với relay cục bộ:
+
+    ```json
+    {
+      "telemetry": {
+        "enabled": true,
+        "target": "local",
+        "otlpEndpoint": "http://127.0.0.1:4318",
+        "otlpProtocol": "http",
+        "useCollector": true,
+        "logPrompts": true
+      }
+    }
+    ```
+
+    Gemini CLI không được hỗ trợ bởi `failproofai otel enable`. Cấu hình nó thủ công bằng một collector được xác thực của riêng bạn. Đặt `logPrompts` thành `false` để không ghi lại prompt.
+  </Tab>
+  <Tab title="Copilot in VS Code">
+    Sử dụng các cài đặt người dùng VS Code này:
+
+    ```json
+    {
+      "github.copilot.chat.otel.enabled": true,
+      "github.copilot.chat.otel.exporterType": "otlp-http",
+      "github.copilot.chat.otel.otlpEndpoint": "http://127.0.0.1:4318",
+      "github.copilot.chat.otel.captureContent": true
+    }
+    ```
+
+    Chạy `failproofai otel enable copilot` để bật relay được xác thực. Đặt `captureContent` thành `false` để bỏ qua nội dung.
+  </Tab>
+</Tabs>
+
+## Kiểm tra hoặc hoàn tác thiết lập
+
+Relay giữ lại telemetry thông qua các lỗi mạng và máy chủ tạm thời và thử lại sau khi khôi phục. Một từ chối `400` vĩnh viễn, bao gồm một sự kiện quá lớn để lưu trữ, yêu cầu sửa payload. Relay giữ lại batch bị từ chối để kiểm tra thay vì gửi đi lặp lại.
+
+Sau một `401` hoặc `403`, thay thế thông tin xác thực bằng một key có quyền `events:add` cho cùng một tổ chức. Kết nối lại không tự động gửi lại OTLP exports đã giữ bị từ chối vì thông tin xác thực; yêu cầu operator của bạn khôi phục những batch đó. Giữ chúng trong tổ chức gốc của chúng.
+
+```bash
+failproofai otel status
+failproofai otel disable all
+```
+
+Status phân biệt các cài đặt được quản lý bởi FailproofAI từ telemetry bạn cấu hình ở nơi khác. Disable khôi phục các cài đặt được quản lý trước đó và lựa chọn tải lên transcript trước đó của agent.
+
+<Card title="OpenTelemetry CLI" href="/vi/reference/otel" icon="terminal">
+  Các tùy chọn lệnh, thiết lập relay cục bộ và khắc phục sự cố.
+</Card>

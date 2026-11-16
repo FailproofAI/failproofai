@@ -1,0 +1,91 @@
+---
+title: "Trọng tài LLM"
+description: "Đánh giá các phiên làm việc dựa trên những yếu tố mà code không thể đo lường — tính chính xác, giọng điệu, liệu agent có tuân theo chính sách — bằng cách mô tả tiêu chuẩn tốt và để một mô hình đọc cuộc hội thoại."
+icon: "scale"
+---
+
+Một evaluation Python được hosted có thể đếm và so sánh: bao nhiêu lần gọi tool, bao nhiêu lỗi, phiên làm việc mất bao lâu. Nhưng nó không thể cho bạn biết liệu câu trả lời có *chính xác*, liệu phản hồi có bất lịch sự, hoặc liệu agent có kiểm tra chính sách trước khi hành động.
+
+Một **trọng tài LLM** có thể. Bạn mô tả tiêu chuẩn tốt bằng ngôn ngữ thường, và mô hình đọc phiên làm việc rồi trả về một điểm từ 0 đến 1 cùng với lý giải của nó.
+
+<Note>
+Một trọng tài tốn một lệnh gọi mô hình cho mỗi phiên làm việc, trong khi một code evaluation không tốn gì. Chỉ sử dụng trọng tài cho những câu hỏi cần cuộc hội thoại được *hiểu* — và hãy thêm một điều kiện để nó chạy trên những phiên làm việc mà câu hỏi thực sự liên quan.
+</Note>
+
+## Tôi nên chọn cái nào?
+
+| Câu hỏi | Sử dụng |
+| --- | --- |
+| Nó có gọi cùng một tool hai lần không? | code |
+| Có bao nhiêu lỗi? | code |
+| Phiên làm việc có dưới 30 giây không? | code |
+| Khách hàng có bày tỏ sự khẩn cấp không? | [classifier](/vi/evaluations/jev) |
+| Khách hàng bực bội đến mức nào? | [classifier](/vi/evaluations/jev) |
+| Câu trả lời có thực sự chính xác không? | **judge** |
+| Phản hồi có bất lịch sự hoặc khiếm nhã không? | **judge** |
+| Nó có kiểm tra chính sách hoàn tiền trước khi hứa hoàn tiền không? | **judge** |
+
+Nguyên tắc chung: **có thể đếm được → code, câu trả lời bạn có thể liệt kê trước → [classifier](/vi/evaluations/jev), cần lý giải → judge.** Trọng tài là cái viết văn bản về những gì nó nhìn thấy; hãy dùng nó khi con số sẽ khiến ai đó hỏi "tại sao?".
+
+Bạn không cần phải quyết định từ trước. Mô tả những gì bạn muốn đo lường và trợ lý sẽ chọn, sau đó cho bạn biết nó chọn cái nào và tại sao. Bạn có thể thay đổi.
+
+## Viết một cái
+
+1. Đi tới **Analyze → eval authoring** và chọn **new eval**.
+2. Mô tả những gì bạn muốn đánh giá, và chọn **draft**.
+3. Xem xét **criteria**, **threshold**, và **condition**, rồi triển khai.
+
+### Criteria
+
+Một hoặc hai câu, được viết như một yêu cầu chứ không phải một câu hỏi:
+
+> Assistant phải không hứa hoặc phê duyệt hoàn tiền mà không kiểm tra chính sách hoàn tiền trước.
+
+Hãy cụ thể về những gì sẽ khiến nó *thất bại*. "Phản hồi có tốt không?" cho bạn một con số không có ý nghĩa gì; câu ở trên cho bạn một con số bạn có thể hành động dựa trên nó.
+
+### Threshold
+
+Điểm tại hoặc trên đó phiên làm việc được coi là đạt. `0.7` là một điểm bắt đầu hợp lý. Toàn bộ điểm từ 0 đến 1 luôn được lưu trữ, nên threshold chỉ quyết định pass/fail — bạn có thể thấy phân bố và điều chỉnh.
+
+### Condition
+
+Điều kiện Python giống như bất kỳ evaluation nào khác, và nó quan trọng hơn rất nhiều ở đây. Nếu không có, trọng tài chạy trên **mọi** phiên làm việc trong tổ chức của bạn, với một lệnh gọi mô hình cho mỗi cái:
+
+```python
+session.count("tool_use") > 0
+```
+
+```python
+session.agent_id == "support-bot" and session.count("error") > 0
+```
+
+Dashboard cảnh báo bạn nếu bạn triển khai trọng tài mà không có điều kiện. Đôi khi điều này là đúng — một agent có khối lượng thấp mà bạn muốn được đánh giá đầy đủ — nhưng nó phải là một quyết định, chứ không phải một tai nạn.
+
+## Trọng tài nhìn thấy cái gì
+
+Cuộc hội thoại, dưới dạng các lượt, mới nhất trước nếu phiên làm việc dài:
+
+- những gì người dùng nói
+- những gì assistant trả lời
+- **mọi tool mà agent gọi, và những gì lệnh gọi đó trả về, theo thứ tự**
+
+Phần cuối cùng là những gì làm cho "nó có làm X *trước* Y không?" trở thành một câu hỏi công bằng. Một lệnh gọi tool thất bại được hiển thị như một lỗi, vì vậy "nó có phục hồi một cách tuyệt vời từ một lỗi không?" cũng hoạt động.
+
+Những phiên làm việc rất dài bị cắt ngắn để vừa với ngữ cảnh của mô hình. Khi điều này xảy ra, lý giải nói rõ ràng — bạn sẽ không bao giờ thấy một đánh giá được thực hiện trên một phần của phiên làm việc được trình bày như được thực hiện trên toàn bộ nó.
+
+## Đọc kết quả
+
+Trọng tài tạo ra một **score** giống như bất kỳ evaluation được chấm điểm nào khác, vì vậy nó biểu đồ, lọc, và kích hoạt cảnh báo theo cách tương tự. Bên cạnh con số, nó lưu trữ **reasoning** của trọng tài — đoạn văn giải thích những gì nó nhìn thấy. Hãy đọc điều đó trước tiên khi một điểm làm bạn ngạc nhiên; nó thường là một phiên làm việc thực sự thú vị hoặc dấu hiệu rằng criteria cần được làm sắc nét hơn.
+
+Điểm số ổn định cho các trường hợp rõ ràng nhưng không hoàn toàn xác định bit-for-bit. Coi một điểm số biên duy nhất như một gợi ý để đi và đọc phiên làm việc, chứ không phải như một phán quyết.
+
+## Giới hạn
+
+- **Kiểm tra chưa có sẵn.** Một lần chạy thử không có gán phiên làm việc đằng sau nó, và gán đó là những gì ủy quyền chi tiêu ngân sách mô hình của bạn — vì vậy không có gì để một lệnh gọi kiểm tra tính phí. Triển khai với một điều kiện hẹp và đọc một vài kết quả đầu tiên.
+- **Backfill không có sẵn.** Backfilling một code evaluation trong vài tháng lịch sử là miễn phí; làm điều đó với trọng tài sẽ chi tiêu toàn bộ ngân sách của bạn trong vài phút.
+- **Chỉnh sửa criteria sẽ công bố một phiên bản mới.** Điểm cũ và mới không thể so sánh được, vì vậy chúng được giữ riêng biệt chứ không phải trộn thành một đường xu hướng.
+- **Trọng tài luôn tạo ra một score**, không bao giờ là metric hoặc assertion.
+
+## Khi ngân sách của bạn hết
+
+Trọng tài chi tiêu ngân sách mô hình của tổ chức bạn. Khi nó cạn kiệt, các evaluation trọng tài dừng với một lý do rõ ràng chứ không phải thất bại âm thầm, và **code evaluations tiếp tục chạy bình thường**. Tăng ngân sách và chúng sẽ tiếp tục trên phiên làm việc tiếp theo.

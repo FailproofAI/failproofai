@@ -1,0 +1,135 @@
+---
+title: "OpenTelemetry"
+description: "أرسل تتبع الوكيل البرمجي وقياس الأداء إلى FailproofAI Cloud باستخدام OTLP."
+icon: "radio"
+---
+
+يتيح لك OpenTelemetry إرسال آثار الوكيل والسجلات والمقاييس إلى FailproofAI Cloud باستخدام بروتوكول OTLP/HTTP القياسي. هذا اختياري. تستمر تكاملاتك الحالية مع FailproofAI في العمل دون تفعيل هذه الميزة.
+
+## تفعيل الاستقبال لمؤسستك
+
+يفتح مسؤول المؤسسة **Settings → OpenTelemetry** ويفعل الاستقبال. استخدم مفتاح Cloud API بصلاحية `events:add`، الصلاحية ذاتها المستخدمة لتقارير الوكيل.
+
+إذا كان الاستقبال معطلاً، سيرفض Cloud صادرات OTLP، لذا `failproofai otel enable` لن يؤدي إلى أي تغيير وسيستمر وكيلك في إرسال الجلسات بالطريقة المعتادة. شغّل `failproofai otel status` للتحقق من مفتاح المؤسسة، واطلب من مسؤول تفعيله.
+
+## توصيل وكيل برمجي
+
+وصّل جهازك باستخدام `failproofai config`، ثم اختر وكيلاً:
+
+```bash
+failproofai otel enable claude
+failproofai otel enable codex
+failproofai otel enable copilot
+```
+
+يدعم أمر الإعداد Claude Code و Codex و Copilot ويختار Cloud أو مرحّل محلي مصرح به حسب الحاجة. يستخدم Copilot المرحّل المحلي تلقائياً. شغّل موصل FailproofAI المعروّف قبل استخدام المرحّل.
+
+إذا كان FailproofAI يرسل بالفعل نسخ جلسات وكيل معين، سيطلب الإعداد ما إذا كنت تريد تبديل هذا الوكيل إلى OTEL. الخيار الافتراضي هو لا. قبول هذا يوقف تحميل النسخ لهذا الوكيل؛ لا يغير فرض السياسات أو التقارير من وكلاء آخرين.
+
+## توصيل تطبيق
+
+استخدم أداة OpenTelemetry instrumentation لتطبيقك مع متغيرات البيئة هذه:
+
+```bash
+export OTEL_EXPORTER_OTLP_ENDPOINT=https://app.befailproof.ai/otel
+export OTEL_EXPORTER_OTLP_PROTOCOL=http/protobuf
+export OTEL_EXPORTER_OTLP_HEADERS='Authorization=Bearer%20<key>'
+export OTEL_SERVICE_NAME=my-agent
+```
+
+نقطة النهاية هي قاعدة OTLP في Cloud، `https://app.befailproof.ai/otel`؛ سيضيف المُصدِّر الخاص بك `/v1/traces` أو `/v1/logs` أو `/v1/metrics` بنفسه. يتم استخدام متغيرات محددة لكل إشارة مثل `OTEL_EXPORTER_OTLP_LOGS_ENDPOINT` كما هي، لذا تحتاج المسار الكامل، على سبيل المثال `https://app.befailproof.ai/otel/v1/logs`.
+
+استبدل `<key>` بمفتاح API الخاص بك. احفظ السر خارج سجل shell والتسجيلات الشاشة والإعدادات المُلتزَمة. بالنسبة لجهاز معروّف، `failproofai otel env --service my-agent` يطبع الكتلة بمفتاحها الموجود. يحتوي الناتج على بيانات اعتماد.
+
+يقبل Cloud صادرات OTLP/HTTP للآثار والسجلات والمقاييس، بتنسيق protobuf أو JSON، بما فيها الطلبات المضغوطة بـ gzip. لا يقبل OTLP/gRPC.
+
+يتم الإقرار بالمقاييس لتوافق المُصدِّر لكنها لا تُخزَّن أو تُعرض. تصبح الآثار المدعومة للوكيل والسجلات البرمجية جلسات؛ الحقول التي لا يصدّرها الوكيل تبقى غائبة.
+
+## التقط نص الطلب
+
+<Warning>
+يمكن أن يتضمن التقط النص الطلبات وحجج الأداة ومحتوى حساس آخر. `failproofai otel enable` يفعله. أضف `--no-content` لإبقاء التقط الطلب وتفاصيل الأداة معطلاً.
+</Warning>
+
+```bash
+failproofai otel enable claude --no-content
+failproofai otel enable codex --no-content
+```
+
+بالنسبة لوكيل تعرّفه يدويًا، استخدم أدوات التقط المحتوى الخاصة به:
+
+<Tabs>
+  <Tab title="Claude Code">
+    أضف هذه المتغيرات إلى بيئة وكيلك إلى جانب كتلة التطبيق أعلاه:
+
+    ```bash
+    export CLAUDE_CODE_ENABLE_TELEMETRY=1
+    export OTEL_LOGS_EXPORTER=otlp
+    export OTEL_METRICS_EXPORTER=otlp
+    export OTEL_LOG_USER_PROMPTS=1
+    export OTEL_LOG_TOOL_DETAILS=1
+    ```
+
+    اضبط كلا متغيري المحتوى على `0` لتجنب التقط الطلبات وتفاصيل الأداة.
+  </Tab>
+  <Tab title="Codex">
+    في إعدادات مستخدم Codex، استخدم إعدادات OTEL:
+
+    ```toml
+    [otel]
+    log_user_prompt = true
+    exporter = { otlp-http = { endpoint = "https://app.befailproof.ai/otel/v1/logs", protocol = "json", headers = { Authorization = "Bearer <key>" } } }
+    ```
+
+    محتوى محادثة Codex موجود في السجلات؛ اترك الآثار والمقاييس الداخلية معطلة. يستخدم Codex نقطة النهاية الكاملة التي توفرها. اضبط `log_user_prompt` على `false` لاستبعاد الطلبات؛ يحافظ أمر الإعداد على `false` الصريح.
+  </Tab>
+  <Tab title="Gemini CLI">
+    استخدم إعدادات قياس الأداء في Gemini مع المرحّل المحلي:
+
+    ```json
+    {
+      "telemetry": {
+        "enabled": true,
+        "target": "local",
+        "otlpEndpoint": "http://127.0.0.1:4318",
+        "otlpProtocol": "http",
+        "useCollector": true,
+        "logPrompts": true
+      }
+    }
+    ```
+
+    لا يدعم Gemini CLI من قبل `failproofai otel enable`. عرّفه يدويًا بمجمِّع موثّق من عندك. اضبط `logPrompts` على `false` بدون التقط الطلب.
+  </Tab>
+  <Tab title="Copilot in VS Code">
+    استخدم إعدادات مستخدم VS Code هذه:
+
+    ```json
+    {
+      "github.copilot.chat.otel.enabled": true,
+      "github.copilot.chat.otel.exporterType": "otlp-http",
+      "github.copilot.chat.otel.otlpEndpoint": "http://127.0.0.1:4318",
+      "github.copilot.chat.otel.captureContent": true
+    }
+    ```
+
+    شغّل `failproofai otel enable copilot` لتفعيل المرحّل الموثّق. اضبط `captureContent` على `false` لاستبعاد المحتوى.
+  </Tab>
+</Tabs>
+
+## تحقق أو تراجع عن الإعداد
+
+يحتفظ المرحّل بقياس الأداء عبر الإخفاقات المؤقتة للشبكة والخادم ويحاول مجددًا بعد التعافي. رفض دائم `400`، بما فيه حدث كبير جداً للتخزين، يتطلب تصحيح الحمولة. يحتفظ المرحّل بالدفعة المرفوضة للفحص بدلاً من إرسالها بشكل متكرر.
+
+بعد `401` أو `403`، استبدل بيانات الاعتماد بمفتاح يمنح `events:add` لنفس المؤسسة. إعادة الاتصال لا تعيد إرسال صادرات OTLP المحتفظ بها المرفوضة تلقائياً لبيانات الاعتماد؛ اطلب من مشغِّلك استرجاع تلك الدفعات. احفظها في مؤسستها الأصلية.
+
+```bash
+failproofai otel status
+failproofai otel disable all
+```
+
+يميّز الحالة الإعدادات التي تُديرها FailproofAI عن قياس الأداء الذي عرّفته في مكان آخر. العطل يستعيد الإعدادات المُدارة السابقة وخيار تحميل النسخ السابق للوكيل.
+
+<Card title="OpenTelemetry CLI" href="/ar/reference/otel" icon="terminal">
+  خيارات الأوامر وإعداد المرحّل المحلي واستكشاف الأخطاء.
+</Card>

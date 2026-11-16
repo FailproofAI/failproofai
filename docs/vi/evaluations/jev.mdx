@@ -1,0 +1,28 @@
+---
+title: "Jev evaluations"
+description: "Use Jev to score a finished session against a question with known answers."
+icon: "list-checks"
+---
+
+Một Jev evaluation đọc một **finished session** và cho điểm từ 0 đến 1. Sử dụng nó khi câu trả lời đã được biết trước, chẳng hạn như "Khách hàng có thể hiện sự cấp tính không?" hoặc "Khách hàng bực bội đến mức nào?" Nó giúp bạn tìm ra những quy luật trong các lần chạy; nó không dừng lại một tool call. Đối với các quyết định được đưa ra **trước** khi tool chạy, hãy sử dụng [Jev policies](/vi/policies/jev).
+
+## Tạo một trong dashboard
+
+1. Mở **Analyze → eval authoring** và chọn **new eval**.
+2. Mô tả một câu hỏi và các câu trả lời có thể có của nó. Ví dụ: "Agent có hứa hoàn tiền trước khi kiểm tra chính sách hoàn tiền không? Trả lời có hoặc không." Chọn **draft** và xem xét rằng kết quả là một điểm classifier.
+3. [Test it](/vi/evaluations/test) trên các sessions gần đây, sau đó [deploy it](/vi/evaluations/deploy). Các sessions hoàn thành mới sẽ được chấm điểm; [backfill](/vi/evaluations/deploy#score-sessions-you-already-have) nếu bạn cũng cần lịch sử.
+
+![Biểu mẫu eval authoring được chia sẻ, nơi bạn mô tả một câu hỏi có câu trả lời cố định, xem xét bản dự thảo và triển khai sau khi kiểm tra. Ví dụ được hiển thị là một code evaluation; một câu hỏi Jev sử dụng cùng một luồng authoring.](/images/dashboard/eval-authoring-draft.png)
+
+Trợ lý có thể lựa chọn giữa code, Jev classification và một [judge](/vi/evaluations/judge). Kiểm tra lựa chọn của nó trước khi triển khai. Jev cho một điểm mà không có lý do văn xuôi; chọn judge khi bạn cần một lời giải thích. Xem [Jev evaluation reference](/vi/reference/jev-evaluations) để biết các loại câu hỏi và giới hạn điểm.
+
+## Đọc các điểm
+
+Mở **Observe → Evaluations** để biểu đồ hóa kết quả theo agent và thời gian. Từ một terminal, Cloud CLI có thể đọc các kết quả tương tự:
+
+```bash
+fp evals --since 7d
+fp evals --aggregate --since 7d
+```
+
+Cloud CLI đọc kết quả; authoring và deployment xảy ra trong dashboard. Xem [Cloud CLI reference](/vi/reference/cloud-cli#evaluations) để biết các bộ lọc.

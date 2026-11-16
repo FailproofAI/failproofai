@@ -239,9 +239,9 @@ Saved ClickHouse SQL + ad-hoc runner. Saved queries referenced by **name**.
 **Session-only, the whole group** — each subcommand exits 2 under a key, with no request made: a chat is private to the person who owns it, and a key is not a person.
 
 Built-in assistant. Chats referenced by a **short chat-id** (first 8 hex; prefix-resolved).
-- `agent health` · `agent models` (available models for `--model`, default marked).
+- `agent health` (assistant availability; model selection is automatic).
 - `agent chats` — `chat-id · title · messages · updated`.
-- `agent ask "MESSAGE" [--chat <short-id>] [--model <m>] [--page-context <text>] [--approve]` — starts a new chat (prints its short id) or continues `--chat`. On a TTY the answer renders as Markdown; piped/non-TTY prints the raw answer to stdout. Charts/tables the assistant produces are rendered (their SQL runs through `queries:run`, SELECT/WITH only). When the assistant asks to **write** something, a terminal prompts; scripts and `--json` decline unless `--approve` was given — only pass it when the user explicitly authorized the write.
+- `agent ask "MESSAGE" [--chat <short-id>] [--page-context <text>] [--approve]` — starts a new chat (prints its short id) or continues `--chat`. On a TTY the answer renders as Markdown; piped/non-TTY prints the raw answer to stdout. Charts/tables the assistant produces are rendered (their SQL runs through `queries:run`, SELECT/WITH only). When the assistant asks to **write** something, a terminal prompts; scripts and `--json` decline unless `--approve` was given — only pass it when the user explicitly authorized the write.
 - `agent brief [--range 24h|7d]` — the assistant-curated home brief.
 - `agent show <short-id>` — transcript. `agent rename <short-id> --title "…"` · `agent delete <short-id>`.
 - Ambiguous prefix → exit 2; unknown chat → exit 6.
@@ -312,20 +312,18 @@ or model-authored source locally merely to inspect it.
 | `evaluators list` | `--key K`, `--all` (include disabled versions) |
 | `evaluators show K[@V]` | full source; specify version when ambiguous |
 | `evaluators create` | `--key K --name N`, optional `--version V` (default `1`), repeated `--label`, `--condition EXPR\|@file`, exactly one source below, repeated `--dry-run-on SESSION`, `--disabled`, explicit `--force` to override failed previews |
-| `evaluators deploy K` | same sources/metadata, optional `--version`; numeric versions auto-increment; keeps the previous version's `--condition`/`--label` unless given; creates first, then disables predecessors; `--backfill 7d` (1–90d, any kind — judge/Jev spend model budget); `--force` to override failed previews |
-| `evaluators draft "intent"` | session only; `--kind code\|judge\|jev`, `--out spec.json` (refuses to overwrite) |
+| `evaluators deploy K` | same sources/metadata, optional `--version`; numeric versions auto-increment; keeps the previous version's `--condition`/`--label` unless given; creates first, then disables predecessors; `--backfill 7d` (1–90d, any kind — Jev spends model budget); `--force` to override failed previews |
+| `evaluators draft "intent"` | session only; `--kind code\|jev`, `--out spec.json` (refuses to overwrite) |
 | `evaluators dry-run` | source flags or `--file`; repeated `--session` (max 10), none = compile only; judge refused, Jev spends budget |
 | `evaluators enable\|disable K[@V]` | toggle definition |
 | `evaluators label K[@V]` | repeated `--add` / `--remove` |
 | `evaluators instances\|schema\|jobs` | managed instances, event schema profile, jobs |
-| `evaluators backfill` | `--from T --to T`, optional `--key K`, `--dry-run`; increasing range ≤90 days; code, judge and Jev; queues only missing (session, evaluator) pairs; `--dry-run` counts them first |
+| `evaluators backfill` | `--from T --to T`, optional `--key K`, `--dry-run`; increasing range ≤90 days; code and Jev; queues only missing (session, evaluator) pairs; `--dry-run` counts them first |
 
 Sources:
 
 - Code: `--code path.py` (or `-` for stdin), `--result-kind score|metric|assertion`,
   optional `--timeout S` (0.001–3600 seconds).
-- Judge: `--judge --criteria TEXT`, optional repeated `--step TEXT`, `--threshold X`.
-  Steps must describe continuous grading, not “score 0/1”.
 - Jev binary: `--jev noul --instructions TEXT --true TEXT --false TEXT`, optional threshold.
 - Jev rubric: `--jev score --instructions TEXT --level Worst --level Middle --level Best`.
   3–5 distinct, case-insensitive levels, **worst first**.
@@ -347,11 +345,10 @@ Spec file (exact API fields; no `id`, `enabled`, `kind` or draft `reasoning`):
 }
 ```
 
-Judge source string: `{"kind":"judge","criteria":"Grade relevance","threshold":0.7,"steps":["Assess specificity on a continuous scale"]}`.
 Jev source string: `{"kind":"jev","type":"noul","instructions":"Was the request resolved?","criteria":{"true":"Resolved","false":"Unresolved"},"threshold":0.8}`.
-Judge/Jev require `result_kind: "score"`; thresholds are 0–1 or null.
+Jev requires `result_kind: "score"`; thresholds are 0–1 or null.
 
-Code, judge and Jev end to end:
+Code and Jev end to end:
 
 ```bash
 fp --json evaluators draft "Measure error-free sessions with code" --kind code --out error-free.json
@@ -360,8 +357,6 @@ fp --json evaluators create --file error-free.json --dry-run-on run-001
 fp --json evaluators dry-run --file error-free.json --session run-001
 fp --json evaluators deploy error_free --file error-free.json --version 2
 
-fp --json evaluators create --key relevance --name Relevance --judge --criteria "Grade relevance" --threshold 0.7
-fp --json evaluators deploy relevance --version 2 --judge --criteria "Grade relevance and completeness" --threshold 0.8
 
 fp --json evaluators create --key resolution --name Resolution --jev noul --instructions "Was the request resolved?" --true "Resolved" --false "Unresolved"
 fp --json evaluators dry-run --jev noul --instructions "Was the request resolved?" --true "Resolved" --false "Unresolved" --session run-001

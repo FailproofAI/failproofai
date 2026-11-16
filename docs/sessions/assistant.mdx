@@ -29,7 +29,6 @@ The assistant works with the data and permissions available in the active organi
   <Tab title="CLI">
     ```bash
     fp agent health
-    fp agent models
     fp agent ask "Which production checkout agents had the most tool errors in the last 24 hours?"
     fp agent chats
     fp agent show <chat-id>
@@ -39,6 +38,12 @@ The assistant works with the data and permissions available in the active organi
     Use `fp agent rename <chat-id> --title <title>` to keep an investigation recognizable and `fp agent delete <chat-id>` to remove it.
   </Tab>
 </Tabs>
+
+## Automatic model selection
+
+The assistant uses the model assigned to your organization’s plan. Audits and
+other generated analysis follow the same automatic selection. There is no model
+picker to configure. Decision-based evaluations continue to use TypeSafe Jev.
 
 ## Work effectively with the assistant
 

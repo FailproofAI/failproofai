@@ -6,7 +6,7 @@ icon: "file-pen-line"
 
 Hosted evaluations are small, deterministic Python, written in the dashboard and run on Failproof AI's evaluator fleet. They count and compare: how many tool calls, how many errors, how long a session took.
 
-For questions that need the conversation to be *understood* — was the answer correct, was the reply rude, did the agent follow a policy — write an [LLM judge](/evaluations/judge) instead. It is authored in the same place, from a description of what good looks like.
+For questions that need the conversation to be *understood* — was the answer correct, was the reply rude, did the agent follow a policy — use a [Jev classifier](/evaluations/jev). Describe the question and its possible answers. Hosted LLM judges are retired; use the assistant or an audit when you need written analysis.
 
 Anything needing a package, a secret, or your own network runs in [your own worker](#write-it-in-your-own-worker).
 

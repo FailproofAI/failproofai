@@ -1,5 +1,12 @@
 # Changelog — `fp` CLI
 
+## 0.0.3b1 — 2026-11-16
+
+Open for the next release. `0.0.3b0` published on 2026-11-16 and the `bump` job
+moved the version here automatically; nothing has landed against `0.0.3b1` yet.
+Add entries as changes merge — this section becomes the GitHub Release body when
+it ships.
+
 ## 0.0.3b0 — 2026-10-25
 
 ### Added

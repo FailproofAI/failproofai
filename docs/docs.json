@@ -181,6 +181,7 @@
                 "pages": [
                   "policies/authority",
                   "policies/editor",
+                  "policies/suggested",
                   "policies/packs"
                 ]
               },

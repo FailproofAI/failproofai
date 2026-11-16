@@ -1,0 +1,46 @@
+---
+title: "Policies suggested from your code"
+description: "Connect GitHub and Failproof AI reads the rules your agents' own code states, writes and tests a policy for each, and lets you deploy it with one yes."
+icon: "sparkles"
+---
+
+Your agents' code already says what they must never do: a prompt that says "never force-push to main", a tool that deletes files, an approval step before an email goes out. Once you connect GitHub, Failproof AI reads those rules, writes a policy for each, tests it, and puts it in front of you. Nothing runs until you say yes.
+
+## How it works
+
+1. **Connect GitHub** under **Settings › Integrations › GitHub** and select the repositories your agents live in.
+2. Failproof AI links each agent to the folder that runs it and writes the agent's profile: what it is for, what it must and must not do, and which of its tools can't be undone. Each rule points at the line of code it came from.
+3. For the rules a policy can enforce — "must not", "needs approval", "limit", and tools that can't be undone — it writes a policy and tests it on example calls it must stop and calls it must allow. When the agent already has traffic, the policy is also replayed against its recent calls.
+4. Only policies that pass their tests are suggested, at most three per agent.
+
+Suggestions are refreshed when the agent's code changes.
+
+## Where you see them
+
+- **Home › needs you** shows the best suggestion, one at a time. Choose **review** to open it, or say no in place.
+- **Policies › suggested from your code** lists them all. Each card shows the rule, the line of code it came from, how it was tested, and the policy itself.
+
+Every card says how much testing stands behind it, in plain numbers: for example *tested on 9 examples (4 to stop, 5 to allow) · no traffic yet, tested on examples only*, or *replayed on 1,240 real calls from 7 days: would have acted 3×*.
+
+## Saying yes
+
+**Yes, deploy** opens a short sheet:
+
+- The machines that run this agent's kind of agent (Claude Code, Codex, …) are already selected. Uncheck any you don't want.
+- The policy is deployed in **observe** mode: it runs on every call but only records what it would have stopped, and blocks nothing.
+- With no machines connected yet, **publish only** keeps it ready to deploy later from its page.
+
+Once an observed policy has acted on live traffic without stopping a working call, it shows as **ready to enforce** on Home and on the policies list. Switching it to enforce is a separate, deliberate step. See [deploy a policy](/policies/deploy).
+
+## Saying no
+
+**No** dismisses the suggestion. It stays dismissed until the code it came from changes.
+
+## Who can do what
+
+| Action | Permission |
+| --- | --- |
+| See suggestions | `policies:read` |
+| Say yes or no | `policies:write` |
+
+Disconnecting GitHub removes every suggestion that quotes your code. Policies you already published stay.

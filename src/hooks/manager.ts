@@ -25,6 +25,7 @@ import {
 import { configuredCustomPolicyPaths, readMergedHooksConfig, readScopedHooksConfig, writeScopedHooksConfig, syncConventionPolicies, findProjectConfigDir } from "./hooks-config";
 import type { HooksConfig, ConventionPolicyRecord } from "./policy-types";
 import { BUILTIN_POLICIES } from "./builtin-policies";
+import { normalizePolicyName } from "./policy-registry";
 import { loadCustomHooks, discoverPolicyFiles } from "./custom-hooks-loader";
 import { getSemanticRegistrations } from "./custom-hooks-registry";
 import { trackHookEvent } from "./hook-telemetry";
@@ -1501,6 +1502,28 @@ export async function listHooks(cwd?: string, { all = false }: { all?: boolean }
     }
   }
 
+  // Unknown `enabledPolicies` names (#998). Only while the migration shim is
+  // live: with no regex pack installed, `handler.ts` hands this key to
+  // `registerBuiltinPolicies`, which registers the names this build knows and
+  // drops the rest without a word. Names are normalized the same way it
+  // normalizes them, so `failproofai/<name>` counts as known. Once a regex pack is
+  // installed nothing reads the key, and a typo there is no more inert than a
+  // correct name, so there is nothing to single out.
+  const legacyShimLive = !hasInstalledRegexPacks();
+  const enabledBuiltinSet = new Set(config.enabledPolicies.map(normalizePolicyName));
+  const builtinNames = new Set(BUILTIN_POLICIES.map((p) => normalizePolicyName(p.name)));
+  const unknownEnabled = legacyShimLive
+    ? config.enabledPolicies.filter((name) => !builtinNames.has(normalizePolicyName(name)))
+    : [];
+  if (unknownEnabled.length > 0) {
+    try {
+      await trackHookEvent(getInstanceId(), "enabled_policies_validation_warning", {
+        unknown_names_count: unknownEnabled.length,
+        unknown_names: unknownEnabled,
+      });
+    } catch {}
+  }
+
   // Explicit custom policy files.
   const custom: PoliciesScreenRow[] = [];
   let customProblem: string | null = null;
@@ -1773,6 +1796,16 @@ export async function listHooks(cwd?: string, { all = false }: { all?: boolean }
     attention = { failed: false, text: "Policies are not enforcing yet.", fix: "failproofai config" };
   } else if (customProblem) {
     attention = { failed: false, text: customProblem };
+  } else if (unknownEnabled.length > 0) {
+    // Above the scope and params lines: this one is a policy the user believes
+    // is running and is not.
+    attention = {
+      failed: false,
+      text:
+        unknownEnabled.length === 1
+          ? `Unknown enabled policy "${unknownEnabled[0]}", possibly a typo, so it never runs.`
+          : `Unknown enabled policies ${unknownEnabled.map((name) => `"${name}"`).join(", ")}, possibly typos, so they never run.`,
+    };
   } else if (installedScopes.length > 1) {
     attention = {
       failed: false,
@@ -1790,9 +1823,9 @@ export async function listHooks(cwd?: string, { all = false }: { all?: boolean }
   }
 
   // The same test the hook path uses to decide it enforces these itself.
-  const legacy = hasInstalledRegexPacks()
+  const legacy = !legacyShimLive
     ? []
-    : BUILTIN_POLICIES.filter((p) => config.enabledPolicies.includes(p.name)).map((p) => ({
+    : BUILTIN_POLICIES.filter((p) => enabledBuiltinSet.has(normalizePolicyName(p.name))).map((p) => ({
         name: p.name,
         description: p.description,
       }));

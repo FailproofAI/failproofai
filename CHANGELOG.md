@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.0.15-beta.0 — 2026-11-17
+
+### Fixes
+
+- `failproofai policies` warns about an `enabledPolicies` name that matches no policy in this build, instead of dropping it without a word. On a machine with no regex pack installed that key is still what registers the built-in policies, and a misspelled or retired name never ran while nothing said so. The warning takes the screen's attention line (`Unknown enabled policy "block-env-file", possibly a typo, so it never runs.`) and sends an `enabled_policies_validation_warning` event, as an unknown `policyParams` key already does. The listing also counts the `failproofai/<name>` spelling, which the hook path has always accepted (#998)
+
 ## 1.0.14-beta.0 — 2026-11-16
 
 ### Features

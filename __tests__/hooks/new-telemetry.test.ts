@@ -189,6 +189,30 @@ describe("new telemetry events — manager", () => {
     );
   });
 
+  it("fires enabled_policies_validation_warning when an enabled name matches no policy", async () => {
+    // No regex pack is installed (mocked above), so `enabledPolicies` is what
+    // the hook path registers, and a name it does not know is silently dropped.
+    vi.mocked(existsSync).mockReturnValue(false);
+    const { readMergedHooksConfig } = await import("../../src/hooks/hooks-config");
+    vi.mocked(readMergedHooksConfig).mockReturnValue({
+      enabledPolicies: ["block-sudo", "block-env-file"],
+    });
+
+    const { listHooks } = await import("../../src/hooks/manager");
+    const { trackHookEvent } = await import("../../src/hooks/hook-telemetry");
+
+    await listHooks();
+
+    expect(trackHookEvent).toHaveBeenCalledWith(
+      "test-instance-id",
+      "enabled_policies_validation_warning",
+      expect.objectContaining({
+        unknown_names_count: 1,
+        unknown_names: ["block-env-file"],
+      }),
+    );
+  });
+
   it("respects FAILPROOFAI_TELEMETRY_DISABLED — the underlying helper is mocked, but the call still happens (test verifies the trigger fires unconditionally)", async () => {
     // The helper itself short-circuits when FAILPROOFAI_TELEMETRY_DISABLED=1
     // (verified in __tests__/lib/telemetry.test.ts). Here we just confirm the

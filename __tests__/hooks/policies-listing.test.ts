@@ -410,6 +410,53 @@ describe("the other sources", () => {
   });
 });
 
+describe("enabledPolicies names (#998)", () => {
+  // With no regex pack installed, `handler.ts` still registers `enabledPolicies`
+  // through `registerBuiltinPolicies`, which keeps only the names this build
+  // knows. A misspelled or retired name was dropped there without a word, and
+  // this screen lists only the names that resolved, so it never showed either.
+  function enable(names: string[]): void {
+    writeFileSync(join(home, "policies-config.json"), JSON.stringify({ enabledPolicies: names }));
+  }
+
+  it("warns about an enabled name that matches no policy, since it never runs", async () => {
+    wireClaude();
+    enable(["block-sudo", "block-env-file"]);
+    const text = await run();
+    expect(text).toContain('▲ Unknown enabled policy "block-env-file", possibly a typo, so it never runs.');
+    expect(text).toMatch(/^BUILT IN {2}1 on, from before packs$/m);
+  });
+
+  it("names every unknown entry in one line", async () => {
+    wireClaude();
+    enable(["block-sudo", "block-env-file", "failproofai/no-such-policy"]);
+    const text = await run();
+    expect(text).toContain(
+      '▲ Unknown enabled policies "block-env-file", "failproofai/no-such-policy", possibly typos, so they never run.',
+    );
+  });
+
+  it("accepts the qualified spelling the hook path accepts, and lists it", async () => {
+    // `registerBuiltinPolicies` normalizes both sides, so `failproofai/block-sudo`
+    // registers. The listing compared raw strings and left it out of the count.
+    wireClaude();
+    enable(["failproofai/block-sudo"]);
+    const text = await run();
+    expect(text).not.toMatch(/Unknown enabled polic/);
+    expect(text).toMatch(/^BUILT IN {2}1 on, from before packs$/m);
+  });
+
+  it("says nothing about enabledPolicies once a pack is installed, since none of it runs then", async () => {
+    // A regex pack retires the migration shim, so a known name is as inert as an
+    // unknown one. Warning about one of them would suggest the others still count.
+    wireClaude();
+    installPack();
+    enable(["block-env-file"]);
+    const text = await run();
+    expect(text).not.toMatch(/Unknown enabled polic/);
+  });
+});
+
 describe("renderPoliciesScreen", () => {
   const strip = (s: string) => s.replace(/\x1B\[[0-9;]*m/g, "");
   const SCREEN: PoliciesScreen = {

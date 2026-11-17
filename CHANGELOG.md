@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.0.15-beta.0 — 2026-11-17
+
+### Docs
+
+- Slack app: each alert and audit picks its own channel, colleagues who hold the permission can approve a change (made as them), and a held thread says whose question it is; the Slack incoming-webhook setting is gone. (#TBD)
+
 ## 1.0.14-beta.0 — 2026-11-16
 
 ### Features

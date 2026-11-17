@@ -1002,7 +1002,7 @@ def test_render_alert_show_metric_threshold(capsys):
     assert "fire when error_count > 50 over 15m" in out
     assert "environment = production" in out and "event_type = tool_call" in out
     assert "window 1" in out and "min breaches 1" in out and "checks every 5m" in out
-    assert "channels · default" in out and "slack" in out and "default webhook" in out
+    assert "channels · default" in out and "webhook" in out and "default url" in out and "default webhook" not in out
     output.configure(no_color=True, quiet=False)
 
 
@@ -1060,14 +1060,19 @@ def test_render_alert_channels_custom_and_default():
     # empty → all defaults
     all_def, _ = output._alert_channels_body([])
     assert all_def is True
-    # a custom slack + default email → not all-default
-    mixed, _ = output._alert_channels_body([
-        {"kind": "slack", "webhook_setting_key": "my_slack_url_entered"},
+    # a slack channel is always the alert's own pick → not all-default
+    mixed, table = output._alert_channels_body([
+        {"kind": "slack", "channel_id": "C0123456789", "channel_name": "ops"},
         {"kind": "email", "recipients": None},
     ])
     assert mixed is False
+    from rich.console import Console
+    console = Console(record=True, width=80)
+    console.print(table)
+    assert "#ops" in console.export_text()
     # alerts.-prefixed key counts as default
-    defaulted, _ = output._alert_channels_body([{"kind": "slack", "webhook_setting_key": "alerts.slack_default_webhook"}])
+    defaulted, _ = output._alert_channels_body([{"kind": "webhook", "url_setting_key": "alerts.webhook_default_url",
+                                                  "secret_setting_key": "alerts.webhook_signing_secret"}])
     assert defaulted is True
     output.configure(no_color=True, quiet=False)
 

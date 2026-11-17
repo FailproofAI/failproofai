@@ -46,10 +46,9 @@ All dashboard-editable settings are organization-scoped. Deployment-wide behavio
 | `session_ttl_secs` | `86400` | Dashboard session lifetime; accepted range is 60 seconds to 30 days. |
 | `otp_ttl_secs` | `600` | OTP and magic-link lifetime; accepted range is 60–1800 seconds. |
 | `alerts.email_default_recipients` | `[]` | Default recipients when an alert email channel does not override them. |
-| `alerts.slack_default_webhook` | empty | Default Slack incoming-webhook URL. |
 | `alerts.webhook_default_url` | empty | Default generic JSON webhook URL. |
 | `alerts.webhook_signing_secret` | empty | HMAC-SHA256 key used for the `X-AgentEye-Signature` header; reads are masked. |
-| `alerts.enabled_channels` | email, Slack, webhook | Organization-wide channel kinds that alert rules may dispatch. |
+| `alerts.enabled_channels` | email, Slack, webhook | Organization-wide switch for email and generic webhook delivery. Slack is not gated here: each alert or audit opts in by naming the channel the [Slack app](/reference/slack) posts in. |
 | `default_user_permissions` | `standard` | Named permission set preselected for new invitations. |
 
 `allowed_sign_ins` is a filter, not a grant: a person must already be an organization member. Use an empty list to allow every member; the bare value `*` is rejected. Alert URLs must use HTTPS except for loopback development addresses.

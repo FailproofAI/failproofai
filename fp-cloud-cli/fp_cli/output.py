@@ -3639,31 +3639,30 @@ def _alert_trigger_body(kind: str, spec: Optional[dict]):
 
 def _is_default_key(key: Optional[str]) -> bool:
     """A channel setting-key is on the org DEFAULT when it's absent or ``alerts.``-prefixed
-    (e.g. ``alerts.slack_default_webhook``); a bare entered key/url is CUSTOM."""
+    (e.g. ``alerts.webhook_default_url``); a bare entered key/url is CUSTOM."""
     return key is None or str(key).startswith("alerts.")
 
 
 def _alert_channels_body(channels: Optional[list]):
     """Parse ``channels`` into ``(all_default, table)``: one row per channel with a DIM ITALIC
     ``default …`` descriptor where it inherits org settings, or the entered value in GREEN where
-    overridden (mixed supported). Empty ``[]`` → the full default set (slack/webhook/email)."""
+    overridden (mixed supported). Empty ``[]`` → the default set (webhook/email). Slack is
+    always the alert's own channel, posted by the Slack app — there is no default webhook."""
     dim_it = lambda s: Text(s, style=f"italic {theme.TEXT_DIM}")  # noqa: E731
     rows = []
     all_default = True
     if not channels:
-        rows = [("slack", dim_it("default webhook")),
-                ("webhook", dim_it("default url + signing secret")),
+        rows = [("webhook", dim_it("default url + signing secret")),
                 ("email", dim_it("default recipients"))]
     else:
         for ch in channels:
             kind = str(ch.get("kind", "?"))
             if kind == "slack":
-                key = ch.get("webhook_setting_key")
-                if _is_default_key(key):
-                    desc = dim_it("default webhook")
-                else:
-                    desc = Text(str(key), style=theme.SUCCESS)
-                    all_default = False
+                # The channel the Slack app posts in: by name, else by id.
+                name = str(ch.get("channel_name") or "").lstrip("#")
+                where = f"#{name}" if name else str(ch.get("channel_id") or "")
+                desc = Text(where, style=theme.SUCCESS) if where else dim_it("no channel picked")
+                all_default = False
             elif kind == "webhook":
                 desc = Text()
                 url, sec = ch.get("url_setting_key"), ch.get("secret_setting_key")

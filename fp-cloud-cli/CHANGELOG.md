@@ -7,6 +7,8 @@ moved the version here automatically; nothing has landed against `0.0.4b0` yet.
 Add entries as changes merge — this section becomes the GitHub Release body when
 it ships.
 
+- An alert's Slack channel shows as the channel it posts in (`#ops`), not "default webhook": Slack alerts are posted by the Slack app in a channel each alert names. (#TBD)
+
 ## 0.0.3 — 2026-11-16
 
 **Stable release.** The `0.0.3b1` line the `bump` job opened after `0.0.3b0` is cut stable

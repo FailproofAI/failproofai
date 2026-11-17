@@ -55,13 +55,21 @@ The first time you ask, the app works out which member you are:
 
 One thread is one conversation. Colleagues can mention the app in the same thread, and it answers each of them with their own permissions. Only the person who started the thread continues it without a mention.
 
+The app answers one question per thread at a time. If someone else mentions it while a question is still running or waiting on its card, the app tells them privately whose question it is and suggests starting a new thread. If the person who asked writes again instead of answering their card, the card is cancelled and the new message is answered.
+
 When the answer is data, the app posts a chart or a table with a link to open it in Failproof AI.
 
 ## Approve changes
 
-Every change the assistant makes shows **Approve** and **Cancel** buttons first, and Slack asks once more before **Approve**. Only the person who asked can answer them, the buttons expire after 5 minutes, and the change is made with that person's permissions.
+Every change the assistant makes shows **Approve** and **Cancel** buttons first, and Slack asks once more before **Approve**. The buttons expire after 5 minutes.
+
+Anyone in the conversation who holds the permission the change needs can answer the card, not only the person who asked. The change is made as whoever approves it: with their permissions, and recorded under their name. Someone without that permission who clicks is told privately that they can't make the change, and the card stays open for someone who can.
 
 From Slack, the assistant can change saved queries and dashboards, evaluations, alerts, audits, issues, and policies, and suggest code fixes, each if you hold the permission. It can't change API keys, users, or settings.
+
+## Alerts and audit reports
+
+Once a workspace is connected, the app posts alerts and audit reports itself. Each alert and each audit picks its own channel: turn on **post to slack** when you create or edit it in Failproof AI and choose the channel, or ask the assistant in Slack, which asks whether to post in the current channel or another one. Invite the app to a channel first with `/invite`; private channels work too.
 
 ## Link previews
 

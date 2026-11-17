@@ -153,6 +153,17 @@ export interface WizardAnswers {
   machineLabel?: string;
   /** Record decisions only, no session transcripts. */
   noTranscripts?: boolean;
+  /**
+   * Skip daemon installation entirely.
+   *
+   * Containers, rootless environments and CI machines that cannot install a
+   * system service use this. Hooks are wired and policies enforced in-process;
+   * `daemonConfigured` is explicitly set to false so the hook path stays in
+   * in-process mode rather than failing closed against a socket nothing listens
+   * on. `--no-daemon` is not allowed on platforms where the daemon is
+   * unsupported (Windows) — those abort before this flag is ever read.
+   */
+  noDaemon?: boolean;
   /** `--oss`: skip the connect step. A connection already here is left as it is. */
   oss?: boolean;
   /** `--agents`: the agents to trace, already validated. Skips the agents step. */
@@ -766,6 +777,16 @@ export async function runConfigureWizard(
   void emit("configure_started", {});
 
   // failproofaid — the only evaluator on a configured machine — only runs on
+  // Linux and macOS. Checked before intro() draws anything and before a
+  // single prompt is asked: completing setup anyway used to leave e.g. a
+  // Windows machine reading as configured while enforcing in-process with no
+  // fail-closed guarantee, which is worse than not being set up at all.
+  //
+  // --no-daemon is NOT an escape hatch for unsupported platforms: the platform
+  // gate is a hard invariant about what the binary can do, not about which
+  // steps the caller wants to run. A container user on Linux who cannot install
+  // a service is the target; a Windows host where failproofaid simply does not
+  // exist is a different category and keeps aborting.
   // Linux and macOS. Checked before a single prompt is asked: completing setup
   // anyway used to leave e.g. a Windows machine reading as configured while
   // enforcing in-process with no fail-closed guarantee, which is worse than not
@@ -841,6 +862,36 @@ export async function runConfigureWizard(
   // DEFINITE `running`: this is the branch that tears the service down before
   // rebuilding, justified only by knowing a live process holds the flock.
   const daemonBroken = daemonState === "running" && daemonSkew === null && !daemonAnswers;
+  // --no-daemon: the caller has opted out of service installation for this
+  // machine (containers, rootless CI, privilege-less environments). We skip
+  // every daemon step and leave daemonConfigured at false so the hook path
+  // stays in in-process mode. An already-running daemon is left untouched —
+  // "don't install" is not "tear down what is there".
+  const skipDaemon = answers.noDaemon === true;
+  let daemonWanted = daemonSupported && !daemonAlreadyRunning && !skipDaemon;
+  // A healthy daemon can still be running a service definition written before
+  // FAILPROOFAI_CLI_CMD existed, and nothing else on the machine will ever
+  // rewrite it: upgrading the npm package does not touch /etc/systemd/system.
+  // Re-running setup is the one moment a user asks for their configuration to
+  // be brought up to date, so it is the moment to do it.
+  let daemonUnitStale = daemonAlreadyRunning && daemonServiceNeedsUpgrade();
+
+  if (skipDaemon && !daemonAlreadyRunning) {
+    // --no-daemon acknowledged: no service will be installed. Hooks will
+    // enforce in-process. Cloud-managed policies still work — the daemon
+    // is only needed for the background audit schedule and fail-closed mode.
+    stdout.write(
+      "Skipping daemon installation (--no-daemon). Hooks will enforce in-process.\n\n",
+    );
+  } else if (daemonWanted) {
+    // Say what is about to happen. Nothing else.
+    //
+    // This block explained the warm-worker architecture to somebody who is
+    // about to type a password — three lines of mechanism answering a question
+    // nobody had. The install is happening either way; what they need is what
+    // it is and that it costs one sudo.
+    //
+    // The BROKEN case keeps its consequence, and only that: "every tool call is
   const daemonWanted = !daemonAlreadyRunning;
   // A healthy daemon can still run a service definition written before
   // FAILPROOFAI_CLI_CMD existed, and nothing else ever rewrites it: upgrading
@@ -881,6 +932,15 @@ export async function runConfigureWizard(
         : "Installing failproofaid needs root once.";
     if (!elevate(ask)) {
       // Required means required: write nothing at all, so a machine that could
+      // not be set up is left exactly as it was found rather than carrying
+      // half a configuration. The commands are printed so an admin can do the
+      // privileged half by hand.
+      stdout.write(
+        "\nCould not get root, so setup stopped before changing anything.\n\n" +
+          "  Re-run once you can use sudo:   failproofai config\n" +
+          `  Or skip daemon install:         failproofai config --no-daemon\n` +
+          `  Check what it needs:            ${daemonStatusCommand() ?? "n/a"}\n\n`,
+      );
       // not be set up is left exactly as it was found.
       write([
         kit.fail("Couldn't get root, so setup stopped before changing anything."),
@@ -1442,6 +1502,12 @@ export async function runConfigureWizard(
     setDaemonConfigured(true, cliVersion);
     // The unit points at the new binary now, so older ones are unreferenced.
     pruneOldDaemonBinaries();
+  } else if (skipDaemon) {
+    // Explicitly mark daemon as NOT configured so the hook path stays in
+    // in-process mode rather than reading a stale daemonConfigured: true from
+    // a previous install and failing closed against a socket nobody is
+    // listening on.
+    setDaemonConfigured(false);
   }
 
   // Hooks, at user scope, for the chosen agents. Whatever policies are enabled

@@ -189,6 +189,16 @@ export function attemptHintLines(
   // hit the exact same hard-fail in the meantime.
   const action =
     attempt.reason === "unsupported_platform"
+      ? "Check for a failproofai update — this platform may be supported by a newer release."
+      : attempt.reason === "needs_root"
+        ? "Run `failproofai config` when you can use sudo, or `failproofai config --no-daemon` to skip the service."
+        : "Run `failproofai config` when you are ready.";
+  return [
+    ``,
+    `[failproofai] Setup is not finished — ${detail}.`,
+    `              ${action}`,
+    ``,
+  ];
       ? "Check for an update to failproofai: a newer release may support this platform."
       : "Run it when you are ready:  `failproofai config`";
   // Printed above the command that was typed: one `▲` line and one fix line,

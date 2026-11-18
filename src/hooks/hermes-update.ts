@@ -15,6 +15,7 @@
  * invisible.
  */
 import { migrateHermesProfiles, type HermesPluginInstallDeps, type HermesProfileMigration } from "./integrations";
+import { GATEWAY_STATUS_LABEL, type GatewayRestart } from "./gateway-restart";
 
 export interface HermesUpdateResult {
   ok: boolean;
@@ -33,6 +34,11 @@ const STATUS_LABEL: Record<HermesProfileMigration["status"], string> = {
 export async function runHermesUpdateMigration(deps: {
   daemonSupportsPolicyEvaluation: () => Promise<boolean>;
   installDeps?: HermesPluginInstallDeps;
+  /**
+   * Restarts a profile's running gateway so it loads the plugin now on disk.
+   * Left out (`update --no-restart`), gateways are not touched.
+   */
+  restartGateway?: (profile: { name: string; home: string }) => GatewayRestart;
 }): Promise<HermesUpdateResult> {
   const profiles = await migrateHermesProfiles(deps);
   const relevant = profiles.filter((p) => p.status !== "untouched");
@@ -44,7 +50,10 @@ export async function runHermesUpdateMigration(deps: {
   for (const p of profiles) {
     const label = ("hermes/" + p.name).padEnd(width);
     const detail = p.status === "current" ? "" : ` — ${p.detail}`;
-    lines.push(`  ${label}  ${STATUS_LABEL[p.status]}${detail}`);
+    // Only a profile now on the linked plugin has new code for its gateway.
+    const loaded = p.status === "migrated" || p.status === "current";
+    const gateway = loaded && deps.restartGateway ? GATEWAY_STATUS_LABEL[deps.restartGateway(p).status] : "";
+    lines.push(`  ${label}  ${STATUS_LABEL[p.status]}${detail}${gateway ? `, ${gateway}` : ""}`);
   }
 
   const blocked = profiles.filter((p) => p.status === "blocked");

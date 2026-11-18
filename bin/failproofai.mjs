@@ -1143,13 +1143,16 @@ async function runCli() {
       await printHelp({
         name: "update",
         usage: [["npm i -g failproofai@latest && failproofai update"]],
-        options: [["--no-daemon", "Migrate everything but leave the daemon as is"]],
+        options: [
+          ["--no-daemon", "Migrate everything but leave the daemon as is"],
+          ["--no-restart", "Leave running Hermes and OpenClaw gateways as they are"],
+        ],
         optionsCol: 20,
       });
       process.exit(0);
     }
 
-    const KNOWN = new Set(["--no-daemon"]);
+    const KNOWN = new Set(["--no-daemon", "--no-restart"]);
     const unknown = subArgs.find((a) => a.startsWith("-") && !KNOWN.has(a));
     if (unknown) {
       throw new CliError(
@@ -1233,13 +1236,17 @@ async function runCli() {
     // now running can do: the native plugin needs `policyEvaluation`, which
     // ≤1.0.5 daemons lack, so when the swap above could not happen (a sudo
     // system service with no sudo) the shell hooks stay and this fails loudly.
+    // Gateways are restarted only onto a daemon this run left current.
+    const restartsGateways = daemonOk && !subArgs.includes("--no-daemon") && !subArgs.includes("--no-restart");
     let hermesOk = true;
     let hermesMigrated = 0;
     try {
       const { runHermesUpdateMigration } = await import("../src/hooks/hermes-update");
       const svc = await import("../src/hooks/daemon-service");
+      const restart = await import("../src/hooks/gateway-restart");
       const hermesResult = await runHermesUpdateMigration({
         daemonSupportsPolicyEvaluation: () => svc.probeDaemonPolicyEvaluation(),
+        restartGateway: restartsGateways ? (p) => restart.restartHermesGateway(p) : undefined,
       });
       if (hermesResult.lines.length > 0) {
         // Its lines open on a "Hermes:" heading over one row per profile; on a
@@ -1252,6 +1259,16 @@ async function runCli() {
     } catch (err) {
       report.push("", `✕ Hermes migration failed: ${err instanceof Error ? err.message : String(err)}`);
       hermesOk = false;
+    }
+
+    if (restartsGateways) {
+      try {
+        const restart = await import("../src/hooks/gateway-restart");
+        const lines = restart.openclawRestartLines(restart.restartOpenClawGateways());
+        if (lines.length > 0) report.push("", ...lines);
+      } catch {
+        // Restarting is a convenience; the update itself already succeeded.
+      }
     }
 
     const updateOk = daemonOk && !migrationFailed && hermesOk;

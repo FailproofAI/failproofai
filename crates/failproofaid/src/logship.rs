@@ -73,19 +73,71 @@ pub struct Entry {
 }
 
 impl Entry {
-    fn to_json(&self, scrub: &Scrub) -> Value {
+    /// The wire form. Cloud refuses a whole upload over one bad entry, so every
+    /// field is made valid here rather than trusted: a line read back from a
+    /// file may have no timestamp (`fallback_ts`, the previous line's) and no
+    /// module path for a target.
+    fn to_json(&self, scrub: &Scrub, fallback_ts: &str) -> Value {
+        let ts = if looks_like_rfc3339(&self.ts) {
+            self.ts.as_str()
+        } else {
+            fallback_ts
+        };
+        let message = scrub.apply(&self.message);
         let mut v = json!({
-            "ts": self.ts,
-            "level": self.level,
-            "target": self.target,
-            "message": scrub.apply(&self.message),
-            "count": self.count,
+            "ts": ts,
+            "level": wire_level(&self.level),
+            "target": wire_target(&self.target),
+            "message": truncate(&message, MAX_MESSAGE_BYTES),
+            "count": self.count.max(1),
         });
-        if let Some(last) = &self.last_ts {
+        if let Some(last) = self
+            .last_ts
+            .as_deref()
+            .filter(|l| looks_like_rfc3339(l) && *l >= ts)
+        {
             v["lastTs"] = json!(last);
         }
         v
     }
+}
+
+fn looks_like_rfc3339(ts: &str) -> bool {
+    let b = ts.as_bytes();
+    b.len() >= 20
+        && b[4] == b'-'
+        && b[7] == b'-'
+        && b[10] == b'T'
+        && b[..4].iter().all(u8::is_ascii_digit)
+}
+
+fn wire_level(level: &str) -> &'static str {
+    match level {
+        "ERROR" => "ERROR",
+        "WARN" => "WARN",
+        "INFO" => "INFO",
+        _ => "DEBUG",
+    }
+}
+
+/// `[A-Za-z0-9_:./-]`, 1–256 chars (the server's rule).
+fn wire_target(target: &str) -> String {
+    let clean: String = target
+        .chars()
+        .filter(|c| c.is_ascii_alphanumeric() || matches!(c, '_' | ':' | '.' | '-' | '/'))
+        .take(256)
+        .collect();
+    if clean.is_empty() {
+        "failproofaid".to_string()
+    } else {
+        clean
+    }
+}
+
+fn now_rfc3339() -> String {
+    time::OffsetDateTime::now_utc()
+        .format(&time::format_description::well_known::Rfc3339)
+        .unwrap_or_else(|_| "1970-01-01T00:00:00Z".to_string())
 }
 
 struct Captured {
@@ -478,6 +530,25 @@ enum Kind {
     Errors,
 }
 
+fn wire_entries(entries: &[Entry], scrub: &Scrub) -> Vec<Value> {
+    // An undated first line takes the first dated one's time, else now.
+    let mut last = entries
+        .iter()
+        .map(|e| e.ts.as_str())
+        .find(|ts| looks_like_rfc3339(ts))
+        .map_or_else(now_rfc3339, str::to_string);
+    entries
+        .iter()
+        .map(|e| {
+            let v = e.to_json(scrub, &last);
+            if let Some(ts) = v["ts"].as_str() {
+                last = ts.to_string();
+            }
+            v
+        })
+        .collect()
+}
+
 /// Build the body, keeping the NEWEST entries that fit.
 pub fn body(
     machine_id: &str,
@@ -493,7 +564,7 @@ pub fn body(
             "machineId": machine_id,
             "daemonVersion": env!("CARGO_PKG_VERSION"),
             "kind": kind,
-            "entries": entries[start..].iter().map(|e| e.to_json(scrub)).collect::<Vec<_>>(),
+            "entries": wire_entries(&entries[start..], scrub),
         });
         if let Some(t) = trigger {
             v["trigger"] = json!(scrub.apply(t));
@@ -917,7 +988,7 @@ mod tests {
         let big = "x".repeat(MAX_MESSAGE_BYTES);
         let entries: Vec<Entry> = (0..1000)
             .map(|n| Entry {
-                ts: n.to_string(),
+                ts: format!("2026-11-18T13:{:02}:{:02}.000000Z", n / 60 % 60, n % 60),
                 level: "INFO".into(),
                 target: "t".into(),
                 message: big.clone(),
@@ -930,8 +1001,46 @@ mod tests {
         // The newest entries are the ones kept.
         assert_eq!(
             v["entries"].as_array().unwrap().last().unwrap()["ts"],
-            "999"
+            "2026-11-18T13:16:39.000000Z"
         );
+    }
+
+    #[test]
+    fn every_entry_is_valid_on_the_wire() {
+        let text = "[failproofaid] worker stderr: boom\n".to_string()
+            + &line("INFO", "a::b", "dated")
+            + "  at Module._load (node:internal)\n"
+            + "2026-11-18T13:18:40.000000Z TRACE x: verbose\n";
+        let entries = entries_from_text(&text);
+        let long = Scrub::new(None, Some("tok12345".into()));
+        let mut e = entries.clone();
+        e.push(Entry {
+            ts: "".into(),
+            level: "WARN".into(),
+            target: "bad target!".into(),
+            message: "tok12345".repeat(300),
+            count: 0,
+            last_ts: Some("x".into()),
+        });
+        let v = body("m", "requested", None, Some("r"), &e, &long);
+        for entry in v["entries"].as_array().unwrap() {
+            let ts = entry["ts"].as_str().unwrap();
+            assert!(looks_like_rfc3339(ts), "{entry}");
+            let target = entry["target"].as_str().unwrap();
+            assert!(
+                !target.is_empty()
+                    && target
+                        .chars()
+                        .all(|c| c.is_ascii_alphanumeric() || "_:./-".contains(c)),
+                "{entry}"
+            );
+            assert!(["ERROR", "WARN", "INFO", "DEBUG"].contains(&entry["level"].as_str().unwrap()));
+            assert!(entry["message"].as_str().unwrap().len() <= MAX_MESSAGE_BYTES);
+            assert!(entry["count"].as_u64().unwrap() >= 1);
+            assert!(entry.get("lastTs").is_none());
+        }
+        // The undated first line borrows the first dated line's time.
+        assert_eq!(v["entries"][0]["ts"], "2026-11-18T13:18:37.676211Z");
     }
 
     #[test]

@@ -304,23 +304,31 @@ fn truncate(text: &str, max: usize) -> &str {
     &text[..end]
 }
 
-/// Same failure, different numbers → same fingerprint.
+/// Same failure, different numbers → same fingerprint. Every word holding a
+/// digit folds to `#`, so hex request ids, batch file names and durations do
+/// not make one repeated failure look like many.
 pub fn fingerprint(target: &str, message: &str) -> String {
     let mut out = String::with_capacity(target.len() + message.len() + 1);
     out.push_str(target);
     out.push('|');
-    let mut last_hash = false;
-    for c in message.chars() {
-        if c.is_ascii_digit() {
-            if !last_hash {
-                out.push('#');
-            }
-            last_hash = true;
+    let mut word = String::new();
+    let flush = |word: &mut String, out: &mut String| {
+        if word.chars().any(|c| c.is_ascii_digit()) {
+            out.push('#');
         } else {
+            out.push_str(word);
+        }
+        word.clear();
+    };
+    for c in message.chars() {
+        if c.is_alphanumeric() || matches!(c, '_' | '-') {
+            word.push(c);
+        } else {
+            flush(&mut word, &mut out);
             out.push(c);
-            last_hash = false;
         }
     }
+    flush(&mut word, &mut out);
     out
 }
 
@@ -424,6 +432,22 @@ fn entries_from_text(text: &str) -> Vec<Entry> {
     out
 }
 
+/// Owner-only, like `daemon.log` beside it.
+fn write_private(path: &Path, bytes: &[u8]) -> std::io::Result<()> {
+    use std::os::unix::fs::OpenOptionsExt;
+    let mut file = fs::OpenOptions::new()
+        .write(true)
+        .create(true)
+        .truncate(true)
+        .mode(0o600)
+        .custom_flags(libc::O_NOFOLLOW)
+        .open(path)?;
+    file.write_all(bytes)?;
+    // A file an older build left at 0644 keeps its mode on open.
+    use std::os::unix::fs::PermissionsExt;
+    file.set_permissions(fs::Permissions::from_mode(0o600))
+}
+
 /// Size of `daemon.log` before this process writes to it. Call before the log
 /// subscriber is installed; pass the result to [`init`].
 pub fn log_len_before_start(log_path: &Path) -> Option<u64> {
@@ -465,7 +489,7 @@ pub fn init(logs_dir: &Path, prior_len: Option<u64>) {
             Instant::now(),
         );
     }
-    let _ = fs::write(&marker, std::process::id().to_string());
+    let _ = write_private(&marker, std::process::id().to_string().as_bytes());
 }
 
 /// The daemon stopped on purpose (a signal): the next start is not an incident.
@@ -691,7 +715,12 @@ fn ship_at(machine_id: &str, scrub: &Scrub, post: &dyn Fn(&Value) -> PostOutcome
             st.last_incident = Some(now);
             st.incidents_sent.push_back(now);
             if let Some(stamp) = st.stamp_path.clone() {
-                let _ = fs::write(stamp, b"");
+                // Content that changes each time, so the mtime the gap is
+                // measured from always moves (an empty rewrite may not).
+                let sent = SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .map_or(0, |d| d.as_secs());
+                let _ = write_private(&stamp, sent.to_string().as_bytes());
             }
         }
         Kind::Errors => {
@@ -1050,5 +1079,20 @@ mod tests {
             fingerprint("t", "took 9 ms, 77 tries")
         );
         assert_ne!(fingerprint("t", "a"), fingerprint("u", "a"));
+        // Seen live: one retry warning per attempt, each with its own ids.
+        assert_eq!(
+            fingerprint(
+                "u",
+                "upload attempt failed; retrying file=~/s/hooks-activity-1795026411334556154-0.jsonl request_id=607541f010e04a7b8b9fed"
+            ),
+            fingerprint(
+                "u",
+                "upload attempt failed; retrying file=~/s/claude-03d689e9-35ed-48-1795026415345336098-0.jsonl request_id=6c47e6ba69784"
+            )
+        );
+        assert_ne!(
+            fingerprint("u", "upload failed"),
+            fingerprint("u", "parking a batch")
+        );
     }
 }

@@ -980,8 +980,15 @@ pub struct AllowBucket {
     pub agent_id: String,
     pub event_name: String,
     pub tool_name: Option<String>,
-    /// Truncated to the minute; also the bucket's emitted timestamp.
+    /// Truncated to the minute: the bucket's KEY (and its `hook_id`).
     pub minute_ms: i64,
+    /// When the bucket's first hook arrived (its `startedAt`, else its end):
+    /// the emitted timestamp. Stamping the minute instead put every roll-up
+    /// before the tool calls it covered. `i64::MAX` until a row is added.
+    pub first_ms: i64,
+    /// The agent's tool-call ids the bucket covers, in arrival order, at most
+    /// [`MAX_BUCKET_TOOL_CALL_IDS`], so Cloud can join a roll-up to its calls.
+    pub tool_call_ids: Vec<String>,
     pub count: u64,
     pub total_duration_ms: f64,
     pub max_duration_ms: f64,
@@ -1019,9 +1026,23 @@ pub fn bucket_key(row: &HookRow) -> Option<BucketKey> {
     ))
 }
 
+/// Bound on `AllowBucket::tool_call_ids`: a busy minute stays one small event.
+pub const MAX_BUCKET_TOOL_CALL_IDS: usize = 64;
+
 impl AllowBucket {
     pub fn add(&mut self, row: &HookRow) {
         self.count += 1;
+        let arrived = row
+            .started_at
+            .filter(|at| *at <= row.timestamp)
+            .unwrap_or(row.timestamp);
+        self.first_ms = self.first_ms.min(arrived);
+        if let Some(id) = row.tool_call_id.as_deref().filter(|id| !id.is_empty())
+            && self.tool_call_ids.len() < MAX_BUCKET_TOOL_CALL_IDS
+            && !self.tool_call_ids.iter().any(|known| known == id)
+        {
+            self.tool_call_ids.push(id.to_string());
+        }
         let d = row.duration_ms.unwrap_or(0.0);
         self.total_duration_ms += d;
         if d > self.max_duration_ms {
@@ -1043,10 +1064,12 @@ impl AllowBucket {
     /// report a duration that belongs to no real hook call.
     pub fn to_event(&self, environment: &str) -> Option<Value> {
         let mut m = Map::new();
-        m.insert(
-            "timestamp".into(),
-            json!(to_rfc3339_micros(self.minute_ms, 0)?),
-        );
+        let at = if self.first_ms == i64::MAX {
+            self.minute_ms
+        } else {
+            self.first_ms
+        };
+        m.insert("timestamp".into(), json!(to_rfc3339_micros(at, 0)?));
         m.insert("session_id".into(), json!(self.session_id));
         m.insert("agent_id".into(), json!(self.agent_id));
         m.insert("type".into(), json!("hook_completed"));
@@ -1115,6 +1138,16 @@ impl AllowBucket {
         );
         if let Some(t) = &self.tool_name {
             m.insert("tool_name".into(), json!(t));
+        }
+        if !self.tool_call_ids.is_empty() {
+            m.insert("tool_call_ids".into(), json!(self.tool_call_ids));
+        }
+        // A bucket of exactly one call IS that call's hook: the same field the
+        // per-row legs carry, so it joins its tool call like they do.
+        if self.count == 1
+            && let [only] = self.tool_call_ids.as_slice()
+        {
+            m.insert("tool_call_id".into(), json!(only));
         }
         // Honest by construction: every row in this bucket was grouped BY this
         // attribution, so it describes all of them.

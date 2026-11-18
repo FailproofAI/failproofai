@@ -296,6 +296,11 @@ describe("config --status — delivery", () => {
     );
   });
 
+  it("counts batches an outage parked as queued, since the daemon retries them", () => {
+    const parked = { ...facts().delivery!.refused, retrying: 2 };
+    expect(deliveryRow({ refused: parked })).toBe("● Healthy, last event 12s ago, 2 batches queued");
+  });
+
   it("puts refused batches in the row, with their status and age", () => {
     const refused = { total: 26, rejected: 26, credentialRejected: 26, resending: 0, byStatus: { 401: 26 }, oldestAgeMs: 134 * 60_000 };
     expect(deliveryRow({ refused })).toBe("▲ 26 batches refused (401), oldest 2h14m");

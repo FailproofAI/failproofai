@@ -132,6 +132,12 @@ export interface DeliveryHealth {
    * and drops one only if the current key refuses it too.
    */
   resending: number;
+  /**
+   * Parked by a failure that was not a refusal (an outage, a timeout): the
+   * daemon retries these itself, and right away once the server accepts a
+   * batch again. Queued, not lost. Absent when there are none.
+   */
+  retrying?: number;
   /** Age of the oldest parked batch, in ms. Undefined when none are parked. */
   oldestAgeMs?: number;
 }
@@ -187,6 +193,7 @@ export function deliveryHealth(
   let rejected = 0;
   let credentialRejected = 0;
   let resending = 0;
+  let retrying = 0;
   let oldestMtime: number | undefined;
 
   for (const name of entries) {
@@ -221,6 +228,8 @@ export function deliveryHealth(
       rejected += 1;
       byStatus[parsed.clientStatus] = (byStatus[parsed.clientStatus] ?? 0) + 1;
       if (CREDENTIAL_STATUSES.has(parsed.clientStatus)) credentialRejected += 1;
+    } else if (!parsed.poison) {
+      retrying += 1;
     }
 
     if (oldestMtime === undefined || mtime < oldestMtime) oldestMtime = mtime;
@@ -232,6 +241,7 @@ export function deliveryHealth(
     credentialRejected,
     byStatus,
     resending,
+    ...(retrying > 0 ? { retrying } : {}),
     ...(oldestMtime !== undefined ? { oldestAgeMs: Math.max(0, now - oldestMtime) } : {}),
   };
 }

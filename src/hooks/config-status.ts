@@ -531,7 +531,8 @@ export function renderStatusScreen(facts: StatusFacts, opts: ScreenKitOpts & { c
     if (!health.delivering) return `${kit.off} Not delivering, failproofaid has no key`;
     // Batches an earlier key had refused wait for the daemon to re-send them
     // with the key that works now: queued, not refused.
-    const pending = queued + (refused.resending ?? 0);
+    // So do batches an outage parked: the daemon retries them itself.
+    const pending = queued + (refused.resending ?? 0) + (refused.retrying ?? 0);
     const backlog = pending === 0 ? "nothing queued" : `${many(pending, "batch", "batches")} queued`;
     const stuck =
       queued > 0 &&

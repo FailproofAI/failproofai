@@ -259,6 +259,117 @@ async fn decisions_verbosity_keeps_denies_exact_and_rolls_up_allows() {
     fs::remove_dir_all(&spool).ok();
 }
 
+fn allow_row_with(ts: i64, started: i64, tool: &str, event: &str, id: Option<&str>) -> String {
+    let mut v: Value = serde_json::from_str(&allow_row(ts, tool)).unwrap();
+    v["startedAt"] = serde_json::json!(started);
+    v["eventType"] = serde_json::json!(event);
+    if let Some(id) = id {
+        v["toolCallId"] = serde_json::json!(id);
+    }
+    v.to_string()
+}
+
+/// A roll-up is stamped where its first hook ARRIVED, not at the top of the
+/// minute: the minute stamp put every allow bucket before the tool calls it
+/// covered on the session timeline. It names the calls it covers, and a
+/// bucket of one call carries that call's id like a per-row leg does.
+#[tokio::test(flavor = "multi_thread")]
+async fn an_allow_rollup_is_stamped_at_its_first_hook_and_names_its_calls() {
+    let store = tmpdir("agg-ids-store");
+    let state = tmpdir("agg-ids-state");
+    let spool = tmpdir("agg-ids-spool");
+    let minute = 1785740940000; // a minute boundary
+    let mut lines = vec![
+        // Arrived 2.1 s into the minute; ended at 2.3 s.
+        allow_row_with(
+            minute + 2300,
+            minute + 2100,
+            "Bash",
+            "PreToolUse",
+            Some("toolu_a"),
+        ),
+        allow_row_with(
+            minute + 5000,
+            minute + 4900,
+            "Bash",
+            "PreToolUse",
+            Some("toolu_b"),
+        ),
+        // The same call again (a retry) is listed once.
+        allow_row_with(
+            minute + 6000,
+            minute + 5900,
+            "Bash",
+            "PreToolUse",
+            Some("toolu_b"),
+        ),
+        // A startedAt after its own end is not believed.
+        allow_row_with(
+            minute + 7000,
+            minute + 9000,
+            "Read",
+            "PreToolUse",
+            Some("toolu_c"),
+        ),
+    ];
+    // 70 more calls in another bucket: the list is capped.
+    for i in 0..70 {
+        lines.push(allow_row_with(
+            minute + 10_000 + i,
+            minute + 10_000 + i,
+            "Edit",
+            "PostToolUse",
+            Some(&format!("toolu_e{i}")),
+        ));
+    }
+    fs::write(store.join("current.jsonl"), lines.join("\n") + "\n").unwrap();
+
+    run_once(&store, &state, &spool, HooksVerbosity::Decisions).await;
+    let events = spooled(&spool);
+    let bucket = |tool: &str| {
+        events
+            .iter()
+            .find(|e| e["tool_name"] == tool && e["outcome"] == "allow")
+            .unwrap_or_else(|| panic!("no {tool} bucket in {events:?}"))
+            .clone()
+    };
+
+    let bash = bucket("Bash");
+    assert_eq!(bash["failproofai_allow_count"], 3);
+    assert_eq!(bash["timestamp"], "2026-08-03T07:09:02.100000Z");
+    assert_eq!(
+        bash["tool_call_ids"],
+        serde_json::json!(["toolu_a", "toolu_b"])
+    );
+    assert!(
+        bash.get("tool_call_id").is_none(),
+        "a bucket of several calls is no single call's hook"
+    );
+    // The id still names the minute, so it is unchanged from earlier builds.
+    assert!(
+        bash["hook_id"]
+            .as_str()
+            .unwrap()
+            .contains(&format!(":{minute}:"))
+    );
+
+    let read = bucket("Read");
+    assert_eq!(read["timestamp"], "2026-08-03T07:09:07.000000Z");
+    assert_eq!(read["tool_call_id"], "toolu_c");
+    assert_eq!(read["tool_call_ids"], serde_json::json!(["toolu_c"]));
+
+    let edit = bucket("Edit");
+    assert_eq!(edit["failproofai_allow_count"], 70);
+    assert_eq!(
+        edit["tool_call_ids"].as_array().unwrap().len(),
+        transform::MAX_BUCKET_TOOL_CALL_IDS
+    );
+
+    fs::remove_dir_all(&store).ok();
+    fs::remove_dir_all(&state).ok();
+    fs::remove_dir_all(&spool).ok();
+}
+
 #[tokio::test(flavor = "multi_thread")]
 async fn all_verbosity_emits_a_pair_for_every_row() {
     let store = tmpdir("all-store");

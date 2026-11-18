@@ -84,3 +84,24 @@ reason = "chromadb 1.5.9 (published 2026-06-12, surfaced 2026-08-24). No fixed v
 id = "GHSA-xph7-9rjv-w5fr"
 ignoreUntil = 2026-11-20
 reason = "chromadb 1.5.9 (published 2026-06-12, surfaced 2026-08-24). No fixed version. Transitive via crewai, dev/test lockfile only; see the shared justification above. Re-review by 2026-11-20."
+
+# ---------------------------------------------------------------------------
+# picomatch — ReDoS through single-branch repeated extglobs (GHSA-fc5q-39xc-vjpf).
+#
+#   Affects every release through 4.0.7, the newest on npm, so there is no fixed
+#   version to bump or override to. It reaches bun.lock (2.3.2 via micromatch /
+#   fast-glob, 4.0.4 and 4.0.7 via tinyglobby, vite and vitest) and
+#   sdk/typescript/package-lock.json (vitest, dev) — build, lint and test tooling
+#   only. Neither the published `failproofai` package (runtime dependencies:
+#   html-to-image, jsonc-parser, posthog-node, smol-toml, sql.js, yaml) nor
+#   `@failproofai/sdk` (no dependencies) brings picomatch to a user, and no code
+#   in this repo imports it or hands it a pattern. The attack needs an
+#   attacker-supplied glob; the tooling only matches globs from our own config.
+#
+#   Re-review by 2026-12-18, or as soon as a fixed picomatch is published —
+#   then bump (or pin via `overrides`) and delete this entry.
+
+[[IgnoredVulns]]
+id = "GHSA-fc5q-39xc-vjpf"
+ignoreUntil = 2026-12-18
+reason = "picomatch <=4.0.7 ReDoS; no fixed release exists. Build/lint/test tooling only (vite, vitest, tinyglobby, fast-glob); not in the published package or SDK; no code here passes it a pattern. Re-review by 2026-12-18."

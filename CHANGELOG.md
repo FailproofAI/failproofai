@@ -10,6 +10,10 @@
 
 - Bring the README, npm description and English docs up to date with the website and the live Cloud dashboard: trace / analyse / fix navigation, insights, checks, the failproof agent, the free plan, and corrected CLI and OTLP details (#1022)
 
+### Dependencies
+
+- OSV gate: time-boxed allow-list entry for picomatch GHSA-fc5q-39xc-vjpf (ReDoS, no fixed release; build/test tooling only, not shipped), re-review by 2026-12-18 (#1029)
+
 ## 1.0.14-beta.0 — 2026-11-16
 
 ### Features

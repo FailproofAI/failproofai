@@ -25,7 +25,7 @@ A published policy version never changes. Editing a policy and publishing again 
 <Tabs>
   <Tab title="Dashboard">
     1. Go to **fix → deploy policies**, open the affected machine, and select **see all changes** to identify its last known-good policy set.
-    2. Select **restore this set** on it — or set each policy row's version and **observe** | **block** back by hand and select **apply**.
+    2. Select **restore this set** on it. That puts back the whole set: which policies are on the machine, their versions, their **observe** | **block** modes and their agent targets. Editing rows by hand and selecting **apply** works too, but then restore all of it yourself — remove any policy the bad deployment added, re-add any it removed, and reset changed targets as well as versions and modes.
     3. Wait for the machine's check-in, then verify the reported deployment.
     4. Open **fix → activity** and the affected sessions to confirm valid work is no longer blocked.
   </Tab>

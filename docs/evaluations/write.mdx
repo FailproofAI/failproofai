@@ -48,7 +48,7 @@ Use the condition to scope an evaluation to the agents and environments it is me
 session.agent_id == "code-assistant" and session.environment == "production"
 ```
 
-The key, version, result type, condition, and code are immutable once deployed: to change any of them, publish a new version. The name, labels, and whether it is enabled stay editable.
+A deployed version never changes. To change its condition or code, publish a new version with **edit as new version**; the key and result type carry over and stay fixed, so changing either of those means creating a separate evaluation. The name, labels, and whether it is enabled stay editable.
 
 ## Write the code yourself
 

@@ -109,8 +109,9 @@ at a time.
     fp issues clear --audit <audit-id> --yes
     ```
 
-    `--dry-run` reports what would change without changing it. Failproof AI Cloud
-    accepts only a single audit's scope: `--all-audits` and `--everything` are refused.
+    `--dry-run` reports what would change without changing it. The command still
+    offers `--all-audits` and `--everything`, but Failproof AI Cloud accepts only a single
+    audit's scope and answers those two with `422`.
   </Tab>
 </Tabs>
 

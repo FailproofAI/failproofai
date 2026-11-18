@@ -90,7 +90,7 @@ Run `failproofai` without arguments to open the local policy dashboard.
 | `--url <url>` | Connect somewhere other than `app.befailproof.ai`; also read from `FAILPROOFAI_CLOUD_URL` |
 | `--connect <url>` | Enrol only, on a machine already set up. Skips the daemon and every hook |
 | `--machine-id <id>` | Machine ID for `--connect`; defaults to a stable ID |
-| `--machine-label <name>` | On its own, rename a machine that is **already connected**; it never runs setup. With `--token`, `--oss` or `--agents`, set the machine up under that name |
+| `--machine-label <name>` | On its own, rename a machine that is **already connected**; it never runs setup. With `--token` (or `FAILPROOFAI_CLOUD_TOKEN`), connect under that name. With `--oss` or `--agents`, it renames a machine that is already connected and is refused before setup on one that is not: `--oss` never connects, and `--agents` needs a key or an interactive Cloud sign-in to connect |
 | `--no-transcripts` | Send decisions without transcript content, and do not turn on Cloud Jev, which would send each checked tool call and the recent prompt; a `jev.json` left running Jev through FailproofAI Cloud is removed |
 | `--disconnect` | Stop Cloud policy pulls and event delivery. Also removes the Cloud Jev key and a `jev.json` that names FailproofAI Cloud; your own Jev setup is left in place |
 | `--status` | Show current machine state |

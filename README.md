@@ -227,19 +227,21 @@ Cloud and hit **prevent this →**, or describe the rule in a sentence. Failproo
 the policy, tests it against your agents' own past tool calls, and rolls it out to every
 machine, observing first or enforcing straight away.
 
-A few examples of what a policy can stop:
+A few examples of what a policy can catch, and what it does about it:
 
-| Example | What it stops |
-|---|---|
-| `block-env-files` | Reads of `.env` and other secret files |
-| `warn-repeated-tool-calls` | The agent looping on the same failing call |
-| `warn-destructive-sql` | `DROP`, `TRUNCATE`, an unbounded `DELETE` |
-| `block-kubectl` | Unreviewed changes to live infrastructure |
-| `no-refunds-over-limit` *(yours)* | A support agent approving a refund it isn't allowed to |
-| `no-production-writes` *(yours)* | Writes to production paths (the code below) |
+| Example | What it catches | Does |
+|---|---|---|
+| `block-env-files` | Reads of `.env` and other secret files | **Blocks** |
+| `block-kubectl` | Unreviewed changes to live infrastructure | **Blocks** |
+| `warn-destructive-sql` | `DROP`, `TRUNCATE`, an unbounded `DELETE` | **Warns** the agent and lets it decide |
+| `warn-repeated-tool-calls` | The agent looping on the same failing call | **Warns** the agent to change approach |
+| `no-refunds-over-limit` *(yours)* | A support agent approving a refund it isn't allowed to | Whatever you decide |
+| `no-production-writes` *(yours)* | Writes to production paths (the code below) | **Blocks** |
 
-Prefer to write one yourself? Drop a file into `.failproofai/policies/` and it loads
-automatically. Commit it and the whole team is protected on the next pull.
+Prefer to write one yourself? Save it in `.failproofai/policies/` under a name ending in
+`policies.js`, `policies.mjs` or `policies.ts` (say, `no-production-writes-policies.mjs`)
+and it loads automatically. A file named anything else is skipped. Commit it and the
+whole team is protected on the next pull.
 
 ```js
 import { customPolicies, deny, allow } from "failproofai";

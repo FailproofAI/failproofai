@@ -430,7 +430,7 @@ Include context during creation when the first run needs it. Creation commits th
 | `fp issues close INCIDENT_ID` | Close an issue: you are done with it, fixed or not. A recurrence does not reopen it. | `--yes`, `-y` |
 | `fp issues archive INCIDENT_ID` | Take an issue off the board without changing how it ended. | — |
 | `fp issues unarchive INCIDENT_ID` | Put an archived issue back on the board. | — |
-| `fp issues clear` | Close and archive one audit's open issues and resolve the findings behind them; a pattern that recurs opens a new issue. Cloud accepts only the `--audit` scope (the wider `--all-audits` and `--everything` scopes are refused). | `--audit`; `--dry-run`; `--yes`, `-y` |
+| `fp issues clear` | Close and archive one audit's open issues and resolve the findings behind them. The cleared issues stay closed; a pattern that recurs opens a new issue. The command takes exactly one of `--audit`, `--all-audits` or `--everything`, but FailproofAI Cloud now accepts only `--audit` and answers the two wider scopes with `422`. | `--audit` (or `--all-audits`, `--everything`); `--dry-run`; `--yes`, `-y` |
 | `fp issues comment-list INCIDENT_ID` | List comments. | — |
 | `fp issues comment-add INCIDENT_ID` | Add a comment. | exactly one of `--body`, `--file` |
 | `fp issues comment-delete INCIDENT_ID COMMENT_ID` | Delete a comment. | `--yes`, `-y` |

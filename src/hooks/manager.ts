@@ -33,6 +33,7 @@ import { CliError } from "../cli-error";
 import { hookLogWarn } from "./hook-logger";
 import { customPoliciesDir } from "./fp-home";
 import { listActiveCloudManagedPolicies, readCloudJevAssignments, readCloudJevState, type CloudJevMode } from "./cloud-managed-policies";
+import { readCloudCredentials } from "./cloud-enrollment";
 import { readCloudPolicyErrors } from "./cloud-policy-errors";
 import { readRosterLabels } from "./agent-roster";
 import { CORE_SOURCE, addPack, setPackPolicyEnabled } from "./pack-store";
@@ -334,16 +335,23 @@ export function integrationsInstalledAt(scope: HookScope, cwd?: string): Integra
  */
 export type NotEnforcingReason = "no-hooks" | "no-policies" | "observe-only";
 
-/** Machine-wide assignments, like the listing: a `both` policy counts once. */
-function cloudPolicyStatus(): { count: number; observing: boolean } {
+/**
+ * Machine-wide assignments, like the listing: a `both` policy counts once.
+ * `observingCount` is what `config --status` shows beside `count`; both read
+ * this one function so its policies row and this line cannot disagree.
+ */
+export function cloudPolicyStatus(): { count: number; observing: boolean; observingCount: number } {
   let count = 0;
   let observing = false;
+  let observingCount = 0;
   const jsIds = new Set<string>();
   try {
     for (const artifact of listActiveCloudManagedPolicies()) {
       jsIds.add(artifact.id);
-      if (artifact.effect === "observe") observing = true;
-      else count++;
+      if (artifact.effect === "observe") {
+        observing = true;
+        observingCount++;
+      } else count++;
     }
   } catch {
     // The listing reports an unreadable JS deployment; Jev is read independently.
@@ -353,14 +361,16 @@ function cloudPolicyStatus(): { count: number; observing: boolean } {
     if (jevMode === "enforce" || jevMode === "observe") {
       for (const assignment of readCloudJevAssignments() ?? []) {
         if (jsIds.has(assignment.id)) continue;
-        if (jevMode === "observe" || assignment.effect === "observe") observing = true;
-        else count++;
+        if (jevMode === "observe" || assignment.effect === "observe") {
+          observing = true;
+          observingCount++;
+        } else count++;
       }
     }
   } catch {
     // No readable Jev state: neither enforcement nor observation is known.
   }
-  return { count, observing };
+  return { count, observing, observingCount };
 }
 
 export function notEnforcingReason(cwd?: string): NotEnforcingReason | null {
@@ -1284,6 +1294,21 @@ export interface PoliciesScreen {
    * nothing for a machine enforcing all of them.
    */
   legacy?: Array<{ name: string; description: string }>;
+  /**
+   * The Cloud dashboard this machine pulls its policies from, when it does.
+   * Its policies are deployed there, so the empty state points there instead
+   * of at installing packs.
+   */
+  cloudDashboard?: string;
+}
+
+/** The dashboard a cloud-connected machine pulls policies from, or undefined. */
+function cloudDashboardUrl(): string | undefined {
+  try {
+    return readCloudCredentials()?.url || undefined;
+  } catch {
+    return undefined;
+  }
 }
 
 /**
@@ -1341,7 +1366,9 @@ export function renderPoliciesScreen(
     const { failed, text, fix } = screen.attention;
     out.push(failed ? kit.fail(text, fix) : kit.caution(text, fix));
   }
-  if (empty) {
+  if (empty && screen.cloudDashboard) {
+    out.push(`${INDENT}Deploy from Cloud:  ${kit.cmd(screen.cloudDashboard)}`);
+  } else if (empty) {
     // Ours first is a convenience, not a channel: a screen that named only ours
     // would read as the place policies come from.
     out.push(
@@ -1800,7 +1827,7 @@ export async function listHooks(cwd?: string, { all = false }: { all?: boolean }
   printBlock(
     process.stdout,
     renderPoliciesScreen(
-      { packs, refused, attention, custom, convention, cloud, legacy },
+      { packs, refused, attention, custom, convention, cloud, legacy, cloudDashboard: cloudDashboardUrl() },
       // Descriptions are shortened only for a terminal; a pipe keeps every word.
       { ...optsFor(process.stdout), fit: Boolean(process.stdout.isTTY), all },
     ),

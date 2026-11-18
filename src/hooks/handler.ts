@@ -94,6 +94,9 @@ import { isHealthProbe } from "./health-probe";
 import { readRuntimeAgentIdentity, runtimeAgentSettingsPath } from "./agent-roster";
 import type { AgentIdentity } from "./agent-targets";
 
+/** Set once the legacy-shim warning has been logged in this process. */
+let legacyShimWarned = false;
+
 /**
  * Canonicalize an event name to PascalCase. Codex sends snake_case event names
  * on stdin and as the --hook arg; Cursor sends camelCase (`preToolUse`,
@@ -796,7 +799,10 @@ export async function evaluateHookEvent(
       // so an empty list still registers the guard — which is exactly what this
       // build should contribute once packs carry everything else.
       registerBuiltinPolicies(activePause ? [] : legacyNames);
-      if (legacyNames.length > 0) {
+      // Once per process: the warm worker evaluates every hook on the machine,
+      // and repeating this on each one buried the daemon log.
+      if (legacyNames.length > 0 && !legacyShimWarned) {
+        legacyShimWarned = true;
         hookLogWarn(
           `enforcing ${legacyNames.length} policies from this build because no pack is installed — ` +
             `run \`failproofai policies add FailproofAI/policies\` to move them into a real pack`,

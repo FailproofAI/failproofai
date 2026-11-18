@@ -460,6 +460,19 @@ describe("renderPoliciesScreen", () => {
     ]);
   });
 
+  it("points an empty machine that pulls from Cloud at Cloud, not at installing packs", async () => {
+    const { renderPoliciesScreen } = await import("@/src/hooks/manager");
+    const empty = { ...SCREEN, packs: [], refused: [], custom: [], convention: [], cloud: null, legacy: [], attention: null };
+    const local = renderPoliciesScreen(empty, { version: "1.0.11", cols: 104, color: false });
+    expect(local.join("\n")).toMatch(/Turn on ours:/);
+    const managed = renderPoliciesScreen(
+      { ...empty, cloudDashboard: "https://be.failproof.ai" },
+      { version: "1.0.11", cols: 104, color: false },
+    );
+    expect(managed.join("\n")).not.toMatch(/policies add/);
+    expect(managed.at(-1)).toBe("  Deploy from Cloud:  https://be.failproof.ai");
+  });
+
   function withTruecolor<T>(fn: () => T): T {
     const before = { COLORTERM: process.env.COLORTERM, TERM: process.env.TERM, NO_COLOR: process.env.NO_COLOR };
     process.env.COLORTERM = "truecolor";

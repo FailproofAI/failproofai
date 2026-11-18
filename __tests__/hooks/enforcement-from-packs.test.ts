@@ -181,11 +181,13 @@ describe("the migration shim", () => {
       });
     try {
       await evaluate("sudo rm -rf /tmp/x");
+      // The warm worker evaluates every hook on the machine: once per process.
+      await evaluate("sudo rm -rf /tmp/y");
     } finally {
       spy.mockRestore();
     }
     const log = written.join("");
-    expect(log).toMatch(/no pack is installed/);
+    expect(log.match(/no pack is installed/g)).toHaveLength(1);
     expect(log).toMatch(/failproofai policies add FailproofAI\/policies/);
     expect(log).not.toMatch(/failproofai update/);
   });

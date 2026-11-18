@@ -27,7 +27,6 @@ import { readCloudCredentials } from "./cloud-enrollment";
 import { CODEX_UNTRUSTED_NOTICE, codexHookTrust, type CodexHookTrust } from "./codex-system-hooks";
 import { describeMachine } from "./cloud-enrollment-cli";
 import { cloudBaseFor } from "./cloud-connection";
-import { listActiveCloudManagedPolicies } from "./cloud-managed-policies";
 import { readIngestCredential } from "./collector-config";
 import { discoverPolicyFiles } from "./custom-hooks-loader";
 import { daemonSocketPresent, isDaemonConfigured } from "./daemon-client";
@@ -44,7 +43,7 @@ import { isAgentTraced, readConfig, readCredentials, readVersionFile } from "./f
 import { collectorHealthFile, customPoliciesDir } from "./fp-home";
 import { configuredCustomPolicyPaths, findProjectConfigDir, readMergedHooksConfig } from "./hooks-config";
 import { detectInstalledClis, listInstallableIds } from "./integrations";
-import { notEnforcingReason, type NotEnforcingReason } from "./manager";
+import { cloudPolicyStatus, notEnforcingReason, type NotEnforcingReason } from "./manager";
 import { hasInstalledRegexPacks, readInstalledPacks } from "./pack-manifest";
 import { CORE_SOURCE } from "./pack-store";
 import { formatDuration, listActivePauses } from "./session-pause";
@@ -258,17 +257,12 @@ export function summarizePolicySources(cwd?: string): StatusPolicies {
     // An unreadable manifest is reported by `failproofai policies`.
   }
 
-  try {
-    // Every assignment, whatever agent it targets: a hook's agent scope applied
-    // with no agent hid each targeted policy ("None installed" beside a
-    // deployment that enforces), the status twin of B4.
-    for (const artifact of listActiveCloudManagedPolicies()) {
-      if (artifact.effect === "observe") summary.observing++;
-      else summary.cloudOn++;
-    }
-  } catch {
-    // No deployment, or an unreadable one: nothing comes from there.
-  }
+  // Every assignment, whatever agent it targets, JS and Cloud Jev alike:
+  // counting JS alone showed "None installed" beside a Jev-only deployment the
+  // line below it called enforcing.
+  const cloud = cloudPolicyStatus();
+  summary.cloudOn += cloud.count;
+  summary.observing += cloud.observingCount;
 
   // Deduplicated by path: run from the home directory, the project's convention
   // folder IS the global one.
@@ -434,9 +428,11 @@ export function pickStatusAttention(facts: StatusFacts): StatusAttention | null 
         ? "failproofai config"
         : facts.notEnforcing === "observe-only"
           ? "failproofai policies"
-          : policies.packsInstalled > 0
-            ? "failproofai policies add"
-            : `failproofai policies add ${CORE_SOURCE}`;
+          : cloud.kind === "file" && cloud.pullsPolicies
+            ? `https://${cloud.host}`
+            : policies.packsInstalled > 0
+              ? "failproofai policies add"
+              : `failproofai policies add ${CORE_SOURCE}`;
     return { severity: "caution", text: "Policies are not enforcing yet.", fix };
   }
   if (facts.codex?.kind === "untrusted") {
@@ -544,6 +540,8 @@ export function renderStatusScreen(facts: StatusFacts, opts: ScreenKitOpts & { c
     return `${kit.on} Healthy, ${lastEvent}, ${backlog}`;
   };
 
+  // Its policies are deployed from Cloud, so "install some" is the wrong advice.
+  const cloudManaged = cloud.kind === "env" || (cloud.kind === "file" && cloud.pullsPolicies);
   const policiesValue = (): string => {
     const clauses: string[] = [];
     if (policies.packOn > 0) {
@@ -558,7 +556,8 @@ export function renderStatusScreen(facts: StatusFacts, opts: ScreenKitOpts & { c
     if (policies.observing > 0) clauses.push(`${policies.observing} observing`);
     if (policies.refusedPacks > 0) clauses.push(`${many(policies.refusedPacks, "pack")} will not load`);
     if (clauses.length > 0) return clauses.join(", ");
-    return policies.anyPack ? `0 on from ${policies.anyPack}` : "None installed";
+    if (policies.anyPack) return `0 on from ${policies.anyPack}`;
+    return cloudManaged ? "None deployed from Cloud" : "None installed";
   };
 
   // Only when failproofai's Codex hooks are installed at user scope: whether

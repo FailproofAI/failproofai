@@ -370,6 +370,42 @@ async fn an_allow_rollup_is_stamped_at_its_first_hook_and_names_its_calls() {
     fs::remove_dir_all(&spool).ok();
 }
 
+/// Rows written before `startedAt` existed roll up exactly as they always
+/// did: stamped at the top of their minute, byte for byte. A backfill or a
+/// lost cursor re-reads them, and the server dedups on what was shipped.
+#[tokio::test(flavor = "multi_thread")]
+async fn a_legacy_allow_rollup_keeps_its_minute_stamp() {
+    let store = tmpdir("agg-legacy-store");
+    let state = tmpdir("agg-legacy-state");
+    let spool = tmpdir("agg-legacy-spool");
+    let minute = 1785740940000;
+    let mut lines: Vec<String> = (0..3)
+        .map(|i| allow_row(minute + 2000 + i * 100, "Bash"))
+        .collect();
+    // One new-format row in the same bucket does not restamp the old ones.
+    lines.push(allow_row_with(
+        minute + 9000,
+        minute + 8900,
+        "Bash",
+        "PreToolUse",
+        Some("toolu_new"),
+    ));
+    fs::write(store.join("current.jsonl"), lines.join("\n") + "\n").unwrap();
+
+    run_once(&store, &state, &spool, HooksVerbosity::Decisions).await;
+    let events = spooled(&spool);
+    let agg = events
+        .iter()
+        .find(|e| e["outcome"] == "allow")
+        .expect("a roll-up");
+    assert_eq!(agg["failproofai_allow_count"], 4);
+    assert_eq!(agg["timestamp"], "2026-08-03T07:09:00.000000Z");
+
+    fs::remove_dir_all(&store).ok();
+    fs::remove_dir_all(&state).ok();
+    fs::remove_dir_all(&spool).ok();
+}
+
 #[tokio::test(flavor = "multi_thread")]
 async fn all_verbosity_emits_a_pair_for_every_row() {
     let store = tmpdir("all-store");

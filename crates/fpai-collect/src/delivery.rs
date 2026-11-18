@@ -75,6 +75,10 @@ const FAILED_RETRY_MAX_FILES: usize = 16;
 /// Minimum gap between two "the server is back" retries of parked batches, so
 /// a flapping connection cannot turn every accepted upload into a pass.
 const RECOVERY_RETRY_GAP: Duration = Duration::from_secs(300);
+/// Between two recovery passes while a backlog remains: each pass is capped at
+/// FAILED_RETRY_MAX_FILES, and a larger backlog drains in steps rather than
+/// waiting for the hourly pass, without one long burst starving fresh events.
+const RECOVERY_BACKLOG_GAP: Duration = Duration::from_secs(10);
 /// At most one refused batch after a fresh delivery, so the serial watcher
 /// and sweeper return to fresh work instead of draining a credential backlog.
 const REFUSED_REDRIVE_MAX_FILES: usize = 1;
@@ -428,6 +432,7 @@ pub async fn sweep(
     let mut next_failed_pass = SystemTime::now();
     let mut next_recovery_pass = SystemTime::now();
     let mut next_probe = SystemTime::now();
+    let mut backlog = false;
     let mut replays = tokio::task::JoinSet::new();
 
     loop {
@@ -476,10 +481,26 @@ pub async fn sweep(
             // The server accepted a batch after an outage: retry what the
             // outage parked now, not at the next hourly pass, with no minimum
             // age (the failure that parked them is over).
-            if SystemTime::now() >= next_recovery_pass && delivery.take_recovered() {
-                retry_parked(&delivery, &failed_dir, &sd, Duration::ZERO).await;
+            //
+            // A backlog larger than one pass keeps draining, one capped pass
+            // every RECOVERY_BACKLOG_GAP, for as long as deliveries succeed.
+            if SystemTime::now() >= next_recovery_pass && (backlog || delivery.take_recovered()) {
+                let left = retry_parked_up_to(
+                    &delivery,
+                    &failed_dir,
+                    &sd,
+                    Duration::ZERO,
+                    FAILED_RETRY_MAX_FILES,
+                )
+                .await;
                 delivery.schedule_refused(&mut replays, &sd);
-                next_recovery_pass = SystemTime::now() + RECOVERY_RETRY_GAP;
+                backlog = left > 0 && !delivery.failing.load(Ordering::SeqCst);
+                next_recovery_pass = SystemTime::now()
+                    + if backlog {
+                        RECOVERY_BACKLOG_GAP
+                    } else {
+                        RECOVERY_RETRY_GAP
+                    };
             }
             // An idle machine sends nothing fresh to notice the server is back:
             // while the last delivery failed, one parked batch goes as a probe
@@ -554,15 +575,17 @@ async fn retry_parked(delivery: &Delivery, failed_dir: &Path, sd: &Shutdown, min
     retry_parked_up_to(delivery, failed_dir, sd, min_age, FAILED_RETRY_MAX_FILES).await;
 }
 
+/// Retry up to `max` parked batches, oldest first. Returns how many eligible
+/// batches were left untried.
 async fn retry_parked_up_to(
     delivery: &Delivery,
     failed_dir: &Path,
     sd: &Shutdown,
     min_age: Duration,
     max: usize,
-) {
+) -> usize {
     let Ok(mut rd) = tokio::fs::read_dir(failed_dir).await else {
-        return;
+        return 0;
     };
     let now = SystemTime::now();
     let mut found: Vec<(SystemTime, PathBuf)> = Vec::new();
@@ -588,17 +611,19 @@ async fn retry_parked_up_to(
     }
 
     if found.is_empty() {
-        return;
+        return 0;
     }
     found.sort_by_key(|(t, _)| *t);
     tracing::info!(count = found.len().min(max), "retrying parked batches");
 
+    let left = found.len().saturating_sub(max);
     for (_, path) in found.into_iter().take(max) {
         if sd.is_set() {
-            return;
+            return left;
         }
         delivery.deliver(path).await;
     }
+    left
 }
 
 /// Resolves once shutdown is requested. A `select!` arm needs a future, and
@@ -714,6 +739,57 @@ mod tests {
             "a 422 refusal is not retried as an outage"
         );
 
+        flag.store(true, Ordering::SeqCst);
+        let _ = tokio::time::timeout(Duration::from_secs(5), sweeper).await;
+        std::fs::remove_dir_all(failed).ok();
+        std::fs::remove_dir_all(spool).ok();
+    }
+
+    /// More parked than one capped pass: the rest keep draining while
+    /// deliveries succeed, instead of waiting for the hourly pass.
+    #[tokio::test(flavor = "multi_thread")]
+    async fn a_backlog_larger_than_one_pass_drains_after_recovery() {
+        use wiremock::matchers::method;
+        use wiremock::{Mock, MockServer, ResponseTemplate};
+        let server = MockServer::start().await;
+        Mock::given(method("POST"))
+            .respond_with(
+                ResponseTemplate::new(200)
+                    .set_body_json(serde_json::json!({"accepted": 1, "skipped": 0})),
+            )
+            .mount(&server)
+            .await;
+        let failed = tmpdir("backlog-failed");
+        let spool = tmpdir("backlog-spool");
+        let total = FAILED_RETRY_MAX_FILES + 9;
+        for i in 0..total {
+            std::fs::write(
+                failed.join(format!("hooks-activity-{i}-0.a1.jsonl")),
+                "{}\n",
+            )
+            .unwrap();
+        }
+        let delivery = Arc::new(Delivery::new(Arc::new(
+            Uploader::new(server.uri(), "k".into(), failed.clone()).unwrap(),
+        )));
+        let flag = Arc::new(std::sync::atomic::AtomicBool::new(false));
+        let sweeper = tokio::spawn(sweep(
+            delivery.clone(),
+            vec![spool.clone()],
+            failed.clone(),
+            Shutdown::for_test(flag.clone()),
+            Arc::new(std::sync::atomic::AtomicBool::new(false)),
+        ));
+        let left = || std::fs::read_dir(&failed).map(|d| d.count()).unwrap_or(0);
+        let deadline = std::time::Instant::now() + RECOVERY_BACKLOG_GAP * 3;
+        while left() > 0 && std::time::Instant::now() < deadline {
+            tokio::time::sleep(Duration::from_millis(200)).await;
+        }
+        assert_eq!(
+            left(),
+            0,
+            "the whole backlog drains once the server is back"
+        );
         flag.store(true, Ordering::SeqCst);
         let _ = tokio::time::timeout(Duration::from_secs(5), sweeper).await;
         std::fs::remove_dir_all(failed).ok();

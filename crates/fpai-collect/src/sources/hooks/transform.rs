@@ -986,6 +986,12 @@ pub struct AllowBucket {
     /// the emitted timestamp. Stamping the minute instead put every roll-up
     /// before the tool calls it covered. `i64::MAX` until a row is added.
     pub first_ms: i64,
+    /// Every row so far recorded `startedAt` (written by a CLI that knows it).
+    /// Only then is the bucket stamped at `first_ms`: a bucket holding a row
+    /// from before keeps the minute stamp it always had, so re-reading old
+    /// rows (a backfill, a lost cursor) produces the bytes already shipped
+    /// and the server's dedup still collapses them.
+    pub all_started: bool,
     /// The agent's tool-call ids the bucket covers, in arrival order, at most
     /// [`MAX_BUCKET_TOOL_CALL_IDS`], so Cloud can join a roll-up to its calls.
     pub tool_call_ids: Vec<String>,
@@ -1032,6 +1038,7 @@ pub const MAX_BUCKET_TOOL_CALL_IDS: usize = 64;
 impl AllowBucket {
     pub fn add(&mut self, row: &HookRow) {
         self.count += 1;
+        self.all_started &= row.started_at.is_some();
         let arrived = row
             .started_at
             .filter(|at| *at <= row.timestamp)
@@ -1064,7 +1071,7 @@ impl AllowBucket {
     /// report a duration that belongs to no real hook call.
     pub fn to_event(&self, environment: &str) -> Option<Value> {
         let mut m = Map::new();
-        let at = if self.first_ms == i64::MAX {
+        let at = if self.first_ms == i64::MAX || !self.all_started {
             self.minute_ms
         } else {
             self.first_ms

@@ -261,6 +261,7 @@ async fn poll_once(
                             tool_name: key.2.clone(),
                             minute_ms: key.3,
                             first_ms: i64::MAX,
+                            all_started: true,
                             tool_call_ids: Vec::new(),
                             count: 0,
                             total_duration_ms: 0.0,

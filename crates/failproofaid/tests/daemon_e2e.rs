@@ -385,15 +385,25 @@ fn real_binary_starts_against_a_home_with_no_marker() {
 }
 
 /// An unclean previous exit (`logs/daemon.running` left behind) plus a FIFO
-/// where `daemon.log` belongs: the daemon must still bind its socket, with
-/// log uploads on or off. Reading the previous run's log opened that path
+/// where `daemon.log` belongs, or a FIFO at the run marker itself: the daemon
+/// must still bind its socket, with log uploads on or off. Reading the previous run's log opened that path
 /// blocking and waited for a writer that never came, before the socket was
 /// bound — every hook on the machine then went without a verdict.
 #[test]
 fn a_fifo_log_after_an_unclean_exit_does_not_stall_startup() {
     use std::os::unix::fs::DirBuilderExt;
-    for disabled in [false, true] {
-        let socket_path = unique_socket_path(if disabled { "fifo-off" } else { "fifo-on" });
+    // The FIFO at the log path, then at the run marker itself.
+    for (fifo_name, disabled) in [
+        ("daemon.log", false),
+        ("daemon.log", true),
+        ("daemon.running", false),
+        ("daemon.running", true),
+    ] {
+        let socket_path = unique_socket_path(&format!(
+            "fifo-{}-{}",
+            fifo_name.replace('.', "-"),
+            if disabled { "off" } else { "on" }
+        ));
         let run_dir = socket_path.parent().unwrap();
         std::fs::DirBuilder::new()
             .recursive(true)
@@ -406,13 +416,12 @@ fn a_fifo_log_after_an_unclean_exit_does_not_stall_startup() {
             .mode(0o700)
             .create(&logs)
             .unwrap();
-        std::fs::write(logs.join("daemon.running"), "1").unwrap();
-        let fifo = std::ffi::CString::new(
-            logs.join("daemon.log")
-                .into_os_string()
-                .into_encoded_bytes(),
-        )
-        .unwrap();
+        if fifo_name != "daemon.running" {
+            std::fs::write(logs.join("daemon.running"), "1").unwrap();
+        }
+        let fifo =
+            std::ffi::CString::new(logs.join(fifo_name).into_os_string().into_encoded_bytes())
+                .unwrap();
         assert_eq!(unsafe { libc::mkfifo(fifo.as_ptr(), 0o600) }, 0);
 
         // `spawn_daemon` panics with the daemon's stderr if no socket appears.

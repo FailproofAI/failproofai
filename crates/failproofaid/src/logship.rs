@@ -464,20 +464,34 @@ fn entries_from_text(text: &str, with_child_output: bool) -> Vec<Entry> {
     out
 }
 
-/// Owner-only, like `daemon.log` beside it.
+/// Owner-only, like `daemon.log` beside it, and never through whatever is
+/// at `path` now: written to a fresh temporary file and renamed over it. A
+/// FIFO there would block an open for writing (before the socket is bound,
+/// so every hook goes without a verdict), and a symlink would redirect it.
 fn write_private(path: &Path, bytes: &[u8]) -> std::io::Result<()> {
     use std::os::unix::fs::OpenOptionsExt;
-    let mut file = fs::OpenOptions::new()
-        .write(true)
-        .create(true)
-        .truncate(true)
-        .mode(0o600)
-        .custom_flags(libc::O_NOFOLLOW)
-        .open(path)?;
-    file.write_all(bytes)?;
-    // A file an older build left at 0644 keeps its mode on open.
-    use std::os::unix::fs::PermissionsExt;
-    file.set_permissions(fs::Permissions::from_mode(0o600))
+    let Some(name) = path.file_name() else {
+        return Err(std::io::Error::other("no file name"));
+    };
+    let mut tmp_name = std::ffi::OsString::from(".");
+    tmp_name.push(name);
+    tmp_name.push(format!(".{}.tmp", std::process::id()));
+    let tmp = path.with_file_name(tmp_name);
+    let _ = fs::remove_file(&tmp);
+    let written = (|| {
+        let mut file = fs::OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .mode(0o600)
+            .custom_flags(libc::O_NOFOLLOW)
+            .open(&tmp)?;
+        file.write_all(bytes)?;
+        fs::rename(&tmp, path)
+    })();
+    if written.is_err() {
+        let _ = fs::remove_file(&tmp);
+    }
+    written
 }
 
 /// Size of `daemon.log` before this process writes to it. Call before the log

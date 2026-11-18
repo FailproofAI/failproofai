@@ -217,6 +217,8 @@ function requestOnce({
   deadline = performance.now() + budgetMs,
 }) {
   return new Promise((done) => {
+    // Started before encoding, so the elapsed time in `detail` includes it.
+    const startedAt = performance.now();
     let body;
     let oversized = false;
     try {
@@ -253,7 +255,6 @@ function requestOnce({
     let received = Buffer.alloc(0);
     let timer;
     let socket;
-    const startedAt = performance.now();
     const finish = (result) => {
       if (settled) return;
       settled = true;

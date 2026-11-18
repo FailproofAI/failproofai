@@ -1170,3 +1170,162 @@ async fn interrupted_success_acknowledgements_remain_retryable() {
     fs::remove_dir_all(spool).unwrap();
     fs::remove_dir_all(failed).unwrap();
 }
+
+fn write_key(home: &Path, key: &str) {
+    fpai_collect::config::write_ingest(
+        home,
+        &fpai_collect::config::Ingest {
+            url: "https://example.invalid/v1/events".into(),
+            key: key.into(),
+        },
+    )
+    .unwrap();
+}
+
+#[tokio::test]
+async fn a_refusal_of_a_replaced_key_is_left_for_the_new_key_not_parked() {
+    // Reconnecting writes a new key; the running collector keeps the old one
+    // until its next config tick. What it sends in that window is refused, and
+    // parking it read as "the cloud is refusing this machine's key" right
+    // after a successful connect.
+    for status in [401, 403] {
+        let server = MockServer::start().await;
+        Mock::given(method("POST"))
+            .respond_with(ResponseTemplate::new(status))
+            .mount(&server)
+            .await;
+        let root = tmpdir("replaced-key");
+        let (home, spool, failed) = (root.join("home"), root.join("spool"), root.join("failed"));
+        fs::create_dir_all(&spool).unwrap();
+        write_key(&home, "new-key");
+        let batch = write_batch(&spool, "hooks-a-1-0.jsonl", 3);
+        let original = fs::read(&batch).unwrap();
+        let up = uploader(&server, &failed).with_key_source(home.clone());
+
+        let result = up.upload_file(&batch).await;
+        assert!(
+            matches!(result, Err(UploadError::KeySuperseded)),
+            "{result:?}"
+        );
+        assert_eq!(
+            fs::read(&batch).unwrap(),
+            original,
+            "the batch stays for the new key"
+        );
+        assert!(parked(&failed).is_empty(), "nothing is parked as a refusal");
+
+        // Nothing more goes out on the dead key.
+        let other = write_batch(&spool, "hooks-a-2-0.jsonl", 1);
+        assert!(matches!(
+            up.upload_file(&other).await,
+            Err(UploadError::KeySuperseded)
+        ));
+        assert_eq!(server.received_requests().await.unwrap().len(), 1);
+        fs::remove_dir_all(root).ok();
+    }
+}
+
+#[tokio::test]
+async fn a_refusal_of_the_current_key_is_still_parked() {
+    let server = MockServer::start().await;
+    Mock::given(method("POST"))
+        .respond_with(ResponseTemplate::new(401))
+        .mount(&server)
+        .await;
+    let root = tmpdir("current-key");
+    let (home, spool, failed) = (root.join("home"), root.join("spool"), root.join("failed"));
+    fs::create_dir_all(&spool).unwrap();
+    write_key(&home, "test-key");
+    let batch = write_batch(&spool, "hooks-a-1-0.jsonl", 2);
+    let up = uploader(&server, &failed).with_key_source(home);
+
+    let result = up.upload_file(&batch).await;
+    assert!(
+        matches!(result, Err(UploadError::Client { status: 401 })),
+        "{result:?}"
+    );
+    assert_eq!(parked(&failed), ["hooks-a-1-0.a1.r1.c401.jsonl"]);
+    fs::remove_dir_all(root).ok();
+}
+
+#[tokio::test]
+async fn a_413_halves_the_body_until_it_fits_and_keeps_the_order() {
+    use wiremock::Request;
+    let server = MockServer::start().await;
+    // The server takes at most two events per request.
+    Mock::given(method("POST"))
+        .respond_with(|req: &Request| {
+            let lines = req
+                .body
+                .split(|b| *b == b'\n')
+                .filter(|l| !l.is_empty())
+                .count();
+            if lines > 2 {
+                ResponseTemplate::new(413)
+            } else {
+                ResponseTemplate::new(200)
+                    .set_body_json(serde_json::json!({"accepted": lines, "skipped": 0}))
+            }
+        })
+        .mount(&server)
+        .await;
+    let root = tmpdir("split-413");
+    let failed = root.join("failed");
+    let batch = write_batch(&root, "hooks-a-1-0.jsonl", 7);
+    let original = fs::read(&batch).unwrap();
+
+    uploader(&server, &failed)
+        .upload_file(&batch)
+        .await
+        .unwrap();
+
+    assert!(!batch.exists(), "every event landed, so the batch is gone");
+    assert!(parked(&failed).is_empty());
+    let delivered: Vec<u8> = server
+        .received_requests()
+        .await
+        .unwrap()
+        .into_iter()
+        .filter(|r| {
+            r.body
+                .split(|b| *b == b'\n')
+                .filter(|l| !l.is_empty())
+                .count()
+                <= 2
+        })
+        .flat_map(|r| r.body)
+        .collect();
+    assert_eq!(
+        delivered, original,
+        "accepted pieces, in order, are the whole batch"
+    );
+    fs::remove_dir_all(root).ok();
+}
+
+#[tokio::test]
+async fn a_413_on_a_single_event_is_parked_as_before() {
+    let server = MockServer::start().await;
+    Mock::given(method("POST"))
+        .respond_with(ResponseTemplate::new(413))
+        .mount(&server)
+        .await;
+    let root = tmpdir("single-413");
+    let failed = root.join("failed");
+    let batch = write_batch(&root, "hooks-a-1-0.jsonl", 2);
+
+    let result = uploader(&server, &failed).upload_file(&batch).await;
+    assert!(
+        matches!(result, Err(UploadError::Client { status: 413 })),
+        "{result:?}"
+    );
+    // Two lines -> two single-line requests; the first single line is parked.
+    assert_eq!(server.received_requests().await.unwrap().len(), 2);
+    assert_eq!(parked(&failed), ["hooks-a-1-0.a1.r1.c413.jsonl"]);
+    let kept = fs::read(failed.join("hooks-a-1-0.a1.r1.c413.jsonl")).unwrap();
+    assert_eq!(
+        kept.iter().filter(|b| **b == b'\n').count(),
+        2,
+        "the whole batch is kept"
+    );
+    fs::remove_dir_all(root).ok();
+}

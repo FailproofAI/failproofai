@@ -6,6 +6,8 @@
 
 - The daemon answers the previous plugin protocol, and clients re-ask an older daemon in its version, so a Hermes or OpenClaw gateway still running the plugin it loaded before an upgrade keeps getting real verdicts instead of denying every call (#PR)
 - `failproofai update` restarts running Hermes and OpenClaw gateways through their own drain-aware restart (after in-flight work finishes) so they load the updated plugin; only service-managed gateways are touched, and `--no-restart` opts out (#PR)
+- A batch refused with a key the machine has since replaced (the seconds after a reconnect) is left for the new key instead of being parked as a refusal, so `config --status` no longer reports "the cloud is refusing this machine's key" right after a successful connect (#PR)
+- A batch the server refuses as too large (413) is split in half and re-sent until each piece fits, instead of being parked for good (#PR)
 
 ## 1.0.15 — 2026-11-18
 

@@ -468,11 +468,13 @@ and when no verdict comes back `before_tool_call` and `before_agent_run` **fail
 closed** (blocked, reason logged through `api.logger`) while `before_agent_finalize`
 does not force a revise — that cannot bring the daemon back and would only loop the
 turn. All I/O is async: the gateway is a long-running multi-channel process. That
-also means **no short timers in the plugin**: a timer shares the gateway's event loop
-with every agent, so a busy gateway makes it fire late and ahead of I/O that already
-completed. A 250 ms connect timer did exactly that and reported a healthy daemon as
-unreachable (#1024); the client now has one 30 s request budget and retries a failed
-connect once. It
+also means **no short timer may decide that a pending connection is unreachable**: a
+timer shares the gateway's event loop with every agent, so a busy gateway makes it fire
+late and ahead of I/O that already completed. A 250 ms connect timer did exactly that
+and reported a healthy daemon as unreachable (#1024). The client now has one 30 s
+budget for the whole request, shared by both attempts, and retries once after 100 ms —
+a pause that starts only after a connection has already failed, so it classifies
+nothing. It
 carries **no inline tool maps** (unlike the OpenCode/Pi shims) — it forwards raw
 event/tool names and a Claude-shaped stdin (`params→tool_input`,
 `toolName→tool_name`, `transcriptPath→transcript_path`,

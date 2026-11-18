@@ -166,14 +166,40 @@ export function requestHookVerdict(request) {
  * Only `unreachable` is retried: nothing was sent, so asking again cannot
  * evaluate a call twice. Every other failure came from a daemon that saw the
  * request, and is returned as it is.
+ *
+ * Both attempts share ONE deadline of `responseTimeoutMs`, set before the
+ * first: the retry gets only what is left of it, and is skipped when the pause
+ * before it would use the rest. A fresh budget per attempt let a call wait
+ * twice as long, past the gateway's own hook timeout.
+ *
+ * A failed retry keeps its own failure and agent-facing message; its `detail`
+ * (gateway log only) names both attempts, so the first attempt's cause is
+ * never lost behind the second's.
  */
 async function requestWithRetry(request) {
-  const first = await requestOnce(request);
+  const startedAt = Date.now();
+  const budgetMs = request.responseTimeoutMs ?? RESPONSE_TIMEOUT_MS;
+  const deadline = startedAt + budgetMs;
+  const first = await requestOnce({ ...request, responseTimeoutMs: budgetMs, budgetMs });
   if (first.ok || first.failure !== "unreachable") return first;
-  await new Promise((resume) => setTimeout(resume, request.retryDelayMs ?? UNREACHABLE_RETRY_DELAY_MS));
-  const second = await requestOnce(request);
-  if (second.ok || second.failure !== "unreachable") return second;
-  return { ...second, detail: `${second.detail}; 2 attempts` };
+
+  const delayMs = request.retryDelayMs ?? UNREACHABLE_RETRY_DELAY_MS;
+  if (deadline - Date.now() - delayMs <= 0) {
+    return { ...first, detail: `${first.detail}; no time left in the ${budgetMs} ms budget to retry` };
+  }
+  await new Promise((resume) => setTimeout(resume, delayMs));
+  const remainingMs = deadline - Date.now();
+  if (remainingMs <= 0) {
+    return { ...first, detail: `${first.detail}; no time left in the ${budgetMs} ms budget to retry` };
+  }
+  const second = await requestOnce({ ...request, responseTimeoutMs: remainingMs, budgetMs });
+  if (second.ok) return second;
+  return {
+    ...second,
+    detail:
+      `attempt 1: ${first.detail}; attempt 2: ${second.detail ?? second.message}; ` +
+      `2 attempts, ${Date.now() - startedAt} ms total`,
+  };
 }
 
 function requestOnce({
@@ -183,6 +209,9 @@ function requestOnce({
   agentSettingsPath = "",
   socketPath = daemonSocketPath(),
   responseTimeoutMs = RESPONSE_TIMEOUT_MS,
+  // The whole request's budget, for messages; `responseTimeoutMs` is what is
+  // left of it for this attempt.
+  budgetMs = responseTimeoutMs,
 }) {
   return new Promise((done) => {
     let body;
@@ -242,7 +271,7 @@ function requestOnce({
       return;
     }
     timer = setTimeout(() => {
-      if (connected) finish(failed("timeout", `failproofaid did not answer within ${responseTimeoutMs} ms`));
+      if (connected) finish(failed("timeout", `failproofaid did not answer within ${budgetMs} ms`));
       else unreachable("no connection within the request budget");
     }, responseTimeoutMs);
 

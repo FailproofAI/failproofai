@@ -4,7 +4,7 @@
 
 ### Fixes
 
-- The OpenClaw plugin no longer blocks tool calls as "failproofaid could not be reached" while the daemon is healthy. Its 250 ms connect timer ran on the gateway's own event loop, so a gateway busy for 250 ms or more (cron agents starting together) let the overdue timer beat the already-completed connect. The connect timer is gone (a missing daemon still fails at once, a hung one at the 30 s budget), a connect that fails outright is retried once after 100 ms, and the gateway log now says why: the error code, the elapsed time and the number of attempts (#1024, #1029)
+- The OpenClaw plugin's 250 ms connect timer no longer blocks tool calls as "failproofaid could not be reached" while the gateway's event loop is busy and the daemon is healthy. The timer ran on the gateway's own event loop and fired ahead of a connect that had already completed; it is gone. A missing daemon still fails at once and a hung one within the 30 s request budget, which both attempts now share; a connect that fails outright is retried once after 100 ms; and the gateway log says why a call was blocked: each attempt's cause, the elapsed time and the attempt count (#1024, #1029)
 
 ### Docs
 
@@ -12,7 +12,7 @@
 
 ### Dependencies
 
-- OSV gate: time-boxed allow-list entry for picomatch GHSA-fc5q-39xc-vjpf (ReDoS, no fixed release; build/test tooling only, not shipped), re-review by 2026-12-18 (#1029)
+- OSV gate: time-boxed allow-list entry for picomatch GHSA-fc5q-39xc-vjpf (ReDoS, no fixed release). It is in build/test tooling and ships inside the Next.js dashboard bundle, where it only matches image URLs against globs from next.config, of which we declare none; re-review by 2026-12-18 (#1029)
 
 ## 1.0.14-beta.0 — 2026-11-16
 

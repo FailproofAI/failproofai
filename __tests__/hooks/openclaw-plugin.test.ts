@@ -300,6 +300,59 @@ describe("openclaw-plugin daemon-client: requestHookVerdict", () => {
     }
   });
 
+  // Both attempts share one budget: when the first used it up, there is no
+  // second attempt with a fresh one (that let a call wait twice as long).
+  it("does not retry past the request budget", async () => {
+    const daemon = await fakeDaemon(socketPath, () => "hang");
+    try {
+      const started = Date.now();
+      const pending = new Promise<Awaited<ReturnType<typeof requestHookVerdict>>>((done) => {
+        setImmediate(() => {
+          const result = requestHookVerdict({
+            event: "before_tool_call",
+            payload: {},
+            socketPath,
+            responseTimeoutMs: 150,
+          });
+          const until = Date.now() + 250; // the gateway, busy past the whole budget
+          while (Date.now() < until) { /* busy */ }
+          done(result);
+        });
+      });
+      const result = await pending;
+      expect(result).toMatchObject({ ok: false, failure: "unreachable" });
+      expect(result.detail).toMatch(/no time left in the 150 ms budget to retry/);
+      // A retry with a fresh 150 ms budget would have reached the hanging
+      // daemon and taken ≈ 250 + 100 + 150 ms.
+      expect(Date.now() - started).toBeLessThan(400);
+      expect(daemon.requests).toHaveLength(0);
+    } finally {
+      await daemon.close();
+    }
+  });
+
+  it("keeps the first attempt's cause when the retry connects and then fails", async () => {
+    // First attempt: no socket yet (ENOENT). Retry: a listener that accepts the
+    // request and closes without a verdict.
+    let server: Server | undefined;
+    const pending = requestHookVerdict({ event: "before_tool_call", payload: {}, socketPath });
+    server = createServer((socket) => socket.once("data", () => socket.destroy()));
+    await new Promise<void>((done) => server!.listen(socketPath, done));
+    try {
+      const result = await pending;
+      expect(result).toMatchObject({
+        ok: false,
+        failure: "evaluation",
+        message: "failproofaid closed the connection before returning a verdict",
+      });
+      expect(result.detail).toMatch(/attempt 1: ENOENT after \d+ ms/);
+      expect(result.detail).toMatch(/attempt 2: failproofaid closed the connection/);
+      expect(result.detail).toMatch(/2 attempts, \d+ ms total/);
+    } finally {
+      await new Promise<void>((done) => server!.close(() => done()));
+    }
+  });
+
   it("says why the daemon could not be reached, and does so promptly", async () => {
     const started = Date.now();
     const result = await requestHookVerdict({ event: "before_tool_call", payload: {}, socketPath });

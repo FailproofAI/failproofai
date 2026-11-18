@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.0.15-beta.0 — 2026-11-18
+
+### Fixes
+
+- A batch refused with a key the machine has since replaced (the seconds after a reconnect) is left for the new key instead of being parked as a refusal, so `config --status` no longer reports "the cloud is refusing this machine's key" right after a successful connect (#PR)
+- A batch the server refuses as too large (413) is split in half and re-sent until each piece fits, instead of being parked for good (#PR)
+
 ## 1.0.14-beta.0 — 2026-11-16
 
 ### Features

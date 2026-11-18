@@ -986,6 +986,7 @@ fn collector_tasks(config: Option<fpai_collect::CollectorConfig>) -> Vec<fpai_co
         u.with_redact(cfg.settings.redact)
             .with_boundary(cfg.boundary.as_ref().map(|b| b.since))
             .with_machine_id(cfg.settings.machine_id.as_deref())
+            .with_key_source(home.clone())
     }) {
         Ok(u) => std::sync::Arc::new(u),
         Err(err) => {

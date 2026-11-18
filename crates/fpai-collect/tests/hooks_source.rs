@@ -687,3 +687,19 @@ fn a_start_time_after_the_end_is_ignored() {
         transform::to_rfc3339_micros(ts, 0).unwrap()
     );
 }
+
+#[test]
+fn a_malformed_start_time_or_tool_call_id_never_drops_the_decision() {
+    for (key, bad) in [
+        ("startedAt", serde_json::json!(1785740912183.5)),
+        ("startedAt", serde_json::json!(i64::MIN)),
+        ("toolCallId", serde_json::json!(42)),
+    ] {
+        let mut v: Value = serde_json::from_str(&deny_row()).unwrap();
+        v[key] = bad.clone();
+        let row: HookRow = serde_json::from_value(v).unwrap_or_else(|e| panic!("{key}={bad}: {e}"));
+        let events = transform::to_events(&row, 0, "local");
+        assert_eq!(events.len(), 2, "{key}={bad}");
+        assert_eq!(events[1]["outcome"], "deny");
+    }
+}

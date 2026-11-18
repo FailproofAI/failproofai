@@ -363,8 +363,11 @@ impl Uploader {
         // preserving the exact retained bytes for server-side deduplication.
         let bytes = filter_boundary(&bytes, self.since_ms, crate::org_boundary::mtime_ms(path));
         let bytes = redact_batch(&bytes, self.redact);
+        // A file holding one event parks itself on a 413, exactly as before;
+        // in any other file only the refused event is set aside.
+        let sole_event = bytes.split_inclusive(|b| *b == b'\n').count() <= 1;
         for chunk in split_lines(&bytes, self.max_upload_bytes) {
-            self.post_splitting(path, chunk).await?;
+            self.post_splitting(path, chunk, sole_event).await?;
         }
 
         match tokio::fs::remove_file(path).await {
@@ -379,19 +382,63 @@ impl Uploader {
     /// the batch for good, though every event in it was within its limit.
     /// Pieces go in their original order; a later failure leaves the whole
     /// batch for a byte-identical resend, which the server dedups.
-    async fn post_splitting(&self, path: &Path, chunk: Vec<u8>) -> Result<(), UploadError> {
+    ///
+    /// A single event the server still refuses is parked on its own (`.c413`)
+    /// and the rest of the batch carries on: parking the whole file there left
+    /// every event after it unsent, though each fit.
+    async fn post_splitting(
+        &self,
+        path: &Path,
+        chunk: Vec<u8>,
+        sole_event: bool,
+    ) -> Result<(), UploadError> {
         let mut pending = vec![chunk];
         while let Some(piece) = pending.pop() {
             let lines = piece.split_inclusive(|b| *b == b'\n').count();
-            match self.post_batch(path, piece.clone(), lines > 1).await {
-                Err(UploadError::TooLarge) => {
+            match self
+                .post_batch(path, piece.clone(), !sole_event || lines > 1)
+                .await
+            {
+                Err(UploadError::TooLarge) if lines > 1 => {
                     let (first, second) = halve_lines(&piece);
                     pending.push(second);
                     pending.push(first);
                 }
+                Err(UploadError::TooLarge) => {
+                    self.park_event(path, &piece).await?;
+                }
                 other => other?,
             }
         }
+        Ok(())
+    }
+
+    /// Set one event the server refused as too large aside in `failed/`, as
+    /// its own definitive `.c413` file, so the batch it came from can finish.
+    async fn park_event(&self, path: &Path, event: &[u8]) -> Result<(), UploadError> {
+        tokio::fs::create_dir_all(&self.failed_dir).await?;
+        let name = path
+            .file_name()
+            .and_then(|n| n.to_str())
+            .unwrap_or("batch.jsonl");
+        let mut parked = ParkedName::parse(name);
+        parked.base = format!("{}-oversize", parked.base);
+        parked.attempt = 1;
+        parked.client_attempts = 1;
+        parked.client_status = Some(413);
+        let dest = unique_destination(&self.failed_dir, &parked.render()).await;
+        // Written under a dotfile and renamed, so no sweep sees half of it.
+        let tmp = self
+            .failed_dir
+            .join(format!(".{}.partial", new_request_id()));
+        tokio::fs::write(&tmp, event).await?;
+        tokio::fs::rename(&tmp, &dest).await?;
+        tracing::warn!(
+            file = %path.display(),
+            dest = %dest.display(),
+            bytes = event.len(),
+            "the server refused one event as too large; parked it alone"
+        );
         Ok(())
     }
 
@@ -407,11 +454,16 @@ impl Uploader {
         let mut attempt: u32 = 0;
         let batch_id = batch_id(path);
 
-        if self.superseded.load(Ordering::SeqCst) {
-            return Err(UploadError::KeySuperseded);
-        }
-
         loop {
+            // Before EVERY attempt, not once: a retry waiting out a 429 must
+            // not wake and send on a key another upload found replaced. Re-read
+            // rather than latched, so a key that changes back resumes.
+            if self.superseded.load(Ordering::SeqCst) {
+                if self.key_replaced() {
+                    return Err(UploadError::KeySuperseded);
+                }
+                self.superseded.store(false, Ordering::SeqCst);
+            }
             // New per attempt: one attempt is one server request.
             let request_id = new_request_id();
             let result = self

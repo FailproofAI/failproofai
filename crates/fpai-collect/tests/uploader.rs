@@ -1303,7 +1303,63 @@ async fn a_413_halves_the_body_until_it_fits_and_keeps_the_order() {
 }
 
 #[tokio::test]
-async fn a_413_on_a_single_event_is_parked_as_before() {
+async fn an_oversized_event_is_parked_alone_and_the_rest_of_the_batch_is_delivered() {
+    use wiremock::Request;
+    // pr-autopilot's case: [before, oversize, after]. Parking the whole file at
+    // the oversized event left `after` unsent, though it fit.
+    let server = MockServer::start().await;
+    Mock::given(method("POST"))
+        .respond_with(|req: &Request| {
+            if String::from_utf8_lossy(&req.body).contains("OVERSIZE") {
+                ResponseTemplate::new(413)
+            } else {
+                let n = req
+                    .body
+                    .split(|b| *b == b'\n')
+                    .filter(|l| !l.is_empty())
+                    .count();
+                ResponseTemplate::new(200)
+                    .set_body_json(serde_json::json!({"accepted": n, "skipped": 0}))
+            }
+        })
+        .mount(&server)
+        .await;
+    let root = tmpdir("oversize-event");
+    let failed = root.join("failed");
+    let batch = root.join("hooks-a-1-0.jsonl");
+    fs::write(
+        &batch,
+        "{\"n\":\"before\"}\n{\"n\":\"OVERSIZE\"}\n{\"n\":\"after\"}\n",
+    )
+    .unwrap();
+
+    uploader(&server, &failed)
+        .upload_file(&batch)
+        .await
+        .unwrap();
+
+    assert!(!batch.exists(), "the batch finished");
+    let delivered: String = server
+        .received_requests()
+        .await
+        .unwrap()
+        .into_iter()
+        .filter(|r| !String::from_utf8_lossy(&r.body).contains("OVERSIZE"))
+        .map(|r| String::from_utf8_lossy(&r.body).to_string())
+        .collect();
+    assert_eq!(delivered, "{\"n\":\"before\"}\n{\"n\":\"after\"}\n");
+    let names = parked(&failed);
+    assert_eq!(names, ["hooks-a-1-0-oversize.a1.r1.c413.jsonl"]);
+    assert_eq!(
+        fs::read_to_string(failed.join(&names[0])).unwrap(),
+        "{\"n\":\"OVERSIZE\"}\n",
+        "only the refused event is set aside"
+    );
+    fs::remove_dir_all(root).ok();
+}
+
+#[tokio::test]
+async fn a_file_holding_one_refused_event_is_parked_as_before() {
     let server = MockServer::start().await;
     Mock::given(method("POST"))
         .respond_with(ResponseTemplate::new(413))
@@ -1311,21 +1367,50 @@ async fn a_413_on_a_single_event_is_parked_as_before() {
         .await;
     let root = tmpdir("single-413");
     let failed = root.join("failed");
-    let batch = write_batch(&root, "hooks-a-1-0.jsonl", 2);
+    let batch = write_batch(&root, "hooks-a-1-0.jsonl", 1);
 
     let result = uploader(&server, &failed).upload_file(&batch).await;
     assert!(
         matches!(result, Err(UploadError::Client { status: 413 })),
         "{result:?}"
     );
-    // Two lines -> two single-line requests; the first single line is parked.
-    assert_eq!(server.received_requests().await.unwrap().len(), 2);
     assert_eq!(parked(&failed), ["hooks-a-1-0.a1.r1.c413.jsonl"]);
-    let kept = fs::read(failed.join("hooks-a-1-0.a1.r1.c413.jsonl")).unwrap();
-    assert_eq!(
-        kept.iter().filter(|b| **b == b'\n').count(),
-        2,
-        "the whole batch is kept"
+    fs::remove_dir_all(root).ok();
+}
+
+#[tokio::test]
+async fn a_key_that_changes_back_resumes_uploading() {
+    // A -> B (a 401 marks this uploader's key replaced) -> A again before the
+    // manager rebuilt anything: the uploader must not stay silent forever.
+    let server = MockServer::start().await;
+    Mock::given(method("POST"))
+        .respond_with(ResponseTemplate::new(401))
+        .up_to_n_times(1)
+        .mount(&server)
+        .await;
+    Mock::given(method("POST"))
+        .respond_with(
+            ResponseTemplate::new(200)
+                .set_body_json(serde_json::json!({"accepted": 1, "skipped": 0})),
+        )
+        .mount(&server)
+        .await;
+    let root = tmpdir("key-back");
+    let (home, spool, failed) = (root.join("home"), root.join("spool"), root.join("failed"));
+    fs::create_dir_all(&spool).unwrap();
+    write_key(&home, "other-key");
+    let up = uploader(&server, &failed).with_key_source(home.clone());
+    let first = write_batch(&spool, "hooks-a-1-0.jsonl", 1);
+    assert!(matches!(
+        up.upload_file(&first).await,
+        Err(UploadError::KeySuperseded)
+    ));
+
+    write_key(&home, "test-key");
+    up.upload_file(&first).await.unwrap();
+    assert!(
+        !first.exists(),
+        "delivered once the key is this uploader's again"
     );
     fs::remove_dir_all(root).ok();
 }

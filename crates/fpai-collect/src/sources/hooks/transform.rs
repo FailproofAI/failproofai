@@ -39,10 +39,10 @@ pub struct HookRow {
     /// Epoch milliseconds the hook arrived. Written since 1.0.15; older rows
     /// have none, and keep the exact events they always produced (the server
     /// dedups on content, so a re-read must not change them).
-    #[serde(rename = "startedAt", default)]
+    #[serde(rename = "startedAt", default, deserialize_with = "lenient")]
     pub started_at: Option<i64>,
     /// The agent's own id for the tool call this hook governed.
-    #[serde(rename = "toolCallId", default)]
+    #[serde(rename = "toolCallId", default, deserialize_with = "lenient")]
     pub tool_call_id: Option<String>,
     #[serde(rename = "eventType")]
     pub event_type: Option<String>,
@@ -875,6 +875,7 @@ pub fn to_events(row: &HookRow, offset: u64, environment: &str) -> Vec<Value> {
         .filter(|at| *at <= row.timestamp)
         .unwrap_or(row.timestamp);
     let Some(mut start) = base_at(row, started, session_id, environment, "hook_triggered", 0)
+        .or_else(|| base(row, session_id, environment, "hook_triggered", 0))
     else {
         return Vec::new();
     };

@@ -236,7 +236,7 @@ A few examples of what a policy can catch, and what it does about it:
 | `warn-destructive-sql` | `DROP`, `TRUNCATE`, an unbounded `DELETE` | **Warns** the agent and lets it decide |
 | `warn-repeated-tool-calls` | The agent looping on the same failing call | **Warns** the agent to change approach |
 | `no-refunds-over-limit` *(yours)* | A support agent approving a refund it isn't allowed to | Whatever you decide |
-| `no-production-writes` *(yours)* | File writes and edits to production paths (the code below) | **Blocks** |
+| `no-production-writes` *(yours)* | File writes and edits to production paths (the code below; shell commands aren't checked) | **Blocks** |
 
 Prefer to write one yourself? Save it in `.failproofai/policies/` as, say,
 `no-production-writes-policies.mjs` and it loads automatically
@@ -250,6 +250,7 @@ customPolicies.add({
   name: "no-production-writes",
   match: { events: ["PreToolUse"] },
   fn: async (ctx) => {
+    if (!["Write", "Edit"].includes(ctx.toolName ?? "")) return allow();
     if (ctx.toolInput?.file_path?.includes("production"))
       return deny("Writes to production paths are blocked.");
     return allow();

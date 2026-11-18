@@ -15,6 +15,7 @@
  * Self-contained on purpose — node built-ins only, nothing imported from
  * outside this directory — because the capture copies nothing else.
  */
+import { readFile } from "node:fs/promises";
 import { createConnection } from "node:net";
 import { performance } from "node:perf_hooks";
 import { homedir } from "node:os";
@@ -59,6 +60,34 @@ const PROTOCOL_MISMATCH_MESSAGE =
 const UNREACHABLE_MESSAGE =
   "failproofaid could not be reached. This machine is configured to run hooks through it " +
   "— check the daemon (see `failproofai config`) rather than retrying blindly.";
+
+// active.json schema that can target policies at agents (crates/failproofaid
+// cloud_policies.rs SCOPED_DESIRED_STATE_SCHEMA_VERSION).
+const SCOPED_SCHEMA_VERSION = 3;
+
+/**
+ * Whether this machine's Cloud deployment targets policies at agents. An older
+ * daemon evaluates without naming the agent, and a targeted policy does not
+ * apply to an unknown one, so such a machine is never asked in the older
+ * version. A deployment that exists but cannot be read counts as targeted.
+ */
+export async function agentTargetedDeployment(env = process.env, home = homedir()) {
+  const dir =
+    env.FAILPROOFAI_CLOUD_POLICY_DIR ||
+    resolve(env.FAILPROOFAI_HOME || resolve(home, ".failproofai"), "policies", "cloud-policies");
+  let text;
+  try {
+    text = await readFile(resolve(dir, "active.json"), "utf8");
+  } catch (err) {
+    return err?.code !== "ENOENT";
+  }
+  try {
+    const version = JSON.parse(text)?.schemaVersion;
+    return !(Number.isInteger(version) && version < SCOPED_SCHEMA_VERSION);
+  } catch {
+    return true;
+  }
+}
 
 /** Mirrors `daemonSocket()` in src/hooks/fp-home.ts. */
 export function daemonSocketPath(env = process.env, home = homedir()) {
@@ -172,7 +201,12 @@ export async function requestHookVerdict(request) {
   // An older daemon still inside the supported range: ask again in its version
   // rather than block every call until it is replaced.
   const older = first.ok ? undefined : first.daemonVersion;
-  if (!Number.isInteger(older) || older < MIN_PROTOCOL_VERSION || older >= PROTOCOL_VERSION) {
+  if (
+    !Number.isInteger(older) ||
+    older < MIN_PROTOCOL_VERSION ||
+    older >= PROTOCOL_VERSION ||
+    (await agentTargetedDeployment())
+  ) {
     if (!first.ok) delete first.daemonVersion;
     return first;
   }

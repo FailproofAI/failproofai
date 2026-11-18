@@ -15,6 +15,7 @@ import type { IntegrationType } from "./types";
 import { existsSync } from "node:fs";
 import { daemonSocket as daemonSocketPath } from "./fp-home";
 import { readConfig } from "./fp-config";
+import { readCloudAgentScopeRequired } from "./cloud-managed-policies";
 
 const PROTOCOL_VERSION = 2;
 /** Oldest daemon version this client falls back to (crates/fpai-ipc MIN_PROTOCOL_VERSION). */
@@ -220,7 +221,11 @@ async function attemptDaemonRequest(
     older === undefined ||
     !Number.isInteger(older) ||
     older < MIN_PROTOCOL_VERSION ||
-    older >= PROTOCOL_VERSION
+    older >= PROTOCOL_VERSION ||
+    // The older daemon would evaluate without this agent, and a deployment
+    // with agent-targeted policies (schema 3) does not apply them to an
+    // unknown one: its answer could allow what they deny.
+    readCloudAgentScopeRequired()
   ) {
     return withoutDaemonVersion(first);
   }

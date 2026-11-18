@@ -16,6 +16,9 @@ PROTOCOL_VERSION = 2
 # MIN_PROTOCOL_VERSION), and the first that carries agentSettingsPath.
 MIN_PROTOCOL_VERSION = 1
 AGENT_SETTINGS_PATH_SINCE = 2
+# active.json schema that can target policies at agents (crates/failproofaid
+# cloud_policies.rs SCOPED_DESIRED_STATE_SCHEMA_VERSION).
+SCOPED_SCHEMA_VERSION = 3
 MAX_FRAME_BYTES = 16 * 1024 * 1024
 MAX_REQUEST_BYTES = 1024 * 1024
 
@@ -41,6 +44,31 @@ def daemon_socket_path() -> Path:
     root = os.environ.get("FAILPROOFAI_HOME", "").strip()
     home = Path(root).expanduser() if root else Path.home() / ".failproofai"
     return home / "run" / "failproofaid.sock"
+
+
+def _agent_targeted_deployment() -> bool:
+    """Whether this machine's Cloud deployment targets policies at agents.
+
+    An older daemon evaluates without naming the agent, and a targeted policy
+    does not apply to an unknown one, so its answer could allow what that
+    policy denies: such a machine is never asked in the older version. A
+    deployment that exists but cannot be read counts as targeted.
+    """
+    override = os.environ.get("FAILPROOFAI_CLOUD_POLICY_DIR", "").strip()
+    if override:
+        directory = Path(override).expanduser()
+    else:
+        root = os.environ.get("FAILPROOFAI_HOME", "").strip()
+        home = Path(root).expanduser() if root else Path.home() / ".failproofai"
+        directory = home / "policies" / "cloud-policies"
+    active = directory / "active.json"
+    try:
+        if not active.exists():
+            return False
+        version = json.loads(active.read_text(encoding="utf-8")).get("schemaVersion")
+        return not (type(version) is int and version < SCOPED_SCHEMA_VERSION)
+    except (OSError, ValueError, AttributeError):
+        return True
 
 
 def _remaining_timeout(deadline: float) -> float:
@@ -141,6 +169,7 @@ def evaluate_policy(
     if (
         type(answered) is int
         and MIN_PROTOCOL_VERSION <= answered < PROTOCOL_VERSION
+        and not _agent_targeted_deployment()
     ):
         version = answered
         response = _exchange(build(version), connect_timeout_ms, deadline)

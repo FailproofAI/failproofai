@@ -57,11 +57,15 @@ describe("hooks/daemon-client", () => {
     socketPath = join(tmpDir, "test.sock");
     server = null;
     process.env.FAILPROOFAI_DAEMON_SOCKET = socketPath;
+    // The fallback to an older daemon reads the Cloud deployment; never the
+    // developer's own.
+    process.env.FAILPROOFAI_CLOUD_POLICY_DIR = join(tmpDir, "cloud-policies");
     vi.resetModules();
   });
 
   afterEach(async () => {
     delete process.env.FAILPROOFAI_DAEMON_SOCKET;
+    delete process.env.FAILPROOFAI_CLOUD_POLICY_DIR;
     if (server) {
       await new Promise<void>((r) => server!.close(() => r()));
     }
@@ -269,6 +273,26 @@ describe("hooks/daemon-client", () => {
     expect(requests[1].protocolVersion).toBe(1);
     expect(requests[1]).not.toHaveProperty("agentSettingsPath");
     expect(requests).toHaveLength(2);
+  });
+
+  it("does not fall back to an older daemon where the deployment targets agents", async () => {
+    // The older daemon evaluates with the agent unknown, and an agent-targeted
+    // policy does not apply to an unknown agent: its allow could be wrong.
+    mkdirSync(process.env.FAILPROOFAI_CLOUD_POLICY_DIR!, { recursive: true });
+    writeFileSync(
+      join(process.env.FAILPROOFAI_CLOUD_POLICY_DIR!, "active.json"),
+      JSON.stringify({ schemaVersion: 3, deployment: 4, policies: [] }),
+    );
+    let connections = 0;
+    await startServer(async (socket) => {
+      connections++;
+      await readFrame(socket);
+      socket.end(encodeFrame({ type: "hookResult", protocolVersion: 1, exitCode: 0, stdout: "", stderr: "" }));
+    });
+    const { attemptDaemonHook } = await import("../../src/hooks/daemon-client");
+    const attempt = await attemptDaemonHook({ hookEvent: "PreToolUse", cli: "claude", stdin: "{}" });
+    expect(attempt).toEqual({ ok: false, failure: "protocol-mismatch" });
+    expect(connections).toBe(1);
   });
 
   it("does not retry below the oldest supported version", async () => {

@@ -1,7 +1,7 @@
 // @vitest-environment node
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createServer, type Server, type Socket } from "node:net";
-import { cpSync, mkdtempSync, readdirSync, readFileSync, rmSync } from "node:fs";
+import { cpSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
@@ -70,6 +70,9 @@ let socketPath: string;
 beforeEach(() => {
   dir = mkdtempSync(join(tmpdir(), "fpoc-"));
   socketPath = join(dir, "d.sock");
+  // The fallback to an older daemon reads the Cloud deployment; never the
+  // developer's own.
+  vi.stubEnv("FAILPROOFAI_CLOUD_POLICY_DIR", join(dir, "no-cloud"));
 });
 
 afterEach(() => {
@@ -263,6 +266,21 @@ describe("openclaw-plugin daemon-client: requestHookVerdict", () => {
       expect(daemon.requests.map((r) => r.protocolVersion)).toEqual([2, 1]);
       expect(daemon.requests[0]).toHaveProperty("agentSettingsPath");
       expect(daemon.requests[1]).not.toHaveProperty("agentSettingsPath");
+    } finally {
+      await daemon.close();
+    }
+  });
+
+  it("does not fall back to an older daemon where the deployment targets agents", async () => {
+    const policies = join(dir, "cloud-policies");
+    mkdirSync(policies, { recursive: true });
+    writeFileSync(join(policies, "active.json"), JSON.stringify({ schemaVersion: 3, deployment: 4, policies: [] }));
+    vi.stubEnv("FAILPROOFAI_CLOUD_POLICY_DIR", policies);
+    const daemon = await fakeDaemon(socketPath, () => ({ type: "error", protocolVersion: 1, message: "mismatch" }));
+    try {
+      const result = await requestHookVerdict({ event: "before_tool_call", payload: {}, socketPath });
+      expect(result).toMatchObject({ ok: false, failure: "protocol-mismatch" });
+      expect(daemon.requests).toHaveLength(1);
     } finally {
       await daemon.close();
     }

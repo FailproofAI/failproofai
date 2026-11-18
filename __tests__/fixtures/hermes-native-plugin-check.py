@@ -1706,12 +1706,19 @@ class ProtocolCompatibilityTests(unittest.TestCase):
     """Files on disk can be newer than the daemon still running. An older daemon
     inside the supported range is asked again in its own version, not refused."""
 
-    def _evaluate(self, responses: list[dict[str, object]]) -> tuple[object, list]:
+    def _evaluate(self, responses: list[dict[str, object]], schema: int | None = None) -> tuple[object, list]:
         with tempfile.TemporaryDirectory() as tmp:
             socket_path = Path(tmp) / "d.sock"
+            policies = Path(tmp) / "cloud-policies"
+            policies.mkdir()
+            if schema is not None:
+                (policies / "active.json").write_text(
+                    json.dumps({"schemaVersion": schema, "deployment": 4, "policies": []})
+                )
             received: list = []
             thread = serve_verdicts(socket_path, responses, received)
-            with patch.dict("os.environ", {"FAILPROOFAI_DAEMON_SOCKET": str(socket_path)}):
+            env = {"FAILPROOFAI_DAEMON_SOCKET": str(socket_path), "FAILPROOFAI_CLOUD_POLICY_DIR": str(policies)}
+            with patch.dict("os.environ", env):
                 try:
                     result: object = client.evaluate_policy(
                         event="pre_tool_call",
@@ -1737,6 +1744,15 @@ class ProtocolCompatibilityTests(unittest.TestCase):
         self.assertIn("agentSettingsPath", received[0])
         # The answer accepted is the one to a request that never claimed a profile.
         self.assertNotIn("agentSettingsPath", received[1])
+
+    def test_no_fallback_where_the_deployment_targets_agents(self) -> None:
+        # The older daemon evaluates with the agent unknown, and an
+        # agent-targeted policy does not apply to an unknown agent.
+        result, received = self._evaluate(
+            [{"type": "error", "protocolVersion": 1, "message": "protocol version mismatch"}], schema=3
+        )
+        self.assertIsInstance(result, client.EvaluationError)
+        self.assertEqual(len(received), 1)
 
     def test_no_retry_below_the_oldest_supported_version(self) -> None:
         result, received = self._evaluate([

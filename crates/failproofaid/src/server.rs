@@ -394,7 +394,50 @@ fn dispatch(request: ClientMessage, worker: &Worker) -> ServerMessage {
             ),
         };
     }
+    if version < fpai_ipc::envelope::AGENT_SETTINGS_PATH_SINCE
+        && !matches!(request, ClientMessage::Ping { .. })
+        && let Ok(dir) = crate::paths::cloud_managed_policy_dir()
+        && let Some(message) = legacy_scope_refusal(&dir)
+    {
+        return ServerMessage::Error {
+            protocol_version: version,
+            message,
+        };
+    }
     evaluate(request.without_fields_newer_than_its_version(), worker).with_protocol_version(version)
+}
+
+/// Why a request too old to name its agent cannot be answered here, if it
+/// cannot.
+///
+/// A v1 request carries no `agentSettingsPath`, so it is evaluated with its
+/// agent unknown, and a Cloud policy targeted at an agent does not apply to an
+/// unknown one. Where the deployment has no targeted policy that changes
+/// nothing, and the stale gateway keeps working. Where it does (schema 3), an
+/// answer could allow what the targeted policy denies, so the request is
+/// refused and the old client's own fail-closed path blocks it, as every v1
+/// request was before compatibility. A deployment that cannot be read is
+/// refused for the same reason.
+fn legacy_scope_refusal(cloud_policy_dir: &Path) -> Option<String> {
+    let store = crate::cloud_policies::PolicyStore::new(cloud_policy_dir.to_path_buf());
+    match store.read_active() {
+        Ok(None) => None,
+        Ok(Some(active))
+            if active.schema_version
+                < crate::cloud_policies::SCOPED_DESIRED_STATE_SCHEMA_VERSION =>
+        {
+            None
+        }
+        Ok(Some(_)) => Some(
+            "this client predates agent-targeted Cloud policies, which this machine's \
+             deployment uses: restart the agent gateway to load the current plugin"
+                .to_string(),
+        ),
+        Err(err) => Some(format!(
+            "this client predates agent-targeted Cloud policies and the deployment could \
+             not be read to rule them out ({err}): restart the agent gateway"
+        )),
+    }
 }
 
 fn evaluate(request: ClientMessage, worker: &Worker) -> ServerMessage {
@@ -712,6 +755,8 @@ mod tests {
         )
         .unwrap();
 
+        let no_deployment = temp_socket_path("no-deployment-real");
+        let _env = CloudPolicyDir::set(&no_deployment);
         let socket_path = temp_socket_path("hook-real-worker");
         let worker_cmd = WorkerCommand::shell(format!("bun {}", worker_script.display()));
         let _guard = start_test_server_with_worker(socket_path.clone(), worker_cmd);
@@ -872,11 +917,86 @@ mod tests {
         }
     }
 
+    /// Points the daemon's Cloud policy directory at `dir` for one test. v1
+    /// requests read it (see `legacy_scope_refusal`), and the developer's real
+    /// one must not decide a test.
+    struct CloudPolicyDir {
+        _lock: std::sync::MutexGuard<'static, ()>,
+        previous: Option<std::ffi::OsString>,
+    }
+
+    impl CloudPolicyDir {
+        fn set(dir: &Path) -> Self {
+            let lock = crate::test_env::lock_env();
+            let previous = std::env::var_os(crate::paths::CLOUD_POLICY_DIR_ENV);
+            // SAFETY: serialised by the env lock held for this value's life.
+            unsafe { std::env::set_var(crate::paths::CLOUD_POLICY_DIR_ENV, dir) };
+            CloudPolicyDir {
+                _lock: lock,
+                previous,
+            }
+        }
+    }
+
+    impl Drop for CloudPolicyDir {
+        fn drop(&mut self) {
+            // SAFETY: as above.
+            unsafe {
+                match &self.previous {
+                    Some(v) => std::env::set_var(crate::paths::CLOUD_POLICY_DIR_ENV, v),
+                    None => std::env::remove_var(crate::paths::CLOUD_POLICY_DIR_ENV),
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn an_old_client_is_refused_when_the_deployment_targets_agents() {
+        let dir = temp_socket_path("scoped-deployment");
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(
+            dir.join("active.json"),
+            format!(
+                r#"{{"schemaVersion":{},"deployment":4,"policies":[]}}"#,
+                crate::cloud_policies::SCOPED_DESIRED_STATE_SCHEMA_VERSION
+            ),
+        )
+        .unwrap();
+        let _env = CloudPolicyDir::set(&dir);
+        let worker = Worker::new(temp_socket_path("scoped-worker"), broken_worker_cmd());
+        let request = |protocol_version| ClientMessage::PolicyEvaluation {
+            protocol_version,
+            integration: "hermes".into(),
+            event: "pre_tool_call".into(),
+            payload: serde_json::json!({}),
+            cwd: None,
+            agent_settings_path: None,
+        };
+        match dispatch(request(1), &worker) {
+            ServerMessage::Error {
+                protocol_version,
+                message,
+            } => {
+                assert_eq!(protocol_version, 1, "stamped so the old client reads it");
+                assert!(message.contains("agent-targeted"), "{message}");
+            }
+            other => panic!("a v1 request was evaluated: {other:?}"),
+        }
+        // A current client names its agent: evaluated (here, by a broken worker).
+        match dispatch(request(PROTOCOL_VERSION), &worker) {
+            ServerMessage::Error { message, .. } => assert!(!message.contains("agent-targeted")),
+            other => panic!("unexpected {other:?}"),
+        }
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
     #[test]
     fn previous_protocol_is_answered_in_its_own_version() {
         // A gateway that loaded the previous plugin before an upgrade keeps
         // speaking v1 until it restarts. It must get an answer it accepts,
         // not a mismatch that its fail-closed path turns into a deny.
+        let no_deployment = temp_socket_path("no-deployment");
+        let _env = CloudPolicyDir::set(&no_deployment);
         let socket_path = temp_socket_path("old-protocol");
         let _guard = start_test_server(socket_path.clone());
 
@@ -948,6 +1068,30 @@ mod tests {
             scoped(PROTOCOL_VERSION).without_fields_newer_than_its_version(),
             scoped(PROTOCOL_VERSION)
         );
+    }
+
+    #[test]
+    fn an_old_client_is_refused_only_where_agent_targeted_policies_could_apply() {
+        let dir = temp_socket_path("legacy-scope");
+        std::fs::create_dir_all(&dir).unwrap();
+        let write = |schema: u32| {
+            std::fs::write(
+                dir.join("active.json"),
+                format!(r#"{{"schemaVersion":{schema},"deployment":4,"policies":[]}}"#),
+            )
+            .unwrap()
+        };
+        // No deployment, or one without targets: the stale gateway keeps working.
+        assert_eq!(legacy_scope_refusal(&dir), None);
+        write(2);
+        assert_eq!(legacy_scope_refusal(&dir), None);
+        // Targeted: an unknown agent would skip a policy aimed at it.
+        write(crate::cloud_policies::SCOPED_DESIRED_STATE_SCHEMA_VERSION);
+        assert!(legacy_scope_refusal(&dir).is_some());
+        // Unreadable: cannot rule targets out.
+        std::fs::write(dir.join("active.json"), "{").unwrap();
+        assert!(legacy_scope_refusal(&dir).is_some());
+        std::fs::remove_dir_all(&dir).ok();
     }
 
     #[test]

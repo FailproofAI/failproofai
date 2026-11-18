@@ -17,6 +17,10 @@ import { daemonSocket as daemonSocketPath } from "./fp-home";
 import { readConfig } from "./fp-config";
 
 const PROTOCOL_VERSION = 2;
+/** Oldest daemon version this client falls back to (crates/fpai-ipc MIN_PROTOCOL_VERSION). */
+const MIN_PROTOCOL_VERSION = 1;
+/** First version carrying `agentSettingsPath`; an older daemon is sent none. */
+const AGENT_SETTINGS_PATH_SINCE = 2;
 
 /**
  * Reaching the daemon and getting an answer out of it are two different
@@ -114,7 +118,7 @@ interface DaemonRequestOptions {
 
 type DaemonWireAttempt =
   | { ok: true; message: Record<string, unknown> }
-  | { ok: false; failure: DaemonFailure };
+  | { ok: false; failure: DaemonFailure; daemonVersion?: number };
 
 /**
  * Whether a daemon is listening, regardless of how it was started.
@@ -205,9 +209,34 @@ function encodeFrame(value: unknown): Buffer {
  * integrations share the transport, but require different response variants.
  */
 async function attemptDaemonRequest(
-  request: Record<string, unknown>,
+  build: (protocolVersion: number) => Record<string, unknown>,
   opts?: DaemonRequestOptions,
 ): Promise<DaemonWireAttempt> {
+  const first = await attemptDaemonRequestAt(PROTOCOL_VERSION, build, opts);
+  // An older daemon still inside the supported range: ask again in its version
+  // rather than deny every call until it is replaced.
+  const older = !first.ok ? first.daemonVersion : undefined;
+  if (
+    older === undefined ||
+    !Number.isInteger(older) ||
+    older < MIN_PROTOCOL_VERSION ||
+    older >= PROTOCOL_VERSION
+  ) {
+    return withoutDaemonVersion(first);
+  }
+  return withoutDaemonVersion(await attemptDaemonRequestAt(older, build, opts));
+}
+
+function withoutDaemonVersion(attempt: DaemonWireAttempt): DaemonWireAttempt {
+  return attempt.ok ? attempt : { ok: false, failure: attempt.failure };
+}
+
+async function attemptDaemonRequestAt(
+  protocolVersion: number,
+  build: (protocolVersion: number) => Record<string, unknown>,
+  opts?: DaemonRequestOptions,
+): Promise<DaemonWireAttempt> {
+  const request = build(protocolVersion);
   // Windows never has a daemon in this phase (see the plan's platform
   // scope) — skip the attempt outright rather than depending on however
   // Node happens to behave when handed a POSIX socket path on Windows.
@@ -278,12 +307,11 @@ async function attemptDaemonRequest(
       }
       const message = parsed as Record<string, unknown>;
 
-      if (message.protocolVersion !== PROTOCOL_VERSION) {
-        // Catches BOTH directions. A newer CLI sends v2 and the daemon replies
-        // with an error stamped v1; an older CLI sends v1 and a newer daemon
-        // replies stamped v2. Either way the versions disagree here, and either
-        // way a daemon answered — so this is skew, not absence.
-        fail("protocol-mismatch");
+      if (message.protocolVersion !== protocolVersion) {
+        // A daemon answered in another version — skew, not absence. When it is
+        // older, the caller retries once in that version.
+        const daemonVersion = typeof message.protocolVersion === "number" ? message.protocolVersion : undefined;
+        finish({ ok: false, failure: "protocol-mismatch", daemonVersion });
         return;
       }
       finish({ ok: true, message });
@@ -294,21 +322,25 @@ async function attemptDaemonRequest(
   });
 }
 
+function settingsPathFor(protocolVersion: number, agentSettingsPath: string | undefined) {
+  return protocolVersion >= AGENT_SETTINGS_PATH_SINCE ? { agentSettingsPath } : {};
+}
+
 /** Attempts a shell-hook daemon evaluation while preserving the failure category. */
 export async function attemptDaemonHook(
   req: DaemonHookRequest,
   opts?: DaemonRequestOptions,
 ): Promise<DaemonAttempt> {
   const attempt = await attemptDaemonRequest(
-    {
+    (protocolVersion) => ({
       type: "hook",
-      protocolVersion: PROTOCOL_VERSION,
+      protocolVersion,
       hookEvent: req.hookEvent,
       cli: req.cli,
       stdin: req.stdin,
       cwd: req.cwd,
-      agentSettingsPath: req.agentSettingsPath,
-    },
+      ...settingsPathFor(protocolVersion, req.agentSettingsPath),
+    }),
     opts,
   );
   if (!attempt.ok) return attempt;
@@ -351,15 +383,15 @@ export async function attemptDaemonPolicyEvaluation(
   opts?: DaemonRequestOptions,
 ): Promise<DaemonPolicyEvaluationAttempt> {
   const attempt = await attemptDaemonRequest(
-    {
+    (protocolVersion) => ({
       type: "policyEvaluation",
-      protocolVersion: PROTOCOL_VERSION,
+      protocolVersion,
       integration: req.integration,
       event: req.event,
       payload: req.payload,
       cwd: req.cwd,
-      agentSettingsPath: req.agentSettingsPath,
-    },
+      ...settingsPathFor(protocolVersion, req.agentSettingsPath),
+    }),
     opts,
   );
   if (!attempt.ok) return attempt;

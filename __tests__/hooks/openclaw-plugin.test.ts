@@ -222,7 +222,7 @@ describe("openclaw-plugin daemon-client: requestHookVerdict", () => {
 
   it.each([
     ["an error frame", { type: "error", protocolVersion: 2, message: "worker is down" }, "evaluation"],
-    ["another protocol version", { type: "hookResult", protocolVersion: 1, exitCode: 0, stdout: "" }, "protocol-mismatch"],
+    ["a newer protocol version", { type: "hookResult", protocolVersion: 999, exitCode: 0, stdout: "", stderr: "" }, "protocol-mismatch"],
     ["an unknown message type", { type: "pong", protocolVersion: 2 }, "invalid"],
     ["a non-zero exit", hookResult("", 1), "evaluation"],
     ["stdout that is not JSON", hookResult("not json"), "invalid"],
@@ -241,6 +241,40 @@ describe("openclaw-plugin daemon-client: requestHookVerdict", () => {
       const result = await requestHookVerdict({ event: "before_tool_call", payload: {}, socketPath });
       expect(result).toMatchObject({ ok: false, failure });
       expect((result as { message: string }).message).toBeTruthy();
+    } finally {
+      await daemon.close();
+    }
+  });
+
+  it("re-asks an older daemon in its own version, without agentSettingsPath", async () => {
+    const daemon = await fakeDaemon(socketPath, (request) =>
+      request.protocolVersion === 1
+        ? { ...hookResult(JSON.stringify({ permission: "deny", reason: "no" })), protocolVersion: 1 }
+        : { type: "error", protocolVersion: 1, message: "protocol version mismatch" },
+    );
+    try {
+      const result = await requestHookVerdict({
+        event: "before_tool_call",
+        payload: {},
+        socketPath,
+        agentSettingsPath: "/home/a/.openclaw/openclaw.json",
+      });
+      expect(result).toEqual({ ok: true, verdict: { permission: "deny", reason: "no" } });
+      expect(daemon.requests.map((r) => r.protocolVersion)).toEqual([2, 1]);
+      expect(daemon.requests[0]).toHaveProperty("agentSettingsPath");
+      expect(daemon.requests[1]).not.toHaveProperty("agentSettingsPath");
+    } finally {
+      await daemon.close();
+    }
+  });
+
+  it("does not retry below the oldest supported version", async () => {
+    const daemon = await fakeDaemon(socketPath, () => ({ type: "error", protocolVersion: 0, message: "x" }));
+    try {
+      const result = await requestHookVerdict({ event: "before_tool_call", payload: {}, socketPath });
+      expect(result).toMatchObject({ ok: false, failure: "protocol-mismatch" });
+      expect(result).not.toHaveProperty("daemonVersion");
+      expect(daemon.requests).toHaveLength(1);
     } finally {
       await daemon.close();
     }

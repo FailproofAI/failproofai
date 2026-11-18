@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.0.16-beta.0 — 2026-11-18
+
+### Fixes
+
+- The daemon answers the previous plugin protocol, and clients re-ask an older daemon in its version, so a Hermes or OpenClaw gateway still running the plugin it loaded before an upgrade keeps getting real verdicts instead of denying every call (#PR)
+
 ## 1.0.15 — 2026-11-18
 
 The stable release of the OpenClaw plugin fix for tool calls blocked as "failproofaid could not be reached" while the daemon was healthy, plus the refreshed README and docs and the dependency updates that landed on `main` since 1.0.14.

@@ -1631,7 +1631,10 @@ class ClientTests(unittest.TestCase):
             thread.start()
             self.assertTrue(ready.wait(timeout=2))
             with patch.dict("os.environ", {"FAILPROOFAI_DAEMON_SOCKET": str(socket_path)}):
-                with self.assertRaisesRegex(client.EvaluationError, "version mismatch"):
+                # The v1 allow answers a v2 request it may have read without
+                # agentSettingsPath, so it is never taken as the verdict: the
+                # client re-asks in v1, which this one-shot server never answers.
+                with self.assertRaises(client.EvaluationError):
                     client.evaluate_policy(event="pre_tool_call", payload={}, cwd="/tmp")
             thread.join(timeout=2)
 
@@ -1697,6 +1700,51 @@ class ClientTests(unittest.TestCase):
             self.assertLess(time.monotonic() - started, 0.14)
             thread.join(timeout=2)
 
+
+
+class ProtocolCompatibilityTests(unittest.TestCase):
+    """Files on disk can be newer than the daemon still running. An older daemon
+    inside the supported range is asked again in its own version, not refused."""
+
+    def _evaluate(self, responses: list[dict[str, object]]) -> tuple[object, list]:
+        with tempfile.TemporaryDirectory() as tmp:
+            socket_path = Path(tmp) / "d.sock"
+            received: list = []
+            thread = serve_verdicts(socket_path, responses, received)
+            with patch.dict("os.environ", {"FAILPROOFAI_DAEMON_SOCKET": str(socket_path)}):
+                try:
+                    result: object = client.evaluate_policy(
+                        event="pre_tool_call",
+                        payload={},
+                        cwd="/tmp",
+                        agent_settings_path="/home/a/.hermes/config.yaml",
+                        evaluation_timeout_ms=2_000,
+                    )
+                except client.EvaluationError as exc:
+                    result = exc
+            thread.join(timeout=2)
+            return result, received
+
+    def test_an_older_daemon_is_asked_again_in_its_version(self) -> None:
+        result, received = self._evaluate([
+            {"type": "error", "protocolVersion": 1, "message": "protocol version mismatch"},
+            {"protocolVersion": 1, "decision": "deny", "policyNames": ["p"], "reason": "no",
+             "matchedPolicies": ["p"], "durationMs": 1, "toolName": "Bash"},
+        ])
+        self.assertIsInstance(result, client.PolicyVerdict)
+        self.assertEqual(result.decision, "deny")
+        self.assertEqual([r["protocolVersion"] for r in received], [2, 1])
+        self.assertIn("agentSettingsPath", received[0])
+        # The answer accepted is the one to a request that never claimed a profile.
+        self.assertNotIn("agentSettingsPath", received[1])
+
+    def test_no_retry_below_the_oldest_supported_version(self) -> None:
+        result, received = self._evaluate([
+            {"type": "error", "protocolVersion": 0, "message": "protocol version mismatch"},
+        ])
+        self.assertIsInstance(result, client.EvaluationError)
+        self.assertIn("protocol version mismatch", str(result))
+        self.assertEqual(len(received), 1)
 
 if __name__ == "__main__":
     unittest.main()

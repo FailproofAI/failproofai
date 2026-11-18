@@ -12,6 +12,10 @@ from pathlib import Path
 from typing import Any, Mapping, Sequence
 
 PROTOCOL_VERSION = 2
+# Oldest daemon version this plugin falls back to (crates/fpai-ipc
+# MIN_PROTOCOL_VERSION), and the first that carries agentSettingsPath.
+MIN_PROTOCOL_VERSION = 1
+AGENT_SETTINGS_PATH_SINCE = 2
 MAX_FRAME_BYTES = 16 * 1024 * 1024
 MAX_REQUEST_BYTES = 1024 * 1024
 
@@ -70,41 +74,8 @@ def _string_list(value: object, field: str) -> tuple[str, ...]:
     return tuple(value)
 
 
-def evaluate_policy(
-    *,
-    event: str,
-    payload: Mapping[str, Any],
-    cwd: str | None,
-    agent_settings_path: str | None = None,
-    connect_timeout_ms: int = 250,
-    evaluation_timeout_ms: int = 12_000,
-) -> PolicyVerdict:
-    request = {
-        "type": "policyEvaluation",
-        "protocolVersion": PROTOCOL_VERSION,
-        "integration": "hermes",
-        "event": event,
-        "payload": dict(payload),
-        "cwd": cwd,
-        # An unknown profile is explicit. Omitting this field would let a new
-        # daemon's warm worker attribute the call to its own Hermes home.
-        "agentSettingsPath": agent_settings_path or "",
-    }
-    try:
-        body = json.dumps(
-            request,
-            ensure_ascii=False,
-            separators=(",", ":"),
-            default=lambda value: repr(value),
-        ).encode("utf-8")
-    except (TypeError, ValueError) as exc:
-        raise EvaluationError(f"could not encode policy request: {exc}") from exc
-    if len(body) > MAX_REQUEST_BYTES:
-        raise EvaluationError("policy request exceeds the 1 MiB limit")
-
-    # One deadline covers connect, send and read: evaluation_timeout_ms is the
-    # longest a tool call can wait here. Connect is bounded by both budgets.
-    deadline = time.monotonic() + max(evaluation_timeout_ms, 1) / 1000
+def _exchange(body: bytes, connect_timeout_ms: int, deadline: float) -> Any:
+    """One framed request and its framed reply over a fresh connection."""
     try:
         with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as sock:
             sock.settimeout(min(max(connect_timeout_ms, 1) / 1000, _remaining_timeout(deadline)))
@@ -117,15 +88,66 @@ def evaluate_policy(
             declared_length = struct.unpack(">I", _read_exact(sock, 4, deadline))[0]
             if declared_length > MAX_FRAME_BYTES:
                 raise EvaluationError("failproofaid response exceeds the 16 MiB limit")
-            response = json.loads(_read_exact(sock, declared_length, deadline).decode("utf-8"))
+            return json.loads(_read_exact(sock, declared_length, deadline).decode("utf-8"))
     except EvaluationError:
         raise
     except (OSError, UnicodeError, ValueError, struct.error) as exc:
         raise EvaluationError(f"failproofaid evaluation failed: {exc}") from exc
 
+
+def evaluate_policy(
+    *,
+    event: str,
+    payload: Mapping[str, Any],
+    cwd: str | None,
+    agent_settings_path: str | None = None,
+    connect_timeout_ms: int = 250,
+    evaluation_timeout_ms: int = 12_000,
+) -> PolicyVerdict:
+    def build(version: int) -> bytes:
+        request: dict[str, Any] = {
+            "type": "policyEvaluation",
+            "protocolVersion": version,
+            "integration": "hermes",
+            "event": event,
+            "payload": dict(payload),
+            "cwd": cwd,
+        }
+        if version >= AGENT_SETTINGS_PATH_SINCE:
+            # An unknown profile is explicit. Omitting this field would let a new
+            # daemon's warm worker attribute the call to its own Hermes home.
+            request["agentSettingsPath"] = agent_settings_path or ""
+        try:
+            body = json.dumps(
+                request,
+                ensure_ascii=False,
+                separators=(",", ":"),
+                default=lambda value: repr(value),
+            ).encode("utf-8")
+        except (TypeError, ValueError) as exc:
+            raise EvaluationError(f"could not encode policy request: {exc}") from exc
+        if len(body) > MAX_REQUEST_BYTES:
+            raise EvaluationError("policy request exceeds the 1 MiB limit")
+        return body
+
+    # One deadline covers connect, send and read: evaluation_timeout_ms is the
+    # longest a tool call can wait here. Connect is bounded by both budgets.
+    deadline = time.monotonic() + max(evaluation_timeout_ms, 1) / 1000
+    version = PROTOCOL_VERSION
+    response = _exchange(build(version), connect_timeout_ms, deadline)
+    answered = response.get("protocolVersion") if isinstance(response, dict) else None
+    # An older daemon still inside the supported range: ask again in its version
+    # rather than block every call until it is replaced.
+    if (
+        type(answered) is int
+        and MIN_PROTOCOL_VERSION <= answered < PROTOCOL_VERSION
+    ):
+        version = answered
+        response = _exchange(build(version), connect_timeout_ms, deadline)
+
     if not isinstance(response, dict):
         raise EvaluationError("failproofaid returned a non-object response")
-    if response.get("protocolVersion") != PROTOCOL_VERSION:
+    if response.get("protocolVersion") != version:
         raise EvaluationError("failproofaid protocol version mismatch")
     if response.get("type") == "error":
         message = response.get("message")

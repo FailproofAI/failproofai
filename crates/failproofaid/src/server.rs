@@ -7,7 +7,10 @@
 //! connection-handling thread.
 
 use crate::worker::Worker;
-use fpai_ipc::{ClientMessage, PROTOCOL_VERSION, ServerMessage, peer, read_message, write_message};
+use fpai_ipc::{
+    ClientMessage, MIN_PROTOCOL_VERSION, PROTOCOL_VERSION, ServerMessage,
+    is_supported_protocol_version, peer, read_message, write_message,
+};
 use std::fs;
 use std::io;
 use std::os::unix::fs::PermissionsExt;
@@ -332,16 +335,19 @@ fn worker_agent_settings_path(settings_path: Option<&str>) -> Option<&str> {
 }
 
 fn dispatch(request: ClientMessage, worker: &Worker) -> ServerMessage {
-    if request.protocol_version() != PROTOCOL_VERSION {
+    let version = request.protocol_version();
+    if !is_supported_protocol_version(version) {
         return ServerMessage::Error {
             protocol_version: PROTOCOL_VERSION,
             message: format!(
-                "protocol version mismatch: daemon speaks {PROTOCOL_VERSION}, client sent {}",
-                request.protocol_version()
+                "protocol version mismatch: daemon speaks {MIN_PROTOCOL_VERSION}-{PROTOCOL_VERSION}, client sent {version}"
             ),
         };
     }
+    evaluate(request.without_fields_newer_than_its_version(), worker).with_protocol_version(version)
+}
 
+fn evaluate(request: ClientMessage, worker: &Worker) -> ServerMessage {
     match request {
         ClientMessage::Ping { .. } => ServerMessage::Pong {
             protocol_version: PROTOCOL_VERSION,
@@ -739,6 +745,48 @@ mod tests {
             other => panic!("expected PolicyResult, got {other:?}"),
         }
 
+        // The request a Hermes plugin loaded before 1.0.12 sends: v1, no
+        // agentSettingsPath. It gets the real verdict, stamped v1 so that
+        // plugin's own version check accepts it.
+        let mut stream = UnixStream::connect(&socket_path).unwrap();
+        stream
+            .set_read_timeout(Some(Duration::from_secs(15)))
+            .unwrap();
+        write_message(
+            &mut stream,
+            &ClientMessage::PolicyEvaluation {
+                protocol_version: 1,
+                integration: "hermes".to_string(),
+                event: "pre_tool_call".to_string(),
+                payload: serde_json::json!({
+                    "cwd": project_dir.to_string_lossy(),
+                    "tool_name": "terminal",
+                    "tool_input": { "command": "sudo rm -rf /" }
+                }),
+                cwd: Some(project_dir.to_string_lossy().to_string()),
+                agent_settings_path: None,
+            },
+        )
+        .unwrap();
+        let response: ServerMessage = read_message(&mut stream).unwrap();
+        match response {
+            ServerMessage::PolicyResult {
+                protocol_version,
+                decision,
+                policy_names,
+                ..
+            } => {
+                assert_eq!(protocol_version, 1);
+                assert_eq!(decision, "deny");
+                assert!(
+                    policy_names
+                        .iter()
+                        .any(|name| name.ends_with("/block-sudo"))
+                );
+            }
+            other => panic!("expected a v1 PolicyResult, got {other:?}"),
+        }
+
         std::fs::remove_dir_all(&project_dir).ok();
     }
 
@@ -775,9 +823,28 @@ mod tests {
     }
 
     #[test]
-    fn old_hook_protocol_cannot_evaluate_a_scoped_agent() {
-        let socket_path = temp_socket_path("old-scoped-hook");
+    fn previous_protocol_is_answered_in_its_own_version() {
+        // A gateway that loaded the previous plugin before an upgrade keeps
+        // speaking v1 until it restarts. It must get an answer it accepts,
+        // not a mismatch that its fail-closed path turns into a deny.
+        let socket_path = temp_socket_path("old-protocol");
         let _guard = start_test_server(socket_path.clone());
+
+        let mut stream = UnixStream::connect(&socket_path).unwrap();
+        write_message(
+            &mut stream,
+            &ClientMessage::Ping {
+                protocol_version: 1,
+            },
+        )
+        .unwrap();
+        let response: ServerMessage = read_message(&mut stream).unwrap();
+        assert_eq!(
+            response,
+            ServerMessage::Pong {
+                protocol_version: 1
+            }
+        );
 
         let mut stream = UnixStream::connect(&socket_path).unwrap();
         write_message(
@@ -788,21 +855,57 @@ mod tests {
                 cli: "claude".into(),
                 stdin: "{}".into(),
                 cwd: None,
-                agent_settings_path: Some("/home/agent/claude/settings.json".into()),
+                agent_settings_path: None,
             },
         )
         .unwrap();
         let response: ServerMessage = read_message(&mut stream).unwrap();
+        // The broken test worker cannot evaluate; what matters is that the
+        // request reached it instead of stopping at the version gate.
         match response {
             ServerMessage::Error {
                 protocol_version,
                 message,
             } => {
-                assert_eq!(protocol_version, PROTOCOL_VERSION);
-                assert!(message.contains("protocol version mismatch"));
+                assert_eq!(protocol_version, 1);
+                assert!(!message.contains("protocol version mismatch"), "{message}");
             }
-            other => panic!("old protocol was evaluated: {other:?}"),
+            other => panic!("expected the worker's error, got {other:?}"),
         }
+    }
+
+    #[test]
+    fn old_protocol_never_evaluates_a_scoped_agent() {
+        // v1 predates agentSettingsPath. A v1 request carrying one is not a
+        // real v1 client, and must be evaluated as profile-unknown, never for
+        // the profile it names.
+        let scoped = |protocol_version| ClientMessage::PolicyEvaluation {
+            protocol_version,
+            integration: "hermes".into(),
+            event: "pre_tool_call".into(),
+            payload: serde_json::json!({}),
+            cwd: None,
+            agent_settings_path: Some("/home/agent/.hermes/config.yaml".into()),
+        };
+        match scoped(1).without_fields_newer_than_its_version() {
+            ClientMessage::PolicyEvaluation {
+                agent_settings_path,
+                ..
+            } => assert_eq!(agent_settings_path, None),
+            other => panic!("unexpected {other:?}"),
+        }
+        assert_eq!(
+            scoped(PROTOCOL_VERSION).without_fields_newer_than_its_version(),
+            scoped(PROTOCOL_VERSION)
+        );
+    }
+
+    #[test]
+    fn versions_outside_the_supported_range_are_refused() {
+        assert!(is_supported_protocol_version(MIN_PROTOCOL_VERSION));
+        assert!(is_supported_protocol_version(PROTOCOL_VERSION));
+        assert!(!is_supported_protocol_version(0));
+        assert!(!is_supported_protocol_version(PROTOCOL_VERSION + 1));
     }
 
     #[test]

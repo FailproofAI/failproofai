@@ -4,10 +4,10 @@
 
 ### Fixes
 
-- The daemon answers the previous plugin protocol, and clients re-ask an older daemon in its version, so a Hermes or OpenClaw gateway still running the plugin it loaded before an upgrade keeps getting real verdicts instead of denying every call (#1023)
+- The daemon answers the previous plugin protocol, and clients re-ask an older daemon in its version, so a Hermes or OpenClaw gateway still running the plugin it loaded before an upgrade keeps getting real verdicts instead of denying every call; where the Cloud deployment targets policies at agents, which a request naming no agent would escape, it still fails closed (#1023)
 - `failproofai update` restarts running Hermes and OpenClaw gateways through their own drain-aware restart (after in-flight work finishes) so they load the updated plugin; only service-managed gateways are touched, and `--no-restart` opts out (#1023)
 - A batch refused with a key the machine has since replaced (the seconds after a reconnect) is left for the new key instead of being parked as a refusal, so `config --status` no longer reports "the cloud is refusing this machine's key" right after a successful connect (#1023)
-- A batch the server refuses as too large (413) is split in half and re-sent until each piece fits, instead of being parked for good (#1023)
+- A batch the server refuses as too large (413) is split in half and re-sent until each piece fits, instead of being parked for good; a single event still refused is parked on its own and the rest of the batch is delivered (#1023)
 - `config --status` counts Cloud Jev-only deployments in its policies row; it showed "None installed" beside a deployment the line under it called enforcing (#1023)
 - A machine that pulls policies from Cloud is pointed at Cloud, not at installing packs: `config --status` says "None deployed from Cloud" with the dashboard as its fix, and the `failproofai policies` empty state says "Deploy from Cloud" (#1023)
 - The "no pack is installed" warning is logged once per process instead of on every hook call, which buried the daemon log (#1023)
@@ -15,7 +15,7 @@
 - The daemon no longer exits on a transient `accept()` failure (out of file descriptors, an aborted connection), which left every hook denied until the service manager restarted it (#1023)
 - The collector manager and cloud policy sync restart after a panic instead of stopping silently while the daemon keeps answering hooks (#1023)
 - A hook client that stopped waiting before its verdict was ready is logged as that, with how long the evaluation took, instead of macOS's bare "Invalid argument (os error 22)" (#1023)
-- failproofaid writes its log to `~/.failproofai/logs/daemon.log` on every OS (10 MB, 3 kept), as well as to stderr as before; every line carries a timestamp and level (its untimestamped `[failproofaid]` lines are now `tracing` events), and on macOS launchd's `failproofaid.err.log`, which nothing rotated, is bounded at startup (#1023)
+- failproofaid writes its log to `~/.failproofai/logs/daemon.log` on every OS (owner-only, 10 MB, 3 kept), as well as to stderr as before (on macOS stderr keeps only warnings and errors, since launchd's file is never rotated); every line carries a timestamp and level (its untimestamped `[failproofaid]` lines are now `tracing` events), and on macOS launchd's `failproofaid.err.log`, which nothing rotated, is bounded at startup (#1023)
 - failproofaid tells FailproofAI Cloud what each machine runs: its policy poll carries `daemonVersion`, `cliVersion`, `os` and `arch` (optional parameters a server that predates them ignores), and every Cloud and ingest request sends `User-Agent: failproofaid/<version>` (#1023)
 - Hook events carry the agent's own `tool_call_id` (Claude, Devin, Factory, Pi, Hermes), the field the transcript events already use and Cloud stores in its own column, so a hook joins the tool call it governed instead of being placed beside it by timestamp; and a hook's start is stamped when it arrived, not when its evaluation ended. Rows written before this convert exactly as before (#1023)
 

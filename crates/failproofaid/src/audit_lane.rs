@@ -541,7 +541,12 @@ impl Lane {
             return;
         }
         self.announced = Some(state);
-        tracing::info!("{message}");
+        // A lane that cannot run says why at WARN, where a quiet log still
+        // shows it; an ordinary on/off change is INFO.
+        match state {
+            Announced::NoCliCommand | Announced::NoSchedule => tracing::warn!("{message}"),
+            Announced::Off | Announced::Scheduled => tracing::info!("{message}"),
+        }
     }
 }
 

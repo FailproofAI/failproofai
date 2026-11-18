@@ -47,12 +47,15 @@ export async function runHermesUpdateMigration(deps: {
 
   const width = Math.max(...profiles.map((p) => ("hermes/" + p.name).length));
   const lines = ["Hermes:"];
+  let restarting = false;
   for (const p of profiles) {
     const label = ("hermes/" + p.name).padEnd(width);
     const detail = p.status === "current" ? "" : ` — ${p.detail}`;
     // Only a profile now on the linked plugin has new code for its gateway.
     const loaded = p.status === "migrated" || p.status === "current";
-    const gateway = loaded && deps.restartGateway ? GATEWAY_STATUS_LABEL[deps.restartGateway(p).status] : "";
+    const restart = loaded && deps.restartGateway ? deps.restartGateway(p).status : null;
+    if (restart === "restarting") restarting = true;
+    const gateway = restart ? GATEWAY_STATUS_LABEL[restart] : "";
     lines.push(`  ${label}  ${STATUS_LABEL[p.status]}${detail}${gateway ? `, ${gateway}` : ""}`);
   }
 
@@ -60,7 +63,11 @@ export async function runHermesUpdateMigration(deps: {
   const failed = profiles.filter((p) => p.status === "failed");
   if (profiles.some((p) => p.status === "migrated")) {
     lines.push(
-      "  Cron jobs load the plugin on their next run; restart running Hermes gateways and sessions to load it there.",
+      // A gateway already queued for restart must not also be restarted by
+      // hand: that interrupts its drain.
+      restarting
+        ? "  Cron jobs load the plugin on their next run; restart running Hermes sessions to load it there."
+        : "  Cron jobs load the plugin on their next run; restart running Hermes gateways and sessions to load it there.",
     );
   }
   if (blocked.length > 0) {

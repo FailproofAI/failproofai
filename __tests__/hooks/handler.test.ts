@@ -204,7 +204,9 @@ describe("hooks/handler", () => {
     await handleHookEvent("PreToolUse");
     const entry = vi.mocked(persistHookActivity).mock.calls.at(-1)![0];
     expect(entry.toolCallId).toBe("toolu_01ABC");
-    expect(entry.startedAt).toBe(entry.timestamp - (entry.durationMs ?? 0));
+    expect(entry.startedAt).toBeLessThanOrEqual(entry.timestamp);
+    // Two clocks (wall and monotonic), each rounded: within a millisecond.
+    expect(entry.timestamp - entry.startedAt!).toBeGreaterThanOrEqual((entry.durationMs ?? 0) - 1);
   });
 
   it("finds the tool call id in each agent's payload shape", async () => {

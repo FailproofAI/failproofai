@@ -83,7 +83,9 @@ pub struct PolicyEvaluation {
 fn early_exit_hint(code: Option<i32>) -> &'static str {
     match code {
         Some(127) => {
-            "; the Node.js or failproofai path saved at install no longer exists, run `failproofai update`"
+            "; a command it runs was not found: if this is the installed service, the Node.js \
+             or failproofai path saved at install may be gone (run `failproofai update`); \
+             otherwise check FAILPROOFAI_WORKER_CMD"
         }
         _ => "",
     }

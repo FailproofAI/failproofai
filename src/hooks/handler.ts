@@ -671,6 +671,9 @@ export async function evaluateHookEvent(
   opts?: EvaluateHookEventOptions,
 ): Promise<HookEventOutcome> {
   const startTime = performance.now();
+  // Wall clock at arrival, for the activity row's `startedAt`. Taken here, not
+  // derived from `durationMs`, which is measured before the work after it.
+  const arrivedAt = Date.now();
   // A home from another layout resolves to no global config, so every builtin
   // silently stops firing — the machine looks protected and is not. Say so on
   // every call rather than deleting anything (a hook is unattended) or denying
@@ -1272,7 +1275,7 @@ export async function evaluateHookEvent(
       timestamp: writtenAt,
       // When the hook arrived. `timestamp` is when its evaluation ENDED, so a
       // hook start ordered by it sorted late by the whole evaluation.
-      startedAt: writtenAt - durationMs,
+      startedAt: Math.min(arrivedAt, writtenAt),
       // The agent's own id for the tool call this hook governed, the key its
       // transcript records the call under (see `toolCallIdOf`).
       ...(toolCallId ? { toolCallId } : {}),

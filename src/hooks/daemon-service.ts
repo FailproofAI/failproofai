@@ -280,6 +280,7 @@ export function resolveWorkerCommand(): string | null {
 export function stableExecPath(
   execPath: string = process.execPath,
   pathEnv: string = process.env.PATH ?? "",
+  stableDirs: readonly string[] = STABLE_BIN_DIRS,
 ): string {
   let real: string;
   try {
@@ -289,7 +290,10 @@ export function stableExecPath(
   }
   const name = execPath.split("/").pop() ?? "";
   for (const dir of pathEnv.split(":")) {
-    if (!dir.startsWith("/")) continue;
+    // Only a system bin directory a package manager owns: any PATH entry would
+    // let a temporary one (a dev shell, a CI step) be saved into the service
+    // and vanish after setup, taking the worker's runtime with it.
+    if (!dir.startsWith("/") || !stableDirs.includes(dir.replace(/\/+$/, ""))) continue;
     const candidate = resolve(dir, name);
     if (candidate === execPath) return execPath;
     try {
@@ -301,15 +305,32 @@ export function stableExecPath(
   return execPath;
 }
 
+/** Where Homebrew, Linuxbrew and the distributions keep a stable `node` link. */
+const STABLE_BIN_DIRS: readonly string[] = [
+  "/opt/homebrew/bin",
+  "/usr/local/bin",
+  "/usr/bin",
+  "/home/linuxbrew/.linuxbrew/bin",
+];
+
 /**
- * Whether a saved `FAILPROOFAI_WORKER_CMD` / `FAILPROOFAI_CLI_CMD` names a
- * file that no longer exists. Only a command this package wrote (quoted words)
- * is judged; an operator's own command is never second-guessed.
+ * Whether a saved `FAILPROOFAI_WORKER_CMD` / `FAILPROOFAI_CLI_CMD` is one this
+ * package generated: `'<runtime>' '<package>/dist/worker.mjs'` (or `cli.mjs`).
+ * Quoting alone does not say so, since an operator can quote their own.
+ */
+function isPackageCommand(command: string | null): boolean {
+  const words = command ? shellQuotedWords(command) : null;
+  const script = words?.at(-1);
+  return words?.length === 2 && script !== undefined && /\/dist\/(worker|cli)\.mjs$/.test(script);
+}
+
+/**
+ * Whether a saved command this package generated names a file that no longer
+ * exists. An operator's own command is never second-guessed.
  */
 function savedCommandIsGone(command: string | null): boolean {
-  if (!command) return false;
-  const words = shellQuotedWords(command);
-  return words !== null && words.some((word) => word.startsWith("/") && !existsSync(word));
+  if (!isPackageCommand(command)) return false;
+  return shellQuotedWords(command!)!.some((word) => !existsSync(word));
 }
 
 /**
@@ -828,7 +849,9 @@ export function systemdUnitContents(
   // Quoted because every value here contains a space or a path — systemd's
   // Environment= requires quoting whenever the value does.
   const envLines = serviceEnvironment(workerCmd, cliCmd)
-    .map(([key, value]) => `Environment="${key}=${assertUnitSafe(value, key)}"\n`)
+    // `%` is a specifier inside a unit (`%n` is the unit name, `%h` a home),
+    // so a literal one is written `%%` or the path silently changes.
+    .map(([key, value]) => `Environment="${key}=${assertUnitSafe(value, key).replace(/%/g, "%%")}"\n`)
     .join("");
   const user = assertUnitSafe(serviceUser(), "User");
   assertUnitSafe(binaryPath, "ExecStart");
@@ -1036,7 +1059,14 @@ export async function installDaemonService(): Promise<DaemonInstallResult> {
   // and threading it through as an absolute path in the service's
   // environment is what makes a *service-managed* daemon actually find its
   // worker regardless of what cwd the service manager starts it from.
-  const workerCmd = resolveWorkerCommand();
+  // An operator's own worker command saved in the service survives a
+  // reinstall (one an expired audit path forces, say) when the shell running
+  // it no longer exports FAILPROOFAI_WORKER_CMD; only a generated one is
+  // re-resolved.
+  const savedWorker = process.env.FAILPROOFAI_WORKER_CMD
+    ? null
+    : installedEnvValue(readInstalledServiceDefinition() ?? "", "FAILPROOFAI_WORKER_CMD");
+  const workerCmd = savedWorker && !isPackageCommand(savedWorker) ? savedWorker : resolveWorkerCommand();
   // Same best-effort footing as the worker command, and null is survivable in
   // the same way — the daemon just has no way to run an audit. Unlike the
   // worker, there is no relative-path fallback to degrade to, which is exactly
@@ -1100,15 +1130,19 @@ export async function installDaemonService(): Promise<DaemonInstallResult> {
       const plistPath = launchdPlistPath();
       const logDir = logsDir();
       mkdirSync(logDir, { recursive: true });
-      // Unload any previously-loaded copy first — reloading with a changed
-      // binary path (e.g. after an upgrade) is a no-op under plain `load`
-      // if launchd thinks the label is already loaded.
+      // Written BEFORE the unload: a write that fails then leaves the running
+      // daemon loaded and untouched, where unloading first left a healthy
+      // machine with no daemon (every hook denied) over a failed rewrite.
+      // `unload` finds the job by its label, which the new plist keeps.
+      writePrivilegedFile(plistPath, launchdPlistContents(binaryPath, logDir, workerCmd, cliCmd));
+      // Unload any previously-loaded copy — reloading with a changed binary
+      // path (e.g. after an upgrade) is a no-op under plain `load` if launchd
+      // thinks the label is already loaded.
       try {
         runPrivileged("launchctl", ["unload", plistPath]);
       } catch {
         // Wasn't loaded — fine, this is the common case on a fresh install.
       }
-      writePrivilegedFile(plistPath, launchdPlistContents(binaryPath, logDir, workerCmd, cliCmd));
       runPrivileged("launchctl", ["load", "-w", plistPath]);
     }
   } catch (err) {
@@ -1397,7 +1431,7 @@ function readInstalledServiceDefinition(): string | null {
 function installedEnvValue(definition: string, name: string): string | null {
   if (process.platform === "linux") {
     const m = new RegExp(`^Environment="${name}=(.*)"$`, "m").exec(definition);
-    return m ? m[1] : null;
+    return m ? m[1].replace(/%%/g, "%") : null;
   }
   const m = new RegExp(`<key>${name}</key>\\s*<string>([^<]*)</string>`).exec(definition);
   return m ? unescapeXml(m[1]) : null;
@@ -1469,7 +1503,13 @@ export function upgradedServiceDefinition(
 ): string | null {
   const binaryPath = installedExecStart(definition);
   if (!binaryPath) return null;
-  const workerCmd = resolveWorkerCommand() ?? installedEnvValue(definition, "FAILPROOFAI_WORKER_CMD");
+  const saved = installedEnvValue(definition, "FAILPROOFAI_WORKER_CMD");
+  // An operator's own saved command is carried over, never replaced by the
+  // package default (only a generated one is re-resolved).
+  const workerCmd =
+    !process.env.FAILPROOFAI_WORKER_CMD && saved && !isPackageCommand(saved)
+      ? saved
+      : (resolveWorkerCommand() ?? saved);
   try {
     return process.platform === "linux"
       ? systemdUnitContents(binaryPath, workerCmd, cliCmd)
@@ -1623,7 +1663,9 @@ async function refreshFailed(message: string, previous: string | null): Promise<
  */
 export async function ensureDaemonServiceCurrent(): Promise<DaemonUpgradeResult> {
   const definition = readInstalledServiceDefinition();
-  if (definition === null || definition.includes("FAILPROOFAI_CLI_CMD")) {
+  // The same test `update` uses: a definition carrying FAILPROOFAI_CLI_CMD is
+  // still stale when a generated command in it names a file that is gone.
+  if (definition === null || !daemonServiceNeedsUpgrade()) {
     return { outcome: "current" };
   }
 

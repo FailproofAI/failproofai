@@ -301,6 +301,9 @@ describe("failproofai update → Hermes migration", () => {
     expect(restartGateway).toHaveBeenCalledTimes(1);
     expect(restartGateway.mock.calls[0][0]).toMatchObject({ name: "default", home: home() });
     expect(result.lines.join("\n")).toMatch(/hermes\/default\s+migrated — shell hooks → linked plugin, gateway restarting/);
+    // Never also told to restart the gateway by hand: that interrupts its drain.
+    expect(result.lines.join("\n")).toMatch(/restart running Hermes sessions to load it there/);
+    expect(result.lines.join("\n")).not.toMatch(/restart running Hermes gateways/);
   });
 
   it("without a restarter (update --no-restart) the rows are unchanged", async () => {

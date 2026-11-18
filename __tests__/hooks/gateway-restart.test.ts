@@ -10,6 +10,7 @@ import {
   restartHermesGateway,
   restartOpenClawGateway,
   restartOpenClawGateways,
+  openclawProfileEnv,
   type CommandResult,
 } from "../../src/hooks/gateway-restart";
 
@@ -134,5 +135,35 @@ describe("update's OpenClaw rows", () => {
       "  openclaw/default  gateway restarting",
       "  openclaw/ops      restart the gateway",
     ]);
+  });
+});
+
+describe("OpenClaw profile selection", () => {
+  it("drops every selector the caller's shell set, so a row acts on its own profile", () => {
+    const shell = { OPENCLAW_PROFILE: "ops", OPENCLAW_STATE_DIR: "/h/.openclaw-ops", OPENCLAW_CONFIG_PATH: "/x.json", PATH: "/bin" } as unknown as NodeJS.ProcessEnv;
+    const env = openclawProfileEnv({ name: "default", home: "/h/.openclaw" }, shell);
+    expect(env).toEqual({ PATH: "/bin" });
+    // A default profile at a non-standard location is named by its directory.
+    expect(openclawProfileEnv({ name: "default", home: "/srv/claw" }, shell).OPENCLAW_STATE_DIR).toBe("/srv/claw");
+    // A named one is selected by --profile, never by the inherited env.
+    expect(openclawProfileEnv({ name: "ops", home: "/h/.openclaw-ops" }, shell).OPENCLAW_PROFILE).toBeUndefined();
+  });
+
+  it("probes and restarts the default profile with no inherited selector", () => {
+    const prev = process.env.OPENCLAW_PROFILE;
+    process.env.OPENCLAW_PROFILE = "ops";
+    try {
+      const d = deps({
+        "openclaw gateway status --json": ok(RUNNING),
+        "openclaw gateway restart --help": SAFE_HELP,
+      });
+      restartOpenClawGateway({ name: "default", home: "/h/.openclaw" }, d);
+      for (const call of [...d.run.mock.calls, ...d.spawnDetached.mock.calls]) {
+        expect(call[2].OPENCLAW_PROFILE).toBeUndefined();
+      }
+    } finally {
+      if (prev === undefined) delete process.env.OPENCLAW_PROFILE;
+      else process.env.OPENCLAW_PROFILE = prev;
+    }
   });
 });

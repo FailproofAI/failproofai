@@ -83,6 +83,8 @@ export type StatusCloud =
   | {
       kind: "file";
       host: string;
+      /** The dashboard as configured, path included. */
+      url?: string;
       /** The org as the server named it at connect time, when it did. */
       org?: string;
       machine?: string;
@@ -317,6 +319,7 @@ export async function gatherStatusFacts(deps: StatusDeps = {}): Promise<StatusFa
       cloud = {
         kind: "file",
         host,
+        url: base,
         ...(orgName ? { org: orgName } : {}),
         ...(machineId ? { machine: describeMachine(machineId, creds?.machineLabel) } : {}),
         pullsPolicies: Boolean(creds),
@@ -428,8 +431,10 @@ export function pickStatusAttention(facts: StatusFacts): StatusAttention | null 
         ? "failproofai config"
         : facts.notEnforcing === "observe-only"
           ? "failproofai policies"
-          : cloud.kind === "file" && cloud.pullsPolicies
-            ? `https://${cloud.host}`
+          : cloud.kind === "env"
+            ? cloud.url
+            : cloud.kind === "file" && cloud.pullsPolicies
+              ? (cloud.url ?? cloud.host)
             : policies.packsInstalled > 0
               ? "failproofai policies add"
               : `failproofai policies add ${CORE_SOURCE}`;

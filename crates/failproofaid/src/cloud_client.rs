@@ -1081,14 +1081,19 @@ pub fn spawn_maintenance(
     idle_interval: Duration,
 ) -> JoinHandle<()> {
     std::thread::spawn(move || {
+        // Outside the supervised body on purpose: a restart after a panic must
+        // remember the identity it last saw. Forgetting it made an org switch
+        // during the backoff read as a first identity (whose deployment 0 the
+        // rollback floor then refused) and a removed credential read as never
+        // enrolled (so nothing was deactivated).
+        let mut last_state: Option<bool> = None;
+        // `None` until the first successful resolution; then the identity seen
+        // last (itself `None` when not enrolled).
+        let mut last_identity: Option<Option<CloudIdentity>> = None;
+        // Set when the identity changed and the new one has not yet completed a
+        // reconcile. See below.
+        let mut floor_reset_pending = false;
         crate::supervised("cloud policy sync", &shutdown, || {
-            let mut last_state: Option<bool> = None;
-            // `None` until the first successful resolution; then the identity seen
-            // last (itself `None` when not enrolled).
-            let mut last_identity: Option<Option<CloudIdentity>> = None;
-            // Set when the identity changed and the new one has not yet completed a
-            // reconcile. See below.
-            let mut floor_reset_pending = false;
             while !shutdown.load(Ordering::Relaxed) {
                 if let (Ok(path), Some(home)) =
                     (agent_roster::roster_path(), std::env::var_os("HOME"))
@@ -1639,9 +1644,22 @@ mod tests {
             let sink = captured.clone();
             let server = std::thread::spawn(move || {
                 let (mut stream, _) = listener.accept().unwrap();
-                let mut request = [0_u8; 4096];
-                let read = stream.read(&mut request).unwrap();
-                *sink.lock().unwrap() = String::from_utf8_lossy(&request[..read]).to_string();
+                stream
+                    .set_read_timeout(Some(Duration::from_secs(5)))
+                    .unwrap();
+                // Through the end of the headers, not one read: a read that
+                // returned after the request line made the User-Agent
+                // assertion below fail on a client that sent it.
+                let mut request = Vec::new();
+                let mut chunk = [0_u8; 4096];
+                while !request.windows(4).any(|w| w == b"\r\n\r\n") && request.len() < 65_536 {
+                    let read = stream.read(&mut chunk).unwrap();
+                    if read == 0 {
+                        break;
+                    }
+                    request.extend_from_slice(&chunk[..read]);
+                }
+                *sink.lock().unwrap() = String::from_utf8_lossy(&request).to_string();
                 let body = br#"{"schemaVersion":2,"deployment":7,"policies":[]}"#;
                 write!(
                     stream,

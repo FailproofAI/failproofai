@@ -23,7 +23,7 @@
  */
 import { spawn, spawnSync } from "node:child_process";
 import { closeSync, mkdirSync, openSync, readFileSync } from "node:fs";
-import { dirname, join } from "node:path";
+import { basename, dirname, join } from "node:path";
 import { listOpenClawProfiles, OPENCLAW_DEFAULT_PROFILE } from "../../lib/openclaw-profiles";
 import { logsDir } from "./fp-home";
 
@@ -57,6 +57,9 @@ function defaultRun(cmd: string, args: string[], env: NodeJS.ProcessEnv): Comman
     env,
     encoding: "utf8",
     timeout: STATUS_TIMEOUT_MS,
+    // SIGTERM is the default, and a status command that handles it and stays
+    // stuck kept `update` from ever printing its report.
+    killSignal: "SIGKILL",
     stdio: ["ignore", "pipe", "pipe"],
   });
   return { status: out.error ? null : out.status, stdout: `${out.stdout ?? ""}${out.stderr ?? ""}` };
@@ -145,7 +148,7 @@ function restartOpenClawGatewayUnsafe(
   const run = deps.run ?? defaultRun;
   const spawnDetached = deps.spawnDetached ?? defaultSpawnDetached;
   const profileArgs = profile.name === OPENCLAW_DEFAULT_PROFILE ? [] : ["--profile", profile.name];
-  const env = { ...process.env };
+  const env = openclawProfileEnv(profile);
   const result = (status: GatewayRestartStatus): GatewayRestart => ({ host: "openclaw", profile: profile.name, status });
 
   const out = run("openclaw", [...profileArgs, "gateway", "status", "--json"], env);
@@ -167,6 +170,26 @@ function restartOpenClawGatewayUnsafe(
   return result(
     spawnDetached("openclaw", [...profileArgs, "gateway", "restart", "--safe"], env) ? "restarting" : "failed",
   );
+}
+
+/**
+ * The environment that selects exactly `profile`, and no other. Every OpenClaw
+ * profile selector inherited from the caller's shell is dropped: left in, the
+ * default row inherited an `OPENCLAW_PROFILE=ops` and acted on `ops`. A default
+ * profile living somewhere non-standard is named by its state directory.
+ */
+export function openclawProfileEnv(
+  profile: { name: string; home: string },
+  base: NodeJS.ProcessEnv = process.env,
+): NodeJS.ProcessEnv {
+  const env = { ...base };
+  for (const key of ["OPENCLAW_PROFILE", "OPENCLAW_STATE_DIR", "OPENCLAW_HOME", "OPENCLAW_CONFIG_PATH"]) {
+    delete env[key];
+  }
+  if (profile.name === OPENCLAW_DEFAULT_PROFILE && basename(profile.home) !== ".openclaw") {
+    env.OPENCLAW_STATE_DIR = profile.home;
+  }
+  return env;
 }
 
 /** Profiles whose openclaw.json loads our plugin; only their gateways run it. */

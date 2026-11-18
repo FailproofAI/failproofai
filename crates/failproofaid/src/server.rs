@@ -339,7 +339,7 @@ pub fn handle_connection(stream: UnixStream, worker: &Worker) -> io::Result<()> 
             // argument (os error 22)": setsockopt on a socket the peer closed
             // is EINVAL there. How long the evaluation took is the useful part.
             io::Error::other(format!(
-                "the client closed the connection before its verdict was ready \
+                "the client had closed the connection when its verdict was written \
                  (evaluation took {} ms)",
                 took.as_millis()
             ))
@@ -1109,7 +1109,7 @@ mod tests {
         let err = handle_connection(server, &worker).expect_err("the peer is gone");
         assert!(
             err.to_string()
-                .contains("closed the connection before its verdict"),
+                .contains("had closed the connection when its verdict was written"),
             "got: {err}"
         );
     }

@@ -113,28 +113,33 @@ fn main() {
 /// already goes and what systemd/launchd capture. `RUST_LOG` overrides the
 /// default level.
 ///
-/// Also to `~/.failproofai/logs/daemon.log` (see `logfile.rs`), and on macOS the
-/// launchd stderr file is bounded first, since nothing else ever rotates it.
+/// Also to `~/.failproofai/logs/daemon.log` (see `logfile.rs`). On macOS that
+/// file then carries everything and stderr only WARN and above: launchd's
+/// `failproofaid.err.log` is a file nothing rotates during uptime, and a copy
+/// of every INFO line grew it without bound.
 fn init_logging() {
     use tracing_subscriber::EnvFilter;
     use tracing_subscriber::fmt::writer::MakeWriterExt;
     let filter = EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("info"));
-    let logs = paths::failproofai_home().ok().map(|home| home.join("logs"));
-    #[cfg(target_os = "macos")]
-    if let Some(logs) = &logs {
-        logfile::bound_inherited_log(
-            &logs.join("failproofaid.err.log"),
+    let file = paths::failproofai_home().ok().and_then(|home| {
+        logfile::RotatingFile::open(
+            home.join("logs").join("daemon.log"),
             logfile::MAX_BYTES,
             logfile::KEEP,
-        );
-    }
-    let file = logs.and_then(|logs| {
-        logfile::RotatingFile::open(logs.join("daemon.log"), logfile::MAX_BYTES, logfile::KEEP)
+        )
     });
     let builder = tracing_subscriber::fmt().with_env_filter(filter);
+    #[cfg(target_os = "macos")]
+    let stderr = std::io::stderr.with_max_level(if file.is_some() {
+        tracing::Level::WARN
+    } else {
+        tracing::Level::TRACE
+    });
+    #[cfg(not(target_os = "macos"))]
+    let stderr = std::io::stderr;
     let _ = match file {
-        Some(file) => builder.with_writer(std::io::stderr.and(file)).try_init(),
-        None => builder.with_writer(std::io::stderr).try_init(),
+        Some(file) => builder.with_writer(stderr.and(file)).try_init(),
+        None => builder.with_writer(stderr).try_init(),
     };
 }
 
@@ -144,6 +149,17 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
     let lock_path = paths::lock_path()?;
     paths::ensure_run_dir()?;
     let _singleton = lock::acquire(&lock_path)?;
+    // Only the instance holding the lock may rotate the log launchd gives the
+    // running service: a second invocation copying and truncating it could
+    // cut out lines the live daemon appended in between.
+    #[cfg(target_os = "macos")]
+    if let Ok(home) = paths::failproofai_home() {
+        logfile::bound_inherited_log(
+            &home.join("logs").join("failproofaid.err.log"),
+            logfile::MAX_BYTES,
+            logfile::KEEP,
+        );
+    }
 
     // The shutdown flag and its signal handler are installed BEFORE anything
     // long-running starts, so every lane below observes the same flag the socket
@@ -664,7 +680,9 @@ fn supervised_with_backoff(
         match std::panic::catch_unwind(std::panic::AssertUnwindSafe(&mut body)) {
             Ok(()) => return,
             Err(_) => {
-                tracing::warn!(
+                // Not `eprintln!`, which panics when stderr cannot be written,
+                // outside the catch: that ended the very loop meant to survive.
+                tracing::error!(
                     "{name} panicked; starting it again in {}s",
                     backoff.as_secs()
                 );
@@ -674,6 +692,10 @@ fn supervised_with_backoff(
                         return;
                     }
                     std::thread::sleep(Duration::from_millis(20).min(backoff));
+                }
+                // A shutdown during the last sleep must not start the lane again.
+                if shutdown.load(Ordering::Relaxed) {
+                    return;
                 }
             }
         }
@@ -1065,7 +1087,7 @@ fn collector_tasks(config: Option<fpai_collect::CollectorConfig>) -> Vec<fpai_co
     // scopes every backfill, so a misspelt id matters on a decisions-only
     // machine too, and each of these is otherwise mentioned nowhere.
     if let Some(line) = selection_warning(&cfg.agents) {
-        tracing::info!("{line}");
+        tracing::warn!("{line}");
     }
 
     // One `Delivery` shared by both tasks, so they share an upload semaphore
@@ -1234,7 +1256,7 @@ fn collector_tasks(config: Option<fpai_collect::CollectorConfig>) -> Vec<fpai_co
                 home_dir.as_deref(),
             );
             for bad in &resolved.rejected {
-                tracing::info!(
+                tracing::warn!(
                     "ignoring extra path {:?} for {harness}: {}",
                     bad.entry,
                     bad.reason

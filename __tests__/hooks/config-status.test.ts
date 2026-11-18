@@ -67,6 +67,7 @@ function facts(over: Partial<StatusFacts> = {}): StatusFacts {
     cloud: {
       kind: "file",
       host: "be.failproof.ai",
+      url: "https://be.failproof.ai",
       org: "chetanraghuvanshi85",
       machine: "chetan-pc (dde01f39)",
       pullsPolicies: true,
@@ -470,6 +471,11 @@ describe("config --status — the attention line", () => {
     expect(fixFor("no-policies", 0)).toBe("failproofai policies add FailproofAI/policies");
     // Policies for a machine that pulls from Cloud are deployed there.
     expect(fixFor("no-policies", 0, facts().cloud)).toBe("https://be.failproof.ai");
+    // The dashboard as configured, path and scheme kept.
+    const tenant = { ...facts().cloud, url: "http://cloud.internal:8080/tenant" } as StatusFacts["cloud"];
+    expect(fixFor("no-policies", 0, tenant)).toBe("http://cloud.internal:8080/tenant");
+    // Connected through FAILPROOFAI_CLOUD_URL: pulls from Cloud just the same.
+    expect(fixFor("no-policies", 0, { kind: "env", url: "https://staging.example/org" })).toBe("https://staging.example/org");
   });
 
   it("never calls a machine with a refused pack 'not enforcing': it is denying", () => {
@@ -609,6 +615,8 @@ describe("gatherStatusFacts", () => {
     expect(f.cloud).toEqual({
       kind: "file",
       host: "be.failproof.ai",
+      // As configured: the attention fix links here, path and scheme intact.
+      url: "https://be.failproof.ai",
       org: "FailproofAI (failproofai)",
       machine: "chetan-pc (dde01f39)",
       pullsPolicies: true,

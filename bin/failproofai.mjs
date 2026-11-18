@@ -1236,8 +1236,14 @@ async function runCli() {
     // now running can do: the native plugin needs `policyEvaluation`, which
     // ≤1.0.5 daemons lack, so when the swap above could not happen (a sudo
     // system service with no sudo) the shell hooks stay and this fails loudly.
-    // Gateways are restarted only onto a daemon this run left current.
-    const restartsGateways = daemonOk && !subArgs.includes("--no-daemon") && !subArgs.includes("--no-restart");
+    // Gateways are restarted only onto a daemon this run left current AND that
+    // is running: "nothing to update" on a machine with no service, or an
+    // unsupported platform, is also `daemonOk`.
+    let restartsGateways = daemonOk && !subArgs.includes("--no-daemon") && !subArgs.includes("--no-restart");
+    if (restartsGateways) {
+      const svc = await import("../src/hooks/daemon-service");
+      restartsGateways = svc.isDaemonSupportedPlatform() && svc.daemonServiceStatus() === "running";
+    }
     let hermesOk = true;
     let hermesMigrated = 0;
     try {

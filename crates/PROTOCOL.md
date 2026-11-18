@@ -76,8 +76,10 @@ Protocol v2 carries the originating agent's settings path for both `hook` and
 native `policyEvaluation` requests. A missing path is unresolved, never
 inferred from the long-lived daemon's environment. A v1 daemon cannot be
 trusted with a v2 scoped request: it may discard this field and evaluate for
-the wrong profile. The v2 client rejects every v1 response and tells the
-operator to reinstall/restart the daemon before evaluation resumes.
+the wrong profile. So a v2 client never uses a v1 daemon's answer to a v2
+request; it asks again in v1, without the field (see "Protocol versioning"),
+except where the machine's Cloud deployment targets policies at agents, which
+an unnamed agent would escape: there it fails closed.
 
 ### Daemon → client (`ServerMessage`)
 
@@ -112,6 +114,12 @@ A client that gets a reply stamped with an older version still inside that range
 asks once more in that version, without the fields that version predates. The
 answer to the original request is never used. Anything outside the range gets an
 explicit `error`, and a daemon-configured client fails closed on it.
+
+Neither fallback runs where the active Cloud deployment targets policies at
+agents (`active.json` schema 3), or cannot be read: an older request names no
+agent, and a targeted policy does not apply to an unknown one. There the daemon
+refuses a v1 request (stamped v1, so the old client's own fail-closed path
+blocks it) and a current client does not re-ask an older daemon.
 
 This exists because a long-lived host (a Hermes or OpenClaw gateway) keeps the
 plugin it loaded at start: after an upgrade it speaks the previous version until

@@ -473,6 +473,18 @@ describe("renderPoliciesScreen", () => {
     expect(managed.at(-1)).toBe("  Deploy from Cloud:  https://be.failproof.ai");
   });
 
+  it("treats a machine connected through FAILPROOFAI_CLOUD_URL as pulling from Cloud", async () => {
+    const { cloudDashboardUrlForTest } = await import("@/src/hooks/manager");
+    const prev = process.env.FAILPROOFAI_CLOUD_URL;
+    process.env.FAILPROOFAI_CLOUD_URL = "https://staging.example/org";
+    try {
+      expect(cloudDashboardUrlForTest()).toBe("https://staging.example/org");
+    } finally {
+      if (prev === undefined) delete process.env.FAILPROOFAI_CLOUD_URL;
+      else process.env.FAILPROOFAI_CLOUD_URL = prev;
+    }
+  });
+
   function withTruecolor<T>(fn: () => T): T {
     const before = { COLORTERM: process.env.COLORTERM, TERM: process.env.TERM, NO_COLOR: process.env.NO_COLOR };
     process.env.COLORTERM = "truecolor";

@@ -1304,12 +1304,19 @@ export interface PoliciesScreen {
 
 /** The dashboard a cloud-connected machine pulls policies from, or undefined. */
 function cloudDashboardUrl(): string | undefined {
+  // FAILPROOFAI_CLOUD_URL wins over the credential file in the daemon, so a
+  // machine connected that way pulls from Cloud too.
+  const fromEnv = process.env.FAILPROOFAI_CLOUD_URL?.trim();
+  if (fromEnv) return fromEnv;
   try {
     return readCloudCredentials()?.url || undefined;
   } catch {
     return undefined;
   }
 }
+
+/** @internal */
+export const cloudDashboardUrlForTest = cloudDashboardUrl;
 
 /**
  * The policies screen (decision D14: "the policies list exactly as designed").

@@ -29,12 +29,20 @@ struct Inner {
 }
 
 impl Inner {
+    /// Owner-only, created that way and tightened if an older file is not:
+    /// the log carries machine ids and policy diagnostics, and a home another
+    /// account can traverse must not make it readable to them.
     fn open(&mut self) {
+        use std::os::unix::fs::{OpenOptionsExt, PermissionsExt};
         self.file = OpenOptions::new()
             .create(true)
             .append(true)
+            .mode(0o600)
             .open(&self.path)
             .ok();
+        if self.file.is_some() {
+            let _ = fs::set_permissions(&self.path, fs::Permissions::from_mode(0o600));
+        }
         self.size = fs::metadata(&self.path).map(|m| m.len()).unwrap_or(0);
     }
 
@@ -47,6 +55,10 @@ impl Inner {
     fn write(&mut self, buf: &[u8]) {
         if self.size >= self.max_bytes {
             self.rotate();
+        } else if self.file.is_none() {
+            // A rotation whose new file could not be created (a full disk,
+            // say): try again rather than stay silent until a restart.
+            self.open();
         }
         if let Some(file) = self.file.as_mut()
             && file.write_all(buf).is_ok()
@@ -192,6 +204,28 @@ mod tests {
         assert!(
             !dir.join("daemon.log.3").exists(),
             "only `keep` rotations remain"
+        );
+        fs::remove_dir_all(dir).ok();
+    }
+
+    #[test]
+    fn the_log_is_owner_only() {
+        use std::os::unix::fs::PermissionsExt;
+        let dir = temp_dir("mode");
+        let path = dir.join("daemon.log");
+        fs::write(&path, "older\n").unwrap();
+        fs::set_permissions(&path, fs::Permissions::from_mode(0o644)).unwrap();
+        let mut log = RotatingFile::open(path.clone(), 10, 1).unwrap();
+        assert_eq!(
+            fs::metadata(&path).unwrap().permissions().mode() & 0o777,
+            0o600
+        );
+        log.write_all(b"0123456789ab\n").unwrap();
+        log.write_all(b"x\n").unwrap();
+        assert_eq!(
+            fs::metadata(&path).unwrap().permissions().mode() & 0o777,
+            0o600,
+            "after rotation"
         );
         fs::remove_dir_all(dir).ok();
     }

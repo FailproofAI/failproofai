@@ -315,7 +315,7 @@ describe("hooks/daemon-service", () => {
       if (!cliCmd) return;
 
       expect(cliCmd).toBe(
-        `'${process.execPath}' '${resolve(process.env.FAILPROOFAI_PACKAGE_ROOT, "dist", "cli.mjs")}'`,
+        `'${svc.stableExecPath()}' '${resolve(process.env.FAILPROOFAI_PACKAGE_ROOT, "dist", "cli.mjs")}'`,
       );
       expect(cliCmd).not.toMatch(/^node /);
       // Through `sh -c`, exactly as the daemon will invoke it — which is also
@@ -662,7 +662,8 @@ describe("hooks/daemon-service", () => {
         const { daemonServiceNeedsUpgrade, systemdUnitContents } = await import("../../src/hooks/daemon-service");
         const { userInfo } = await import("node:os");
         const runtime = resolve(unitDir, "node");
-        const script = resolve(unitDir, "worker.mjs");
+        const script = resolve(unitDir, "dist", "worker.mjs");
+        mkdirSync(dirname(script), { recursive: true });
         writeFileSync(runtime, "");
         writeFileSync(script, "");
         const unit = resolve(unitDir, `failproofaid@${userInfo().username}.service`);
@@ -673,14 +674,23 @@ describe("hooks/daemon-service", () => {
         expect(daemonServiceNeedsUpgrade()).toBe(false);
         write(`'${resolve(unitDir, "gone", "node")}' '${script}'`);
         expect(daemonServiceNeedsUpgrade()).toBe(true);
-        // An operator's own command is never second-guessed.
+        // An operator's own command is never second-guessed, quoted or not.
         write("node dist/worker.mjs");
+        expect(daemonServiceNeedsUpgrade()).toBe(false);
+        write(`'${resolve(unitDir, "gone", "node")}' '/opt/team/wrapper.mjs'`);
         expect(daemonServiceNeedsUpgrade()).toBe(false);
       } finally {
         if (prevDir === undefined) delete process.env.FAILPROOFAI_SYSTEMD_DIR;
         else process.env.FAILPROOFAI_SYSTEMD_DIR = prevDir;
         rmSync(unitDir, { recursive: true, force: true });
       }
+    });
+
+    it("writes a literal % in a command as %% so systemd does not expand it", async () => {
+      setPlatform("linux");
+      const { systemdUnitContents } = await import("../../src/hooks/daemon-service");
+      const unit = systemdUnitContents("/opt/failproofaid", "'/home/a/bin%n/node' '/pkg/dist/worker.mjs'");
+      expect(unit).toContain(`Environment="FAILPROOFAI_WORKER_CMD='/home/a/bin%%n/node' '/pkg/dist/worker.mjs'"`);
     });
 
     it("saves a stable link to the runtime when PATH has one, not a versioned path", async () => {
@@ -697,15 +707,17 @@ describe("hooks/daemon-service", () => {
         writeFileSync(resolve(cellar, "node"), "");
         symlinkSync(resolve(cellar, "node"), resolve(stable, "node"));
 
-        expect(stableExecPath(resolve(cellar, "node"), `/usr/bin:${stable}`)).toBe(resolve(stable, "node"));
+        const allowed = [stable];
+        expect(stableExecPath(resolve(cellar, "node"), `/usr/bin:${stable}`, allowed)).toBe(resolve(stable, "node"));
         // No link on PATH: execPath, as before.
-        expect(stableExecPath(resolve(cellar, "node"), "/usr/bin")).toBe(resolve(cellar, "node"));
-        // execPath itself on PATH first: kept.
-        expect(stableExecPath(resolve(cellar, "node"), `${cellar}:${stable}`)).toBe(resolve(cellar, "node"));
+        expect(stableExecPath(resolve(cellar, "node"), "/usr/bin", allowed)).toBe(resolve(cellar, "node"));
+        // A link in a directory that is not a system bin dir (a temporary one
+        // could vanish after setup) is never saved.
+        expect(stableExecPath(resolve(cellar, "node"), stable, [])).toBe(resolve(cellar, "node"));
         // A different file of the same name is not the same runtime.
         rmSync(resolve(stable, "node"));
         writeFileSync(resolve(stable, "node"), "");
-        expect(stableExecPath(resolve(cellar, "node"), stable)).toBe(resolve(cellar, "node"));
+        expect(stableExecPath(resolve(cellar, "node"), stable, allowed)).toBe(resolve(cellar, "node"));
       } finally {
         rmSync(root, { recursive: true, force: true });
       }
@@ -1316,6 +1328,8 @@ describe("refreshDaemonToCliVersion", () => {
     let primed = false;
     const result = await svc.refreshDaemonToCliVersion({
       status: () => "running",
+      // This machine's own service definition must not decide the test.
+      needsUpgrade: () => false,
       install: async () => {
         installed = true;
         return { installed: true };

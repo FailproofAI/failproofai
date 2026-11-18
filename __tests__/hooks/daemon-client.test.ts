@@ -227,28 +227,30 @@ describe("hooks/daemon-client", () => {
     expect(attempt).toEqual({ ok: false, failure: "protocol-mismatch" });
   });
 
-  it("catches a mismatch when an old daemon responds to a new client", async () => {
-    // Newer CLI against older daemon, and older CLI against newer daemon, both
-    // land here: the daemon stamps its own version on the error it sends back,
-    // so the versions disagree either way.
+  it("re-asks an older daemon in its own version instead of denying", async () => {
+    // npm replaced the CLI before the daemon was replaced. The older daemon
+    // refuses v2; the client asks again in v1 rather than deny every call.
+    const requests: Record<string, unknown>[] = [];
     await startServer(async (socket) => {
-      await readFrame(socket);
-      socket.end(encodeFrame({ type: "error", protocolVersion: 1, message: "protocol version mismatch" }));
+      const request = (await readFrame(socket)) as Record<string, unknown>;
+      requests.push(request);
+      socket.end(encodeFrame(
+        request.protocolVersion === 1
+          ? { type: "hookResult", protocolVersion: 1, exitCode: 0, stdout: "ok", stderr: "" }
+          : { type: "error", protocolVersion: 1, message: "protocol version mismatch" },
+      ));
     });
 
     const { attemptDaemonHook } = await import("../../src/hooks/daemon-client");
     const attempt = await attemptDaemonHook({ hookEvent: "PreToolUse", cli: "claude", stdin: "{}" });
-    expect(attempt).toEqual({ ok: false, failure: "protocol-mismatch" });
+    expect(attempt).toEqual({ ok: true, response: { exitCode: 0, stdout: "ok", stderr: "" } });
+    expect(requests.map((r) => r.protocolVersion)).toEqual([2, 1]);
   });
 
-  it("rejects an allow from a v1 daemon that ignored the profile-scoping field", async () => {
+  it("never accepts a v1 answer to a scoped v2 request; it re-asks unscoped", async () => {
+    const requests: Record<string, unknown>[] = [];
     await startServer(async (socket) => {
-      const request = await readFrame(socket);
-      expect(request).toMatchObject({
-        type: "hook",
-        protocolVersion: 2,
-        agentSettingsPath: "/home/agent/claude/settings.json",
-      });
+      requests.push((await readFrame(socket)) as Record<string, unknown>);
       // A v1 daemon ignores unknown JSON fields. Its allow is not proof that
       // it identified this profile or applied schema-3 targets.
       socket.end(encodeFrame({
@@ -261,7 +263,25 @@ describe("hooks/daemon-client", () => {
       cli: "claude",
       stdin: "{}",
       agentSettingsPath: "/home/agent/claude/settings.json",
-    })).resolves.toEqual({ ok: false, failure: "protocol-mismatch" });
+    })).resolves.toMatchObject({ ok: true });
+    expect(requests[0]).toMatchObject({ protocolVersion: 2, agentSettingsPath: "/home/agent/claude/settings.json" });
+    // The answer accepted is the one to a request that never claimed a profile.
+    expect(requests[1].protocolVersion).toBe(1);
+    expect(requests[1]).not.toHaveProperty("agentSettingsPath");
+    expect(requests).toHaveLength(2);
+  });
+
+  it("does not retry below the oldest supported version", async () => {
+    let connections = 0;
+    await startServer(async (socket) => {
+      connections++;
+      await readFrame(socket);
+      socket.end(encodeFrame({ type: "error", protocolVersion: 0, message: "protocol version mismatch" }));
+    });
+    const { attemptDaemonHook } = await import("../../src/hooks/daemon-client");
+    const attempt = await attemptDaemonHook({ hookEvent: "PreToolUse", cli: "claude", stdin: "{}" });
+    expect(attempt).toEqual({ ok: false, failure: "protocol-mismatch" });
+    expect(connections).toBe(1);
   });
 
   it("an error at a MATCHING protocol version is unreachable, not skew", async () => {

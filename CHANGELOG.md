@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.0.15-beta.0 — 2026-11-18
+
+### Fixes
+
+- The daemon answers the previous plugin protocol, and clients re-ask an older daemon in its version, so a Hermes or OpenClaw gateway still running the plugin it loaded before an upgrade keeps getting real verdicts instead of denying every call (#PR)
+
 ## 1.0.14-beta.0 — 2026-11-16
 
 ### Features

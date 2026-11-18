@@ -102,11 +102,22 @@ operator to reinstall/restart the daemon before evaluation resumes.
 
 ## Protocol versioning
 
-`protocolVersion` is carried on every message in both directions. A mismatch
-gets an explicit `error` response from the daemon. A daemon-configured client
-fails closed on every missing or unusable verdict; it preserves the mismatch
-category only to print the correct repair instructions. There is no protocol
-negotiation: the CLI and daemon must agree exactly.
+`protocolVersion` is carried on every message in both directions. The daemon
+answers every version from `MIN_PROTOCOL_VERSION` (1) to `PROTOCOL_VERSION` (2)
+and stamps its reply with the version the client sent. A request older than the
+field it carries is read without it: a v1 request's `agentSettingsPath` is
+dropped, so its profile is unknown, never trusted.
+
+A client that gets a reply stamped with an older version still inside that range
+asks once more in that version, without the fields that version predates. The
+answer to the original request is never used. Anything outside the range gets an
+explicit `error`, and a daemon-configured client fails closed on it.
+
+This exists because a long-lived host (a Hermes or OpenClaw gateway) keeps the
+plugin it loaded at start: after an upgrade it speaks the previous version until
+it restarts, and refusing it denied every call it made. Versions only add
+optional fields; raise `MIN_PROTOCOL_VERSION` only when an older request can no
+longer be answered safely.
 
 ## Peer verification
 

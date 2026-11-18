@@ -20,6 +20,10 @@ import { homedir } from "node:os";
 import { resolve } from "node:path";
 
 export const PROTOCOL_VERSION = 2;
+// Oldest daemon version this plugin falls back to (crates/fpai-ipc
+// MIN_PROTOCOL_VERSION), and the first that carries agentSettingsPath.
+export const MIN_PROTOCOL_VERSION = 1;
+const AGENT_SETTINGS_PATH_SINCE = 2;
 // The daemon's frame limit (crates/fpai-ipc/src/framing.rs), both ways.
 const MAX_FRAME_BYTES = 16 * 1024 * 1024;
 // The payload limit the CLI applies to its stdin (handler.ts, read-stdin.ts).
@@ -78,12 +82,12 @@ function failed(failure, message) {
  * OpenClaw the evaluator always exits 0 and prints either nothing (allow) or
  * one JSON object, so anything else is an evaluation failure — never an allow.
  */
-function readHookResult(message) {
+function readHookResult(message, protocolVersion) {
   if (message === null || typeof message !== "object" || Array.isArray(message)) {
     return failed("invalid", "failproofaid returned a non-object response");
   }
-  if (message.protocolVersion !== PROTOCOL_VERSION) {
-    return failed("protocol-mismatch", PROTOCOL_MISMATCH_MESSAGE);
+  if (message.protocolVersion !== protocolVersion) {
+    return { ...failed("protocol-mismatch", PROTOCOL_MISMATCH_MESSAGE), daemonVersion: message.protocolVersion };
   }
   if (message.type === "error") {
     const detail = typeof message.message === "string" && message.message ? message.message : "no detail";
@@ -144,7 +148,21 @@ function isVerdict(verdict) {
  * CLI discards an oversized stdin and evaluates an empty payload;
  * `oversized: true` lets the caller say so instead of discarding it silently.
  */
-export function requestHookVerdict({
+export async function requestHookVerdict(request) {
+  const first = await requestHookVerdictAt(PROTOCOL_VERSION, request);
+  // An older daemon still inside the supported range: ask again in its version
+  // rather than block every call until it is replaced.
+  const older = first.ok ? undefined : first.daemonVersion;
+  if (!Number.isInteger(older) || older < MIN_PROTOCOL_VERSION || older >= PROTOCOL_VERSION) {
+    if (!first.ok) delete first.daemonVersion;
+    return first;
+  }
+  const retried = await requestHookVerdictAt(older, request);
+  if (!retried.ok) delete retried.daemonVersion;
+  return retried;
+}
+
+function requestHookVerdictAt(protocolVersion, {
   event,
   payload,
   cwd = "",
@@ -165,12 +183,12 @@ export function requestHookVerdict({
       body = Buffer.from(
         JSON.stringify({
           type: "hook",
-          protocolVersion: PROTOCOL_VERSION,
+          protocolVersion,
           hookEvent: event,
           cli: "openclaw",
           stdin,
           ...(typeof cwd === "string" && cwd ? { cwd } : {}),
-          agentSettingsPath: agentSettingsPath || "",
+          ...(protocolVersion >= AGENT_SETTINGS_PATH_SINCE ? { agentSettingsPath: agentSettingsPath || "" } : {}),
         }),
         "utf8",
       );
@@ -233,7 +251,7 @@ export function requestHookVerdict({
         finish(failed("invalid", "failproofaid returned a response that is not JSON"));
         return;
       }
-      const result = readHookResult(message);
+      const result = readHookResult(message, protocolVersion);
       finish(result.ok && oversized ? { ...result, oversized: true } : result);
     });
     socket.on("error", (err) => {

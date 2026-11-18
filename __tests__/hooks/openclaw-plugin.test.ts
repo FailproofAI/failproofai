@@ -305,7 +305,6 @@ describe("openclaw-plugin daemon-client: requestHookVerdict", () => {
   it("does not retry past the request budget", async () => {
     const daemon = await fakeDaemon(socketPath, () => "hang");
     try {
-      const started = Date.now();
       const pending = new Promise<Awaited<ReturnType<typeof requestHookVerdict>>>((done) => {
         setImmediate(() => {
           const result = requestHookVerdict({
@@ -322,10 +321,36 @@ describe("openclaw-plugin daemon-client: requestHookVerdict", () => {
       const result = await pending;
       expect(result).toMatchObject({ ok: false, failure: "unreachable" });
       expect(result.detail).toMatch(/no time left in the 150 ms budget to retry/);
-      // A retry with a fresh 150 ms budget would have reached the hanging
-      // daemon and taken ≈ 250 + 100 + 150 ms.
-      expect(Date.now() - started).toBeLessThan(400);
+      // A retry with a fresh budget would have reached the hanging daemon,
+      // sent it a frame, and ended as a timeout instead.
       expect(daemon.requests).toHaveLength(0);
+    } finally {
+      await daemon.close();
+    }
+  });
+
+  it("gives a retry that connects only what is left of the request budget", async () => {
+    // First attempt: no socket (ENOENT). Then a daemon appears that accepts
+    // the request and never answers. With a 600 ms pause before the retry and
+    // a 1,000 ms budget, the retry has ~400 ms left: a shared budget ends near
+    // 1,000 ms, a fresh one would run to ~1,600 ms.
+    const started = performance.now();
+    const pending = requestHookVerdict({
+      event: "before_tool_call",
+      payload: {},
+      socketPath,
+      responseTimeoutMs: 1_000,
+      retryDelayMs: 600,
+    });
+    const daemon = await fakeDaemon(socketPath, () => "hang");
+    try {
+      const result = await pending;
+      const elapsed = performance.now() - started;
+      expect(result).toMatchObject({ ok: false, failure: "timeout" });
+      expect(result.detail).toMatch(/attempt 1: ENOENT/);
+      expect(daemon.requests).toHaveLength(1);
+      expect(elapsed).toBeGreaterThanOrEqual(950);
+      expect(elapsed).toBeLessThan(1_350);
     } finally {
       await daemon.close();
     }

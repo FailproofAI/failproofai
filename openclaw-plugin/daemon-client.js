@@ -16,6 +16,7 @@
  * outside this directory — because the capture copies nothing else.
  */
 import { createConnection } from "node:net";
+import { performance } from "node:perf_hooks";
 import { homedir } from "node:os";
 import { resolve } from "node:path";
 
@@ -168,37 +169,39 @@ export function requestHookVerdict(request) {
  * request, and is returned as it is.
  *
  * Both attempts share ONE deadline of `responseTimeoutMs`, set before the
- * first: the retry gets only what is left of it, and is skipped when the pause
- * before it would use the rest. A fresh budget per attempt let a call wait
- * twice as long, past the gateway's own hook timeout.
+ * first and passed to each attempt as an absolute time: an attempt arms its
+ * timer with what is left of it just before connecting (so encoding time
+ * counts too), and the retry is skipped when the pause before it would use the
+ * rest. A fresh budget per attempt let a call wait twice as long, past the
+ * gateway's own hook timeout. Time is read from `performance.now()`, a
+ * monotonic clock, so a wall-clock change cannot stretch or shrink the budget.
  *
  * A failed retry keeps its own failure and agent-facing message; its `detail`
  * (gateway log only) names both attempts, so the first attempt's cause is
  * never lost behind the second's.
  */
 async function requestWithRetry(request) {
-  const startedAt = Date.now();
+  const startedAt = performance.now();
   const budgetMs = request.responseTimeoutMs ?? RESPONSE_TIMEOUT_MS;
   const deadline = startedAt + budgetMs;
-  const first = await requestOnce({ ...request, responseTimeoutMs: budgetMs, budgetMs });
+  const noTimeToRetry = (first) =>
+    ({ ...first, detail: `${first.detail}; no time left in the ${budgetMs} ms budget to retry` });
+
+  const first = await requestOnce({ ...request, deadline, budgetMs });
   if (first.ok || first.failure !== "unreachable") return first;
 
   const delayMs = request.retryDelayMs ?? UNREACHABLE_RETRY_DELAY_MS;
-  if (deadline - Date.now() - delayMs <= 0) {
-    return { ...first, detail: `${first.detail}; no time left in the ${budgetMs} ms budget to retry` };
-  }
+  if (deadline - performance.now() - delayMs <= 0) return noTimeToRetry(first);
   await new Promise((resume) => setTimeout(resume, delayMs));
-  const remainingMs = deadline - Date.now();
-  if (remainingMs <= 0) {
-    return { ...first, detail: `${first.detail}; no time left in the ${budgetMs} ms budget to retry` };
-  }
-  const second = await requestOnce({ ...request, responseTimeoutMs: remainingMs, budgetMs });
+  if (deadline - performance.now() <= 0) return noTimeToRetry(first);
+
+  const second = await requestOnce({ ...request, deadline, budgetMs });
   if (second.ok) return second;
   return {
     ...second,
     detail:
       `attempt 1: ${first.detail}; attempt 2: ${second.detail ?? second.message}; ` +
-      `2 attempts, ${Date.now() - startedAt} ms total`,
+      `2 attempts, ${Math.round(performance.now() - startedAt)} ms total`,
   };
 }
 
@@ -208,10 +211,10 @@ function requestOnce({
   cwd = "",
   agentSettingsPath = "",
   socketPath = daemonSocketPath(),
-  responseTimeoutMs = RESPONSE_TIMEOUT_MS,
-  // The whole request's budget, for messages; `responseTimeoutMs` is what is
-  // left of it for this attempt.
-  budgetMs = responseTimeoutMs,
+  // The whole request's budget (for messages) and its absolute end on the
+  // performance.now() clock, shared with any retry.
+  budgetMs = RESPONSE_TIMEOUT_MS,
+  deadline = performance.now() + budgetMs,
 }) {
   return new Promise((done) => {
     let body;
@@ -250,7 +253,7 @@ function requestOnce({
     let received = Buffer.alloc(0);
     let timer;
     let socket;
-    const startedAt = Date.now();
+    const startedAt = performance.now();
     const finish = (result) => {
       if (settled) return;
       settled = true;
@@ -262,8 +265,15 @@ function requestOnce({
     // happened, for the gateway log (hooks.js), so the next field report can
     // tell a missing socket from a refused one from a timeout.
     const unreachable = (cause) =>
-      finish({ ...failed("unreachable", UNREACHABLE_MESSAGE), detail: `${cause} after ${Date.now() - startedAt} ms` });
+      finish({ ...failed("unreachable", UNREACHABLE_MESSAGE), detail: `${cause} after ${Math.round(performance.now() - startedAt)} ms` });
 
+    // Measured after encoding, so a large payload's encoding time is charged
+    // to the same budget.
+    const remainingMs = deadline - performance.now();
+    if (remainingMs <= 0) {
+      unreachable("no time left in the request budget");
+      return;
+    }
     try {
       socket = createConnection(socketPath);
     } catch (err) {
@@ -273,7 +283,7 @@ function requestOnce({
     timer = setTimeout(() => {
       if (connected) finish(failed("timeout", `failproofaid did not answer within ${budgetMs} ms`));
       else unreachable("no connection within the request budget");
-    }, responseTimeoutMs);
+    }, remainingMs);
 
     socket.on("connect", () => {
       connected = true;

@@ -281,8 +281,6 @@ hand an agent more autonomy, not less:
 - **Always on, even when you're not.** It runs as a system service from boot, with no
   login needed. Overnight jobs, cron runs and detached sessions get the same protection
   as the one in your terminal.
-- **No agent can switch it off.** The guard that protects Failproof is always on and
-  can't be paused, so the rules you set are the rules your agent runs under.
 - **One daemon, always in sync.** The same process ships every run to Cloud and keeps
   your policies current, so a policy you approve reaches every machine without a
   redeploy.

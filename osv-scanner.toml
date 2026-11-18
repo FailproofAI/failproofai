@@ -84,3 +84,34 @@ reason = "chromadb 1.5.9 (published 2026-06-12, surfaced 2026-08-24). No fixed v
 id = "GHSA-xph7-9rjv-w5fr"
 ignoreUntil = 2026-11-20
 reason = "chromadb 1.5.9 (published 2026-06-12, surfaced 2026-08-24). No fixed version. Transitive via crewai, dev/test lockfile only; see the shared justification above. Re-review by 2026-11-20."
+
+# ---------------------------------------------------------------------------
+# picomatch — ReDoS through single-branch repeated extglobs (GHSA-fc5q-39xc-vjpf).
+#
+#   Affects every release through 4.0.7, the newest on npm, so there is no fixed
+#   version to bump or override to. Where it is:
+#
+#   - bun.lock (2.3.2 via micromatch / fast-glob, 4.0.4 and 4.0.7 via
+#     tinyglobby, vite and vitest) and sdk/typescript/package-lock.json (vitest,
+#     dev): build, lint and test tooling, which only ever matches globs from our
+#     own config.
+#   - SHIPPED, inside Next.js: the published tarball's dashboard bundle carries
+#     .next/standalone/node_modules/next/dist/compiled/picomatch. Its only
+#     importers there are next/dist/shared/lib/match-remote-pattern.js and
+#     match-local-pattern.js, which match an image URL against the GLOBS in
+#     next.config's images.remotePatterns / localPatterns. Our next.config sets
+#     `images: { unoptimized: true }` and declares no patterns, so those globs
+#     are build-time config at most and never come from a request. A visitor can
+#     only influence the string being matched, while this ReDoS needs an
+#     attacker-supplied glob.
+#
+#   No code in this repo imports picomatch or hands it a pattern, and
+#   `@failproofai/sdk` has no dependencies.
+#
+#   Re-review by 2026-12-18, or as soon as a fixed picomatch is published —
+#   then bump (or pin via `overrides`) and delete this entry.
+
+[[IgnoredVulns]]
+id = "GHSA-fc5q-39xc-vjpf"
+ignoreUntil = 2026-12-18
+reason = "picomatch <=4.0.7 ReDoS; no fixed release exists. In build/lint/test tooling, and shipped inside the Next.js dashboard bundle, where it only matches image URLs against globs from next.config (we declare none); no attacker-supplied glob reaches it. Re-review by 2026-12-18."

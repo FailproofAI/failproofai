@@ -16,6 +16,7 @@
  * outside this directory — because the capture copies nothing else.
  */
 import { createConnection } from "node:net";
+import { performance } from "node:perf_hooks";
 import { homedir } from "node:os";
 import { resolve } from "node:path";
 
@@ -28,12 +29,25 @@ const MAX_FRAME_BYTES = 16 * 1024 * 1024;
 // applies to the envelope.
 export const MAX_PAYLOAD_BYTES = 1_048_576;
 
-// The CLI's daemon client budgets these separately for the reason it gives:
-// connecting is the "is anything listening" probe, the response covers the
-// whole evaluation. 250 ms matches the Hermes plugin; 30 s matches the
-// daemon's own read timeout on its worker (worker.rs).
-export const CONNECT_TIMEOUT_MS = 250;
+// One budget for the whole request, matching the daemon's own read timeout on
+// its worker (worker.rs).
+//
+// There is deliberately NO separate connect timeout. This client runs on the
+// OpenClaw gateway's event loop, shared with every agent on the gateway. A
+// Unix-socket connect to a live daemon completes in the kernel at once, but
+// the gateway only learns of it on a later loop pass; while the gateway is
+// busy (a cron burst, a large transcript, GC) a timer that is already overdue
+// runs before that connect event. The 250 ms connect timer this replaced
+// therefore measured gateway load, and reported a healthy daemon as
+// unreachable (#1024). A daemon that is not there needs no timer: the connect
+// fails at once with ENOENT or ECONNREFUSED. One that accepts and then hangs is
+// caught by this budget.
 export const RESPONSE_TIMEOUT_MS = 30_000;
+// A connect that fails outright is retried once after this pause before the
+// call fails closed: long enough to ride out a daemon restart re-binding its
+// socket, short enough that a daemon that is really gone costs one tool call
+// 100 ms.
+export const UNREACHABLE_RETRY_DELAY_MS = 100;
 
 const PROTOCOL_MISMATCH_MESSAGE =
   "failproofaid is running a different protocol version than this plugin, so it cannot " +
@@ -144,16 +158,67 @@ function isVerdict(verdict) {
  * CLI discards an oversized stdin and evaluates an empty payload;
  * `oversized: true` lets the caller say so instead of discarding it silently.
  */
-export function requestHookVerdict({
+export function requestHookVerdict(request) {
+  return requestWithRetry(request);
+}
+
+/**
+ * One request, asked a second time if the first never reached the daemon.
+ * Only `unreachable` is retried: nothing was sent, so asking again cannot
+ * evaluate a call twice. Every other failure came from a daemon that saw the
+ * request, and is returned as it is.
+ *
+ * Both attempts share ONE deadline of `responseTimeoutMs`, set before the
+ * first and passed to each attempt as an absolute time: an attempt arms its
+ * timer with what is left of it just before connecting (so encoding time
+ * counts too), and the retry is skipped when the pause before it would use the
+ * rest. A fresh budget per attempt let a call wait twice as long, past the
+ * gateway's own hook timeout. Time is read from `performance.now()`, a
+ * monotonic clock, so a wall-clock change cannot stretch or shrink the budget.
+ *
+ * A failed retry keeps its own failure and agent-facing message; its `detail`
+ * (gateway log only) names both attempts, so the first attempt's cause is
+ * never lost behind the second's.
+ */
+async function requestWithRetry(request) {
+  const startedAt = performance.now();
+  const budgetMs = request.responseTimeoutMs ?? RESPONSE_TIMEOUT_MS;
+  const deadline = startedAt + budgetMs;
+  const noTimeToRetry = (first) =>
+    ({ ...first, detail: `${first.detail}; no time left in the ${budgetMs} ms budget to retry` });
+
+  const first = await requestOnce({ ...request, deadline, budgetMs });
+  if (first.ok || first.failure !== "unreachable") return first;
+
+  const delayMs = request.retryDelayMs ?? UNREACHABLE_RETRY_DELAY_MS;
+  if (deadline - performance.now() - delayMs <= 0) return noTimeToRetry(first);
+  await new Promise((resume) => setTimeout(resume, delayMs));
+  if (deadline - performance.now() <= 0) return noTimeToRetry(first);
+
+  const second = await requestOnce({ ...request, deadline, budgetMs });
+  if (second.ok) return second;
+  return {
+    ...second,
+    detail:
+      `attempt 1: ${first.detail}; attempt 2: ${second.detail ?? second.message}; ` +
+      `2 attempts, ${Math.round(performance.now() - startedAt)} ms total`,
+  };
+}
+
+function requestOnce({
   event,
   payload,
   cwd = "",
   agentSettingsPath = "",
   socketPath = daemonSocketPath(),
-  connectTimeoutMs = CONNECT_TIMEOUT_MS,
-  responseTimeoutMs = RESPONSE_TIMEOUT_MS,
+  // The whole request's budget (for messages) and its absolute end on the
+  // performance.now() clock, shared with any retry.
+  budgetMs = RESPONSE_TIMEOUT_MS,
+  deadline = performance.now() + budgetMs,
 }) {
   return new Promise((done) => {
+    // Started before encoding, so the elapsed time in `detail` includes it.
+    const startedAt = performance.now();
     let body;
     let oversized = false;
     try {
@@ -197,22 +262,32 @@ export function requestHookVerdict({
       try { socket?.destroy(); } catch { /* already closed */ }
       done(result);
     };
+    // The agent-facing message stays the same; `detail` says what actually
+    // happened, for the gateway log (hooks.js), so the next field report can
+    // tell a missing socket from a refused one from a timeout.
+    const unreachable = (cause) =>
+      finish({ ...failed("unreachable", UNREACHABLE_MESSAGE), detail: `${cause} after ${Math.round(performance.now() - startedAt)} ms` });
 
-    try {
-      socket = createConnection(socketPath);
-    } catch {
-      finish(failed("unreachable", UNREACHABLE_MESSAGE));
+    // Measured after encoding, so a large payload's encoding time is charged
+    // to the same budget.
+    const remainingMs = deadline - performance.now();
+    if (remainingMs <= 0) {
+      unreachable("no time left in the request budget");
       return;
     }
-    timer = setTimeout(() => finish(failed("unreachable", UNREACHABLE_MESSAGE)), connectTimeoutMs);
+    try {
+      socket = createConnection(socketPath);
+    } catch (err) {
+      unreachable(err?.code ?? err?.message ?? String(err));
+      return;
+    }
+    timer = setTimeout(() => {
+      if (connected) finish(failed("timeout", `failproofaid did not answer within ${budgetMs} ms`));
+      else unreachable("no connection within the request budget");
+    }, remainingMs);
 
     socket.on("connect", () => {
       connected = true;
-      clearTimeout(timer);
-      timer = setTimeout(
-        () => finish(failed("timeout", `failproofaid did not answer within ${responseTimeoutMs} ms`)),
-        responseTimeoutMs,
-      );
       const header = Buffer.alloc(4);
       header.writeUInt32BE(body.length, 0);
       socket.write(Buffer.concat([header, body]));
@@ -237,18 +312,12 @@ export function requestHookVerdict({
       finish(result.ok && oversized ? { ...result, oversized: true } : result);
     });
     socket.on("error", (err) => {
-      finish(
-        connected
-          ? failed("evaluation", `failproofaid connection failed: ${err?.message ?? String(err)}`)
-          : failed("unreachable", UNREACHABLE_MESSAGE),
-      );
+      if (connected) finish(failed("evaluation", `failproofaid connection failed: ${err?.message ?? String(err)}`));
+      else unreachable(err?.code ?? err?.message ?? String(err));
     });
     socket.on("close", () => {
-      finish(
-        connected
-          ? failed("evaluation", "failproofaid closed the connection before returning a verdict")
-          : failed("unreachable", UNREACHABLE_MESSAGE),
-      );
+      if (connected) finish(failed("evaluation", "failproofaid closed the connection before returning a verdict"));
+      else unreachable("closed before connecting");
     });
   });
 }

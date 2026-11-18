@@ -1,6 +1,6 @@
 {
   "name": "failproofai",
-  "version": "1.0.15-beta.0",
+  "version": "1.0.15",
   "description": "The reliability layer for AI agents: see every failure, stop it in realtime. Policies hooked into 12 agent harnesses — Claude Code, Codex, Cursor, Hermes, OpenClaw and more — block the tool call before it runs. Local dashboard included, no account needed.",
   "bin": {
     "failproofai": "./dist/cli.mjs",

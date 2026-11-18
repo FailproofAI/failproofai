@@ -11,6 +11,10 @@
 - `config --status` counts Cloud Jev-only deployments in its policies row; it showed "None installed" beside a deployment the line under it called enforcing (#1023)
 - A machine that pulls policies from Cloud is pointed at Cloud, not at installing packs: `config --status` says "None deployed from Cloud" with the dashboard as its fix, and the `failproofai policies` empty state says "Deploy from Cloud" (#1023)
 - The "no pack is installed" warning is logged once per process instead of on every hook call, which buried the daemon log (#1023)
+- The daemon service saves a stable link to Node when PATH has one (Homebrew's `/opt/homebrew/bin/node`, not the `Cellar/<version>` path `brew upgrade node` deletes), and `failproofai update` rewrites a service whose saved Node or failproofai path is gone instead of reporting nothing to update; the daemon log names that cause and the fix when the worker cannot start (#1023)
+- The daemon no longer exits on a transient `accept()` failure (out of file descriptors, an aborted connection), which left every hook denied until the service manager restarted it (#1023)
+- The collector manager and cloud policy sync restart after a panic instead of stopping silently while the daemon keeps answering hooks (#1023)
+- A hook client that stopped waiting before its verdict was ready is logged as that, with how long the evaluation took, instead of macOS's bare "Invalid argument (os error 22)" (#1023)
 
 ## 1.0.15 — 2026-11-18
 

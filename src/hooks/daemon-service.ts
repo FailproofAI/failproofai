@@ -14,6 +14,7 @@ import {
   mkdtempSync,
   readFileSync,
   readdirSync,
+  realpathSync,
   statSync,
   writeFileSync,
   unlinkSync,
@@ -25,7 +26,7 @@ import { execFileSync } from "node:child_process";
 import { hookLogWarn } from "./hook-logger";
 import { downloadFailproofaidBinary, installFromNpmPackage, installedBinaryPath } from "./daemon-download";
 import { logsDir } from "./fp-home";
-import { shellQuote } from "./shell-quote";
+import { shellQuote, shellQuotedWords } from "./shell-quote";
 import { version } from "../../package.json";
 import { readVersionFile, updateConfig, writeVersionFile } from "./fp-config";
 
@@ -258,7 +259,57 @@ export function resolveWorkerCommand(): string | null {
   // silently, on exactly the machines least likely to notice. execPath is
   // whatever runtime is executing this CLI right now (node for the published
   // bin, bun in a source checkout), absolute either way.
-  return `${shellQuote(process.execPath)} ${shellQuote(workerScript)}`;
+  return `${shellQuote(stableExecPath())} ${shellQuote(workerScript)}`;
+}
+
+/**
+ * `process.execPath`, or a stable link to the same binary when one is on PATH.
+ *
+ * execPath is the RESOLVED path, and some installers version it: Homebrew's is
+ * `/opt/homebrew/Cellar/node/<version>/bin/node`, which `brew upgrade node`
+ * deletes, while `/opt/homebrew/bin/node` and the global packages under
+ * `/opt/homebrew/lib/node_modules` survive. A service saved with the Cellar
+ * path then ran nothing after the upgrade — the daemon stayed up, its worker
+ * could not start, and every hook was denied. A PATH entry that resolves to
+ * the same file is the same runtime today and still names one tomorrow.
+ *
+ * nvm has no such link (its global packages live inside each version), so
+ * execPath is kept there; `failproofai update` repairs a service whose saved
+ * path is gone (see {@link daemonServiceNeedsUpgrade}).
+ */
+export function stableExecPath(
+  execPath: string = process.execPath,
+  pathEnv: string = process.env.PATH ?? "",
+): string {
+  let real: string;
+  try {
+    real = realpathSync(execPath);
+  } catch {
+    return execPath;
+  }
+  const name = execPath.split("/").pop() ?? "";
+  for (const dir of pathEnv.split(":")) {
+    if (!dir.startsWith("/")) continue;
+    const candidate = resolve(dir, name);
+    if (candidate === execPath) return execPath;
+    try {
+      if (realpathSync(candidate) === real) return candidate;
+    } catch {
+      // Not there: try the next entry.
+    }
+  }
+  return execPath;
+}
+
+/**
+ * Whether a saved `FAILPROOFAI_WORKER_CMD` / `FAILPROOFAI_CLI_CMD` names a
+ * file that no longer exists. Only a command this package wrote (quoted words)
+ * is judged; an operator's own command is never second-guessed.
+ */
+function savedCommandIsGone(command: string | null): boolean {
+  if (!command) return false;
+  const words = shellQuotedWords(command);
+  return words !== null && words.some((word) => word.startsWith("/") && !existsSync(word));
 }
 
 /**
@@ -288,7 +339,7 @@ export function resolveCliCommand(): string | null {
   if (!packageRoot) return null;
   const cliScript = resolve(packageRoot, "dist", "cli.mjs");
   if (!existsSync(cliScript)) return null;
-  return `${shellQuote(process.execPath)} ${shellQuote(cliScript)}`;
+  return `${shellQuote(stableExecPath())} ${shellQuote(cliScript)}`;
 }
 
 
@@ -1388,7 +1439,13 @@ function installedExecStart(definition: string): string | null {
 export function daemonServiceNeedsUpgrade(): boolean {
   const definition = readInstalledServiceDefinition();
   if (definition === null) return false;
-  return !definition.includes("FAILPROOFAI_CLI_CMD");
+  if (!definition.includes("FAILPROOFAI_CLI_CMD")) return true;
+  // A Node upgrade deleted the runtime (or package) the definition names: the
+  // daemon runs, its worker cannot start, and every hook is denied.
+  return (
+    savedCommandIsGone(installedEnvValue(definition, "FAILPROOFAI_WORKER_CMD")) ||
+    savedCommandIsGone(installedEnvValue(definition, "FAILPROOFAI_CLI_CMD"))
+  );
 }
 
 /**
@@ -1702,8 +1759,10 @@ export async function refreshDaemonToCliVersion(
     install?: () => Promise<DaemonInstallResult>;
     prime?: () => boolean;
     interactive?: () => boolean;
+    needsUpgrade?: () => boolean;
   } = {},
 ): Promise<{ ok: boolean; lines: string[] }> {
+  const needsUpgrade = deps.needsUpgrade ?? daemonServiceNeedsUpgrade;
   const status = deps.status ?? daemonServiceStatus;
   const install = deps.install ?? installDaemonService;
   const prime = deps.prime ?? primeElevation;
@@ -1722,7 +1781,12 @@ export async function refreshDaemonToCliVersion(
   // `VERSION.daemon` is written only after an install succeeds, and the binary
   // it names must still be on disk.
   const recorded = readVersionFile()?.daemon;
-  if (current === "running" && recorded === version && existsSync(installedBinaryPath(version))) {
+  if (
+    current === "running" &&
+    recorded === version &&
+    existsSync(installedBinaryPath(version)) &&
+    !needsUpgrade()
+  ) {
     return { ok: true, lines: [`failproofaid ${version} is already installed and running; nothing to update.`] };
   }
 

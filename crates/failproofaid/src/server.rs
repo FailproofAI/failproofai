@@ -245,11 +245,35 @@ impl Server {
                 Err(err) if err.kind() == io::ErrorKind::WouldBlock => {
                     std::thread::sleep(std::time::Duration::from_millis(20));
                 }
+                // Out of file descriptors, an aborted handshake, a signal:
+                // the listener is fine and the next accept can succeed.
+                // Returning here exited the daemon, and until the service
+                // manager restarted it every hook on the machine was denied.
+                Err(err) if is_transient_accept_error(&err) => {
+                    log_connection_error(&io::Error::other(format!(
+                        "accept failed, retrying: {err}"
+                    )));
+                    std::thread::sleep(std::time::Duration::from_millis(100));
+                }
                 Err(err) => return Err(err),
             }
         }
         Ok(())
     }
+}
+
+/// An `accept()` failure that says nothing about the listener itself.
+fn is_transient_accept_error(err: &io::Error) -> bool {
+    matches!(
+        err.kind(),
+        io::ErrorKind::Interrupted
+            | io::ErrorKind::ConnectionAborted
+            | io::ErrorKind::ConnectionReset
+            | io::ErrorKind::OutOfMemory
+    ) || matches!(
+        err.raw_os_error(),
+        Some(libc::EMFILE | libc::ENFILE | libc::ENOBUFS | libc::ENOMEM)
+    )
 }
 
 impl Drop for Server {
@@ -304,10 +328,36 @@ pub fn handle_connection(stream: UnixStream, worker: &Worker) -> io::Result<()> 
     // write below gets a fresh budget for the same reason — a peer that has
     // waited through a slow evaluation must not then be denied its answer
     // because the read half used the clock up.
+    let started = std::time::Instant::now();
     let response = dispatch(request, worker);
+    let took = started.elapsed();
     let mut io = Deadline::new(&stream, CONNECTION_IO_TIMEOUT);
-    write_message(&mut io, &response)
-        .map_err(|e| io::Error::other(format!("failed to write response: {e}")))
+    write_message(&mut io, &response).map_err(|e| {
+        if peer_hung_up(&e) {
+            // The client stopped waiting and its own fail-closed path already
+            // answered the call. On macOS this surfaced only as "Invalid
+            // argument (os error 22)": setsockopt on a socket the peer closed
+            // is EINVAL there. How long the evaluation took is the useful part.
+            io::Error::other(format!(
+                "the client closed the connection before its verdict was ready \
+                 (evaluation took {} ms)",
+                took.as_millis()
+            ))
+        } else {
+            io::Error::other(format!("failed to write response: {e}"))
+        }
+    })
+}
+
+/// Whether a write failed because the peer had already gone.
+fn peer_hung_up(err: &fpai_ipc::FramingError) -> bool {
+    let fpai_ipc::FramingError::Io(io) = err else {
+        return false;
+    };
+    matches!(
+        io.kind(),
+        io::ErrorKind::BrokenPipe | io::ErrorKind::ConnectionReset | io::ErrorKind::NotConnected
+    ) || io.raw_os_error() == Some(libc::EINVAL)
 }
 
 fn record_agent_sighting(integration: &str, settings_path: Option<&str>) {
@@ -898,6 +948,40 @@ mod tests {
             scoped(PROTOCOL_VERSION).without_fields_newer_than_its_version(),
             scoped(PROTOCOL_VERSION)
         );
+    }
+
+    #[test]
+    fn a_client_that_stopped_waiting_is_logged_as_such() {
+        let (mut client, server) = UnixStream::pair().unwrap();
+        write_message(
+            &mut client,
+            &ClientMessage::Ping {
+                protocol_version: PROTOCOL_VERSION,
+            },
+        )
+        .unwrap();
+        drop(client);
+        let worker = Worker::new(temp_socket_path("hung-up"), broken_worker_cmd());
+        let err = handle_connection(server, &worker).expect_err("the peer is gone");
+        assert!(
+            err.to_string()
+                .contains("closed the connection before its verdict"),
+            "got: {err}"
+        );
+    }
+
+    #[test]
+    fn running_out_of_descriptors_does_not_end_the_accept_loop() {
+        assert!(is_transient_accept_error(&io::Error::from_raw_os_error(24)));
+        assert!(is_transient_accept_error(&io::Error::from_raw_os_error(23)));
+        assert!(is_transient_accept_error(&io::Error::from(
+            io::ErrorKind::ConnectionAborted
+        )));
+        // A listener that is genuinely broken still ends it.
+        assert!(!is_transient_accept_error(&io::Error::from_raw_os_error(9)));
+        assert!(!is_transient_accept_error(&io::Error::from(
+            io::ErrorKind::InvalidInput
+        )));
     }
 
     #[test]

@@ -278,15 +278,16 @@ describe("hooks/daemon-service", () => {
       setPlatform("linux");
       const { resolveWorkerCommand, systemdUnitContents } = await import("../../src/hooks/daemon-service");
 
+      const { stableExecPath } = await import("../../src/hooks/daemon-service");
       const workerCmd = resolveWorkerCommand();
       if (workerCmd) {
-        expect(workerCmd).toContain(process.execPath);
+        expect(workerCmd).toContain(stableExecPath());
         expect(workerCmd).not.toMatch(/^node /);
         // Shell-quoted, because the daemon runs this through `sh -c`: an
         // unquoted `/Users/First Last/...` splits on its space and the worker
         // never starts. Ordinary on macOS, and more likely since execPath
         // (home-derived) replaced a bare `node`.
-        expect(workerCmd).toBe(`'${process.execPath}' '${resolve(process.env.FAILPROOFAI_PACKAGE_ROOT!, "dist", "worker.mjs")}'`);
+        expect(workerCmd).toBe(`'${stableExecPath()}' '${resolve(process.env.FAILPROOFAI_PACKAGE_ROOT!, "dist", "worker.mjs")}'`);
         // Environment= values containing a space must be quoted or systemd
         // rejects the unit — and this value always contains one.
         expect(systemdUnitContents("/opt/failproofaid", workerCmd)).toContain(
@@ -646,6 +647,68 @@ describe("hooks/daemon-service", () => {
       );
       expect(daemonServiceNeedsUpgrade()).toBe(false);
       await expect(ensureDaemonServiceCurrent()).resolves.toEqual({ outcome: "current" });
+    });
+
+    it("needs a rewrite when the runtime or package its worker command names is gone", async () => {
+      // A Node upgrade deletes the runtime the unit names: the daemon stays up,
+      // its worker cannot start, and every hook is denied. `failproofai update`
+      // only repairs a definition this reports as needing it.
+      useScratchHome();
+      setPlatform("linux");
+      const unitDir = mkdtempSync(resolve(tmpdir(), "fpai-unit-dir-"));
+      const prevDir = process.env.FAILPROOFAI_SYSTEMD_DIR;
+      process.env.FAILPROOFAI_SYSTEMD_DIR = unitDir;
+      try {
+        const { daemonServiceNeedsUpgrade, systemdUnitContents } = await import("../../src/hooks/daemon-service");
+        const { userInfo } = await import("node:os");
+        const runtime = resolve(unitDir, "node");
+        const script = resolve(unitDir, "worker.mjs");
+        writeFileSync(runtime, "");
+        writeFileSync(script, "");
+        const unit = resolve(unitDir, `failproofaid@${userInfo().username}.service`);
+        const write = (worker: string) =>
+          writeFileSync(unit, systemdUnitContents("/opt/failproofaid", worker, `'${runtime}' '${script}'`));
+
+        write(`'${runtime}' '${script}'`);
+        expect(daemonServiceNeedsUpgrade()).toBe(false);
+        write(`'${resolve(unitDir, "gone", "node")}' '${script}'`);
+        expect(daemonServiceNeedsUpgrade()).toBe(true);
+        // An operator's own command is never second-guessed.
+        write("node dist/worker.mjs");
+        expect(daemonServiceNeedsUpgrade()).toBe(false);
+      } finally {
+        if (prevDir === undefined) delete process.env.FAILPROOFAI_SYSTEMD_DIR;
+        else process.env.FAILPROOFAI_SYSTEMD_DIR = prevDir;
+        rmSync(unitDir, { recursive: true, force: true });
+      }
+    });
+
+    it("saves a stable link to the runtime when PATH has one, not a versioned path", async () => {
+      // Homebrew's execPath is .../Cellar/node/<version>/bin/node, which
+      // `brew upgrade node` deletes; /opt/homebrew/bin/node survives it.
+      const { stableExecPath } = await import("../../src/hooks/daemon-service");
+      const { symlinkSync } = await import("node:fs");
+      const root = mkdtempSync(resolve(tmpdir(), "fpai-runtime-"));
+      try {
+        const cellar = resolve(root, "Cellar", "node", "26.1.0", "bin");
+        const stable = resolve(root, "bin");
+        mkdirSync(cellar, { recursive: true });
+        mkdirSync(stable, { recursive: true });
+        writeFileSync(resolve(cellar, "node"), "");
+        symlinkSync(resolve(cellar, "node"), resolve(stable, "node"));
+
+        expect(stableExecPath(resolve(cellar, "node"), `/usr/bin:${stable}`)).toBe(resolve(stable, "node"));
+        // No link on PATH: execPath, as before.
+        expect(stableExecPath(resolve(cellar, "node"), "/usr/bin")).toBe(resolve(cellar, "node"));
+        // execPath itself on PATH first: kept.
+        expect(stableExecPath(resolve(cellar, "node"), `${cellar}:${stable}`)).toBe(resolve(cellar, "node"));
+        // A different file of the same name is not the same runtime.
+        rmSync(resolve(stable, "node"));
+        writeFileSync(resolve(stable, "node"), "");
+        expect(stableExecPath(resolve(cellar, "node"), stable)).toBe(resolve(cellar, "node"));
+      } finally {
+        rmSync(root, { recursive: true, force: true });
+      }
     });
 
     it("turns a systemd unit WITHOUT the variable into one WITH it, changing nothing else", async () => {
@@ -1279,6 +1342,28 @@ describe("refreshDaemonToCliVersion", () => {
     let installed = false;
     await svc.refreshDaemonToCliVersion({
       status: () => "stopped",
+      install: async () => {
+        installed = true;
+        return { installed: true };
+      },
+      interactive: () => false,
+    });
+    expect(installed).toBe(true);
+  });
+
+  it("still reinstalls a current, running daemon whose saved runtime is gone", async () => {
+    // A Node upgrade left the version right and the worker dead: "nothing to
+    // update" would leave every hook denied.
+    const { writeVersionFile } = await import("../../src/hooks/fp-config");
+    const { version } = await import("../../package.json");
+    const { installedBinaryPath } = await import("../../src/hooks/daemon-download");
+    writeVersionFile({ daemon: version });
+    mkdirSync(dirname(installedBinaryPath(version)), { recursive: true });
+    writeFileSync(installedBinaryPath(version), "#!/bin/sh\n");
+    let installed = false;
+    await svc.refreshDaemonToCliVersion({
+      status: () => "running",
+      needsUpgrade: () => true,
       install: async () => {
         installed = true;
         return { installed: true };

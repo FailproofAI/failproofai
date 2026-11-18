@@ -76,6 +76,19 @@ pub struct PolicyEvaluation {
 /// in parallel by default, so multiple tests setting
 /// `FAILPROOFAI_WORKER_CMD` to different values would race. Tests instead
 /// construct a `WorkerCommand` directly via `shell`/`node`.
+/// What an early exit status means when it has one obvious cause. 127 is the
+/// shell's "command not found": the runtime or package saved in the service
+/// definition is gone, typically after a Node upgrade, and only rewriting the
+/// definition brings the worker back.
+fn early_exit_hint(code: Option<i32>) -> &'static str {
+    match code {
+        Some(127) => {
+            "; the Node.js or failproofai path saved at install no longer exists, run `failproofai update`"
+        }
+        _ => "",
+    }
+}
+
 pub enum WorkerCommand {
     Shell(String),
     Node { script: PathBuf },
@@ -333,7 +346,8 @@ impl Worker {
                 if let Ok(Some(status)) = child.try_wait() {
                     report_spawn(reason, "exited_early", began);
                     return Err(WorkerError::Io(io::Error::other(format!(
-                        "worker process exited before creating its socket (status: {status})"
+                        "worker process exited before creating its socket (status: {status}){}",
+                        early_exit_hint(status.code())
                     ))));
                 }
                 if Instant::now() >= deadline {
@@ -504,6 +518,22 @@ mod tests {
     /// as "a worker is listening". Before the readiness probe became a real
     /// `connect()`, this returned `Ok(())` immediately and every later
     /// request hit `ECONNREFUSED` on a dead socket.
+    /// A Node upgrade deletes the runtime the service names; the shell then
+    /// exits 127 and the error says what fixes it instead of only the status.
+    #[test]
+    fn a_worker_command_that_is_gone_names_the_fix() {
+        let socket_path = temp_socket_path("gone");
+        let worker = Worker::new(
+            socket_path.clone(),
+            WorkerCommand::shell("'/nonexistent/fpai-test/node' '/nonexistent/worker.mjs'"),
+        );
+        let err = worker
+            .call("PreToolUse", "claude", "{}", None, None)
+            .expect_err("a missing runtime cannot start a worker");
+        assert!(err.to_string().contains("failproofai update"), "got: {err}");
+        std::fs::remove_file(&socket_path).ok();
+    }
+
     #[test]
     fn a_stale_socket_file_is_not_mistaken_for_a_live_worker() {
         let socket_path = temp_socket_path("stale");

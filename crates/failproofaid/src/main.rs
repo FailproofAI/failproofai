@@ -376,7 +376,7 @@ fn spawn_collector_manager(
     let interval = collector_config_poll_interval();
     std::thread::Builder::new()
         .name("fpai-collect-mgr".to_string())
-        .spawn(move || {
+        .spawn(move || supervised("the collector manager", &daemon_shutdown, || {
             // Wait until collection is enabled. A cheap config read each tick,
             // not the full task build, so an incomplete config waits quietly
             // rather than logging on every interval.
@@ -618,11 +618,48 @@ fn spawn_collector_manager(
             if let Some(old) = draining.take() {
                 old.join_with_flush(fpai_collect::DEFAULT_FLUSH_BUDGET);
             }
-        })
+        }))
         .inspect_err(|err| {
             eprintln!("[failproofaid] could not start the collector manager: {err}; nothing is collected this run");
         })
         .ok()
+}
+
+/// Run a long-lived lane's body until it returns, starting it again after a
+/// panic.
+///
+/// A panic on a plain thread ends that thread and nothing else: the daemon kept
+/// answering hooks while collection or cloud policy sync had silently stopped,
+/// and nothing short of a daemon restart brought it back. The panic message
+/// itself is still printed by the default hook.
+pub(crate) fn supervised(name: &str, shutdown: &AtomicBool, body: impl FnMut()) {
+    supervised_with_backoff(name, shutdown, Duration::from_secs(5), body);
+}
+
+fn supervised_with_backoff(
+    name: &str,
+    shutdown: &AtomicBool,
+    backoff: Duration,
+    mut body: impl FnMut(),
+) {
+    loop {
+        match std::panic::catch_unwind(std::panic::AssertUnwindSafe(&mut body)) {
+            Ok(()) => return,
+            Err(_) => {
+                eprintln!(
+                    "[failproofaid] {name} panicked; starting it again in {}s",
+                    backoff.as_secs()
+                );
+                let deadline = std::time::Instant::now() + backoff;
+                while std::time::Instant::now() < deadline {
+                    if shutdown.load(Ordering::Relaxed) {
+                        return;
+                    }
+                    std::thread::sleep(Duration::from_millis(20).min(backoff));
+                }
+            }
+        }
+    }
 }
 
 /// Join a lane that may never have started.
@@ -2161,6 +2198,37 @@ fn install_signal_handler(shutdown: Arc<AtomicBool>) {
 #[cfg(test)]
 mod tests {
     use super::{Invocation, parse_args};
+
+    mod supervision {
+        use super::super::supervised_with_backoff;
+        use std::sync::atomic::{AtomicBool, Ordering};
+        use std::time::Duration;
+
+        #[test]
+        fn a_lane_that_panics_is_started_again() {
+            let shutdown = AtomicBool::new(false);
+            let mut runs = 0;
+            supervised_with_backoff("test lane", &shutdown, Duration::from_millis(1), || {
+                runs += 1;
+                if runs < 3 {
+                    panic!("lane bug");
+                }
+            });
+            assert_eq!(runs, 3, "ran until it returned normally");
+        }
+
+        #[test]
+        fn shutdown_during_the_backoff_ends_it() {
+            let shutdown = AtomicBool::new(false);
+            let mut runs = 0;
+            supervised_with_backoff("test lane", &shutdown, Duration::from_secs(60), || {
+                runs += 1;
+                shutdown.store(true, Ordering::Relaxed);
+                panic!("lane bug");
+            });
+            assert_eq!(runs, 1);
+        }
+    }
 
     fn argv(rest: &[&str]) -> Vec<String> {
         std::iter::once("failproofaid".to_string())

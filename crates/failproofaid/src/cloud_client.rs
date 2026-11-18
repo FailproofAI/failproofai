@@ -1073,98 +1073,101 @@ pub fn spawn_maintenance(
     idle_interval: Duration,
 ) -> JoinHandle<()> {
     std::thread::spawn(move || {
-        let mut last_state: Option<bool> = None;
-        // `None` until the first successful resolution; then the identity seen
-        // last (itself `None` when not enrolled).
-        let mut last_identity: Option<Option<CloudIdentity>> = None;
-        // Set when the identity changed and the new one has not yet completed a
-        // reconcile. See below.
-        let mut floor_reset_pending = false;
-        while !shutdown.load(Ordering::Relaxed) {
-            if let (Ok(path), Some(home)) = (agent_roster::roster_path(), std::env::var_os("HOME"))
-                && let Err(err) = agent_roster::refresh(&path, Path::new(&home))
-            {
-                eprintln!("[failproofaid] could not refresh agent inventory: {err}");
-            }
-            let cloud = CloudClient::from_env_or_file();
-            // A resolution ERROR is not a change of identity: broken
-            // credentials keep the last known-good deployment (see above), so
-            // they must neither reset the floor nor deactivate anything.
-            // `maintenance_tick` logs the error itself.
-            let identity = cloud
-                .as_ref()
-                .ok()
-                .map(|client| client.as_ref().map(CloudClient::identity));
-
-            // The rollback floor belongs to ONE cloud identity. The server
-            // numbers deployments per (org, machine), so after an org switch, a
-            // re-registration or a fresh enrolment the new identity legitimately
-            // answers with a lower deployment — often 0. Carrying the old floor
-            // across refused it ("deployment rollback from N to 0") until the
-            // daemon restarted, and the previous org's policies kept enforcing.
-            if let Some(identity) = identity
-                && last_identity.as_ref() != Some(&identity)
-            {
-                let first = last_identity.is_none();
-                if !first {
-                    store.reset_high_water();
-                    floor_reset_pending = identity.is_some();
-                    eprintln!(
-                        "[failproofaid] cloud identity changed; the cloud-policy deployment floor starts again"
-                    );
+        crate::supervised("cloud policy sync", &shutdown, || {
+            let mut last_state: Option<bool> = None;
+            // `None` until the first successful resolution; then the identity seen
+            // last (itself `None` when not enrolled).
+            let mut last_identity: Option<Option<CloudIdentity>> = None;
+            // Set when the identity changed and the new one has not yet completed a
+            // reconcile. See below.
+            let mut floor_reset_pending = false;
+            while !shutdown.load(Ordering::Relaxed) {
+                if let (Ok(path), Some(home)) =
+                    (agent_roster::roster_path(), std::env::var_os("HOME"))
+                    && let Err(err) = agent_roster::refresh(&path, Path::new(&home))
+                {
+                    eprintln!("[failproofaid] could not refresh agent inventory: {err}");
                 }
-                // Enrolled → not enrolled (`--disconnect`, credentials removed):
-                // stop enforcing the departed org's policies. Removing only
-                // `active.json`, as the CLI does, is undone by the repair below,
-                // which rebuilds it from `desired-state.json`.
-                if !first && identity.is_none() {
-                    match store.deactivate() {
-                        Ok(true) => eprintln!(
-                            "[failproofaid] cloud enrolment removed; cloud-managed policies deactivated"
-                        ),
-                        Ok(false) => {}
-                        Err(err) => eprintln!(
-                            "[failproofaid] could not deactivate cloud-managed policies: {err}"
-                        ),
+                let cloud = CloudClient::from_env_or_file();
+                // A resolution ERROR is not a change of identity: broken
+                // credentials keep the last known-good deployment (see above), so
+                // they must neither reset the floor nor deactivate anything.
+                // `maintenance_tick` logs the error itself.
+                let identity = cloud
+                    .as_ref()
+                    .ok()
+                    .map(|client| client.as_ref().map(CloudClient::identity));
+
+                // The rollback floor belongs to ONE cloud identity. The server
+                // numbers deployments per (org, machine), so after an org switch, a
+                // re-registration or a fresh enrolment the new identity legitimately
+                // answers with a lower deployment — often 0. Carrying the old floor
+                // across refused it ("deployment rollback from N to 0") until the
+                // daemon restarted, and the previous org's policies kept enforcing.
+                if let Some(identity) = identity
+                    && last_identity.as_ref() != Some(&identity)
+                {
+                    let first = last_identity.is_none();
+                    if !first {
+                        store.reset_high_water();
+                        floor_reset_pending = identity.is_some();
+                        eprintln!(
+                            "[failproofaid] cloud identity changed; the cloud-policy deployment floor starts again"
+                        );
                     }
+                    // Enrolled → not enrolled (`--disconnect`, credentials removed):
+                    // stop enforcing the departed org's policies. Removing only
+                    // `active.json`, as the CLI does, is undone by the repair below,
+                    // which rebuilds it from `desired-state.json`.
+                    if !first && identity.is_none() {
+                        match store.deactivate() {
+                            Ok(true) => eprintln!(
+                                "[failproofaid] cloud enrolment removed; cloud-managed policies deactivated"
+                            ),
+                            Ok(false) => {}
+                            Err(err) => eprintln!(
+                                "[failproofaid] could not deactivate cloud-managed policies: {err}"
+                            ),
+                        }
+                    }
+                    last_identity = Some(identity);
                 }
-                last_identity = Some(identity);
-            }
 
-            // Log only on transition, so a disconnected machine does not print
-            // a line every 30 seconds forever.
-            let enrolled = matches!(cloud, Ok(Some(_)));
-            if last_state != Some(enrolled) {
-                eprintln!(
-                    "[failproofaid] cloud-managed policy polling {}",
-                    if enrolled { "enabled" } else { "disabled" }
+                // Log only on transition, so a disconnected machine does not print
+                // a line every 30 seconds forever.
+                let enrolled = matches!(cloud, Ok(Some(_)));
+                if last_state != Some(enrolled) {
+                    eprintln!(
+                        "[failproofaid] cloud-managed policy polling {}",
+                        if enrolled { "enabled" } else { "disabled" }
+                    );
+                    last_state = Some(enrolled);
+                }
+
+                // Re-reset until the new identity's first reconcile lands. If that
+                // poll fails, the repair re-applies the PREVIOUS identity's
+                // `desired-state.json` through `reconcile`, which raises the floor
+                // straight back to the old number. Replay protection resumes from
+                // the new identity's first success.
+                if maintenance_tick(
+                    &store,
+                    cloud,
+                    floor_reset_pending,
+                    &enrolment_withdrawn,
+                    &oss_cleanup_applies,
+                ) {
+                    floor_reset_pending = false;
+                }
+                wait_until_shutdown(
+                    &shutdown,
+                    if enrolled {
+                        poll_interval
+                    } else {
+                        idle_interval
+                    },
                 );
-                last_state = Some(enrolled);
             }
-
-            // Re-reset until the new identity's first reconcile lands. If that
-            // poll fails, the repair re-applies the PREVIOUS identity's
-            // `desired-state.json` through `reconcile`, which raises the floor
-            // straight back to the old number. Replay protection resumes from
-            // the new identity's first success.
-            if maintenance_tick(
-                &store,
-                cloud,
-                floor_reset_pending,
-                &enrolment_withdrawn,
-                &oss_cleanup_applies,
-            ) {
-                floor_reset_pending = false;
-            }
-            wait_until_shutdown(
-                &shutdown,
-                if enrolled {
-                    poll_interval
-                } else {
-                    idle_interval
-                },
-            );
-        }
+        })
     })
 }
 

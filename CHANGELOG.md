@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.0.15-beta.0 — 2026-11-18
+
+### Fixes
+
+- The OpenClaw plugin no longer blocks tool calls as "failproofaid could not be reached" while the daemon is healthy. Its 250 ms connect timer ran on the gateway's own event loop, so a gateway busy for 250 ms or more (cron agents starting together) let the overdue timer beat the already-completed connect. The connect timer is gone (a missing daemon still fails at once, a hung one at the 30 s budget), a connect that fails outright is retried once after 100 ms, and the gateway log now says why: the error code, the elapsed time and the number of attempts (#1024)
+
 ## 1.0.14-beta.0 — 2026-11-16
 
 ### Features

@@ -263,6 +263,52 @@ describe("openclaw-plugin daemon-client: requestHookVerdict", () => {
     expect(result).toMatchObject({ ok: false, failure: "unreachable" });
   });
 
+  // The plugin runs on the OpenClaw gateway's own event loop, shared with
+  // every agent on it. A healthy daemon accepts in the kernel at once, but
+  // the gateway only hears about it once it has finished whatever it is
+  // doing — so a busy gateway must not read as an unreachable daemon.
+  //
+  // The hook starts from a setImmediate callback, as one fired by the gateway
+  // does: the next loop pass then reaches its timers before its I/O poll, so
+  // an overdue timer always runs before the queued connect event. Started from
+  // arbitrary test code the order depends on the loop phase and the race is
+  // only sometimes lost.
+  it.each([300, 1_500])("still gets a verdict when the gateway is busy for %i ms", async (busyMs) => {
+    const daemon = await fakeDaemon(socketPath, () => hookResult(""));
+    try {
+      const pending = new Promise<Awaited<ReturnType<typeof requestHookVerdict>>>((done) => {
+        setImmediate(() => {
+          const result = requestHookVerdict({ event: "before_tool_call", payload: {}, socketPath });
+          const until = Date.now() + busyMs;
+          while (Date.now() < until) { /* the gateway, busy with another agent */ }
+          done(result);
+        });
+      });
+      expect(await pending).toEqual({ ok: true, verdict: { permission: "allow" } });
+    } finally {
+      await daemon.close();
+    }
+  });
+
+  it("retries once when the daemon is briefly not listening", async () => {
+    const pending = requestHookVerdict({ event: "before_tool_call", payload: {}, socketPath });
+    const daemon = await fakeDaemon(socketPath, () => hookResult(""));
+    try {
+      expect(await pending).toEqual({ ok: true, verdict: { permission: "allow" } });
+    } finally {
+      await daemon.close();
+    }
+  });
+
+  it("says why the daemon could not be reached, and does so promptly", async () => {
+    const started = Date.now();
+    const result = await requestHookVerdict({ event: "before_tool_call", payload: {}, socketPath });
+    expect(result).toMatchObject({ ok: false, failure: "unreachable" });
+    expect(result.detail).toMatch(/ENOENT/);
+    expect(result.detail).toMatch(/2 attempts/);
+    expect(Date.now() - started).toBeLessThan(1_000);
+  });
+
   it("gives up on a daemon that never answers", async () => {
     const daemon = await fakeDaemon(socketPath, () => "hang");
     try {
@@ -371,6 +417,21 @@ describe("openclaw-plugin hooks", () => {
     expect(await handlers.get("session_end")!({}, ctx)).toBeUndefined();
     expect(logged.length).toBe(4);
     expect(logged[0]).toContain("before_tool_call");
+  });
+
+  it("logs why the daemon could not be reached, and keeps that out of the agent's reason", async () => {
+    const { api, handlers, logged } = fakeApi();
+    registerFailproofaiHooks(api, {
+      evaluate: async () => ({
+        ok: false,
+        failure: "unreachable",
+        message: "failproofaid could not be reached.",
+        detail: "ECONNREFUSED after 1 ms; 2 attempts",
+      }),
+    });
+    const result = (await handlers.get("before_tool_call")!(toolCall, ctx)) as { blockReason: string };
+    expect(logged[0]).toContain("failproofaid could not be reached. (ECONNREFUSED after 1 ms; 2 attempts)");
+    expect(result.blockReason).not.toContain("ECONNREFUSED");
   });
 
   it.each([

@@ -10,14 +10,14 @@ The public API is served under `/v1` on your Failproof AI dashboard origin.
 
 <Tabs>
   <Tab title="Dashboard">
-    1. Open **Administration → Keys**, select **Create key**, and choose the narrowest permission preset that covers the integration.
-    2. Add individual grants only when needed, create the key, and copy its one-time secret.
-    3. Make a test request to `/v1/sessions` and confirm the key remains active in the Keys page.
-    4. Rotate or disable the key from its action menu when the integration changes ownership.
+    1. Open **settings → api keys** and, in the **new key** form, enter a name and choose what the key is for.
+    2. Choose **pick permissions yourself** only when no purpose covers the integration, select **create key**, and copy its one-time secret.
+    3. Make a test request to `/v1/sessions` and confirm the key remains active on the **api keys** page.
+    4. Open the key to regenerate or revoke it when the integration changes ownership.
 
     ![The new API key drawer with permission presets and individual grants.](/images/dashboard/key-create.png)
 
-    The creation drawer is shown above. The one-time secret appears only after you select **create**; copy it before closing that confirmation.
+    The one-time secret appears only after you select **create key**; copy it before closing that confirmation.
   </Tab>
   <Tab title="CLI">
     Create a read key and use it directly with either `fp` or `curl`:
@@ -44,7 +44,7 @@ An organization key acts on its organization automatically. An instance-scoped k
 
 <Tabs>
   <Tab title="Dashboard">
-    Use the organization switcher in the dashboard header before opening **Administration → Keys**. Keys created there belong to the selected organization. Confirm the organization slug in the URL and key detail before copying the credential into automation.
+    Use the organization switcher in the dashboard header before opening **settings → api keys**. Keys created there belong to the selected organization. Confirm the organization slug in the URL and key detail before copying the credential into automation.
 
   </Tab>
   <Tab title="CLI">

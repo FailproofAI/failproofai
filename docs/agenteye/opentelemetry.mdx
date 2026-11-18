@@ -6,11 +6,11 @@ icon: "radio"
 
 OpenTelemetry lets you send agent traces, logs, and metrics to FailproofAI Cloud using the standard OTLP/HTTP protocol. It is optional. Your existing FailproofAI integrations continue working without enabling it.
 
-## Turn on ingest for your organisation
+## Get a key
 
-An organisation admin opens **Settings → OpenTelemetry** and turns on ingest. Use a Cloud API key with `events:add` permission, the same permission used for agent reporting.
+OTLP ingest is always on for every organisation; there is nothing to enable. Use a Cloud API key with `events:add` permission, the same permission used for agent reporting.
 
-If ingest is off, Cloud refuses OTLP exports, so `failproofai otel enable` changes nothing and your agents keep sending sessions the usual way. Run `failproofai otel status` to check the organisation switch, and ask an admin to turn it on.
+In the dashboard, **home → first-run setup** has a **connect with OpenTelemetry** card: **create collector key** makes an `events:add` key, shows it once with the exporter variables, and shows the connection status. You can also create one under **settings → api keys** by choosing **sending logs only** under **new key**.
 
 ## Connect a coding agent
 

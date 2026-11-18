@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.0.15-beta.0 — 2026-11-18
+
+### Docs
+
+- Bring the README, npm description and English docs up to date with the website and the live Cloud dashboard: trace / analyse / fix navigation, insights, checks, the failproof agent, the free plan, and corrected CLI and OTLP details (#1022)
+
 ## 1.0.14-beta.0 — 2026-11-16
 
 ### Features

@@ -78,16 +78,19 @@ Run `failproofai` without arguments to open the local policy dashboard.
 | `failproofai uninstall` | Remove hooks, the `failproofai` skill and the daemon before removing the package |
 | `failproofai --version` | Print the installed package version |
 | `failproofai --help` | Show commands and global usage |
+| `failproofai help <command>` | Show one command's options and examples, same as `failproofai <command> --help` |
 
 ## Configuration flags
 
 | Flag | Use |
 | --- | --- |
 | `--token <key>` | Set up and connect non-interactively; also read from `FAILPROOFAI_CLOUD_TOKEN` |
+| `--oss` | Use open source without a Cloud connection; an existing connection is left as it is |
+| `--agents <a,b>` | Trace these agents, or `all`, without asking |
 | `--url <url>` | Connect somewhere other than `app.befailproof.ai`; also read from `FAILPROOFAI_CLOUD_URL` |
 | `--connect <url>` | Enrol only, on a machine already set up. Skips the daemon and every hook |
-| `--machine-id <id>` | Set the stable machine ID |
-| `--machine-label <name>` | Rename a machine that is **already connected**. On its own it never runs setup, so give it after `failproofai config`, not during |
+| `--machine-id <id>` | Machine ID for `--connect`; defaults to a stable ID |
+| `--machine-label <name>` | On its own, rename a machine that is **already connected**; it never runs setup. With `--token`, connect under that name; a key set only in `FAILPROOFAI_CLOUD_TOKEN` is not enough, because `--machine-label` without `--token` is a rename. With `--oss` or `--agents`, it renames a machine that is already connected and is refused before setup on one that is not: `--oss` never connects, and `--agents` needs a key or an interactive Cloud sign-in to connect |
 | `--no-transcripts` | Send decisions without transcript content, and do not turn on Cloud Jev, which would send each checked tool call and the recent prompt; a `jev.json` left running Jev through FailproofAI Cloud is removed |
 | `--disconnect` | Stop Cloud policy pulls and event delivery. Also removes the Cloud Jev key and a `jev.json` that names FailproofAI Cloud; your own Jev setup is left in place |
 | `--status` | Show current machine state |
@@ -107,17 +110,28 @@ Local pauses suspend builtin, custom, convention, and pack policies for one sess
 | `--cli <names...>` | Target one or more supported harnesses |
 | `--scope user\|project\|local\|all` | Choose the configuration scope; `all` is for uninstall |
 | `--beta` | Include beta policies |
-| `--custom`, `-c <path>` | Validate and load a custom policy file; repeatable |
+| `--custom`, `-c <path>` | With `--install`, validate and load a custom policy file; repeatable. `--uninstall -c` removes every custom policy file |
+| `--policy`, `--only <a,b>` | Install only these policies from a pack |
+| `--category <x,y>` | Install only these categories from a pack |
+| `--all` | List every policy; with a pack, install all of it |
+| `--releases` | With `show`, list a pack's releases and which one is installed |
 
 ## Delivery and maintenance flags
 
 | Command | Flags |
 | --- | --- |
-| `backfill` | `--since <30d\|6m\|YYYY-MM-DD>`, `--dry-run` |
+| `backfill` | `--since <30d\|6m\|1y\|YYYY-MM-DD>`, `--agents <a,b>`, `--dry-run` |
 | `flush` | `--wait`, `--timeout <seconds>` |
 | `update` | `--no-daemon` |
 | `migrate` | `--dry-run` |
-| `uninstall` | `--purge`, `--dry-run`, `--yes` |
+| `uninstall` | `--purge`, `--dry-run`, `--yes` (`-y`) |
+
+### Backfill per harness
+
+`backfill` re-sends history the collector already read, on a machine connected to Cloud. `--since` sets the window for most harnesses, with two exceptions:
+
+- **Goose, OpenCode and Devin** send their whole history, whatever `--since` says: their history lives in a database the collector reads with no time window, so `--dry-run` reports them as all sessions.
+- **Hermes** history is not re-sent by `backfill`.
 
 `failproofai update` should be run after `npm install -g failproofai@latest`; it performs home-layout migrations, installs the matching daemon binary, and restarts the service. It then moves every Hermes profile that already uses FailproofAI to the linked native plugin and prints one line per profile. `--no-daemon` skips the daemon step. `update` exits non-zero when the daemon could not be replaced, a migration failed, or a Hermes profile could not be migrated (for example because the running daemon cannot serve the native plugin, in which case its shell hooks are left in place).
 
@@ -172,7 +186,7 @@ failproofai config --status
 failproofai config --resume
 ```
 
-A local session pause does not disable Cloud-managed policies. Restore Cloud deployments through the Cloud enforcement workflow when the rollout itself is the problem.
+A local session pause does not disable Cloud-managed policies. Restore Cloud deployments from **fix → deploy policies** in Cloud when the rollout itself is the problem.
 
 Before removing the npm package, remove installed hooks and the daemon:
 

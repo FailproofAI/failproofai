@@ -10,7 +10,7 @@ Queries are the flexible layer beneath dashboards, audits, and investigations. U
 
 <Tabs>
   <Tab title="Dashboard">
-    1. Go to **Analyze → Queries** and select **new query**.
+    1. Go to **trace → queries** and select **new query**.
     2. Open the schema browser and choose fields from the event, session, or evaluation data.
     3. Write SQL, add parameters when needed, and run the query.
     4. Save it with a clear name and description, then use **add to dashboard** when the result should be monitored.
@@ -46,7 +46,7 @@ Queries are the flexible layer beneath dashboards, audits, and investigations. U
 - Identify policy denials followed by a successful alternative.
 - Build a cohort for an audit.
 
-Open **Queries → Schema** before writing against unfamiliar fields. Prefer explicit time and environment filters, and keep result limits during exploration.
+Open the schema browser in the query editor before writing against unfamiliar fields. Prefer explicit time and environment filters, and keep result limits during exploration.
 
 <Warning>
   A query can identify a suspicious pattern, but it does not establish the failure mode by itself. Open representative traces or run an audit before turning the result into a policy.

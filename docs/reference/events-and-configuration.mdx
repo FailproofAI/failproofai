@@ -19,7 +19,7 @@ Every event carries a timestamp, session ID, agent ID, event type, and environme
 
 <Tabs>
   <Tab title="Dashboard">
-    1. Open **Observe → Events**.
+    1. Open **trace → live events**.
     2. Set a short time window and filter by environment, agent, and event type.
     3. Select an event to inspect its normalized fields and raw payload, then open its session to see the execution context.
     4. If a paired duration is missing, verify that the start and completion events use the same correlation ID.
@@ -68,7 +68,7 @@ Use stable, low-cardinality environment names. Commas are not supported in daemo
 
 <Tabs>
   <Tab title="Dashboard">
-    Environment labels are assigned by the emitting SDK or Failproof daemon. After changing one, open **Observe → Sessions** and use the environment filter to confirm new sessions carry the new value. Existing sessions retain their original environment.
+    Environment labels are assigned by the emitting SDK or Failproof daemon. After changing one, open **trace → sessions** and use the environment filter to confirm new sessions carry the new value. Existing sessions retain their original environment.
 
   </Tab>
   <Tab title="CLI">

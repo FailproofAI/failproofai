@@ -26,10 +26,10 @@ Choose the integration closest to where your agent already runs.
     Compare session evaluations with live policy review, then configure providers, keys, and modes.
   </Card>
   <Card title="Failproof Cloud CLI" icon="cloud-cog" href="/reference/cloud-cli#cli-commands">
-    Query and administer Cloud sessions, audits, issues, alerts, keys, users, and settings.
+    Query and administer Cloud sessions, audits, insights, alerts, keys, users, and settings.
   </Card>
   <Card title="Evaluator SDK" icon="gauge" href="/reference/evaluator-sdk">
-    Score complete or inactive sessions with a FastAPI service.
+    Score finished sessions with your own evaluation worker.
   </Card>
   <Card title="Custom policies" icon="shield-plus" href="/reference/policy-sdk">
     Author and test workflow-specific allow, instruct, and deny decisions.
@@ -45,9 +45,9 @@ The generated [HTTP API reference](/reference/http-api) covers the public `/v1` 
 
 <Tabs>
   <Tab title="Dashboard">
-    1. Open **Administration → Keys**, create a key with `events:add` and `policies:pull`, and copy the secret.
+    1. Open **settings → api keys**, create a key with `events:add` and `policies:pull`, and copy the secret.
     2. Configure the integration using the matching page above.
-    3. Open **Observe → Events** to confirm events arrive, then **Observe → Sessions** to confirm they form complete runs.
+    3. Open **trace → live events** to confirm events arrive, then **trace → sessions** to confirm they form complete runs.
     4. Filter to the integration's environment and inspect one session for the model, tool, error, and policy fields needed by audits.
 
     Start with the key drawer. The selected grants determine whether the machine can send events and receive Cloud-managed policies.

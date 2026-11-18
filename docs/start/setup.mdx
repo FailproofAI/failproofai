@@ -9,7 +9,7 @@ icon: "waypoints"
     Set a machine up with no Cloud key and take a policy pack. Use this when you need immediate guardrails without sending session data to Cloud.
   </Card>
   <Card title="Failproof AI Cloud" icon="cloud">
-    Add centralized sessions, audits, online evaluations, dashboards, alerts, and fleet policy deployment.
+    Add centralized sessions, audits, online evaluations, dashboards, alerts, and fleet policy deployment. Start on the [free plan](https://befailproof.ai/pricing).
   </Card>
   <Card title="Enterprise deployment" icon="building-2">
     Use organization controls, scoped keys, private infrastructure, and deployment-specific security requirements.
@@ -32,16 +32,16 @@ Run `failproofai config` without a key, then take a pack with `failproofai polic
 
 <Tabs>
   <Tab title="Dashboard">
-    1. Go to **Administration → Keys** and create a key with `events:add` and `policies:pull`.
+    1. Go to **settings → api keys** (or **create key** in **home → first-run setup**). Under **new key**, choose **a machine running failproofai**, which grants `events:add` and `policies:pull`.
     2. Copy the one-time secret to the target machine.
-    3. After running the CLI connection command, go to **Admin → enforcement** and confirm the machine appears.
-    4. Go to **Observe → Events** and confirm its first event arrives.
+    3. After running the CLI connection command, go to **fix → deploy policies** and confirm the machine appears.
+    4. Go to **trace → live events** and confirm its first event arrives.
 
     The key drawer shows the two grants needed by a connected machine: event ingestion and policy delivery.
 
     ![The new API key drawer used to grant event ingestion and policy delivery permissions.](/images/dashboard/key-create.png)
 
-    After connection, the machine should appear in enforcement with its desired and reported policy state.
+    After connection, the machine should appear under **deploy policies** with its desired and reported policy state.
 
     ![The Enforcement fleet with an enrolled machine expanded to show its desired policy state and deployment status.](/images/dashboard/enforcement-fleet.png)
 

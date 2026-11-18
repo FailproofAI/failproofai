@@ -15,12 +15,20 @@
 
 **Translations:** [简体中文](./docs/i18n/README.zh.md) · [日本語](./docs/i18n/README.ja.md) · [한국어](./docs/i18n/README.ko.md) · [Español](./docs/i18n/README.es.md) · [Português](./docs/i18n/README.pt-br.md) · [Deutsch](./docs/i18n/README.de.md) · [Français](./docs/i18n/README.fr.md) · [Русский](./docs/i18n/README.ru.md) · [हिन्दी](./docs/i18n/README.hi.md) · [Türkçe](./docs/i18n/README.tr.md) · [Tiếng Việt](./docs/i18n/README.vi.md) · [Italiano](./docs/i18n/README.it.md) · [العربية](./docs/i18n/README.ar.md) · [עברית](./docs/i18n/README.he.md)
 
-**The reliability layer for autonomous agents: see every failure, stop it in realtime.**
-Observe every run, find where your agents fail, write a policy, and enforce it before
-the bad action runs. Failproof hooks 12 agent harnesses — coding CLIs like Claude Code
-and Codex, chat gateways like Hermes, self-hosted assistants like OpenClaw — capturing
-every run and blocking dangerous tool calls before they execute. Policies come as packs.
-Zero latency. Runs locally, free; connect to Failproof Cloud when you want the whole fleet.
+## Ship agents that never fail.
+
+Your agent ran `rm -rf` on the wrong directory. It read `.env` into its context. It spent
+forty minutes retrying the same broken call, then told you the task was done.
+**Failproof sits in the path of every tool call, sees every run end to end, and stops the
+bad action before it executes** — then turns the failures it catches into policies, so
+they don't come back.
+
+**37% → 69%** task success on failures a policy recognised — same model, no fine-tuning
+([FIRE study](https://befailproof.ai/research/runtime-policies/))<br />
+**~0.7 ms** p50 per policy check, from a Rust daemon in the hot path<br />
+**12 agent harnesses**, one policy API — Claude Code, Codex, Cursor, Hermes, OpenClaw and more
+
+Open source, runs locally, free. Connect it to Failproof Cloud when you want the whole fleet.
 
 </div>
 
@@ -33,13 +41,15 @@ Zero latency. Runs locally, free; connect to Failproof Cloud when you want the w
 ## Supported harnesses
 
 Twelve harnesses in two classes — ten coding CLIs, and two chat and assistant
-gateways (Hermes, OpenClaw). One policy API and one session history across all
-of them. What a policy can *block* is per-harness: stopping a tool call before
-it runs is verified on all twelve, turn-end gates on eight. The
+gateways (Hermes, OpenClaw). Each one speaks its own hook dialect: exit codes, JSON
+verdicts, in-process JS plugins, a native Python plugin. Failproof speaks all of them,
+so you write a policy once and it holds everywhere, with one session history across the
+lot. Blocking a tool call before it runs is verified live on all twelve; turn-end gates
+that force the agent back to work are verified on eight. The
 [per-harness matrix](https://docs.befailproof.ai/reference/harnesses#enforcement-capability)
-lists the events each one honours.
+shows exactly which events each one honours.
 
-Agents that run in none of them — your own agent, on any framework or none — report
+Building your own agent, on any framework or none? Report its runs
 through the [Python SDK](https://docs.befailproof.ai/reference/custom-agents)
 or the [TypeScript SDK](https://docs.befailproof.ai/reference/custom-agents-typescript),
 which give you tracing, sessions, evaluations and audits. Enforcement there needs a hook in
@@ -162,7 +172,9 @@ enforcement can switch off every other policy.
 
 ---
 
-## What it stops
+## What it stops on day one
+
+One command puts these between your agent and disaster:
 
 | Policy | What it blocks |
 |---|---|
@@ -174,8 +186,8 @@ enforcement can switch off every other policy.
 | `block-rm-rf` | Recursive file deletion |
 | `block-force-push` / `block-push-master` | `git push --force`, direct pushes to `main` |
 
-Every one of these gates the call *before* it runs, so they hold on all twelve
-harnesses. The first four apply to any agent that can call a tool; the last
+Every one of these gates the call *before* it runs — the command never executes, and
+the agent is told why. They hold on all twelve harnesses. The first four apply to any agent that can call a tool; the last
 three are the developer favourites — coding CLIs are the harness class we cover
 deepest. The `sanitize-*` family is separate: it runs after a tool returns, so
 it reports a secret in tool output rather than keeping it out of the context.
@@ -184,10 +196,11 @@ it reports a secret in tool output rather than keeping it out of the context.
 
 ---
 
-## Your own policies
+## Your own policies, in plain JavaScript
 
-Drop a file into `.failproofai/policies/` — it loads automatically, no flags needed.
-Commit it and the whole team gets it on next pull.
+Your failures are specific to your stack, so your guardrails should be too. Drop a
+file into `.failproofai/policies/` and it loads automatically, no flags. Commit it and
+the whole team is protected on the next pull.
 
 ```js
 import { customPolicies, deny, allow } from "failproofai";
@@ -211,13 +224,40 @@ Three decisions available to every policy:
 | `deny(message)` | Block it — message goes back to the agent |
 | `instruct(message)` | Let it through, but add context to the agent's next prompt |
 
+`instruct()` is the quiet superpower: instead of crashing the agent into a wall, it
+steers it — "run the tests before you stop", "use the staging database" — and the
+agent corrects course on its own.
+
 → [Write a policy](https://docs.befailproof.ai/policies/editor)
 
 ---
 
-## Observability
+## Under the hood
 
-Enforcement is one half. The other half is seeing what the agent actually did.
+Enforcement that adds latency gets turned off. Enforcement that fails open isn't
+enforcement. So we built it like infrastructure:
+
+- **A Rust daemon in the hot path.** `failproofaid` runs as a system service with a
+  pre-warmed policy worker behind an owner-only Unix socket. Every check used to pay
+  ~700 ms to boot a fresh runtime; now the p50 is ~0.7 ms.
+  [How we got there →](https://befailproof.ai/blog/sub-millisecond-agent-enforcement/)
+- **Fail closed, by design.** On a configured machine, if the daemon can't answer, the
+  tool call is denied. A guardrail that disappears when its process dies is not a guardrail.
+- **The agent can't switch it off.** `block-failproofai-commands` is always on and cannot
+  be paused — an agent that can pause enforcement can pause every other policy too.
+- **Verified against the real thing.** Every harness contract is probed live against the
+  shipping version of that CLI and pinned in a machine-readable capability matrix that the
+  test suite checks, so the claims above don't drift.
+- **Policies from your own failures.** In Cloud, audits cluster what went wrong into named
+  failure modes and draft the policy that stops it — tested against your past tool calls
+  before it ever touches a live agent.
+
+---
+
+## See everything your agent did
+
+Stopping the bad call is half of it. The other half is knowing what your agent actually
+did while you weren't watching.
 
 Run `failproofai` with no arguments and it serves a dashboard on `localhost:8020`
 reading the run history already on your machine — no account, no signup, nothing
@@ -230,11 +270,16 @@ patterns and suggests policies to stop them.
 [Read a trace](https://docs.befailproof.ai/sessions/read-a-trace) ·
 [Local audit](https://docs.befailproof.ai/audits/local-audit)
 
-## Failproof Cloud
+## Failproof Cloud: the whole fleet, one loop
 
-**Failproof Cloud** is the hosted side of the same data model, for running agents
-across a fleet. `failproofai config` connects a machine in one browser sign-in, and
-the free plan covers 5,000 runs a month with no card. The dashboard follows the loop:
+Locally you see one machine. **Failproof Cloud** sees every agent you run — in production,
+on a schedule, in a long unattended loop — and closes the loop from failure to fix.
+`failproofai config` connects a machine in one browser sign-in, and the free plan covers
+5,000 runs a month, no card needed.
+
+> "The audits are the part that changed how we operate. We now have fewer incidents,
+> less compute waste, and faster shipping."
+> — Pratheep Velicherla, CTO, Testsigma
 
 - **trace** — every run from every harness in one place: live events, an execution
   graph with parallel sub-agents on their own lanes, snapshots of p50/p95/p99 latency,
@@ -245,7 +290,7 @@ the free plan covers 5,000 runs a month with no card. The dashboard follows the 
   by code, the decision model, an LLM judge or an agent. **Alerts** go to Slack, email or
   a signed webhook.
 - **fix** — describe a policy in a sentence, test it against your past tool calls,
-  observe first or enforce, and deploy it to every machine.
+  observe first or enforce, and roll it out to every machine at once.
 
 The **failproof agent** answers questions about all of it in plain English, and the
 same data reaches your own tools through the [MCP server](https://docs.befailproof.ai/reference/mcp),

@@ -164,8 +164,9 @@ failproofai backfill --since 7d   # bring in the last week of runs already on di
    one, starts the background daemon, and signs you in to Failproof Cloud in your
    browser. No account yet? Make one right there, on the free plan.
 2. **Backfill.** Your agents have been running for weeks, and that history is already on
-   this machine. `failproofai backfill --since 7d` sends the last seven days, so you start
-   with real evidence instead of an empty dashboard.
+   this machine. `failproofai backfill --since 7d` sends the last seven days
+   ([for supported harnesses](https://docs.befailproof.ai/reference/failproof-cli#backfill-per-harness)),
+   so you start with real evidence instead of an empty dashboard.
 3. **Audit.** The moment runs land, Cloud starts your first audit on its own. It reads
    your sessions, clusters what went wrong into named failure modes, and turns each one
    into an **insight**, with the sessions that prove it. The free plan includes audits
@@ -200,9 +201,8 @@ So a policy written once against `Bash` blocks the same command in Claude Code, 
 Hermes and Goose. A "run the tests before you stop" gate sends the agent back to work on
 every harness that has a turn-end hook.
 
-Each contract is probed live against the shipping version of that CLI. It's pinned, with
-the version it was verified on, in a capability matrix the test suite checks every claim
-against. Blocking before a tool runs is verified on all twelve harnesses; turn-end gates
+Each contract is verified against that CLI and pinned, with what it was verified on, in
+a capability matrix the test suite checks every claim against. Blocking before a tool runs is verified on all twelve harnesses; turn-end gates
 on eight. The [per-harness matrix](https://docs.befailproof.ai/reference/harnesses#enforcement-capability)
 shows exactly which events each one honours.
 
@@ -236,12 +236,12 @@ A few examples of what a policy can catch, and what it does about it:
 | `warn-destructive-sql` | `DROP`, `TRUNCATE`, an unbounded `DELETE` | **Warns** the agent and lets it decide |
 | `warn-repeated-tool-calls` | The agent looping on the same failing call | **Warns** the agent to change approach |
 | `no-refunds-over-limit` *(yours)* | A support agent approving a refund it isn't allowed to | Whatever you decide |
-| `no-production-writes` *(yours)* | Writes to production paths (the code below) | **Blocks** |
+| `no-production-writes` *(yours)* | File writes and edits to production paths (the code below) | **Blocks** |
 
-Prefer to write one yourself? Save it in `.failproofai/policies/` under a name ending in
-`policies.js`, `policies.mjs` or `policies.ts` (say, `no-production-writes-policies.mjs`)
-and it loads automatically. A file named anything else is skipped. Commit it and the
-whole team is protected on the next pull.
+Prefer to write one yourself? Save it in `.failproofai/policies/` as, say,
+`no-production-writes-policies.mjs` and it loads automatically
+([naming rules](https://docs.befailproof.ai/reference/policy-sdk#convention-files)). Commit
+it, and every teammate whose agents run Failproof gets it on their next pull.
 
 ```js
 import { customPolicies, deny, allow } from "failproofai";

@@ -234,6 +234,7 @@ Convention files load automatically:
 - Project and user policy directories are both loaded.
 - Files load alphabetically within each directory.
 - A file must end in `policies.js`, `policies.mjs`, or `policies.ts`.
+- A `policies.ts` file is loaded as a JavaScript module, without compiling it, so it must use plain JavaScript syntax: type annotations and other TypeScript-only syntax make it fail to load.
 - Multiple `customPolicies.add()` calls in one file are supported.
 - Relative imports from local modules are supported.
 - Project policies can be committed so the same rules follow the repository.

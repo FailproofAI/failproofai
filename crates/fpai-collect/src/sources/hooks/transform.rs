@@ -34,8 +34,16 @@ use serde_json::{Map, Value, json};
 /// enumerating all of them turns each addition into unrelated breakage.
 #[derive(Debug, Clone, Default, Deserialize)]
 pub struct HookRow {
-    /// Epoch milliseconds.
+    /// Epoch milliseconds: when the row was written, the END of evaluation.
     pub timestamp: i64,
+    /// Epoch milliseconds the hook arrived. Written since 1.0.15; older rows
+    /// have none, and keep the exact events they always produced (the server
+    /// dedups on content, so a re-read must not change them).
+    #[serde(rename = "startedAt", default)]
+    pub started_at: Option<i64>,
+    /// The agent's own id for the tool call this hook governed.
+    #[serde(rename = "toolCallId", default)]
+    pub tool_call_id: Option<String>,
     #[serde(rename = "eventType")]
     pub event_type: Option<String>,
     /// Which agent CLI fired the hook.
@@ -824,11 +832,19 @@ fn base(
     kind: &str,
     index: u32,
 ) -> Option<Map<String, Value>> {
+    base_at(row, row.timestamp, session_id, environment, kind, index)
+}
+
+fn base_at(
+    row: &HookRow,
+    at_ms: i64,
+    session_id: &str,
+    environment: &str,
+    kind: &str,
+    index: u32,
+) -> Option<Map<String, Value>> {
     let mut m = Map::new();
-    m.insert(
-        "timestamp".into(),
-        json!(to_rfc3339_micros(row.timestamp, index)?),
-    );
+    m.insert("timestamp".into(), json!(to_rfc3339_micros(at_ms, index)?));
     m.insert("session_id".into(), json!(session_id));
     m.insert("agent_id".into(), json!(agent_id(row)));
     m.insert("type".into(), json!(kind));
@@ -850,7 +866,16 @@ pub fn to_events(row: &HookRow, offset: u64, environment: &str) -> Vec<Value> {
     let event_name = row.event_type.as_deref().unwrap_or("Hook");
     let hook_id = format!("{session_id}:{}:{offset}", row.timestamp);
 
-    let Some(mut start) = base(row, session_id, environment, "hook_triggered", 0) else {
+    // The start leg is stamped when the hook ARRIVED, where the row says: the
+    // row's own timestamp is the end of evaluation, which put a hook start
+    // after the tool call it gated whenever evaluation took longer than the
+    // agent's own logging. Never after the end, whatever a row claims.
+    let started = row
+        .started_at
+        .filter(|at| *at <= row.timestamp)
+        .unwrap_or(row.timestamp);
+    let Some(mut start) = base_at(row, started, session_id, environment, "hook_triggered", 0)
+    else {
         return Vec::new();
     };
     start.insert("hook_name".into(), json!(event_name));
@@ -879,6 +904,13 @@ pub fn to_events(row: &HookRow, offset: u64, environment: &str) -> Vec<Value> {
     let Some(mut end) = base(row, session_id, environment, "hook_completed", 1) else {
         return Vec::new();
     };
+    // The same field, at the same place, as the transcript sources' tool
+    // events: the server stores it in its own column, so a hook joins the
+    // tool call it governed instead of only sorting beside it.
+    if let Some(id) = row.tool_call_id.as_deref().filter(|id| !id.is_empty()) {
+        start.insert("tool_call_id".into(), json!(id));
+        end.insert("tool_call_id".into(), json!(id));
+    }
     end.insert("hook_name".into(), json!(event_name));
     end.insert("hook_id".into(), json!(hook_id));
     end.insert("outcome".into(), json!(row.decision_str()));

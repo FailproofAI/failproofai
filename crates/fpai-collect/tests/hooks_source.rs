@@ -638,3 +638,52 @@ async fn an_observed_verdict_survives_the_allow_rollup() {
     fs::remove_dir_all(&state).ok();
     fs::remove_dir_all(&spool).ok();
 }
+
+#[test]
+fn a_row_with_a_tool_call_id_and_start_time_joins_its_tool_call() {
+    let mut v: Value = serde_json::from_str(&deny_row()).unwrap();
+    let ts = v["timestamp"].as_i64().unwrap();
+    v["startedAt"] = serde_json::json!(ts - 1500);
+    v["toolCallId"] = serde_json::json!("toolu_01ABC");
+    let events = transform::to_events(&serde_json::from_value(v).unwrap(), 0, "local");
+    let (start, end) = (&events[0], &events[1]);
+    // The start leg is stamped when the hook arrived, 1.5 s before the end.
+    assert_eq!(
+        start["timestamp"],
+        transform::to_rfc3339_micros(ts - 1500, 0).unwrap()
+    );
+    assert_eq!(
+        end["timestamp"],
+        transform::to_rfc3339_micros(ts, 1).unwrap()
+    );
+    // The field and place the transcript sources use, on both legs.
+    assert_eq!(start["tool_call_id"], "toolu_01ABC");
+    assert_eq!(end["tool_call_id"], "toolu_01ABC");
+}
+
+#[test]
+fn an_older_row_converts_exactly_as_before() {
+    // The server dedups on content: a re-read (a backfill) of a row written
+    // before these fields existed must produce byte-identical events.
+    let row = parse(&deny_row());
+    let ts = row.timestamp;
+    let events = transform::to_events(&row, 0, "local");
+    assert_eq!(
+        events[0]["timestamp"],
+        transform::to_rfc3339_micros(ts, 0).unwrap()
+    );
+    assert!(events[0].get("tool_call_id").is_none());
+    assert!(events[1].get("tool_call_id").is_none());
+}
+
+#[test]
+fn a_start_time_after_the_end_is_ignored() {
+    let mut v: Value = serde_json::from_str(&deny_row()).unwrap();
+    let ts = v["timestamp"].as_i64().unwrap();
+    v["startedAt"] = serde_json::json!(ts + 60_000);
+    let events = transform::to_events(&serde_json::from_value(v).unwrap(), 0, "local");
+    assert_eq!(
+        events[0]["timestamp"],
+        transform::to_rfc3339_micros(ts, 0).unwrap()
+    );
+}

@@ -46,6 +46,13 @@ describe("pi-extension deny shapes are in the right handlers", () => {
     expect(h).not.toMatch(/return \{ block: true/);
   });
 
+  it("tool_call and tool_result forward Pi's toolCallId as tool_use_id", () => {
+    // The key the handler reads, so a Pi hook joins its transcript tool call.
+    for (const event of ["tool_call", "tool_result"]) {
+      expect(handler(event)).toMatch(/tool_use_id: e\.toolCallId/);
+    }
+  });
+
   it("input returns InputEventResult, never a block field", () => {
     const h = handler("input");
     expect(h).toMatch(/action: "handled"/);

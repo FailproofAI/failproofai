@@ -343,7 +343,7 @@ describe("opt-in", () => {
     const deletion = () => bash("find . -name '*.sqlite' -delete");
     const strip = (o: Awaited<ReturnType<typeof outside>>) => ({ ...o.outcome, evaluation: { ...o.outcome.evaluation, durationMs: 0 } });
     const stripRow = (row: Record<string, unknown>) => {
-      const { timestamp: _t, durationMs: _d, ...rest } = row;
+      const { timestamp: _t, durationMs: _d, startedAt: _s, ...rest } = row;
       return rest;
     };
     // Were Jev asked, both would come out differently: it clears the

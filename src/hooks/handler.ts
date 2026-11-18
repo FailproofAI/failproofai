@@ -98,6 +98,26 @@ import type { AgentIdentity } from "./agent-targets";
 let legacyShimWarned = false;
 
 /**
+ * The agent's own id for the tool call a hook payload is about: Claude, Devin,
+ * Factory and Pi (via its shim) send `tool_use_id`, Devin also
+ * `tool_call_id`, Hermes nests it under `hermes.tool_call_id`. It is the id the
+ * agent's transcript records that call under, so a hook event that carries it
+ * joins the transcript events for the same call instead of being placed
+ * beside them by timestamp alone.
+ */
+export function toolCallIdOf(parsed: Record<string, unknown>): string | undefined {
+  const hermes = parsed.hermes;
+  const nested =
+    hermes && typeof hermes === "object" && !Array.isArray(hermes)
+      ? (hermes as Record<string, unknown>).tool_call_id
+      : undefined;
+  for (const value of [parsed.tool_use_id, parsed.tool_call_id, parsed.toolCallId, parsed.toolUseId, nested]) {
+    if (typeof value === "string" && value.length > 0 && value.length <= 256) return value;
+  }
+  return undefined;
+}
+
+/**
  * Canonicalize an event name to PascalCase. Codex sends snake_case event names
  * on stdin and as the --hook arg; Cursor sends camelCase (`preToolUse`,
  * `beforeSubmitPrompt`); Pi sends underscore_lower_snake_case (`tool_call`,
@@ -1246,8 +1266,16 @@ export async function evaluateHookEvent(
     const jevOrigin = result.policyName && result.twoTier?.decidedByJev ? result.twoTier.jevOrigin : undefined;
 
     // Persist activity to disk (visible in /policies activity tab)
+    const writtenAt = Date.now();
+    const toolCallId = toolCallIdOf(parsed);
     const activityEntry = {
-      timestamp: Date.now(),
+      timestamp: writtenAt,
+      // When the hook arrived. `timestamp` is when its evaluation ENDED, so a
+      // hook start ordered by it sorted late by the whole evaluation.
+      startedAt: writtenAt - durationMs,
+      // The agent's own id for the tool call this hook governed, the key its
+      // transcript records the call under (see `toolCallIdOf`).
+      ...(toolCallId ? { toolCallId } : {}),
       eventType: canonicalEventType,
       integration: cli,
       toolName: (parsed.tool_name as string) ?? null,

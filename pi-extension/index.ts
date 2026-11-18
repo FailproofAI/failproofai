@@ -343,6 +343,7 @@ export default function failproofaiBridge(pi: PiExtensionApi) {
     const decision = callPolicy("tool_call", {
       tool_name: canonicalTool,
       tool_input: canonicalizeToolInput(canonicalTool, e.input),
+      ...(e.toolCallId ? { tool_use_id: e.toolCallId } : {}),
       session_id: resolveSessionId(e.sessionId, resolveCwd(e.cwd)),
       cwd: resolveCwd(e.cwd),
       hook_event_name: "PreToolUse",
@@ -449,6 +450,7 @@ export default function failproofaiBridge(pi: PiExtensionApi) {
     callPolicy("tool_result", {
       tool_name: canonicalTool,
       tool_input: canonicalizeToolInput(canonicalTool, e.input) ?? {},
+      ...(e.toolCallId ? { tool_use_id: e.toolCallId } : {}),
       tool_response: { content: e.content, isError: e.isError },
       session_id: resolveSessionId(e.sessionId, resolveCwd(e.cwd)),
       cwd: resolveCwd(e.cwd),

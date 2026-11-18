@@ -17,6 +17,7 @@
 - A hook client that stopped waiting before its verdict was ready is logged as that, with how long the evaluation took, instead of macOS's bare "Invalid argument (os error 22)" (#1023)
 - failproofaid writes its log to `~/.failproofai/logs/daemon.log` on every OS (10 MB, 3 kept), as well as to stderr as before; every line carries a timestamp and level (its untimestamped `[failproofaid]` lines are now `tracing` events), and on macOS launchd's `failproofaid.err.log`, which nothing rotated, is bounded at startup (#1023)
 - failproofaid tells FailproofAI Cloud what each machine runs: its policy poll carries `daemonVersion`, `cliVersion`, `os` and `arch` (optional parameters a server that predates them ignores), and every Cloud and ingest request sends `User-Agent: failproofaid/<version>` (#1023)
+- Hook events carry the agent's own `tool_call_id` (Claude, Devin, Factory, Pi, Hermes), the field the transcript events already use and Cloud stores in its own column, so a hook joins the tool call it governed instead of being placed beside it by timestamp; and a hook's start is stamped when it arrived, not when its evaluation ended. Rows written before this convert exactly as before (#1023)
 
 ## 1.0.15 — 2026-11-18
 

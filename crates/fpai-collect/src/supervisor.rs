@@ -277,7 +277,12 @@ impl Drop for CollectorHandle {
             stop: self.stop.clone(),
             metrics: self.metrics.clone(),
         };
-        if handle.stop_within(crate::DEFAULT_FLUSH_BUDGET).is_err() {
+        if let Err(mut wedged) = handle.stop_within(crate::DEFAULT_FLUSH_BUDGET) {
+            // Detach before it drops: dropping it as-is would re-enter this
+            // `drop` (still panicking, thread still attached) and wait again,
+            // for ever on a wedged collector, so the unwind never ended.
+            // Asked to stop, it still exits on its own.
+            drop(wedged.thread.take());
             tracing::warn!("a collector abandoned by a panic did not stop within its flush budget");
         }
     }

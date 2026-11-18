@@ -129,12 +129,16 @@ fn init_logging() {
         )
     });
     let builder = tracing_subscriber::fmt().with_env_filter(filter);
+    // Only under launchd (which sets XPC_SERVICE_NAME): a hand-run daemon or a
+    // test reading stderr keeps every line.
     #[cfg(target_os = "macos")]
-    let stderr = std::io::stderr.with_max_level(if file.is_some() {
-        tracing::Level::WARN
-    } else {
-        tracing::Level::TRACE
-    });
+    let stderr = std::io::stderr.with_max_level(
+        if file.is_some() && std::env::var_os("XPC_SERVICE_NAME").is_some() {
+            tracing::Level::WARN
+        } else {
+            tracing::Level::TRACE
+        },
+    );
     #[cfg(not(target_os = "macos"))]
     let stderr = std::io::stderr;
     let _ = match file {
@@ -152,13 +156,19 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
     // Only the instance holding the lock may rotate the log launchd gives the
     // running service: a second invocation copying and truncating it could
     // cut out lines the live daemon appended in between.
+    // Off the startup path: copying a log that grew large must not delay the
+    // socket bind, before which every hook call on the machine is denied.
     #[cfg(target_os = "macos")]
     if let Ok(home) = paths::failproofai_home() {
-        logfile::bound_inherited_log(
-            &home.join("logs").join("failproofaid.err.log"),
-            logfile::MAX_BYTES,
-            logfile::KEEP,
-        );
+        let _ = std::thread::Builder::new()
+            .name("fpai-log-bound".to_string())
+            .spawn(move || {
+                logfile::bound_inherited_log(
+                    &home.join("logs").join("failproofaid.err.log"),
+                    logfile::MAX_BYTES,
+                    logfile::KEEP,
+                )
+            });
     }
 
     // The shutdown flag and its signal handler are installed BEFORE anything

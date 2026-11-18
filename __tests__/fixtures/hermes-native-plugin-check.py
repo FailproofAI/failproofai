@@ -1706,7 +1706,9 @@ class ProtocolCompatibilityTests(unittest.TestCase):
     """Files on disk can be newer than the daemon still running. An older daemon
     inside the supported range is asked again in its own version, not refused."""
 
-    def _evaluate(self, responses: list[dict[str, object]], schema: int | None = None) -> tuple[object, list]:
+    def _evaluate(
+        self, responses: list[dict[str, object]], schema: int | None = None, raw: str | None = None
+    ) -> tuple[object, list]:
         with tempfile.TemporaryDirectory() as tmp:
             socket_path = Path(tmp) / "d.sock"
             policies = Path(tmp) / "cloud-policies"
@@ -1715,6 +1717,8 @@ class ProtocolCompatibilityTests(unittest.TestCase):
                 (policies / "active.json").write_text(
                     json.dumps({"schemaVersion": schema, "deployment": 4, "policies": []})
                 )
+            if raw is not None:
+                (policies / "active.json").write_text(raw)
             received: list = []
             thread = serve_verdicts(socket_path, responses, received)
             env = {"FAILPROOFAI_DAEMON_SOCKET": str(socket_path), "FAILPROOFAI_CLOUD_POLICY_DIR": str(policies)}
@@ -1750,6 +1754,13 @@ class ProtocolCompatibilityTests(unittest.TestCase):
         # agent-targeted policy does not apply to an unknown agent.
         result, received = self._evaluate(
             [{"type": "error", "protocolVersion": 1, "message": "protocol version mismatch"}], schema=3
+        )
+        self.assertIsInstance(result, client.EvaluationError)
+        self.assertEqual(len(received), 1)
+
+    def test_no_fallback_where_the_deployment_cannot_be_read(self) -> None:
+        result, received = self._evaluate(
+            [{"type": "error", "protocolVersion": 1, "message": "protocol version mismatch"}], raw="{"
         )
         self.assertIsInstance(result, client.EvaluationError)
         self.assertEqual(len(received), 1)

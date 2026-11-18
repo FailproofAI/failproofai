@@ -404,7 +404,21 @@ fn dispatch(request: ClientMessage, worker: &Worker) -> ServerMessage {
             message,
         };
     }
-    evaluate(request.without_fields_newer_than_its_version(), worker).with_protocol_version(version)
+    let response = evaluate(request.without_fields_newer_than_its_version(), worker)
+        .with_protocol_version(version);
+    // Checked again after: a deployment that became targeted while the worker
+    // evaluated (Cloud maintenance runs beside it) may have been applied with
+    // no agent, so the answer is withheld for the same reason as above.
+    if version < fpai_ipc::envelope::AGENT_SETTINGS_PATH_SINCE
+        && let Ok(dir) = crate::paths::cloud_managed_policy_dir()
+        && let Some(message) = legacy_scope_refusal(&dir)
+    {
+        return ServerMessage::Error {
+            protocol_version: version,
+            message,
+        };
+    }
+    response
 }
 
 /// Why a request too old to name its agent cannot be answered here, if it
@@ -419,6 +433,18 @@ fn dispatch(request: ClientMessage, worker: &Worker) -> ServerMessage {
 /// request was before compatibility. A deployment that cannot be read is
 /// refused for the same reason.
 fn legacy_scope_refusal(cloud_policy_dir: &Path) -> Option<String> {
+    // Only a manifest that is NOT THERE means no deployment. `read_active`
+    // asks `exists()`, which reads a permission error as absent too.
+    match fs::metadata(cloud_policy_dir.join("active.json")) {
+        Err(err) if err.kind() == io::ErrorKind::NotFound => return None,
+        Err(err) => {
+            return Some(format!(
+                "this client predates agent-targeted Cloud policies and the deployment could \
+                 not be read to rule them out ({err}): restart the agent gateway"
+            ));
+        }
+        Ok(_) => {}
+    }
     let store = crate::cloud_policies::PolicyStore::new(cloud_policy_dir.to_path_buf());
     match store.read_active() {
         Ok(None) => None,

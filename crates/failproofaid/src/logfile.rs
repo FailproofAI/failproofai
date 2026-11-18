@@ -32,18 +32,28 @@ impl Inner {
     /// Owner-only, created that way and tightened if an older file is not:
     /// the log carries machine ids and policy diagnostics, and a home another
     /// account can traverse must not make it readable to them.
+    ///
+    /// Only a regular file is used. Opened non-blocking and without following
+    /// a link, so a FIFO placed there (whose open waits for a reader) cannot
+    /// stall startup, which runs before the socket is bound, and a symlink
+    /// cannot point the log somewhere else.
     fn open(&mut self) {
         use std::os::unix::fs::{OpenOptionsExt, PermissionsExt};
         self.file = OpenOptions::new()
             .create(true)
             .append(true)
             .mode(0o600)
+            .custom_flags(libc::O_NONBLOCK | libc::O_NOFOLLOW)
             .open(&self.path)
-            .ok();
-        if self.file.is_some() {
-            let _ = fs::set_permissions(&self.path, fs::Permissions::from_mode(0o600));
-        }
-        self.size = fs::metadata(&self.path).map(|m| m.len()).unwrap_or(0);
+            .ok()
+            .filter(|file| file.metadata().is_ok_and(|m| m.is_file()));
+        self.size = match &self.file {
+            Some(file) => {
+                let _ = file.set_permissions(fs::Permissions::from_mode(0o600));
+                file.metadata().map(|m| m.len()).unwrap_or(0)
+            }
+            None => 0,
+        };
     }
 
     fn rotate(&mut self) {
@@ -70,8 +80,16 @@ impl Inner {
 
 /// `path` → `path.1` → … → `path.<keep>`, dropping the oldest. Missing files
 /// are skipped; a failed rename leaves the rest as they were.
+/// `<path>.<n>`, built from the path's own bytes rather than its display
+/// form, which replaces anything that is not UTF-8.
+fn numbered(path: &Path, n: usize) -> PathBuf {
+    let mut name = path.as_os_str().to_owned();
+    name.push(format!(".{n}"));
+    PathBuf::from(name)
+}
+
 pub fn rotate_file(path: &Path, keep: usize) {
-    let numbered = |n: usize| PathBuf::from(format!("{}.{n}", path.display()));
+    let numbered = |n: usize| numbered(path, n);
     if keep == 0 {
         let _ = fs::remove_file(path);
         return;
@@ -146,13 +164,10 @@ pub fn bound_inherited_log(path: &Path, max_bytes: u64, keep: usize) {
     if meta.len() <= max_bytes {
         return;
     }
-    let first = PathBuf::from(format!("{}.1", path.display()));
-    let _ = fs::remove_file(PathBuf::from(format!("{}.{keep}", path.display())));
+    let first = numbered(path, 1);
+    let _ = fs::remove_file(numbered(path, keep));
     for n in (1..keep).rev() {
-        let _ = fs::rename(
-            PathBuf::from(format!("{}.{n}", path.display())),
-            PathBuf::from(format!("{}.{}", path.display(), n + 1)),
-        );
+        let _ = fs::rename(numbered(path, n), numbered(path, n + 1));
     }
     if fs::copy(path, &first).is_ok() {
         let _ = OpenOptions::new()
@@ -226,6 +241,22 @@ mod tests {
             fs::metadata(&path).unwrap().permissions().mode() & 0o777,
             0o600,
             "after rotation"
+        );
+        fs::remove_dir_all(dir).ok();
+    }
+
+    #[test]
+    fn a_fifo_in_place_of_the_log_neither_blocks_nor_is_used() {
+        let dir = temp_dir("fifo");
+        let path = dir.join("daemon.log");
+        let c = std::ffi::CString::new(path.to_str().unwrap()).unwrap();
+        // SAFETY: a valid NUL-terminated path.
+        assert_eq!(unsafe { libc::mkfifo(c.as_ptr(), 0o600) }, 0);
+        let started = std::time::Instant::now();
+        assert!(RotatingFile::open(path, 10, 1).is_none());
+        assert!(
+            started.elapsed() < std::time::Duration::from_secs(1),
+            "the open did not wait for a reader"
         );
         fs::remove_dir_all(dir).ok();
     }

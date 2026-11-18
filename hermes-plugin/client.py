@@ -61,14 +61,19 @@ def _agent_targeted_deployment() -> bool:
         root = os.environ.get("FAILPROOFAI_HOME", "").strip()
         home = Path(root).expanduser() if root else Path.home() / ".failproofai"
         directory = home / "policies" / "cloud-policies"
-    active = directory / "active.json"
+    # Read directly: `Path.exists()` reports a permission error as absent, and
+    # only a manifest that is NOT THERE means no deployment.
     try:
-        if not active.exists():
-            return False
-        version = json.loads(active.read_text(encoding="utf-8")).get("schemaVersion")
-        return not (type(version) is int and version < SCOPED_SCHEMA_VERSION)
-    except (OSError, ValueError, AttributeError):
+        text = (directory / "active.json").read_text(encoding="utf-8")
+    except FileNotFoundError:
+        return False
+    except OSError:
         return True
+    try:
+        version = json.loads(text).get("schemaVersion")
+    except (ValueError, AttributeError):
+        return True
+    return not (type(version) is int and version < SCOPED_SCHEMA_VERSION)
 
 
 def _remaining_timeout(deadline: float) -> float:

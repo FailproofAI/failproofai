@@ -51,6 +51,7 @@ describe("hooks/daemon-client", () => {
   let tmpDir: string;
   let socketPath: string;
   let server: Server | null;
+  let prevHome: string | undefined;
 
   beforeEach(() => {
     tmpDir = mkdtempSync(join(tmpdir(), "fpai-daemon-client-test-"));
@@ -60,12 +61,18 @@ describe("hooks/daemon-client", () => {
     // The fallback to an older daemon reads the Cloud deployment; never the
     // developer's own.
     process.env.FAILPROOFAI_CLOUD_POLICY_DIR = join(tmpDir, "cloud-policies");
+    // And its config: one in `oss` mode (a CI runner's, say) hides any
+    // deployment, so the runner's own home must not decide these tests.
+    prevHome = process.env.FAILPROOFAI_HOME;
+    process.env.FAILPROOFAI_HOME = join(tmpDir, "home");
     vi.resetModules();
   });
 
   afterEach(async () => {
     delete process.env.FAILPROOFAI_DAEMON_SOCKET;
     delete process.env.FAILPROOFAI_CLOUD_POLICY_DIR;
+    if (prevHome === undefined) delete process.env.FAILPROOFAI_HOME;
+    else process.env.FAILPROOFAI_HOME = prevHome;
     if (server) {
       await new Promise<void>((r) => server!.close(() => r()));
     }
@@ -292,6 +299,21 @@ describe("hooks/daemon-client", () => {
     const { attemptDaemonHook } = await import("../../src/hooks/daemon-client");
     const attempt = await attemptDaemonHook({ hookEvent: "PreToolUse", cli: "claude", stdin: "{}" });
     expect(attempt).toEqual({ ok: false, failure: "protocol-mismatch" });
+    expect(connections).toBe(1);
+  });
+
+  it("does not fall back where the deployment cannot be read to rule targets out", async () => {
+    mkdirSync(process.env.FAILPROOFAI_CLOUD_POLICY_DIR!, { recursive: true });
+    writeFileSync(join(process.env.FAILPROOFAI_CLOUD_POLICY_DIR!, "active.json"), "{");
+    let connections = 0;
+    await startServer(async (socket) => {
+      connections++;
+      await readFrame(socket);
+      socket.end(encodeFrame({ type: "hookResult", protocolVersion: 1, exitCode: 0, stdout: "", stderr: "" }));
+    });
+    const { attemptDaemonHook } = await import("../../src/hooks/daemon-client");
+    expect(await attemptDaemonHook({ hookEvent: "PreToolUse", cli: "claude", stdin: "{}" }))
+      .toEqual({ ok: false, failure: "protocol-mismatch" });
     expect(connections).toBe(1);
   });
 

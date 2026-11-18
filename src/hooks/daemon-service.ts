@@ -420,6 +420,11 @@ export function workerScriptPath(): string | null {
  */
 const UNIT_UNSAFE_RE = /["\\\r\n]/;
 
+/** A literal `%` in a unit value, written so systemd does not expand it. */
+function escapeUnitPercent(value: string): string {
+  return value.replace(/%/g, "%%");
+}
+
 /** Throws when a value cannot be safely interpolated into a unit file. */
 function assertUnitSafe(value: string, field: string): string {
   if (UNIT_UNSAFE_RE.test(value)) {
@@ -777,7 +782,13 @@ export function writePrivilegedFile(destination: string, contents: string, mode 
   const staging = resolve(stagingDir, "service-definition");
   try {
     writeFileSync(staging, contents, "utf8");
-    runPrivileged("install", ["-m", mode, staging, destination]);
+    // Installed beside the destination and renamed over it: `install` onto
+    // the destination unlinks the old file before copying, so a copy that
+    // failed part-way left no definition (launchd then cannot load the job
+    // at boot). A rename within one directory is atomic.
+    const sibling = `${destination}.failproofai-new`;
+    runPrivileged("install", ["-m", mode, staging, sibling]);
+    runPrivileged("mv", ["-f", sibling, destination]);
   } finally {
     rmSync(stagingDir, { recursive: true, force: true });
   }
@@ -850,8 +861,13 @@ export function systemdUnitContents(
   // Environment= requires quoting whenever the value does.
   const envLines = serviceEnvironment(workerCmd, cliCmd)
     // `%` is a specifier inside a unit (`%n` is the unit name, `%h` a home),
-    // so a literal one is written `%%` or the path silently changes.
-    .map(([key, value]) => `Environment="${key}=${assertUnitSafe(value, key).replace(/%/g, "%%")}"\n`)
+    // so in a command this package generated a literal one is written `%%`, or
+    // the path silently changes. An operator's own command is written as they
+    // saved it: its specifiers (`%i`, say) are meant.
+    .map(([key, value]) => {
+      const safe = assertUnitSafe(value, key);
+      return `Environment="${key}=${isPackageCommand(safe) ? escapeUnitPercent(safe) : safe}"\n`;
+    })
     .join("");
   const user = assertUnitSafe(serviceUser(), "User");
   assertUnitSafe(binaryPath, "ExecStart");
@@ -897,11 +913,15 @@ export function systemdUnitContents(
   // a command-with-arguments is not. Same rule the worker script already
   // follows — never gate on a path that is not there, or the freshly installed
   // unit skips on its very first start.
-  const conditionPaths = [binaryPath, workerScriptPath()].filter(
+  // The package's worker script only when the unit runs it: an operator's own
+  // worker command does not need it, and gating on it skipped a service whose
+  // wrapper was intact once the unused script was removed.
+  const workerScript = workerCmd === null || isPackageCommand(workerCmd) ? workerScriptPath() : null;
+  const conditionPaths = [binaryPath, workerScript].filter(
     (p): p is string => typeof p === "string" && existsSync(p),
   );
   const conditionLines = conditionPaths
-    .map((p) => `ConditionPathExists=${assertUnitSafe(p, "ConditionPathExists")}\n`)
+    .map((p) => `ConditionPathExists=${escapeUnitPercent(assertUnitSafe(p, "ConditionPathExists"))}\n`)
     .join("");
 
   return `[Unit]
@@ -1067,11 +1087,15 @@ export async function installDaemonService(): Promise<DaemonInstallResult> {
     ? null
     : installedEnvValue(readInstalledServiceDefinition() ?? "", "FAILPROOFAI_WORKER_CMD");
   const workerCmd = savedWorker && !isPackageCommand(savedWorker) ? savedWorker : resolveWorkerCommand();
+  // And the operator's own audit command, the same way.
+  const savedCli = process.env.FAILPROOFAI_CLI_CMD
+    ? null
+    : installedEnvValue(readInstalledServiceDefinition() ?? "", "FAILPROOFAI_CLI_CMD");
   // Same best-effort footing as the worker command, and null is survivable in
   // the same way — the daemon just has no way to run an audit. Unlike the
   // worker, there is no relative-path fallback to degrade to, which is exactly
   // why it is resolved here where FAILPROOFAI_PACKAGE_ROOT is reliably set.
-  const cliCmd = resolveCliCommand();
+  const cliCmd = savedCli && !isPackageCommand(savedCli) ? savedCli : resolveCliCommand();
 
   // The service is installed system-wide, which needs root. Check before
   // writing anything, so a machine that cannot elevate gets the exact
@@ -1669,7 +1693,9 @@ export async function ensureDaemonServiceCurrent(): Promise<DaemonUpgradeResult>
     return { outcome: "current" };
   }
 
-  const cliCmd = resolveCliCommand();
+  const savedCli = installedEnvValue(definition, "FAILPROOFAI_CLI_CMD");
+  const cliCmd =
+    !process.env.FAILPROOFAI_CLI_CMD && savedCli && !isPackageCommand(savedCli) ? savedCli : resolveCliCommand();
   if (!cliCmd) {
     return {
       outcome: "failed",
@@ -1681,6 +1707,22 @@ export async function ensureDaemonServiceCurrent(): Promise<DaemonUpgradeResult>
 
   const logDir = logsDir();
   const upgraded = upgradedServiceDefinition(definition, cliCmd, logDir);
+  // A rewrite that would still name a missing file repairs nothing, and then
+  // reported "rewritten" while the next check flagged the same path. The
+  // install it would point at is incomplete; say that instead.
+  if (
+    upgraded &&
+    (savedCommandIsGone(installedEnvValue(upgraded, "FAILPROOFAI_WORKER_CMD")) ||
+      savedCommandIsGone(installedEnvValue(upgraded, "FAILPROOFAI_CLI_CMD")))
+  ) {
+    return {
+      outcome: "failed",
+      reason:
+        "the failproofai install the service would run is incomplete (its Node.js or dist/ files are missing). " +
+        "Reinstall the package, then run `failproofai update`.",
+      daemonRunning: daemonServiceStatus() === "running",
+    };
+  }
   if (!upgraded) {
     return {
       outcome: "failed",

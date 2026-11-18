@@ -693,6 +693,17 @@ describe("hooks/daemon-service", () => {
       expect(unit).toContain(`Environment="FAILPROOFAI_WORKER_CMD='/home/a/bin%%n/node' '/pkg/dist/worker.mjs'"`);
     });
 
+    it("writes an operator's own command as saved, specifiers and all, and does not gate on our worker", async () => {
+      useScratchHome();
+      setPlatform("linux");
+      process.env.FAILPROOFAI_PACKAGE_ROOT = resolve(__dirname, "..", "..");
+      const { systemdUnitContents, workerScriptPath } = await import("../../src/hooks/daemon-service");
+      const unit = systemdUnitContents("/opt/failproofaid", "/opt/team/%i/worker-wrapper");
+      expect(unit).toContain(`Environment="FAILPROOFAI_WORKER_CMD=/opt/team/%i/worker-wrapper"`);
+      const script = workerScriptPath();
+      if (script) expect(unit).not.toContain(`ConditionPathExists=${script}`);
+    });
+
     it("saves a stable link to the runtime when PATH has one, not a versioned path", async () => {
       // Homebrew's execPath is .../Cellar/node/<version>/bin/node, which
       // `brew upgrade node` deletes; /opt/homebrew/bin/node survives it.

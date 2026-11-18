@@ -141,10 +141,14 @@ describe("update's OpenClaw rows", () => {
 describe("OpenClaw profile selection", () => {
   it("drops every selector the caller's shell set, so a row acts on its own profile", () => {
     const shell = { OPENCLAW_PROFILE: "ops", OPENCLAW_STATE_DIR: "/h/.openclaw-ops", OPENCLAW_CONFIG_PATH: "/x.json", PATH: "/bin" } as unknown as NodeJS.ProcessEnv;
-    const env = openclawProfileEnv({ name: "default", home: "/h/.openclaw" }, shell);
+    const { homedir } = require("node:os") as typeof import("node:os");
+    const env = openclawProfileEnv({ name: "default", home: `${homedir()}/.openclaw` }, shell);
     expect(env).toEqual({ PATH: "/bin" });
     // A default profile at a non-standard location is named by its directory.
     expect(openclawProfileEnv({ name: "default", home: "/srv/claw" }, shell).OPENCLAW_STATE_DIR).toBe("/srv/claw");
+    // Relocated, even when the directory is itself named `.openclaw`.
+    expect(openclawProfileEnv({ name: "default", home: "/srv/claw/.openclaw" }, shell).OPENCLAW_STATE_DIR)
+      .toBe("/srv/claw/.openclaw");
     // A named one is selected by --profile, never by the inherited env.
     expect(openclawProfileEnv({ name: "ops", home: "/h/.openclaw-ops" }, shell).OPENCLAW_PROFILE).toBeUndefined();
   });

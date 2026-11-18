@@ -23,7 +23,8 @@
  */
 import { spawn, spawnSync } from "node:child_process";
 import { closeSync, mkdirSync, openSync, readFileSync } from "node:fs";
-import { basename, dirname, join } from "node:path";
+import { dirname, join, resolve } from "node:path";
+import { homedir } from "node:os";
 import { listOpenClawProfiles, OPENCLAW_DEFAULT_PROFILE } from "../../lib/openclaw-profiles";
 import { logsDir } from "./fp-home";
 
@@ -186,7 +187,9 @@ export function openclawProfileEnv(
   for (const key of ["OPENCLAW_PROFILE", "OPENCLAW_STATE_DIR", "OPENCLAW_HOME", "OPENCLAW_CONFIG_PATH"]) {
     delete env[key];
   }
-  if (profile.name === OPENCLAW_DEFAULT_PROFILE && basename(profile.home) !== ".openclaw") {
+  // The account default is ~/.openclaw itself; a default profile anywhere else
+  // (a relocated `/srv/claw/.openclaw` included) is named by its directory.
+  if (profile.name === OPENCLAW_DEFAULT_PROFILE && resolve(profile.home) !== resolve(homedir(), ".openclaw")) {
     env.OPENCLAW_STATE_DIR = profile.home;
   }
   return env;

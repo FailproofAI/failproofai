@@ -1412,13 +1412,26 @@ fn wait_until_shutdown(shutdown: &AtomicBool, interval: Duration) {
     }
 }
 
+/// A file of at most 4 KiB, as text: the VERSION file is a few dozen bytes,
+/// and this runs on every poll, so a file that grew is not read whole.
+fn read_small(path: &Path) -> Option<String> {
+    use std::io::Read;
+    let mut text = String::new();
+    std::fs::File::open(path)
+        .ok()?
+        .take(4096)
+        .read_to_string(&mut text)
+        .ok()?;
+    Some(text)
+}
+
 /// `daemonVersion`, `cliVersion` (when the home's VERSION file names one), `os`
 /// and `arch`, for the desired-state poll.
 fn machine_facts() -> Vec<(&'static str, String)> {
     let mut facts = vec![("daemonVersion", env!("CARGO_PKG_VERSION").to_string())];
     let cli = crate::paths::failproofai_home()
         .ok()
-        .and_then(|home| std::fs::read_to_string(crate::paths::version_file_path(&home)).ok())
+        .and_then(|home| read_small(&crate::paths::version_file_path(&home)))
         .and_then(|text| serde_json::from_str::<serde_json::Value>(&text).ok())
         .and_then(|doc| doc.get("cli")?.as_str().map(str::to_string))
         .filter(|v| !v.is_empty() && v.len() <= 64);

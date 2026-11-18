@@ -427,12 +427,21 @@ impl Uploader {
         parked.client_attempts = 1;
         parked.client_status = Some(413);
         let dest = unique_destination(&self.failed_dir, &parked.render()).await;
-        // Written under a dotfile and renamed, so no sweep sees half of it.
+        // Written under a dotfile and renamed, so no sweep sees half of it, and
+        // durable before returning: the caller then deletes the source batch,
+        // and the server has already refused this event, so this file is its
+        // only copy.
         let tmp = self
             .failed_dir
             .join(format!(".{}.partial", new_request_id()));
-        tokio::fs::write(&tmp, event).await?;
+        {
+            use tokio::io::AsyncWriteExt;
+            let mut file = tokio::fs::File::create(&tmp).await?;
+            file.write_all(event).await?;
+            file.sync_all().await?;
+        }
         tokio::fs::rename(&tmp, &dest).await?;
+        sync_dir(&self.failed_dir).await?;
         tracing::warn!(
             file = %path.display(),
             dest = %dest.display(),

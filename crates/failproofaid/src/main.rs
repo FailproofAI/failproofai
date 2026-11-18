@@ -6,6 +6,7 @@ mod cloud_client;
 pub mod cloud_policies;
 mod lock;
 mod logfile;
+mod logship;
 mod paths;
 mod server;
 mod telemetry;
@@ -141,18 +142,31 @@ fn init_logging() {
     );
     #[cfg(not(target_os = "macos"))]
     let stderr = std::io::stderr;
+    // `logship::Capture` keeps a bounded in-memory copy for the upload that
+    // happens only when something goes wrong (see logship.rs).
     let _ = match file {
-        Some(file) => builder.with_writer(stderr.and(file)).try_init(),
-        None => builder.with_writer(stderr).try_init(),
+        Some(file) => builder
+            .with_writer(stderr.and(file).and(logship::Capture))
+            .try_init(),
+        None => builder.with_writer(stderr.and(logship::Capture)).try_init(),
     };
 }
 
 fn run() -> Result<(), Box<dyn std::error::Error>> {
+    let logs_dir = paths::failproofai_home().ok().map(|home| home.join("logs"));
+    // Where the previous run's lines end, read before this run appends any.
+    let prior_log_len = logs_dir
+        .as_deref()
+        .and_then(|dir| logship::log_len_before_start(&dir.join("daemon.log")));
     init_logging();
     refuse_foreign_layout()?;
     let lock_path = paths::lock_path()?;
     paths::ensure_run_dir()?;
     let _singleton = lock::acquire(&lock_path)?;
+    // After the lock: the run marker belongs to the daemon that owns the machine.
+    if let Some(dir) = logs_dir.as_deref().filter(|dir| dir.is_dir()) {
+        logship::init(dir, prior_log_len);
+    }
     // Only the instance holding the lock may rotate the log launchd gives the
     // running service: a second invocation copying and truncating it could
     // cut out lines the live daemon appended in between.
@@ -316,6 +330,13 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
     );
     telemetry::shutdown_flush();
 
+    // A signal is a clean stop; a server error leaves the marker, so the next
+    // start reports this run's last lines (logship.rs).
+    if run_result.is_ok()
+        && let Some(dir) = logs_dir.as_deref()
+    {
+        logship::mark_clean_shutdown(dir);
+    }
     run_result?;
     Ok(())
 }

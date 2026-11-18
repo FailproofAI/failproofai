@@ -145,3 +145,24 @@ there.
 
 None of these crash the daemon or the connection-handling thread — a bad
 frame from one connection has no effect on any other connection.
+
+## Machine logs (HTTP, not this socket)
+
+Not part of the socket protocol: the daemon's cloud maintenance lane sends its
+own log to FailproofAI Cloud, only when something is wrong
+(`crates/failproofaid/src/logship.rs`). `POST /enforcement/v1/machine-logs`,
+bearer = the machine key, body ≤ 256 KiB:
+
+```json
+{ "machineId": "…", "daemonVersion": "1.0.16-beta.0",
+  "kind": "errors | incident | requested",
+  "trigger": "incident only, ≤ 200 chars", "requestId": "requested only",
+  "entries": [{ "ts": "…", "level": "ERROR|WARN|INFO|DEBUG", "target": "…",
+                "message": "≤ 2 KiB", "count": 1, "lastTs": "errors only" }] }
+```
+
+- `errors`: distinct warnings/errors (digits folded), counted; ≤ every 5 min, only when there is one.
+- `incident`: the last 5 min of INFO-and-up lines around an ERROR, or the previous run's log tail when it ended without a clean shutdown (`logs/daemon.running` still present at start); ≤ 1 per 15 min (stamped in `logs/.incident-sent`, so a crash loop does not resend), ≤ 10 per day.
+- `requested`: the `daemon.log` tail, answering `logRequest: {id}` on the desired-state response.
+- One body per poll. `2xx` stored; `404` → no uploads for 24 h; `429` → wait `Retry-After`; other `4xx` → dropped; network/`5xx` → kept for the next poll.
+- Home directory → `~`, machine token → `[redacted]`. `FAILPROOFAI_NO_LOG_UPLOAD=1` turns uploads off.

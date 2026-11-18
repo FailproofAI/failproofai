@@ -891,6 +891,14 @@ impl CloudClient {
                 // payload instead of a stale server. Reading the version off an
                 // untyped value first means the error names both halves and says
                 // which to upgrade.
+                // An operator asked for this machine's logs (logship.rs).
+                if let Some(id) = raw
+                    .get("logRequest")
+                    .and_then(|r| r.get("id"))
+                    .and_then(serde_json::Value::as_str)
+                {
+                    crate::logship::note_request(id);
+                }
                 let version = raw.get("schemaVersion").and_then(serde_json::Value::as_u64);
                 match version {
                     Some(v) if v == u64::from(DESIRED_STATE_SCHEMA_VERSION)
@@ -911,6 +919,59 @@ impl CloudClient {
                     PollFailure::payload(format!("invalid desired-state response: {err}"))
                 })
             })
+    }
+
+    /// One `machine-logs` upload (logship.rs). Never logs above debug: a
+    /// failure here must not become the next thing it uploads.
+    fn post_machine_logs(&self, body: &serde_json::Value) -> crate::logship::PostOutcome {
+        use crate::logship::PostOutcome;
+        let Ok(url) = self.base_url.join("enforcement/v1/machine-logs") else {
+            return PostOutcome::Refused;
+        };
+        match self
+            .client
+            .post(url)
+            .bearer_auth(&self.token)
+            .json(body)
+            .send()
+        {
+            Ok(response) => {
+                let status = response.status();
+                match status.as_u16() {
+                    200..=299 => PostOutcome::Stored,
+                    404 => PostOutcome::Gone,
+                    429 => PostOutcome::RetryAfter(Duration::from_secs(
+                        response
+                            .headers()
+                            .get(reqwest::header::RETRY_AFTER)
+                            .and_then(|v| v.to_str().ok())
+                            .and_then(|v| v.trim().parse::<u64>().ok())
+                            .unwrap_or(3600),
+                    )),
+                    400..=499 => {
+                        tracing::debug!("machine log upload refused: {status}");
+                        PostOutcome::Refused
+                    }
+                    _ => PostOutcome::Failed,
+                }
+            }
+            Err(err) => {
+                tracing::debug!(
+                    "machine log upload failed: {}",
+                    fpai_collect::error_chain(&err)
+                );
+                PostOutcome::Failed
+            }
+        }
+    }
+
+    /// Upload whatever logship has queued, one body per tick.
+    fn ship_logs(&self) {
+        let scrub =
+            crate::logship::Scrub::new(std::env::var("HOME").ok(), Some(self.token.clone()));
+        crate::logship::ship(&self.machine_id, &scrub, &|body| {
+            self.post_machine_logs(body)
+        });
     }
 
     /// The roster is a full snapshot, independent of policy reconciliation.
@@ -1225,6 +1286,7 @@ fn maintenance_tick(
             let reconciled = poll_once_guarded(store, &cloud, withdrawn);
             if !withdrawn() {
                 repair(store, withdrawn);
+                cloud.ship_logs();
             }
             reconciled
         }
@@ -1611,6 +1673,78 @@ mod tests {
     /// half, so this path took a v1 response. The disk half is now handled by a
     /// dedicated legacy type in `cloud_policies.rs`, which is what lets this end be
     /// strict without costing an upgraded machine its persisted state.
+    /// One request in, one canned status out; returns the request head.
+    fn answer_once(
+        status_line: &'static str,
+        extra: &'static str,
+    ) -> (String, std::thread::JoinHandle<String>) {
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let address = listener.local_addr().unwrap();
+        let server = std::thread::spawn(move || {
+            let (mut stream, _) = listener.accept().unwrap();
+            let mut request = Vec::new();
+            let mut chunk = [0u8; 4096];
+            // Head, then the body its Content-Length names.
+            loop {
+                let n = stream.read(&mut chunk).unwrap();
+                request.extend_from_slice(&chunk[..n]);
+                let text = String::from_utf8_lossy(&request).to_string();
+                if let Some(head_end) = text.find("\r\n\r\n") {
+                    let len = text[..head_end]
+                        .lines()
+                        .find_map(|l| {
+                            l.to_ascii_lowercase()
+                                .strip_prefix("content-length:")
+                                .map(|v| v.trim().parse::<usize>().unwrap_or(0))
+                        })
+                        .unwrap_or(0);
+                    if request.len() >= head_end + 4 + len || n == 0 {
+                        break;
+                    }
+                }
+                if n == 0 {
+                    break;
+                }
+            }
+            let response = format!("HTTP/1.1 {status_line}\r\n{extra}Content-Length: 0\r\n\r\n");
+            stream.write_all(response.as_bytes()).unwrap();
+            String::from_utf8_lossy(&request).to_string()
+        });
+        (format!("http://{address}"), server)
+    }
+
+    #[test]
+    fn machine_log_uploads_map_the_server_answer() {
+        use crate::logship::PostOutcome;
+        let body = serde_json::json!({"machineId": "machine", "kind": "errors", "entries": []});
+        for (status, extra, want) in [
+            ("202 Accepted", "", PostOutcome::Stored),
+            ("404 Not Found", "", PostOutcome::Gone),
+            (
+                "429 Too Many Requests",
+                "Retry-After: 120\r\n",
+                PostOutcome::RetryAfter(Duration::from_secs(120)),
+            ),
+            ("413 Payload Too Large", "", PostOutcome::Refused),
+            ("503 Service Unavailable", "", PostOutcome::Failed),
+        ] {
+            let (url, server) = answer_once(status, extra);
+            let client = CloudClient::new(&url, "token-abcdefgh".into(), "machine".into()).unwrap();
+            assert_eq!(client.post_machine_logs(&body), want, "{status}");
+            let request = server.join().unwrap();
+            assert!(
+                request.starts_with("POST /enforcement/v1/machine-logs "),
+                "{request}"
+            );
+            assert!(
+                request
+                    .to_ascii_lowercase()
+                    .contains("authorization: bearer token-abcdefgh")
+            );
+            assert!(request.contains(r#""kind":"errors""#));
+        }
+    }
+
     #[test]
     fn refuses_a_desired_state_response_at_an_older_schema_version() {
         let listener = TcpListener::bind("127.0.0.1:0").unwrap();

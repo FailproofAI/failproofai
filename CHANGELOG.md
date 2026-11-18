@@ -15,6 +15,7 @@
 - The daemon no longer exits on a transient `accept()` failure (out of file descriptors, an aborted connection), which left every hook denied until the service manager restarted it (#1023)
 - The collector manager and cloud policy sync restart after a panic instead of stopping silently while the daemon keeps answering hooks (#1023)
 - A hook client that stopped waiting before its verdict was ready is logged as that, with how long the evaluation took, instead of macOS's bare "Invalid argument (os error 22)" (#1023)
+- failproofaid writes its log to `~/.failproofai/logs/daemon.log` on every OS (10 MB, 3 kept), as well as to stderr as before; every line carries a timestamp and level (its untimestamped `[failproofaid]` lines are now `tracing` events), and on macOS launchd's `failproofaid.err.log`, which nothing rotated, is bounded at startup (#1023)
 
 ## 1.0.15 — 2026-11-18
 

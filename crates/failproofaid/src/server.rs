@@ -283,7 +283,7 @@ impl Drop for Server {
 }
 
 fn log_connection_error(err: &io::Error) {
-    eprintln!("[failproofaid] connection error: {err}");
+    tracing::warn!("connection error: {err}");
 }
 
 /// Handles exactly one request on `stream`: verify the peer is the same OS
@@ -374,7 +374,7 @@ fn record_agent_sighting(integration: &str, settings_path: Option<&str>) {
         integration,
         std::path::Path::new(settings_path),
     ) {
-        eprintln!("[failproofaid] could not record an agent hook sighting: {err}");
+        tracing::warn!("could not record an agent hook sighting: {err}");
     }
 }
 

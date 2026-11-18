@@ -193,8 +193,8 @@ fn load_state(path: &Path) -> Option<ScheduleState> {
     match serde_json::from_str::<ScheduleState>(&text) {
         Ok(state) if state.schema == SCHEMA => Some(state),
         Ok(state) => {
-            eprintln!(
-                "[failproofaid] audit schedule {} has schema {} (expected {}); re-seeding",
+            tracing::info!(
+                "audit schedule {} has schema {} (expected {}); re-seeding",
                 path.display(),
                 state.schema,
                 SCHEMA
@@ -202,8 +202,8 @@ fn load_state(path: &Path) -> Option<ScheduleState> {
             None
         }
         Err(err) => {
-            eprintln!(
-                "[failproofaid] audit schedule {} is unreadable ({err}); re-seeding",
+            tracing::info!(
+                "audit schedule {} is unreadable ({err}); re-seeding",
                 path.display()
             );
             None
@@ -394,13 +394,15 @@ pub fn spawn(shutdown: Arc<AtomicBool>) -> Option<JoinHandle<()>> {
                 // would still say the scan is on and nothing would ever run
                 // again. Catching it keeps the next tick alive.
                 if std::panic::catch_unwind(AssertUnwindSafe(|| lane.tick(&shutdown))).is_err() {
-                    eprintln!("[failproofaid] audit lane panicked; it will try again next tick");
+                    tracing::warn!("audit lane panicked; it will try again next tick");
                 }
                 wait_until_shutdown(&shutdown, poll);
             }
         })
         .inspect_err(|err| {
-            eprintln!("[failproofaid] could not start the audit lane: {err}; scheduled audits are off this run");
+            tracing::warn!(
+                "could not start the audit lane: {err}; scheduled audits are off this run"
+            );
         })
         .ok()
 }
@@ -480,8 +482,8 @@ impl Lane {
                     // is Restart=on-failure — so any restart would launch
                     // another full scan, and a restart loop would launch them
                     // back to back forever.
-                    eprintln!(
-                        "[failproofaid] skipping the scheduled audit: could not persist the \
+                    tracing::warn!(
+                        "skipping the scheduled audit: could not persist the \
                          schedule first ({err})"
                     );
                     return;
@@ -498,9 +500,7 @@ impl Lane {
                         next.next_due_at_ms =
                             now.saturating_add(MIN_ATTEMPT_GAP.as_millis() as i64);
                         next.last_exit_code = Some(EXIT_LOCK_HELD);
-                        eprintln!(
-                            "[failproofaid] scheduled audit skipped: another audit holds the lock"
-                        );
+                        tracing::warn!("scheduled audit skipped: another audit holds the lock");
                     }
                     Outcome::Exited(0) => {
                         // Read the clock again: the scan itself took real time, and
@@ -511,21 +511,21 @@ impl Lane {
                     }
                     Outcome::Exited(code) => {
                         next.last_exit_code = Some(code);
-                        eprintln!("[failproofaid] scheduled audit failed (exit {code})");
+                        tracing::warn!("scheduled audit failed (exit {code})");
                     }
                     Outcome::Signalled => {
                         next.last_exit_code = None;
-                        eprintln!("[failproofaid] scheduled audit was killed before it finished");
+                        tracing::warn!("scheduled audit was killed before it finished");
                     }
                     Outcome::NotStarted(err) => {
                         next.last_exit_code = None;
-                        eprintln!("[failproofaid] could not start the scheduled audit: {err}");
+                        tracing::warn!("could not start the scheduled audit: {err}");
                     }
                 }
                 // Best effort: the schedule that matters was already persisted
                 // above, so failing here costs a status readout, not a cadence.
                 if let Err(err) = save_state(&path, &next) {
-                    eprintln!("[failproofaid] could not record the audit outcome: {err}");
+                    tracing::warn!("could not record the audit outcome: {err}");
                 }
             }
         }
@@ -541,7 +541,7 @@ impl Lane {
             return;
         }
         self.announced = Some(state);
-        eprintln!("[failproofaid] {message}");
+        tracing::info!("{message}");
     }
 }
 
@@ -601,13 +601,13 @@ fn run_audit_child(cli_cmd: &str, shutdown: &AtomicBool) -> Outcome {
         // scan on every restart — and on macOS nothing reaps it at all, so a
         // scan would outlive the daemon holding the audit lock.
         if shutdown.load(Ordering::Relaxed) {
-            eprintln!("[failproofaid] stopping the scheduled audit for shutdown");
+            tracing::info!("stopping the scheduled audit for shutdown");
             kill_process_group(&mut child);
             return Outcome::Signalled;
         }
         if started.elapsed() > CHILD_TIMEOUT {
-            eprintln!(
-                "[failproofaid] scheduled audit exceeded {}s; killing it",
+            tracing::warn!(
+                "scheduled audit exceeded {}s; killing it",
                 CHILD_TIMEOUT.as_secs()
             );
             kill_process_group(&mut child);
@@ -670,7 +670,7 @@ fn spawn_audit_child(cli_cmd: &str) -> io::Result<Child> {
 fn forward_child_output(label: &'static str, pipe: impl io::Read) {
     use std::io::BufRead;
     for line in io::BufReader::new(pipe).lines().map_while(Result::ok) {
-        eprintln!("[failproofaid] audit {label}: {line}");
+        tracing::info!("audit {label}: {line}");
     }
 }
 

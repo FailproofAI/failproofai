@@ -5,6 +5,7 @@ mod backfill;
 mod cloud_client;
 pub mod cloud_policies;
 mod lock;
+mod logfile;
 mod paths;
 mod server;
 mod telemetry;
@@ -111,13 +112,30 @@ fn main() {
 /// Writes to stderr, which is where the daemon's existing `eprintln!` output
 /// already goes and what systemd/launchd capture. `RUST_LOG` overrides the
 /// default level.
+///
+/// Also to `~/.failproofai/logs/daemon.log` (see `logfile.rs`), and on macOS the
+/// launchd stderr file is bounded first, since nothing else ever rotates it.
 fn init_logging() {
     use tracing_subscriber::EnvFilter;
+    use tracing_subscriber::fmt::writer::MakeWriterExt;
     let filter = EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("info"));
-    let _ = tracing_subscriber::fmt()
-        .with_env_filter(filter)
-        .with_writer(std::io::stderr)
-        .try_init();
+    let logs = paths::failproofai_home().ok().map(|home| home.join("logs"));
+    #[cfg(target_os = "macos")]
+    if let Some(logs) = &logs {
+        logfile::bound_inherited_log(
+            &logs.join("failproofaid.err.log"),
+            logfile::MAX_BYTES,
+            logfile::KEEP,
+        );
+    }
+    let file = logs.and_then(|logs| {
+        logfile::RotatingFile::open(logs.join("daemon.log"), logfile::MAX_BYTES, logfile::KEEP)
+    });
+    let builder = tracing_subscriber::fmt().with_env_filter(filter);
+    let _ = match file {
+        Some(file) => builder.with_writer(std::io::stderr.and(file)).try_init(),
+        None => builder.with_writer(std::io::stderr).try_init(),
+    };
 }
 
 fn run() -> Result<(), Box<dyn std::error::Error>> {
@@ -233,7 +251,7 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
             return Err(err.into());
         }
     };
-    eprintln!("[failproofaid] listening on {}", socket_path.display());
+    tracing::info!("listening on {}", socket_path.display());
 
     let run_result = srv.run_until(shutdown);
 
@@ -620,7 +638,7 @@ fn spawn_collector_manager(
             }
         }))
         .inspect_err(|err| {
-            eprintln!("[failproofaid] could not start the collector manager: {err}; nothing is collected this run");
+            tracing::warn!("could not start the collector manager: {err}; nothing is collected this run");
         })
         .ok()
 }
@@ -646,8 +664,8 @@ fn supervised_with_backoff(
         match std::panic::catch_unwind(std::panic::AssertUnwindSafe(&mut body)) {
             Ok(()) => return,
             Err(_) => {
-                eprintln!(
-                    "[failproofaid] {name} panicked; starting it again in {}s",
+                tracing::warn!(
+                    "{name} panicked; starting it again in {}s",
                     backoff.as_secs()
                 );
                 let deadline = std::time::Instant::now() + backoff;
@@ -982,7 +1000,7 @@ fn collector_tasks(config: Option<fpai_collect::CollectorConfig>) -> Vec<fpai_co
     let home = match paths::failproofai_home() {
         Ok(home) => home,
         Err(err) => {
-            eprintln!("[failproofaid] collector disabled: {err}");
+            tracing::warn!("collector disabled: {err}");
             return Vec::new();
         }
     };
@@ -990,7 +1008,7 @@ fn collector_tasks(config: Option<fpai_collect::CollectorConfig>) -> Vec<fpai_co
     let cfg = match config {
         Some(cfg) => cfg,
         None => {
-            eprintln!("[failproofaid] collector disabled: unreadable configuration");
+            tracing::warn!("collector disabled: unreadable configuration");
             return Vec::new();
         }
     };
@@ -1003,9 +1021,7 @@ fn collector_tasks(config: Option<fpai_collect::CollectorConfig>) -> Vec<fpai_co
     // between the manager's prepare and this read must not pair a new key with
     // a queue the manager prepared for the previous boundary.
     if let Err(err) = fpai_collect::org_boundary::prepare(&cfg) {
-        eprintln!(
-            "[failproofaid] collector disabled: previous-org queues could not be isolated: {err}"
-        );
+        tracing::warn!("collector disabled: previous-org queues could not be isolated: {err}");
         return Vec::new();
     }
 
@@ -1027,7 +1043,7 @@ fn collector_tasks(config: Option<fpai_collect::CollectorConfig>) -> Vec<fpai_co
     }) {
         Ok(u) => std::sync::Arc::new(u),
         Err(err) => {
-            eprintln!("[failproofaid] collector disabled: {err}");
+            tracing::warn!("collector disabled: {err}");
             return Vec::new();
         }
     };
@@ -1037,16 +1053,19 @@ fn collector_tasks(config: Option<fpai_collect::CollectorConfig>) -> Vec<fpai_co
     // widens the config-snapshot race for a credential rotated at startup.
     let otlp_tasks = fpai_collect::otlp::tasks(home.clone(), ingest.clone(), &cfg.settings.otlp);
 
-    eprintln!(
-        "[failproofaid] collector enabled: sessions={} hooks={} ({:?}) -> {}",
-        cfg.settings.sessions, cfg.settings.hooks, cfg.settings.hooks_verbosity, ingest.url,
+    tracing::info!(
+        "collector enabled: sessions={} hooks={} ({:?}) -> {}",
+        cfg.settings.sessions,
+        cfg.settings.hooks,
+        cfg.settings.hooks_verbosity,
+        ingest.url,
     );
 
     // Said on every build, and OUTSIDE the `sessions` block: the selection also
     // scopes every backfill, so a misspelt id matters on a decisions-only
     // machine too, and each of these is otherwise mentioned nowhere.
     if let Some(line) = selection_warning(&cfg.agents) {
-        eprintln!("{line}");
+        tracing::info!("{line}");
     }
 
     // One `Delivery` shared by both tasks, so they share an upload semaphore
@@ -1159,8 +1178,8 @@ fn collector_tasks(config: Option<fpai_collect::CollectorConfig>) -> Vec<fpai_co
         // A configured table naming no real source captures nothing and is
         // mentioned nowhere else in the pipeline, so say so once at startup.
         for unknown in settings.unknown_sources(HARNESS_KEYS) {
-            eprintln!(
-                "[failproofaid] config.toml has [collector.sources.{unknown}], which is not a \
+            tracing::warn!(
+                "config.toml has [collector.sources.{unknown}], which is not a \
                  known harness; nothing will be captured from it. Known: {}",
                 HARNESS_KEYS.join(", ")
             );
@@ -1174,7 +1193,7 @@ fn collector_tasks(config: Option<fpai_collect::CollectorConfig>) -> Vec<fpai_co
             windows: backfill::current_windows(),
         };
         if let Some(line) = selection_summary(&cfg.agents) {
-            eprintln!("{line}");
+            tracing::info!("{line}");
         }
         // Gated off BEFORE its extra paths are resolved, so the journal never
         // says "also capturing" for a task that does not start — and so the
@@ -1189,7 +1208,7 @@ fn collector_tasks(config: Option<fpai_collect::CollectorConfig>) -> Vec<fpai_co
                 .filter(|entry| !entry.trim().is_empty())
                 .count();
             if let Some(line) = idle_extra_paths_line(harness, configured) {
-                eprintln!("{line}");
+                tracing::info!("{line}");
             }
         }
 
@@ -1215,14 +1234,15 @@ fn collector_tasks(config: Option<fpai_collect::CollectorConfig>) -> Vec<fpai_co
                 home_dir.as_deref(),
             );
             for bad in &resolved.rejected {
-                eprintln!(
-                    "[failproofaid] ignoring extra path {:?} for {harness}: {}",
-                    bad.entry, bad.reason
+                tracing::info!(
+                    "ignoring extra path {:?} for {harness}: {}",
+                    bad.entry,
+                    bad.reason
                 );
             }
             for ok in &resolved.accepted {
-                eprintln!(
-                    "[failproofaid] {harness}: also capturing {} as {:?} (agent ids namespaced {}-*)",
+                tracing::info!(
+                    "{harness}: also capturing {} as {:?} (agent ids namespaced {}-*)",
                     ok.path.display(),
                     ok.label,
                     ok.label

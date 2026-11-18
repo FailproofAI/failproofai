@@ -404,7 +404,7 @@ fn record_daemon_errors(store: &PolicyStore, errors: Vec<PolicyErrorEntry>) {
         return;
     }
     if let Err(err) = store.write_daemon_policy_errors(&errors) {
-        eprintln!("[failproofaid] could not record the cloud policy error state: {err}");
+        tracing::warn!("could not record the cloud policy error state: {err}");
     }
 }
 
@@ -1086,7 +1086,7 @@ pub fn spawn_maintenance(
                     (agent_roster::roster_path(), std::env::var_os("HOME"))
                     && let Err(err) = agent_roster::refresh(&path, Path::new(&home))
                 {
-                    eprintln!("[failproofaid] could not refresh agent inventory: {err}");
+                    tracing::warn!("could not refresh agent inventory: {err}");
                 }
                 let cloud = CloudClient::from_env_or_file();
                 // A resolution ERROR is not a change of identity: broken
@@ -1111,8 +1111,8 @@ pub fn spawn_maintenance(
                     if !first {
                         store.reset_high_water();
                         floor_reset_pending = identity.is_some();
-                        eprintln!(
-                            "[failproofaid] cloud identity changed; the cloud-policy deployment floor starts again"
+                        tracing::info!(
+                            "cloud identity changed; the cloud-policy deployment floor starts again"
                         );
                     }
                     // Enrolled → not enrolled (`--disconnect`, credentials removed):
@@ -1121,13 +1121,13 @@ pub fn spawn_maintenance(
                     // which rebuilds it from `desired-state.json`.
                     if !first && identity.is_none() {
                         match store.deactivate() {
-                            Ok(true) => eprintln!(
-                                "[failproofaid] cloud enrolment removed; cloud-managed policies deactivated"
+                            Ok(true) => tracing::info!(
+                                "cloud enrolment removed; cloud-managed policies deactivated"
                             ),
                             Ok(false) => {}
-                            Err(err) => eprintln!(
-                                "[failproofaid] could not deactivate cloud-managed policies: {err}"
-                            ),
+                            Err(err) => {
+                                tracing::warn!("could not deactivate cloud-managed policies: {err}")
+                            }
                         }
                     }
                     last_identity = Some(identity);
@@ -1137,8 +1137,8 @@ pub fn spawn_maintenance(
                 // a line every 30 seconds forever.
                 let enrolled = matches!(cloud, Ok(Some(_)));
                 if last_state != Some(enrolled) {
-                    eprintln!(
-                        "[failproofaid] cloud-managed policy polling {}",
+                    tracing::info!(
+                        "cloud-managed policy polling {}",
                         if enrolled { "enabled" } else { "disabled" }
                     );
                     last_state = Some(enrolled);
@@ -1216,7 +1216,7 @@ fn maintenance_tick(
             reconciled
         }
         Err(err) => {
-            eprintln!("[failproofaid] cloud enrolment error: {err}");
+            tracing::warn!("cloud enrolment error: {err}");
             repair(store, &|| false);
             false
         }
@@ -1224,12 +1224,12 @@ fn maintenance_tick(
             if back_on_oss() {
                 match store.clear_deployment() {
                     Ok(0) => {}
-                    Ok(removed) => eprintln!(
-                        "[failproofaid] this machine is disconnected from FailproofAI Cloud; \
+                    Ok(removed) => tracing::warn!(
+                        "this machine is disconnected from FailproofAI Cloud; \
                          removed {removed} leftover cloud policy file(s)"
                     ),
-                    Err(err) => eprintln!(
-                        "[failproofaid] could not remove the cloud policy files of a disconnected machine: {err}"
+                    Err(err) => tracing::warn!(
+                        "could not remove the cloud policy files of a disconnected machine: {err}"
                     ),
                 }
             }
@@ -1240,7 +1240,7 @@ fn maintenance_tick(
 
 fn repair(store: &PolicyStore, withdrawn: &dyn Fn() -> bool) {
     if let Err(err) = store.repair_active_from_cache_unless(withdrawn) {
-        eprintln!("[failproofaid] cloud policy integrity error: {err}");
+        tracing::warn!("cloud policy integrity error: {err}");
     }
 }
 
@@ -1259,18 +1259,18 @@ fn report_and_reclaim(cloud: &CloudClient, path: &Path, home: &Path, roster: &Ag
         }
         Ok(_) => return,
         Err(err) => {
-            eprintln!("[failproofaid] {err}");
+            tracing::info!("{err}");
             return;
         }
     };
     match agent_roster::reclaim(path, home, &reclaimable) {
         Ok(next) if next.generation != roster.generation => {
             if let Err(err) = cloud.report_agent_roster(&next, false) {
-                eprintln!("[failproofaid] {err}");
+                tracing::info!("{err}");
             }
         }
         Ok(_) => agent_roster::capacity_stalled(path, roster.generation),
-        Err(err) => eprintln!("[failproofaid] could not reclaim agent roster capacity: {err}"),
+        Err(err) => tracing::warn!("could not reclaim agent roster capacity: {err}"),
     }
 }
 
@@ -1295,7 +1295,7 @@ fn poll_once_guarded(
     let active = match store.read_active() {
         Ok(active) => Some(active),
         Err(err) => {
-            eprintln!("[failproofaid] could not read the active deployment to report it: {err}");
+            tracing::warn!("could not read the active deployment to report it: {err}");
             None
         }
     };
@@ -1328,9 +1328,11 @@ fn poll_once_guarded(
             ) {
                 Ok(outcome) => {
                     if outcome.activated || outcome.downloaded > 0 || outcome.repaired > 0 {
-                        eprintln!(
-                            "[failproofaid] cloud policy deployment {} active (downloaded {}, repaired {})",
-                            outcome.deployment, outcome.downloaded, outcome.repaired
+                        tracing::info!(
+                            "cloud policy deployment {} active (downloaded {}, repaired {})",
+                            outcome.deployment,
+                            outcome.downloaded,
+                            outcome.repaired
                         );
                     }
                     record_daemon_errors(store, Vec::new());
@@ -1340,14 +1342,14 @@ fn poll_once_guarded(
                     // Nothing was written, and nothing is recorded either: an
                     // error state would describe a deployment this machine no
                     // longer has.
-                    eprintln!(
-                        "[failproofaid] this machine was disconnected while a poll was in flight; \
+                    tracing::warn!(
+                        "this machine was disconnected while a poll was in flight; \
                          its result was discarded"
                     );
                     false
                 }
                 Err(err) => {
-                    eprintln!("[failproofaid] cloud policy reconcile error: {err}");
+                    tracing::warn!("cloud policy reconcile error: {err}");
                     if !transient_fetch_failure(&err) && !withdrawn() {
                         record_daemon_errors(
                             store,
@@ -1363,10 +1365,7 @@ fn poll_once_guarded(
             }
         }
         Err(failure) => {
-            eprintln!(
-                "[failproofaid] cloud policy poll error: {}",
-                failure.message
-            );
+            tracing::warn!("cloud policy poll error: {}", failure.message);
             // A payload this daemon refused is reported; a transport failure is
             // not, and leaves the recorded state as it was.
             if failure.reportable && !withdrawn() {

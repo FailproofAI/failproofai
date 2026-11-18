@@ -200,7 +200,7 @@ fn spawn_forwarder(
 fn forward_worker_output(label: &'static str, pipe: impl io::Read) {
     use std::io::BufRead;
     for line in io::BufReader::new(pipe).lines().map_while(Result::ok) {
-        eprintln!("[failproofaid] worker {label}: {line}");
+        tracing::info!("worker {label}: {line}");
     }
 }
 
@@ -379,7 +379,7 @@ impl Worker {
     /// next real request anyway.
     pub fn warm(&self) {
         if let Err(err) = self.ensure_started() {
-            eprintln!("[failproofaid] worker warm-up failed (will retry on first request): {err}");
+            tracing::warn!("worker warm-up failed (will retry on first request): {err}");
         }
     }
 

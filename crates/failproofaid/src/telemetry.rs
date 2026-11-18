@@ -201,7 +201,7 @@ impl Lane {
             ring.pop_front();
             self.dropped.fetch_add(1, Ordering::Relaxed);
             if !self.warned_dropped.swap(true, Ordering::Relaxed) {
-                eprintln!("[failproofaid] telemetry buffer is full; dropping the oldest events");
+                tracing::warn!("telemetry buffer is full; dropping the oldest events");
             }
         }
         ring.push_back(event);
@@ -754,15 +754,13 @@ pub fn spawn(shutdown: Arc<AtomicBool>) -> Option<JoinHandle<()>> {
                 }))
                 .is_err()
                 {
-                    eprintln!("[failproofaid] telemetry lane panicked; continuing next tick");
+                    tracing::warn!("telemetry lane panicked; continuing next tick");
                 }
                 wait_until_shutdown(&shutdown, interval);
             }
         })
         .inspect_err(|err| {
-            eprintln!(
-                "[failproofaid] could not start the telemetry lane: {err}; this run reports nothing"
-            );
+            tracing::warn!("could not start the telemetry lane: {err}; this run reports nothing");
         })
         .ok()
 }
@@ -883,7 +881,7 @@ fn send_pending(
         // One line, at the point the events are actually lost, rather than one
         // per failed attempt: a machine with no route to PostHog would otherwise
         // print a line a minute forever.
-        eprintln!("[failproofaid] telemetry could not be delivered; dropping this batch");
+        tracing::warn!("telemetry could not be delivered; dropping this batch");
         return;
     }
     lane.requeue(batch);

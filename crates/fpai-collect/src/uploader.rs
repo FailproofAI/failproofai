@@ -234,6 +234,7 @@ pub fn is_credential_status(status: u16) -> bool {
 impl Uploader {
     pub fn new(url: String, key: String, failed_dir: PathBuf) -> Result<Self, String> {
         let client = reqwest::Client::builder()
+            .user_agent(concat!("failproofaid/", env!("CARGO_PKG_VERSION")))
             .connect_timeout(Duration::from_secs(10))
             .read_timeout(DEFAULT_READ_TIMEOUT)
             // Backstop only — see the module docs. Large multiple of the read

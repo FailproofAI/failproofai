@@ -770,6 +770,7 @@ impl CloudClient {
             return Err("FAILPROOFAI_MACHINE_ID cannot be empty".to_string());
         }
         let client = Client::builder()
+            .user_agent(concat!("failproofaid/", env!("CARGO_PKG_VERSION")))
             .connect_timeout(Duration::from_secs(5))
             .timeout(Duration::from_secs(15))
             .build()
@@ -855,6 +856,13 @@ impl CloudClient {
         // not `deny_unknown_fields`, so a server that predates it ignores it.
         if let Some(errors) = policy_errors {
             url.query_pairs_mut().append_pair("policyErrors", errors);
+        }
+        // What this machine runs, on the one call every enrolled machine makes
+        // every poll interval: the cloud had the version only as an ingest
+        // header it logged, so "which machines are behind" had no answer.
+        // Additive for the same reason as above.
+        for (key, value) in machine_facts() {
+            url.query_pairs_mut().append_pair(key, &value);
         }
         self.client
             .get(url)
@@ -1399,6 +1407,23 @@ fn wait_until_shutdown(shutdown: &AtomicBool, interval: Duration) {
     }
 }
 
+/// `daemonVersion`, `cliVersion` (when the home's VERSION file names one), `os`
+/// and `arch`, for the desired-state poll.
+fn machine_facts() -> Vec<(&'static str, String)> {
+    let mut facts = vec![("daemonVersion", env!("CARGO_PKG_VERSION").to_string())];
+    let cli = crate::paths::failproofai_home()
+        .ok()
+        .and_then(|home| std::fs::read_to_string(crate::paths::version_file_path(&home)).ok())
+        .and_then(|text| serde_json::from_str::<serde_json::Value>(&text).ok())
+        .and_then(|doc| doc.get("cli")?.as_str().map(str::to_string))
+        .filter(|v| !v.is_empty() && v.len() <= 64);
+    if let Some(cli) = cli {
+        facts.push(("cliVersion", cli));
+    }
+    facts.push(("os", std::env::consts::OS.to_string()));
+    facts.push(("arch", std::env::consts::ARCH.to_string()));
+    facts
+}
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1640,6 +1665,23 @@ mod tests {
             assert!(
                 request.contains("machineId=machine-1"),
                 "the existing parameter must survive: {request}"
+            );
+            // What the machine runs rides on every poll, so the cloud can say
+            // which machines are behind.
+            assert!(
+                request.contains(&format!("daemonVersion={}", env!("CARGO_PKG_VERSION"))),
+                "{request}"
+            );
+            assert!(
+                request.contains(&format!("os={}", std::env::consts::OS)),
+                "{request}"
+            );
+            assert!(
+                request.to_ascii_lowercase().contains(&format!(
+                    "user-agent: failproofaid/{}",
+                    env!("CARGO_PKG_VERSION")
+                )),
+                "{request}"
             );
             if expected {
                 assert!(

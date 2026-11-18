@@ -14,15 +14,15 @@ A policy evaluates an agent hook event and returns one of three decisions:
 
 | In the dashboard | What you do there |
 | --- | --- |
-| **Observe → policy** | Review decisions from real sessions: which policy matched, on which machine, and why |
-| **Admin → policy editor** | Write a policy, backtest it against past traffic, publish an immutable version, and compare versions in **library** |
-| **Admin → enforcement** | Put versions on machines, in observe or enforce mode |
+| **fix → policies** | Write a policy with **new policy**, then see each one's mode, machines, what it prevented, and its immutable versions |
+| **fix → deploy policies** | Put versions on machines, in observe or enforce mode |
+| **fix → activity** | Review decisions from real calls: which policy acted, on which machine, and the calls behind it |
 
-The policy editor is where a failure becomes a rule. Describe the failure mode or paste policy source in **compose**, backtest the draft against traffic you already have, and publish a version:
+**new policy** is where a failure becomes a rule. Describe what to enforce in plain words — or start from a common policy, one flagged from your agents' calls, or your own code — review the rule, test it on calls your agents already made, and turn it on, enforcing or observing first:
 
 ![The Policy editor compose view with policy identity, AI-assisted drafting, source validation, and publishing controls.](/images/dashboard/policy-editor.png)
 
-On a machine, `failproofai policies` lists everything enforcing there. `fp policies` and `fp fleet` cover the editor and enforcement from a terminal — see the [Cloud CLI reference](/reference/cloud-cli).
+On a machine, `failproofai policies` lists everything enforcing there. `fp policies` and `fp fleet` cover writing, publishing and deploying policies from a terminal — see the [Cloud CLI reference](/reference/cloud-cli).
 
 ## Get a policy
 
@@ -30,7 +30,7 @@ There are two ways to get one.
 
 <Columns cols={2}>
   <Card title="Write a policy" icon="file-pen-line" href="/policies/editor">
-    Let Failproof AI draft one from an audit finding, or write the source yourself, then review and publish it in the editor.
+    Let Failproof AI draft one from an insight or your own words, or write the source yourself, then review, test and turn it on.
   </Card>
   <Card title="Use a policy pack" icon="package" href="/policies/packs">
     Plug in a Failproof AI policy pack for your use case, or a community pack from the policy hub, in one command.

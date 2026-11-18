@@ -1,19 +1,19 @@
 ---
-title: "Findings and issues"
+title: "Findings and insights"
 description: "Turn audit evidence into owned, trackable remediation work."
 icon: "clipboard-check"
 ---
 
-A finding is the audit's evidence-backed statement about a failure. An issue is the durable workflow for responding to it.
+A finding is the audit's evidence-backed statement about a failure. An insight — an issue, in the Cloud CLI and API — is the durable workflow for responding to it.
 
 ## Triage and assign the work
 
 <Tabs>
   <Tab title="Dashboard">
-    1. Open **Analyze → Audits**, choose a completed run, and select a finding to inspect its analysis, recommendation, sessions, and evidence queries.
+    1. Open **analyse → checks → audits**, open the audit, choose a completed run, and select a finding to inspect its analysis, recommendation, sessions, and evidence queries.
     2. Acknowledge, assign, dismiss, mute, resolve, or reopen the finding after checking its evidence.
-    3. Go to **Analyze → Issues** and filter the durable inbox by status, severity, or assignee.
-    4. Open the issue to assign it, add comments or subscribers, and resolve it after the fix is verified.
+    3. Go to **analyse → insights** and filter the durable inbox by status (**open**, **acknowledged**, **resolved**), severity, found-by, or owner.
+    4. Open the insight to assign it, add comments or subscribers, and resolve it after the fix is verified.
 
     Start with the finding summary. Confirm that the failure description, recommended response, severity, and ranking agree with the sessions you expected the audit to examine.
 
@@ -23,13 +23,13 @@ A finding is the audit's evidence-backed statement about a failure. An issue is 
 
     ![A session linked from an audit finding, opened at the relevant error with its event metadata and raw payload.](/images/dashboard/audit-linked-session.png)
 
-    After verifying the evidence, use Issues to give the response an owner and track it independently of future audit runs.
+    After verifying the evidence, use insights to give the response an owner and track it independently of future audit runs.
 
-    ![The Issues inbox showing firing, acknowledged, and resolved work with severity and ownership.](/images/dashboard/incidents.png)
+    ![The insights inbox showing firing, acknowledged, and resolved work with severity and ownership.](/images/dashboard/incidents.png)
 
-    Open the issue to record investigation notes, notify subscribers, and preserve the response history. Resolve it only after the remediation is deployed and verified.
+    Open the insight to record investigation notes, notify subscribers, and preserve the response history. Resolve it only after the remediation is deployed and verified.
 
-    ![An issue detail view with its source, breach evidence, assignees, subscribers, timeline, and comments.](/images/dashboard/incident-detail.png)
+    ![An insight detail view with its source, breach evidence, assignees, subscribers, timeline, and comments.](/images/dashboard/incident-detail.png)
   </Tab>
   <Tab title="CLI">
     ```bash
@@ -63,81 +63,77 @@ Confirm that it contains:
 - Enough context to reproduce the behavior
 - A proposed response that matches the evidence
 
-## Use an issue to manage the response
+## Use an insight to manage the response
 
-Create or link an issue when the finding needs assignment, discussion, status changes, comments, or subscribers. Issues can also represent alert incidents and manually reported problems, which is why they live under audit response rather than in the primary navigation.
+Create or link an insight when the finding needs assignment, discussion, status changes, comments, or subscribers. Insights can also come from alerts and from failures reported by hand (**report a failure** on the inbox).
 
-Resolve the issue when remediation is deployed and verified. Resolve the finding when the failure mode has been addressed for the audit population. Those moments may differ.
+Resolve the insight when remediation is deployed and verified. Resolve the finding when the failure mode has been addressed for the audit population. Those moments may differ.
 
-## End an issue: resolve, close, or archive
+## End an insight: resolve, close, or archive
 
-An issue ends once, and how you end it decides what happens the next time the audit
+An insight ends once, and how you end it decides what happens the next time the audit
 sees the same pattern.
 
 | Action | Means | If the pattern comes back |
 | --- | --- | --- |
-| **Resolve** | You fixed it. | The issue **reopens**, so you find out the fix did not hold. |
+| **Resolve** | You fixed it. | The insight **reopens**, so you find out the fix did not hold. |
 | **Close** | You are done with it: won't fix, not a problem, or no longer relevant. | It **stays closed**. |
-| **Archive** | Take it off the board. Says nothing about how it ended. | A live issue returns to the board automatically. |
+| **Archive** | Take it off the board. Says nothing about how it ended. | A live insight returns to the board automatically. |
 
-Resolve and close are both final and neither can overwrite the other, so an issue
+Resolve and close are both final and neither can overwrite the other, so an insight
 someone resolved keeps that record. Archiving is separate from both: you can archive
-an issue in any state, and it keeps whatever state it ended in. If an archived issue
+an insight in any state, and it keeps whatever state it ended in. If an archived insight
 is still live and the problem recurs, it comes back to the board on its own — archive
 hides history, it cannot hide an active problem.
 
-Closing an issue that came from an audit also dismisses the finding behind it. It
-does not silence that pattern in your other audits; for that, mute or dismiss the
-finding itself.
+Closing an insight that came from an audit also dismisses the finding behind it. It
+does not silence that pattern in your other audits; for that, **mute this pattern** or
+**dismiss** it.
 
 ## Start fresh after changing your agents
 
-When you ship a round of changes to your agents, the issues already on the board
-describe the behavior you just replaced. Clearing resolves them in one step, along
-with the audit findings behind them.
+When you ship a round of changes to your agents, the insights an audit already raised
+describe the behavior you just replaced. Clearing ends them in one step: they are closed
+and archived, and the audit findings behind them are resolved. Clearing covers one audit
+at a time.
 
 <Tabs>
   <Tab title="Dashboard">
-    1. Go to **Analyze → Issues** and select **clear**, or open a single audit and select **clear issues** to limit it to that audit's work.
-    2. Choose the scope. Each one shows how many issues it covers before you commit to it.
-    3. Confirm. The issues are resolved, and so are the audit findings behind them.
+    1. Go to **analyse → checks → audits** and open the audit.
+    2. Select **more ▾**, then **clear its open failures…**. The confirmation shows how many insights and findings it covers before you commit to it.
+    3. Confirm. Nothing is deleted: cleared insights stay readable under the inbox's archived view.
   </Tab>
   <Tab title="CLI">
     ```bash
-    fp issues clear --all-audits --dry-run
-    fp issues clear --all-audits --yes
-
+    fp issues clear --audit <audit-id> --dry-run
     fp issues clear --audit <audit-id> --yes
-    fp issues clear --everything --yes
     ```
 
-    `--dry-run` reports what would change without changing it. Exactly one of
-    `--audit`, `--all-audits`, and `--everything` is required.
+    `--dry-run` reports what would change without changing it. Failproof AI Cloud
+    accepts only a single audit's scope: `--all-audits` and `--everything` are refused.
   </Tab>
 </Tabs>
 
 **Clearing suppresses nothing.** A pattern your changes genuinely fixed stays gone. A
-pattern that survived them **reopens** its issue on the next audit run — the same thing
-resolving one by hand does — so a fresh start cannot quietly hide a problem you still
-have. When you do want a pattern
-silenced for good, mute or dismiss the finding instead.
+pattern that survived them opens a **new** insight on the next audit run, so a fresh start
+cannot quietly hide a problem you still have; the cleared ones stay closed. When you do
+want a pattern silenced for good, mute or dismiss it instead.
 
-Clearing needs permission to both close issues and write audits, because it resolves
-the findings as well as the issues.
+Clearing needs permission to both close issues (`issues:close`) and write audits
+(`audits:write`), because it resolves the findings as well as closing the insights.
 
-## Turn an issue into a policy draft
+## Turn an insight into a policy draft
 
 <Tabs>
   <Tab title="Dashboard">
-    1. Open the issue and verify its finding, cited sessions, root cause, and recommendation.
-    2. Select **generate policy** and review the candidacy result and proposed enforcement intent. A **no policy** result means the behavior may require an alert, workflow change, or human response instead.
-    3. Select **write this policy**, then review and test the generated source in **Admin → policy editor** before selecting **publish version**. Use **open the editor anyway** when you disagree with the candidacy check.
-    4. Go to **Admin → enforcement**, deploy the version in **observe** mode, and verify its decisions under **Observe → policy** before enforcing it.
+    1. Open the insight and verify its finding, cited sessions, root cause, and recommendation.
+    2. Read the **prevent it with a policy** card: it says whether a policy can stop this failure (**a policy can stop this**) and how, or that **no policy fits this one** — the behavior may need an alert, a workflow change, or a human response instead. The check can be wrong, so the next step stays open either way.
+    3. Select **prevent this →**. It opens **fix → policies → new policy** with a draft from the insight: review the rule, test it on past calls, and turn it on — **observing first** until its decisions under **fix → activity** separate unsafe actions from valid ones. See [Write a policy](/policies/editor).
 
-    The issue title, finding description, root cause, recommendation, and candidacy intent help compose the draft. Nothing is published or deployed automatically.
+    The insight's title, finding, root cause, and recommendation help compose the draft. Nothing is published from the insight page.
   </Tab>
   <Tab title="CLI">
-    Use the CLI to inspect the evidence before opening the issue in the dashboard:
+    Use the CLI to inspect the evidence before opening the insight in the dashboard:
 
     ```bash
     fp issues show <issue-id>
@@ -148,6 +144,10 @@ the findings as well as the issues.
     Policy candidacy, Cloud publication, and fleet deployment are dashboard workflows. Use `failproofai policies --install --custom <file>` when you want to validate equivalent policy source locally first.
   </Tab>
 </Tabs>
+
+## Catch it in every new session
+
+An insight an audit raised can also become an evaluation, so every new session is scored for the same failure. On the insight, the **catch it every session** card's **turn into eval** drafts the rule from what the audit saw. Pick how it checks (**code**, **decision model**, or **llm as judge**), test it on the sessions the audit cited plus recent ones, then select **turn on only**, or **turn on and write policy →** to go straight on to a policy. See [Write an evaluation](/evaluations/write).
 
 <Card title="Author a policy" icon="shield-plus" href="/policies/editor">
   Convert a confirmed, repeatable action pattern into a policy version.

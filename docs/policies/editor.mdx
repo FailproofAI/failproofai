@@ -1,10 +1,10 @@
 ---
 title: "Write a policy"
-description: "Let Failproof AI draft a policy from an audit finding, or write the source yourself, then review, test, and publish it."
+description: "Let Failproof AI draft a policy from an audit finding or your own words, or write the source yourself, then review, test, and turn it on."
 icon: "file-pen-line"
 ---
 
-There are two ways to write a policy: let Failproof AI draft it from an audit finding, or write the source yourself. Nothing is published or deployed until you choose to.
+There are two ways to write a policy: let Failproof AI draft it — from an audit finding or from your own words — or write the source yourself. Nothing is published or deployed until you choose to.
 
 ## Write a policy from an audit
 
@@ -18,18 +18,19 @@ An audit finds a failure; a policy stops it happening again. Failproof AI drafts
 
 <Tabs>
   <Tab title="Dashboard">
-    1. Open the finding's issue under **Analyze → issues** and check its cited sessions, root cause, and recommendation.
-    2. Select **generate policy**. Failproof AI first says whether a policy can express the problem at all. A **no policy** result means the fix is an alert, a workflow change, or a person — not a policy.
-    3. Select **write this policy**. The issue title, finding, root cause, recommendation, and proposed enforcement intent become a draft in **Admin → policy editor**. Use **open the editor anyway** when you disagree with the candidacy check.
+    1. Open the finding's insight under **analyse → insights** and check its cited sessions, root cause, and recommendation.
+    2. Read its **prevent it with a policy** card. Failproof AI first says whether a policy can express the problem at all. **no policy fits this one** means the fix is an alert, a workflow change, or a person — not a policy.
+    3. Select **prevent this →**. The insight's title, finding, root cause, and recommendation become a draft in **fix → policies → new policy**. The button stays available when you disagree with the card's verdict.
 
     ![The Policy editor compose view with policy identity, AI-assisted drafting, source validation, and publishing controls.](/images/dashboard/policy-editor.png)
   </Tab>
   <Tab title="CLI">
-    Read the evidence, then draft with the assistant. `compose` prints source for you to review and publishes nothing:
+    Read the evidence, ask whether a policy can address it, then draft with the assistant. `compose` prints source for you to review and publishes nothing:
 
     ```bash
     fp issues show <issue-id>
     fp audits finding <finding-id>
+    fp policies candidacy --issue <issue-id>
     fp policies compose "Block git push --force on release branches"
     ```
 
@@ -47,19 +48,23 @@ A draft is a starting point, not a verdict. Before publishing, check that it:
 4. Returns a reason that tells the agent what to do instead.
 5. Uses `instruct` where the agent can safely correct course, and `deny` only where allowing the action is unacceptable or irreversible.
 
-Validate the source in the editor and fix every reported error.
+In the dashboard, **review** shows the rule as numbered conditions under **when** — remove one, or **+ add a condition** — and what happens **then**: **allow**, **instruct**, or **deny**, with what to tell the agent. The code written for it sits beside them. When it reads right, select **looks right, test it →**.
 
-### 4. Test it, then publish
+### 4. Test it, then turn it on
 
-Run **backtest** under the source before you publish: it replays the draft against calls your fleet already made and counts the working calls it would have interrupted. [Test a policy](/policies/test) covers that and the other checks.
+**test** replays the draft against calls your agents already made and shows the ones it would have acted on; mark a wrong one to add an exception. [Test a policy](/policies/test) covers that and the other checks.
 
-When it behaves, enter the policy identity and select **publish version**. Publishing mints an immutable version and deploys nothing: it sits unused until you [deploy it](/policies/deploy). From a terminal:
+When it behaves, select **continue →**. On **turn on**, name it, choose its mode — **enforcing now**, or **observing first** — and its machines, and select **publish v…** with its version number. That mints an immutable version and puts it on the machines you chose; with no machine connected it applies once it is [deployed](/policies/deploy). From a terminal, publishing mints the version and deploys nothing:
 
 ```bash
 fp policies publish checkout-guard ./checkout.policy.mjs --description "Block force-push"
 ```
 
 `publish` parse-checks the source before sending it, so a syntax error surfaces here instead of on a machine at enforcement time.
+
+## Describe it in plain words
+
+Go to **fix → policies → new policy**. Under **what should failproof enforce?**, describe the rule, pick the agent whose past calls the test replays and the machines it will run on, and select **draft the policy →**. Or start from **one we flagged** in your agents' tool calls this week, or **pick a common one**. Then review, test, and turn it on as in steps 3 and 4 above.
 
 ## Write it yourself
 
@@ -85,7 +90,7 @@ customPolicies.add({
 
 This matches `production/config.yml`, `/srv/production/config.yml`, `/srv/production`, and `C:\\production\\config.yml` for both `Write` and `Edit`, but not `production-backup`: `production` has to be a whole path segment. The context also carries the event type, normalized payload, session metadata, parameters, and source CLI when available — see the [policy SDK](/reference/policy-sdk).
 
-To publish it as a version, paste the source into **compose** in **Admin → policy editor** and follow steps 3 and 4 above, or publish the file from a terminal with `fp policies publish`.
+To publish it as a version, open **fix → policies → new policy**, select **write it yourself** or **upload a file**, and follow steps 3 and 4 above, or publish the file from a terminal with `fp policies publish`.
 
 To run it on a machine without Cloud, save it under `.failproofai/policies/` with a name ending in `policies.js`, `policies.mjs` or `policies.ts` — those load automatically at project and user scope — or install it by path:
 

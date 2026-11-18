@@ -6,7 +6,7 @@ icon: "gauge"
 
 The Evaluator SDK runs evaluations on your own infrastructure. Your worker registers its evaluations with Failproof AI, claims sessions as they finish, scores them, and submits the results, all over outbound HTTPS: nothing connects in to it. Use it for what [hosted Python](/evaluations/write) cannot do — LLM judges, model calls, packages, secrets, and network access. Its results appear beside hosted ones on the [evaluations page](/sessions/evaluations), tagged **customer**.
 
-It ships in `failproofai-sdk`, under `failproofai_sdk.evaluator`; importing the tracing SDK does not load it.
+It ships in `failproofai-sdk`, under `failproofai_sdk.evaluator`; importing the tracing SDK does not load it. The TypeScript SDK ships the same worker as `@failproofai/sdk/evaluator`; see [Evaluations](/reference/custom-agents-typescript#evaluations) in its reference.
 
 ```bash
 pip install failproofai-sdk
@@ -66,7 +66,7 @@ if __name__ == "__main__":
 
 ## Run the worker
 
-Put a key with the `evaluations:run` permission, created under **Administration → Keys**, in `FAILPROOFAI_EVALUATOR_TOKEN` — set it from your secret store rather than typing it into a command — and start the worker:
+Put a key with the `evaluations:run` permission, created under **settings → api keys**, in `FAILPROOFAI_EVALUATOR_TOKEN` — set it from your secret store rather than typing it into a command — and start the worker:
 
 ```bash
 FAILPROOFAI_EVALUATOR_URL=https://app.befailproof.ai python evaluator.py

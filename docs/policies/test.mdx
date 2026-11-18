@@ -10,18 +10,25 @@ Test every policy two ways: against the traffic your agents already produced, an
 
 <Tabs>
   <Tab title="Dashboard">
-    The policy editor replays a draft against calls your fleet already made, before you publish it.
+    The **test** step of **fix → policies → new policy** replays a draft against calls your agents already made, before you turn it on.
 
-    1. Open the draft in **Admin → policy editor**. The editor confirms it parses as JavaScript.
-    2. In **backtest**, pick the agents and the time window to replay — **every agent** and **30d** by default — and leave the last filter on **everything** unless you want to narrow it.
-    3. Select **run backtest**.
+    1. Review the draft and select **looks right, test it →**.
+    2. Pick how far back to replay — **last 24 hours**, **last 7 days** (the default), or **last 30 days** — and whose calls: **all agents**, or one.
+    3. Read the result. When it matched nothing, **widen to 30 days** looks further back.
+
+    On a policy that is already published, **test again** on its page replays the live version on the last 7 days of calls.
 
     ![The backtest panel under a draft that parses as JavaScript, with its three filters and the run backtest action, above publish version.](/images/dashboard/policy-backtest.png)
 
-    The result is what the draft would have done to those calls — including how many **working** calls it would have interrupted. Those are false positives found before any agent meets them: tighten the draft and run it again until that number is one you can accept.
+    The result is what the draft would have done to those calls, with each call it would have acted on listed. A legitimate call in that list is a false positive found before any agent meets it: mark it and an exception is added to the rule, or tighten the draft, until what is left is what you want stopped.
   </Tab>
   <Tab title="CLI">
-    Backtesting is a dashboard feature. From a terminal, run the policy against events you describe instead, below.
+    Replay a policy file, or a published policy by its id, against stored calls. It needs a signed-in session with `policies:write` and `events:read`:
+
+    ```bash
+    fp policies backtest ./checkout.policy.mjs --hours 168
+    fp policies backtest ./checkout.policy.mjs --agent-id checkout-agent --env production
+    ```
   </Tab>
 </Tabs>
 
@@ -47,7 +54,7 @@ failproofai policies
 
 The first command validates and installs the file; the second confirms it loaded, alongside everything else enforcing here. Ask the agent to do what the policy stops and watch it get refused, then do the legitimate version and watch it go through. Nobody else is affected.
 
-On a machine connected to Cloud, check both decisions under **Observe → policy**: filter by the policy name, then open each linked session to confirm the tool input it matched and the reason it returned.
+On a machine connected to Cloud, check both decisions under **fix → activity**: find the policy's row, open the calls behind it, then open each linked session to confirm the tool input it matched and the reason it returned.
 
 ## Test what breaks
 
@@ -57,4 +64,4 @@ Then feed it what agents actually send, not only the input you expect: missing f
 
 ## Then publish it and observe it
 
-A backtest shows what the policy would have done to the traffic you had; it cannot show what traffic you have not seen yet will do. Select **publish version** in the editor (or run `fp policies publish`), then [deploy it](/policies/deploy) in **observe** mode first — its verdicts are recorded and nothing is blocked — and enforce once its matches separate unsafe actions from valid ones.
+A backtest shows what the policy would have done to the traffic you had; it cannot show what traffic you have not seen yet will do. Turn it on as **observing first** (or run `fp policies publish`, then [deploy it](/policies/deploy) in **observe** mode) — its verdicts are recorded and nothing is blocked — and enforce once its matches separate unsafe actions from valid ones.

@@ -15,11 +15,12 @@
 
 **Translations:** [简体中文](./docs/i18n/README.zh.md) · [日本語](./docs/i18n/README.ja.md) · [한국어](./docs/i18n/README.ko.md) · [Español](./docs/i18n/README.es.md) · [Português](./docs/i18n/README.pt-br.md) · [Deutsch](./docs/i18n/README.de.md) · [Français](./docs/i18n/README.fr.md) · [Русский](./docs/i18n/README.ru.md) · [हिन्दी](./docs/i18n/README.hi.md) · [Türkçe](./docs/i18n/README.tr.md) · [Tiếng Việt](./docs/i18n/README.vi.md) · [Italiano](./docs/i18n/README.it.md) · [العربية](./docs/i18n/README.ar.md) · [עברית](./docs/i18n/README.he.md)
 
-**Observability and enforcement for every harness your agents run in.**
-Wherever your agents run, we see it — and we can say no. Failproof hooks 12 agent
-harnesses — coding CLIs like Claude Code and Codex, chat gateways like Hermes,
-self-hosted assistants like OpenClaw — capturing every run and blocking dangerous
-tool calls before they execute. 40 built-in policies. Zero latency. Runs locally.
+**The reliability layer for autonomous agents: see every failure, stop it in realtime.**
+Observe every run, find where your agents fail, write a policy, and enforce it before
+the bad action runs. Failproof hooks 12 agent harnesses — coding CLIs like Claude Code
+and Codex, chat gateways like Hermes, self-hosted assistants like OpenClaw — capturing
+every run and blocking dangerous tool calls before they execute. 40 built-in policies.
+Zero latency. Runs locally, free; connect to Failproof Cloud when you want the whole fleet.
 
 </div>
 
@@ -38,8 +39,10 @@ it runs is verified on all twelve, turn-end gates on eight. The
 [per-harness matrix](https://docs.befailproof.ai/reference/harnesses#enforcement-capability)
 lists the events each one honours.
 
-Agents that run in none of them report through the [Python SDK](https://docs.befailproof.ai/reference/custom-agents),
-which gives you tracing, sessions and audits. Enforcement there needs a hook in
+Agents that run in none of them — your own agent, on any framework or none — report
+through the [Python SDK](https://docs.befailproof.ai/reference/custom-agents)
+or the [TypeScript SDK](https://docs.befailproof.ai/reference/custom-agents-typescript),
+which give you tracing, sessions, evaluations and audits. Enforcement there needs a hook in
 your own runtime — [talk to us](mailto:support@befailproof.ai) and we'll map it.
 
 <!-- A 6-column table instead of inline <img> runs: table columns never re-wrap,
@@ -140,7 +143,7 @@ your own runtime — [talk to us](mailto:support@befailproof.ai) and we'll map i
 
 ```sh
 npm install -g failproofai
-failproofai config                             # wire up your agents and the daemon
+failproofai config                             # hooks + daemon; connect to Cloud or stay open source
 failproofai policies add FailproofAI/policies  # choose what to enforce
 failproofai                                    # dashboard on localhost:8020
 ```
@@ -227,17 +230,31 @@ patterns and suggests policies to stop them.
 [Read a trace](https://docs.befailproof.ai/sessions/read-a-trace) ·
 [Local audit](https://docs.befailproof.ai/audits/local-audit)
 
-**Failproof AI Observability** is the hosted side of the same data model, for teams
-running agents across a fleet: every run from every harness in one place, an
-execution graph with parallel sub-agents on their own lanes, p50/p95/p99 latency
-for models, tools and hooks, per-model cost and context-window tracking, error
-tracking, SQL over your own traces with shareable dashboards, evaluations scored by
-your own service, scheduled audits that turn recurring failures into evidence-backed
-findings, and alerts routed to Slack, email or a signed webhook. Self-hosting in your
-own cluster is available on the Enterprise plan.
+## Failproof Cloud
 
-→ [Sessions](https://docs.befailproof.ai/sessions/overview) ·
-[Audits](https://docs.befailproof.ai/audits/overview) ·
+**Failproof Cloud** is the hosted side of the same data model, for running agents
+across a fleet. `failproofai config` connects a machine in one browser sign-in, and
+the free plan covers 5,000 runs a month with no card. The dashboard follows the loop:
+
+- **trace** — every run from every harness in one place: live events, an execution
+  graph with parallel sub-agents on their own lanes, snapshots of p50/p95/p99 latency,
+  cost and context windows for models, tools and hooks, error groups, user sentiment,
+  and SQL over your own traces with shareable dashboards.
+- **analyse** — failures cluster into **insights** on their own. **Checks** find them:
+  audits that look for a pattern across sessions, and evals that score each one, judged
+  by code, the decision model, an LLM judge or an agent. **Alerts** go to Slack, email or
+  a signed webhook.
+- **fix** — describe a policy in a sentence, test it against your past tool calls,
+  observe first or enforce, and deploy it to every machine.
+
+The **failproof agent** answers questions about all of it in plain English, and the
+same data reaches your own tools through the [MCP server](https://docs.befailproof.ai/reference/mcp),
+[Slack](https://docs.befailproof.ai/reference/slack) and the `fp` CLI. Self-hosting in
+your own cluster is available on the Enterprise plan.
+
+→ [Start free](https://app.befailproof.ai) ·
+[Pricing](https://befailproof.ai/pricing) ·
+[Quickstart](https://docs.befailproof.ai/start/quickstart) ·
 [Book a demo](https://befailproof.ai/get-a-demo)
 
 ---
@@ -255,6 +272,7 @@ own cluster is available on the Enterprise plan.
 | [Sessions](https://docs.befailproof.ai/sessions/overview) | Follow a run: models, tools, errors, latency |
 | [Read a trace](https://docs.befailproof.ai/sessions/read-a-trace) | What the execution graph is telling you |
 | [Audits](https://docs.befailproof.ai/audits/overview) | Find failure patterns across many sessions |
+| [Evaluations](https://docs.befailproof.ai/evaluations/overview) | Score every session with code, the decision model or an LLM judge |
 | [Local dashboard](https://docs.befailproof.ai/reference/local-dashboard) | `localhost:8020`, no account needed |
 
 | Enforce | |

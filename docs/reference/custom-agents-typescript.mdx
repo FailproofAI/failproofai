@@ -39,7 +39,7 @@ The framework adapters ship in the package itself. The frameworks are **optional
 
 ## Connect the Failproof daemon
 
-Identical to the Python SDK: create an `events:add` key under **Admin → Keys**, then [connect the daemon](/start/setup#connect-a-machine-to-cloud) on the agent machine. The SDK writes to disk; the daemon ships.
+Identical to the Python SDK: create an `events:add` key under **settings → api keys**, then [connect the daemon](/start/setup#connect-a-machine-to-cloud) on the agent machine. The SDK writes to disk; the daemon ships.
 
 ## Configuration
 
@@ -69,8 +69,8 @@ options, setup registers a new provider only if no provider is already registere
 `OtelSpanExporter` can also be used directly with your own processor.
 
 Exports go through the connected FailproofAI daemon; the SDK sends no network
-requests and needs no key or local listener. Ask an admin to enable
-[OpenTelemetry ingest](/agenteye/opentelemetry). A bare `instrument()` does not
+requests and needs no key or local listener. [OpenTelemetry ingest](/agenteye/opentelemetry)
+is always on in Cloud. A bare `instrument()` does not
 enable this exporter. `uninstrument("otel")` disables only its own processor.
 Your span attributes control content capture; flush your provider before exit.
 OpenTelemetry stays an optional application dependency, not a hard SDK dependency.

@@ -12,9 +12,19 @@ Anything needing a package, a secret, or your own network runs in [your own work
 
 ## Draft it from a description
 
-1. Go to **Analyze → eval authoring** and select **new eval**.
-2. Describe what to measure in plain English, or choose from **start from an example…**, and select **draft**.
-3. Review the fields and the code it fills in, then [test it](/evaluations/test) and [deploy it](/evaluations/deploy).
+The quickest route is **analyse → checks → new check**:
+
+1. Under **what are you looking for?**, describe the failure in your own words, pick the agents and environments it applies to, choose **something i already know about**, and select **next →** — failproof drafts your words into a rule. Or pick one under **or start from a common eval**.
+2. On **review**, check the conditions under **flag a session when**, and **how it checks**: **code**, **decision model**, or **llm as judge**, with the best fit picked for you. **see the prompt or code** shows exactly what it will run. Select **looks right, continue →**.
+3. On **turn on**, name it, choose the severity its insights open at and who to **notify**, and select **turn on check**.
+
+The other answer to **what are you looking for?**, **failures i don't know about yet**, sets up an [audit](/audits/setup) instead.
+
+For every field, use **analyse → checks → new evaluation** (the new check page links to it as **write it in code**):
+
+1. Describe what to measure in the box at the top of the page; failproof drafts every step below it. Under **how should it score?**, the method is **code**, **decision model**, or **llm as judge**.
+2. On **review**, check the fields and the code it fills in.
+3. [Try it on real sessions](/evaluations/test), then [deploy it](/evaluations/deploy).
 
 ![The eval authoring page with a drafted evaluation: the description, the assistant's notes on the draft, and the name, key, version, result, timeout, labels, and condition fields.](/images/dashboard/eval-authoring-draft.png)
 
@@ -27,8 +37,8 @@ The draft is grounded in your organization's own events: the page reads which pa
 | name | What people see. Editable later |
 | key | The stable identifier its results chart under, such as `code_assistant_quality_gate` |
 | version | Any version string without spaces, such as `1.0.0` |
-| result | **score** (0 to 1), **metric** (a number with a unit), or **assertion** (passed or not) |
-| timeout seconds | Default 30. The sandbox stops any single run at 60 |
+| result | **score** (0 to 1), **metric** (a number with a unit), or **pass / fail** (an assertion) |
+| timeout | Not on the form: a code evaluation runs with the default 30 seconds. The sandbox stops any single run at 60 |
 | labels | Up to 20, comma-separated. Editable later |
 | condition | Optional. A Python expression; the evaluation runs only on sessions where it is `True` |
 
@@ -64,7 +74,7 @@ A result leads with the evaluation's own key, in its declared type: `score=` for
 | Result types | `EvalResult`, `Score`, `Metric`, `Assertion`, and `ConditionResult` for a condition |
 | Builtins | `abs`, `all`, `any`, `bool`, `dict`, `float`, `int`, `len`, `list`, `max`, `min`, `range`, `round`, `set`, `sorted`, `str`, `sum`, `tuple` |
 
-Nothing else is reachable: no imports, and no attributes beyond that session data and plain string and dictionary methods such as `get`, `lower`, and `split`, which must be called rather than referenced. Payload keys are whatever your agents send — `status` above is only an example — so read them off a real session. **format** tidies the code and **fix** asks the assistant to repair it. The code can be up to 128 KiB, and the condition up to 16 KiB.
+Nothing else is reachable: no imports, and no attributes beyond that session data and plain string and dictionary methods such as `get`, `lower`, and `split`, which must be called rather than referenced. Payload keys are whatever your agents send — `status` above is only an example — so read them off a real session. **format** tidies the code and **fix it** asks the assistant to repair it. The code can be up to 128 KiB, and the condition up to 16 KiB.
 
 ![The evaluator code editor, with format and fix, showing the assertions of a drafted evaluation.](/images/dashboard/eval-authoring-code.png)
 

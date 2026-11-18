@@ -1,10 +1,10 @@
 ---
 title: "Slack app"
-description: "Ask the Failproof Assistant from Slack, get charts in the thread, and approve changes with a button."
+description: "Ask the failproof agent from Slack, get charts in the thread, and approve changes with a button."
 icon: "slack"
 ---
 
-Ask the [Failproof Assistant](/sessions/assistant) from Slack. Mention the app in a channel, send it a direct message, or use `/failproof <question>`. Answers use **your own** Failproof AI permissions, charts arrive in the thread, and anything that would change something asks you to approve it first.
+Ask the [failproof agent](/sessions/assistant) from Slack. Mention the app in a channel, send it a direct message, or use `/failproof <question>`. Answers use **your own** Failproof AI permissions, charts arrive in the thread, and anything that would change something asks you to approve it first.
 
 There is one official app. It works the same whether your Failproof AI Cloud is hosted or self-hosted.
 
@@ -18,7 +18,7 @@ You need the `settings:write` permission in Failproof AI and, in Slack, to be a 
 
 <Tabs>
   <Tab title="From Failproof AI">
-    1. Go to **Settings → Integrations** and select **Add to Slack**.
+    1. Go to **settings → integrations** and select **Add to Slack**.
     2. Approve the app in Slack.
     3. Back in Failproof AI, confirm connecting the workspace to your organization.
   </Tab>
@@ -59,13 +59,13 @@ When the answer is data, the app posts a chart or a table with a link to open it
 
 ## Approve changes
 
-Every change the assistant makes shows **Approve** and **Cancel** buttons first, and Slack asks once more before **Approve**. Only the person who asked can answer them, the buttons expire after 5 minutes, and the change is made with that person's permissions.
+Every change the failproof agent makes shows **Approve** and **Cancel** buttons first, and Slack asks once more before **Approve**. Only the person who asked can answer them, the buttons expire after 5 minutes, and the change is made with that person's permissions.
 
-From Slack, the assistant can change saved queries and dashboards, evaluations, alerts, audits, issues, and policies, and suggest code fixes, each if you hold the permission. It can't change API keys, users, or settings.
+From Slack, the failproof agent can change saved queries and dashboards, evaluations, alerts, audits, insights, and policies, and suggest code fixes, each if you hold the permission. It can't change API keys, users, or settings.
 
 ## Link previews
 
-Failproof AI issue, session, and evaluation links pasted in Slack unfurl into cards on hosted Failproof AI Cloud. A card shows only what the person who triggered it can see. Links to a self-hosted address don't unfurl, though cards in the assistant's own answers still appear.
+Failproof AI insight, session, and evaluation links pasted in Slack unfurl into cards on hosted Failproof AI Cloud. A card shows only what the person who triggered it can see. Links to a self-hosted address don't unfurl, though cards in the failproof agent's own answers still appear.
 
 ## Slack Connect channels
 
@@ -88,7 +88,7 @@ The app only answers once every other workspace in the channel has someone linke
 
 ## Disconnect
 
-Go to **Settings → Integrations** and select **Disconnect**, use **Disconnect** on the app's **Home** tab, or remove the app from Slack.
+Go to **settings → integrations** and select **Disconnect**, use **Disconnect** on the app's **Home** tab, or remove the app from Slack.
 
 Any of these deletes the workspace's connection, bot token, linked accounts, and thread records. Past Slack conversations stay readable in the dashboard. The organization can then connect any workspace straight away.
 

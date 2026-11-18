@@ -10,20 +10,22 @@ Dashboards combine saved queries into an operational view. Build one around a de
 
 <Tabs>
   <Tab title="Dashboard">
-    1. Go to **Analyze → Queries**, create or open a saved query, and validate its result.
-    2. Select **add to dashboard**, then choose an existing dashboard or create one under **Analyze → Dashboards**.
-    3. Open the dashboard, enter edit mode, arrange tiles, and save the layout.
+    1. Go to **trace → queries**, create or open a saved query, and validate its result.
+    2. Select **add to dashboard**, then choose an existing dashboard or create one under **trace → dashboards**.
+    3. Open the dashboard, select **edit layout**, arrange tiles, and select **done**.
     4. Return to the query when you need to change the data or filters behind a tile.
 
     ![A dashboard composed from saved queries for event volume, errors, latency, and model token use.](/images/dashboard/dashboard-fleet.png)
   </Tab>
   <Tab title="CLI">
-    Dashboard CRUD is not exposed by the current Cloud CLI. Use the CLI to build and verify the saved query, then add it to a dashboard in the UI.
+    Build and verify the saved query, then add it to a dashboard as a tile:
 
     ```bash
     fp query schema
     fp query create "production error rate" --sql "SELECT ..."
     fp query run <query-id>
+    fp dashboards create --name "checkout reliability"
+    fp dashboards tiles <dashboard-id> add --query <query-id> --chart line --title "error rate"
     ```
   </Tab>
 </Tabs>

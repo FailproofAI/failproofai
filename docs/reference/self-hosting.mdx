@@ -5,7 +5,7 @@ icon: "cloud-cog"
 ---
 
 <Note>
-  Self-hosting is an Enterprise deployment. [Contact Failproof AI](mailto:support@befailproof.ai) to obtain an enterprise license.
+  Self-hosting is part of the Enterprise plan (see [pricing](https://befailproof.ai/pricing)). [Contact Failproof AI](mailto:support@befailproof.ai) to obtain an enterprise license.
 </Note>
 
 ## Prerequisites
@@ -63,8 +63,8 @@ Failure notifications require an enabled email channel and SMTP. They use the au
 <Tabs>
   <Tab title="Dashboard">
     1. Open the configured dashboard domain, complete the admin OTP flow, and confirm the organization name and slug.
-    2. Go to **Administration → Keys** and create a narrowly scoped machine key.
-    3. Send a test session, then confirm it in **Observe → Events** and **Observe → Sessions**.
+    2. Go to **settings → api keys** and create a narrowly scoped machine key.
+    3. Send a test session, then confirm it in **trace → live events** and **trace → sessions**.
     4. Test an alert channel and, when configured, a manual evaluation and audit.
   </Tab>
   <Tab title="CLI">
@@ -88,7 +88,7 @@ The dashboard uses email and one-time codes. With SMTP absent, development deplo
 
 `SMTP_TLS` is a boolean. The supported encrypted transport is STARTTLS, normally on port 587; implicit SMTPS on port 465 is not supported by the current server transport.
 
-Set the public dashboard URL correctly because OTP, alert, incident, and audit emails use it for deep links. Organization membership controls who may request a code; each organization can further restrict its own member sign-ins in **Administration → Settings**.
+Set the public dashboard URL correctly because OTP, alert, incident, and audit emails use it for deep links. Organization membership controls who may request a code; each organization can further restrict its own member sign-ins in **settings → general**.
 
 ## Multi-tenant requirements
 
@@ -110,7 +110,7 @@ kubectl -n agenteye exec deploy/server -- \
 
 Supported organization operations include create, list, rename, soft-delete, restore, ClickHouse-user reprovisioning, billing-date management, feature flags, and irreversible purge. Member operations include add, list, update, remove, permission overrides, and protected-admin state.
 
-Use soft-delete before purge. `org purge` is irreversible and requires the organization to be deleted first. Protected members cannot be removed or demoted through the organization's ordinary Users page until an operator explicitly unprotects them.
+Use soft-delete before purge. `org purge` is irreversible and requires the organization to be deleted first. Protected members cannot be removed or demoted through the organization's ordinary **settings → members** page until an operator explicitly unprotects them.
 
 ## Production readiness checklist
 

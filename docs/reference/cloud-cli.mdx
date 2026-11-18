@@ -7,7 +7,7 @@ icon: "cloud-cog"
 Use `fp` to inspect Cloud telemetry, manage cloud-managed enforcement (policies, fleet deployments, guardrail decisions), and manage audits, findings, issues, alerts, keys, users, queries, and settings. Use [`failproofai`](/reference/failproof-cli) for local hooks, policies, capture, and machine enrollment.
 
 You can also author and deploy hosted code, LLM-judge and Jev evaluators, manage
-dashboards, inspect sentiment, and use the dashboard assistant from the terminal.
+dashboards, inspect sentiment, and use the failproof agent from the terminal.
 
 Install the released Cloud CLI as an isolated tool:
 
@@ -151,7 +151,7 @@ a readable view. CSV exports remain plain CSV for piping.
 | `fp users delete ID` / `fp users defaults` | Deletion by id |
 | `fp usage windows` / `fp plan` / `fp plan claim OFFER` | `usage windows` needs an API key; plan (offers and trial) and claim require a signed-in session |
 | `fp settings context-windows list\|set MODEL TOKENS\|delete MODEL` | 0–1000000 tokens |
-| `fp otel status\|enable\|disable` | Cloud org ingest switch, not local capture |
+| `fp otel status` | Cloud OpenTelemetry ingest status, not local capture. Ingest is always on in Cloud |
 | `fp slack status\|disconnect` | Session |
 
 `fp agent ask` renders artifact SQL as tables/stats through `queries:run`.
@@ -331,8 +331,8 @@ Permission tokens use `resource:action`, such as `events:add`. Repeat `--add`, c
 | `fp users show EMAIL` | Show a member and their grants. | — |
 | `fp users create EMAIL` | Add a member. | `--permission-set`; `--add`; `--remove` |
 | `fp users update EMAIL` | Change a member's grants. | `--permission-set`; `--add`; `--remove`; `--yes`, `-y` |
-| `fp users disable EMAIL` | Disable sign-in. | `--yes`, `-y` |
-| `fp users enable EMAIL` | Re-enable sign-in. | `--yes`, `-y` |
+| `fp users disable EMAIL` | Remove the member from this organization. Their account and other organizations are untouched; invite them again to bring them back. | `--yes`, `-y` |
+| `fp users enable EMAIL` | Retired: Cloud now answers that removing a member no longer disables the account, and to invite them again with `fp users create`. | `--yes`, `-y` |
 
 ### Settings
 
@@ -430,7 +430,7 @@ Include context during creation when the first run needs it. Creation commits th
 | `fp issues close INCIDENT_ID` | Close an issue: you are done with it, fixed or not. A recurrence does not reopen it. | `--yes`, `-y` |
 | `fp issues archive INCIDENT_ID` | Take an issue off the board without changing how it ended. | — |
 | `fp issues unarchive INCIDENT_ID` | Put an archived issue back on the board. | — |
-| `fp issues clear` | Resolve every open issue in a scope, plus the audit findings behind them. Requires exactly one scope flag. | one of `--audit`, `--all-audits`, `--everything`; `--dry-run`; `--yes`, `-y` |
+| `fp issues clear` | Close and archive one audit's open issues and resolve the findings behind them; a pattern that recurs opens a new issue. Cloud accepts only the `--audit` scope (the wider `--all-audits` and `--everything` scopes are refused). | `--audit`; `--dry-run`; `--yes`, `-y` |
 | `fp issues comment-list INCIDENT_ID` | List comments. | — |
 | `fp issues comment-add INCIDENT_ID` | Add a comment. | exactly one of `--body`, `--file` |
 | `fp issues comment-delete INCIDENT_ID COMMENT_ID` | Delete a comment. | `--yes`, `-y` |
@@ -438,16 +438,16 @@ Include context during creation when the first run needs it. Creation commits th
 | `fp issues subscribe INCIDENT_ID` | Subscribe yourself or another operator. | `--email` |
 | `fp issues unsubscribe INCIDENT_ID` | Remove a subscription. | `--email` |
 
-Valid issue states are `firing`, `acknowledged`, and `resolved`. Standalone issue severities are `info`, `warning`, and `critical`.
+Issues are called **insights** in the Cloud dashboard (**analyse → insights**). Valid issue states are `firing`, `acknowledged`, `resolved`, and `closed`. Standalone issue severities are `info`, `warning`, and `critical`.
 
-### Cloud assistant
+### Failproof agent
 
 | Command | Purpose | Options |
 | --- | --- | --- |
-| `fp agent health` | Check assistant availability and configuration. | — |
-| `fp agent models` | List available assistant models. | — |
+| `fp agent health` | Check the failproof agent's availability and configuration. | — |
+| `fp agent models` | List available models for the failproof agent. | — |
 | `fp agent chats` | List saved chats. | — |
-| `fp agent ask [MESSAGE]` | Start or continue a chat; reads stdin when the message is omitted. | `--chat`; `--model`; `--page-context` |
+| `fp agent ask [MESSAGE]` | Start or continue a chat; reads stdin when the message is omitted. | `--chat`; `--model`; `--page-context`; `--approve` |
 | `fp agent show CHAT_ID` | Show a saved conversation. | — |
 | `fp agent rename CHAT_ID` | Rename a conversation. | required `--title` |
 | `fp agent delete CHAT_ID` | Delete a conversation. | `--yes`, `-y` |
@@ -465,7 +465,7 @@ Cloud-managed policy versions. **Session-only** — every command here exits `2`
 | `fp policies disable POLICY_ID` | Remove it from every deployment carrying it, minting a new generation on each. | `--yes`, `-y` |
 | `fp policies delete POLICY_ID` | Delete a policy version. | `--yes`, `-y` |
 | `fp policies test PATH` | Run a policy locally against a synthetic context. Applies each policy's `match` filter, so one that does not cover the given event/tool is reported `skipped` rather than run. | `--event`; `--tool`; `--command`; `--file`; `--expect` |
-| `fp policies compose PROMPT` | Draft a policy with the assistant. Needs `policies:write`. | — |
+| `fp policies compose PROMPT` | Draft a policy with the failproof agent; by default it only prints the draft. Needs `policies:write`. | `--out`; `--publish POLICY_ID` |
 
 ### Fleet
 
@@ -479,7 +479,7 @@ Which machines run which policies.  **Session-only**, same reason as above.
 | `fp fleet diff MACHINE_ID` | Compare a machine against another deployment. | — |
 | `fp fleet history MACHINE_ID` | Past deployments for a machine, with the Jev mode each one had. | — |
 | `fp fleet rollback MACHINE_ID GENERATION` | Reinstate a past generation's policy set as a new generation. | `--yes`, `-y` |
-| `fp fleet rename MACHINE_ID` | Give a machine a readable name. | required `--name` |
+| `fp fleet rename MACHINE_ID LABEL` | Give a machine a readable name. Needs `policies:write`. | — |
 
 ### Guardrails
 
@@ -506,7 +506,7 @@ What enforcement actually did. **Session-only**, same reason as above.
 | `--version` | Print the unboxed version and exit. |
 | `--help`, `-h` | Show help. |
 
-`--api-key` is intended for automation. Login, organization switching, and assistant commands require a user session.
+`--api-key` is intended for automation. Login, organization switching, and failproof agent commands require a user session.
 
 ## Environment variables
 

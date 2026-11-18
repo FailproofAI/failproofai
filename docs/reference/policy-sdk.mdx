@@ -12,10 +12,10 @@ Use a custom policy when the behavior depends on your tools, paths, commands, en
 
 <Tabs>
   <Tab title="Dashboard">
-    1. Go to **Admin → policy editor**, select **New policy**, and describe the failure you want to prevent.
-    2. Add the policy source, then test expected matches and safe non-matches in the editor. Resolve every validation error.
-    3. Save the draft and select **Publish version** to create an immutable version.
-    4. Go to **Admin → enforcement**, deploy the version to a test machine in **observe** mode, and verify its decisions under **Observe → policy** before enforcing it.
+    1. Go to **fix → policies**, select **new policy**, and describe the failure you want to prevent.
+    2. Review the rule and its source, and resolve every validation error.
+    3. Test it on past calls: check expected matches and safe non-matches.
+    4. Turn it on: choose **observing first** as the mode, pick a test machine, and publish the version. Verify its decisions under **fix → activity** before switching it to **enforcing now**. **fix → deploy policies** shows which machines run which version.
 
     ![The policy editor used to author and publish a custom policy.](/images/dashboard/policy-editor.png)
   </Tab>
@@ -23,7 +23,7 @@ Use a custom policy when the behavior depends on your tools, paths, commands, en
     1. Create `.failproofai/policies/checkout-policies.ts`. The filename must end in `policies.js`, `policies.mjs`, or `policies.ts`.
     2. Register one or more policies with `customPolicies.add()`.
     3. Validate and install the file with `failproofai policies --install --custom ./.failproofai/policies/checkout-policies.ts --scope project`.
-    4. Trigger one matching action and one safe action. Run `failproofai policies`, then inspect the attributed decisions under **Observe → policy**.
+    4. Trigger one matching action and one safe action. Run `failproofai policies`, then inspect the attributed decisions under **fix → activity**.
   </Tab>
 </Tabs>
 
@@ -272,7 +272,7 @@ Test at least these cases:
 - Alternate command syntax, paths, quoting, casing, and whitespace.
 - An unavailable subprocess or network dependency.
 
-Attribute the result to your custom policy under **Observe → policy**. A blocked test is not sufficient if a different built-in policy made the decision.
+Attribute the result to your custom policy under **fix → activity**. A blocked test is not sufficient if a different built-in policy made the decision.
 
 ## Runtime behavior
 

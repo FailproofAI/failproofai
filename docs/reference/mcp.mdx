@@ -4,7 +4,7 @@ description: "Connect Claude, Cursor, Codex, or another MCP client to Failproof 
 icon: "plug"
 ---
 
-Connect an AI tool to Failproof AI Cloud and work with your agents' data from it. Your tool can query sessions and events, run read-only SQL, read dashboards, alerts, issues, audits, and policies, and, if you hold the permission, make changes such as creating an alert or deploying a policy.
+Connect an AI tool to Failproof AI Cloud and work with your agents' data from it. Your tool can query sessions and events, run read-only SQL, read dashboards, alerts, insights, audits, and policies, and, if you hold the permission, make changes such as creating an alert or deploying a policy.
 
 Every call runs with **your own** permissions, in **one** organization you choose when connecting.
 
@@ -80,11 +80,11 @@ A connection can do what you can do in the organization, within the set below. I
 | `queries:read`, `queries:write` | Read saved queries, or save and edit them |
 | `queries:run` | Run one read-only SQL query and read the query schema |
 | `alerts:read`, `alerts:write` | Read alerts, or create, edit, pause, delete, and test them |
-| `issues:read` | Read issues, acknowledge them, and comment on them |
-| `issues:create` | Open an issue on an alert |
-| `issues:close` | Resolve and close issues |
+| `issues:read` | Read insights, acknowledge them, and comment on them |
+| `issues:create` | Open an insight on an alert |
+| `issues:close` | Resolve and close insights |
 | `audits:read`, `audits:write` | Read audits, runs, and findings, or create and edit audits and start a run |
-| `code_fixes:read` | See how to fix an issue, and get its context for your own agent to fix |
+| `code_fixes:read` | See how to fix an insight, and get its context for your own agent to fix |
 | `code_fixes:write` | Start a fix in Failproof AI Cloud, which opens a pull request on your GitHub |
 | `policies:read`, `policies:write` | Read policies, machines, and deployments, or publish, deploy, and roll back policies |
 
@@ -102,7 +102,7 @@ Writes ask you first if your client can show the prompt. You see what will chang
 
 ## Connected apps and revoking
 
-**Settings → Integrations → MCP** lists your connected apps in the current organization, with their permissions and last use. **Revoke** cuts an app off at once. Removing the server in your client also revokes the connection.
+**settings → integrations → MCP** lists your connected apps in the current organization, with their permissions and last use. **Revoke** cuts an app off at once. Removing the server in your client also revokes the connection.
 
 You can have up to 5 connected apps per organization. Connecting the same app again replaces its earlier connection.
 
@@ -124,6 +124,6 @@ Results go to the AI tool you connected, and that tool's provider handles them u
 | An error after **Allow** | The link works once and expires after 10 minutes, so start again from the client |
 | A tool you expected is missing | You don't hold its permission in this organization. Ask an admin. You don't need to reconnect once you have it |
 | The client keeps asking you to sign in | The connection was revoked, you left the organization, or it went unused for 90 days. Connect again |
-| "You have 5 connected apps" | Revoke one under **Settings → Integrations → MCP**, then connect again |
+| "You have 5 connected apps" | Revoke one under **settings → integrations → MCP**, then connect again |
 
 Still stuck? Email [support@befailproof.ai](mailto:support@befailproof.ai).

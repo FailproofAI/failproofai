@@ -211,6 +211,12 @@ export async function requestHookVerdict(request) {
     return first;
   }
   const retried = await requestWithRetry(older, request, clock);
+  // Asked again after the answer: a targeted deployment activated while the
+  // older daemon was evaluating makes its answer unsafe too.
+  if (await agentTargetedDeployment()) {
+    delete first.daemonVersion;
+    return first;
+  }
   if (!retried.ok) delete retried.daemonVersion;
   return retried;
 }

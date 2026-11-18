@@ -302,6 +302,30 @@ describe("hooks/daemon-client", () => {
     expect(connections).toBe(1);
   });
 
+  it("discards the older daemon's answer when a targeted deployment arrives during the retry", async () => {
+    // Cloud activated agent-targeted policies while the v1 daemon evaluated:
+    // its allow was made without this agent and is no safer than before.
+    const requests: number[] = [];
+    await startServer(async (socket) => {
+      const request = (await readFrame(socket)) as Record<string, unknown>;
+      requests.push(request.protocolVersion as number);
+      if (request.protocolVersion === 1) {
+        mkdirSync(process.env.FAILPROOFAI_CLOUD_POLICY_DIR!, { recursive: true });
+        writeFileSync(
+          join(process.env.FAILPROOFAI_CLOUD_POLICY_DIR!, "active.json"),
+          JSON.stringify({ schemaVersion: 3, deployment: 5, policies: [] }),
+        );
+        socket.end(encodeFrame({ type: "hookResult", protocolVersion: 1, exitCode: 0, stdout: "", stderr: "" }));
+      } else {
+        socket.end(encodeFrame({ type: "error", protocolVersion: 1, message: "protocol version mismatch" }));
+      }
+    });
+    const { attemptDaemonHook } = await import("../../src/hooks/daemon-client");
+    const attempt = await attemptDaemonHook({ hookEvent: "PreToolUse", cli: "claude", stdin: "{}" });
+    expect(requests).toEqual([2, 1]);
+    expect(attempt).toEqual({ ok: false, failure: "protocol-mismatch" });
+  });
+
   it("does not fall back where the deployment cannot be read to rule targets out", async () => {
     mkdirSync(process.env.FAILPROOFAI_CLOUD_POLICY_DIR!, { recursive: true });
     writeFileSync(join(process.env.FAILPROOFAI_CLOUD_POLICY_DIR!, "active.json"), "{");

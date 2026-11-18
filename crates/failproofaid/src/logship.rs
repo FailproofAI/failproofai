@@ -24,7 +24,7 @@
 //! `FAILPROOFAI_NO_LOG_UPLOAD=1` turns uploading off.
 
 use std::collections::{HashMap, VecDeque};
-use std::fs::{self, File};
+use std::fs;
 use std::io::{Read, Seek, SeekFrom, Write};
 use std::path::{Path, PathBuf};
 use std::sync::{LazyLock, Mutex, MutexGuard};
@@ -334,6 +334,10 @@ pub fn fingerprint(target: &str, message: &str) -> String {
 
 fn record(level: Level, target: &str, line: &str, now: Instant) {
     let entry = parse_line(line, Some(level.as_str()), Some(target));
+    // Child output stays in daemon.log only (see `is_child_output`).
+    if is_child_output(&entry.message) {
+        return;
+    }
     // This module's own failures never trigger an upload of themselves.
     let own = target.starts_with(module_path!());
     let mut st = state();
@@ -403,8 +407,20 @@ fn maybe_open_incident(st: &mut State, trigger: String, entries: Option<Vec<Entr
 
 /// Read the last `max` bytes of a file, from its first complete line.
 fn tail(path: &Path, end: Option<u64>, max: u64) -> Option<String> {
-    let mut file = File::open(path).ok()?;
-    let len = file.metadata().ok()?.len();
+    use std::os::unix::fs::OpenOptionsExt;
+    // Never blocks and never follows a link: a FIFO or a symlink planted at
+    // the log path must not stall startup (this runs before the socket is
+    // bound, and every hook is denied until it is) or read another file.
+    let mut file = fs::OpenOptions::new()
+        .read(true)
+        .custom_flags(libc::O_NONBLOCK | libc::O_NOFOLLOW)
+        .open(path)
+        .ok()?;
+    let meta = file.metadata().ok()?;
+    if !meta.file_type().is_file() {
+        return None;
+    }
+    let len = meta.len();
     let end = end.map_or(len, |e| e.min(len));
     let start = end.saturating_sub(max);
     file.seek(SeekFrom::Start(start)).ok()?;
@@ -420,11 +436,27 @@ fn tail(path: &Path, end: Option<u64>, max: u64) -> Option<String> {
     })
 }
 
-fn entries_from_text(text: &str) -> Vec<Entry> {
+/// A line the daemon relays from a child process (the worker, the scheduled
+/// audit). Its text is whatever that process printed — a custom policy's own
+/// diagnostics, a tool command — so it never goes up automatically: only an
+/// operator's request includes it, and then redacted like every line.
+fn is_child_output(message: &str) -> bool {
+    [
+        "worker stdout:",
+        "worker stderr:",
+        "audit stdout:",
+        "audit stderr:",
+    ]
+    .iter()
+    .any(|prefix| message.starts_with(prefix))
+}
+
+fn entries_from_text(text: &str, with_child_output: bool) -> Vec<Entry> {
     let mut out: Vec<Entry> = text
         .lines()
         .filter(|l| !l.trim().is_empty())
         .map(|l| parse_line(l, None, None))
+        .filter(|e| with_child_output || !is_child_output(&e.message))
         .collect();
     if out.len() > MAX_ENTRIES {
         out.drain(..out.len() - MAX_ENTRIES);
@@ -471,7 +503,9 @@ pub fn init(logs_dir: &Path, prior_len: Option<u64>) {
         st.log_path = Some(log_path.clone());
         st.stamp_path = Some(stamp);
     }
-    if unclean {
+    // Nothing is read when uploads are off: the previous run's lines would
+    // only ever be read to send them.
+    if unclean && state().enabled {
         // The previous run's lines: daemon.log up to where it was before this
         // start, or the rotated file when opening rotated it away.
         let text = match prior_len {
@@ -480,7 +514,10 @@ pub fn init(logs_dir: &Path, prior_len: Option<u64>) {
             }
             _ => tail(&logs_dir.join("daemon.log.1"), None, TAIL_BYTES),
         };
-        let entries = text.as_deref().map(entries_from_text).unwrap_or_default();
+        let entries = text
+            .as_deref()
+            .map(|t| entries_from_text(t, false))
+            .unwrap_or_default();
         let mut st = state();
         maybe_open_incident(
             &mut st,
@@ -537,7 +574,11 @@ impl Scrub {
         }
     }
     fn apply(&self, text: &str) -> String {
-        let mut out = text.to_string();
+        // The collector's secret patterns first (keys, bearer headers, env
+        // assignments), the same rules session events get, then the machine's
+        // own token and home directory.
+        let mut out = fpai_collect::redact::scrub_str(text)
+            .map_or_else(|| text.to_string(), |(scrubbed, _)| scrubbed);
         if let Some(t) = &self.token {
             out = out.replace(t.as_str(), "[redacted]");
         }
@@ -632,7 +673,7 @@ fn ship_at(machine_id: &str, scrub: &Scrub, post: &dyn Fn(&Value) -> PostOutcome
                 .as_deref()
                 .and_then(|p| tail(p, None, TAIL_BYTES));
             let entries = match text {
-                Some(t) => entries_from_text(&t),
+                Some(t) => entries_from_text(&t, true),
                 None => st.ring.iter().map(|c| c.entry.clone()).collect(),
             };
             let v = body(machine_id, "requested", None, Some(&id), &entries, scrub);
@@ -1040,7 +1081,7 @@ mod tests {
             + &line("INFO", "a::b", "dated")
             + "  at Module._load (node:internal)\n"
             + "2026-11-18T13:18:40.000000Z TRACE x: verbose\n";
-        let entries = entries_from_text(&text);
+        let entries = entries_from_text(&text, true);
         let long = Scrub::new(None, Some("tok12345".into()));
         let mut e = entries.clone();
         e.push(Entry {
@@ -1070,6 +1111,110 @@ mod tests {
         }
         // The undated first line borrows the first dated line's time.
         assert_eq!(v["entries"][0]["ts"], "2026-11-18T13:18:37.676211Z");
+    }
+
+    /// A custom policy printed a tool command holding a credential: it must
+    /// never ride an automatic upload, and a requested one gets it redacted.
+    #[test]
+    fn child_output_stays_out_of_automatic_uploads_and_secrets_are_redacted() {
+        let _g = LOCK.lock().unwrap();
+        reset_for_test(true);
+        let t0 = Instant::now();
+        let secret = "curl -H 'Authorization: Bearer sk-live-0123456789abcdefABCDEF' https://x";
+        record(
+            Level::WARN,
+            "failproofaid::worker",
+            &line(
+                "WARN",
+                "failproofaid::worker",
+                &format!("worker stderr: {secret}"),
+            ),
+            t0,
+        );
+        record(
+            Level::ERROR,
+            "failproofaid::audit_lane",
+            &line(
+                "ERROR",
+                "failproofaid::audit_lane",
+                &format!("audit stdout: {secret}"),
+            ),
+            t0,
+        );
+        record(
+            Level::WARN,
+            "a",
+            &line("WARN", "a", &format!("daemon saw {secret}")),
+            t0,
+        );
+        let sent = collect(t0 + INCIDENT_SETTLE);
+        let all = serde_json::to_string(&sent).unwrap();
+        assert!(!all.contains("sk-live-0123456789abcdefABCDEF"), "{all}");
+        assert!(
+            !all.contains("worker stderr"),
+            "child output is not uploaded automatically: {all}"
+        );
+        assert!(
+            sent.iter().all(|v| v["kind"] != "incident"),
+            "a child's ERROR line opens no incident"
+        );
+        assert_eq!(sent[0]["entries"].as_array().unwrap().len(), 1);
+
+        // Requested: the operator asked, so child output is included, redacted.
+        let dir = temp_dir("child");
+        let log = dir.join("daemon.log");
+        fs::write(
+            &log,
+            line(
+                "INFO",
+                "failproofaid::worker",
+                &format!("worker stderr: {secret}"),
+            ),
+        )
+        .unwrap();
+        state().log_path = Some(log);
+        note_request("req-child");
+        let sent = collect(Instant::now());
+        let req = sent.iter().find(|v| v["kind"] == "requested").unwrap();
+        let msg = req["entries"][0]["message"].as_str().unwrap();
+        assert!(msg.starts_with("worker stderr: "), "{msg}");
+        assert!(!msg.contains("sk-live-0123456789abcdefABCDEF"), "{msg}");
+    }
+
+    /// A FIFO at daemon.log after an unclean exit must not stall startup,
+    /// with uploads on or off.
+    #[test]
+    fn a_fifo_at_the_log_path_never_blocks_init() {
+        let _g = LOCK.lock().unwrap();
+        for disabled in [false, true] {
+            reset_for_test(true);
+            let dir = temp_dir(if disabled { "fifo-off" } else { "fifo-on" });
+            let log = dir.join("daemon.log");
+            let c = std::ffi::CString::new(log.as_os_str().as_encoded_bytes()).unwrap();
+            assert_eq!(unsafe { libc::mkfifo(c.as_ptr(), 0o600) }, 0);
+            fs::write(dir.join(MARKER), "1").unwrap();
+            let (tx, rx) = std::sync::mpsc::channel();
+            let d = dir.clone();
+            std::thread::spawn(move || {
+                // SAFETY: test-only; the env is read once inside `init`.
+                if disabled {
+                    unsafe { std::env::set_var("FAILPROOFAI_NO_LOG_UPLOAD", "1") };
+                }
+                init(&d, Some(10));
+                if disabled {
+                    unsafe { std::env::remove_var("FAILPROOFAI_NO_LOG_UPLOAD") };
+                }
+                let _ = tx.send(());
+            });
+            assert!(
+                rx.recv_timeout(Duration::from_secs(3)).is_ok(),
+                "init blocked on a FIFO (uploads disabled: {disabled})"
+            );
+            assert!(
+                tail(&log, None, TAIL_BYTES).is_none(),
+                "a FIFO is not a log"
+            );
+        }
     }
 
     #[test]

@@ -178,6 +178,10 @@ def evaluate_policy(
     ):
         version = answered
         response = _exchange(build(version), connect_timeout_ms, deadline)
+        # Asked again after the answer: a targeted deployment activated while
+        # the older daemon was evaluating makes its answer unsafe too.
+        if _agent_targeted_deployment():
+            raise EvaluationError("failproofai protocol version mismatch")
 
     if not isinstance(response, dict):
         raise EvaluationError("failproofaid returned a non-object response")

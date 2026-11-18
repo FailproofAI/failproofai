@@ -383,3 +383,62 @@ fn real_binary_starts_against_a_home_with_no_marker() {
     drop(stream);
     daemon.terminate();
 }
+
+/// An unclean previous exit (`logs/daemon.running` left behind) plus a FIFO
+/// where `daemon.log` belongs: the daemon must still bind its socket, with
+/// log uploads on or off. Reading the previous run's log opened that path
+/// blocking and waited for a writer that never came, before the socket was
+/// bound — every hook on the machine then went without a verdict.
+#[test]
+fn a_fifo_log_after_an_unclean_exit_does_not_stall_startup() {
+    use std::os::unix::fs::DirBuilderExt;
+    for disabled in [false, true] {
+        let socket_path = unique_socket_path(if disabled { "fifo-off" } else { "fifo-on" });
+        let run_dir = socket_path.parent().unwrap();
+        std::fs::DirBuilder::new()
+            .recursive(true)
+            .mode(0o700)
+            .create(run_dir)
+            .unwrap();
+        let logs = scratch_home(&socket_path).join("logs");
+        std::fs::DirBuilder::new()
+            .recursive(true)
+            .mode(0o700)
+            .create(&logs)
+            .unwrap();
+        std::fs::write(logs.join("daemon.running"), "1").unwrap();
+        let fifo = std::ffi::CString::new(
+            logs.join("daemon.log")
+                .into_os_string()
+                .into_encoded_bytes(),
+        )
+        .unwrap();
+        assert_eq!(unsafe { libc::mkfifo(fifo.as_ptr(), 0o600) }, 0);
+
+        // `spawn_daemon` panics with the daemon's stderr if no socket appears.
+        // SAFETY: the variable is read by the child only.
+        if disabled {
+            unsafe { std::env::set_var("FAILPROOFAI_NO_LOG_UPLOAD", "1") };
+        }
+        let mut daemon = spawn_daemon(&socket_path);
+        if disabled {
+            unsafe { std::env::remove_var("FAILPROOFAI_NO_LOG_UPLOAD") };
+        }
+        let mut stream = UnixStream::connect(&socket_path).expect("connect");
+        write_message(
+            &mut stream,
+            &ClientMessage::Ping {
+                protocol_version: PROTOCOL_VERSION,
+            },
+        )
+        .unwrap();
+        let response: ServerMessage = read_message(&mut stream).unwrap();
+        assert_eq!(
+            response,
+            ServerMessage::Pong {
+                protocol_version: PROTOCOL_VERSION
+            }
+        );
+        assert!(daemon.terminate().success());
+    }
+}

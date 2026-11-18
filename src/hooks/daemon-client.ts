@@ -230,7 +230,12 @@ async function attemptDaemonRequest(
   ) {
     return withoutDaemonVersion(first);
   }
-  return withoutDaemonVersion(await attemptDaemonRequestAt(older, build, opts));
+  const retried = await attemptDaemonRequestAt(older, build, opts);
+  // Asked again AFTER the answer: Cloud may have activated a targeted
+  // deployment while the older daemon was evaluating, and then its answer
+  // (made without this agent) is no safer than if it had been asked then.
+  if (cloudDeploymentMayTargetAgents()) return withoutDaemonVersion(first);
+  return withoutDaemonVersion(retried);
 }
 
 function withoutDaemonVersion(attempt: DaemonWireAttempt): DaemonWireAttempt {

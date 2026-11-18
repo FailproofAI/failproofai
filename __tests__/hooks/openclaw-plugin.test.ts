@@ -286,6 +286,25 @@ describe("openclaw-plugin daemon-client: requestHookVerdict", () => {
     }
   });
 
+  it("discards the older daemon's answer when a targeted deployment arrives during the retry", async () => {
+    const policies = join(dir, "cloud-policies-inflight");
+    mkdirSync(policies, { recursive: true });
+    vi.stubEnv("FAILPROOFAI_CLOUD_POLICY_DIR", policies);
+    const daemon = await fakeDaemon(socketPath, (request) => {
+      if (request.protocolVersion !== 1) return { type: "error", protocolVersion: 1, message: "mismatch" };
+      writeFileSync(join(policies, "active.json"), JSON.stringify({ schemaVersion: 3, deployment: 5, policies: [] }));
+      return { type: "hookResult", protocolVersion: 1, exitCode: 0, stdout: "", stderr: "" };
+    });
+    try {
+      const result = await requestHookVerdict({ event: "before_tool_call", payload: {}, socketPath });
+      expect(daemon.requests.map((r) => r.protocolVersion)).toEqual([2, 1]);
+      expect(result).toMatchObject({ ok: false, failure: "protocol-mismatch" });
+      expect(result).not.toHaveProperty("daemonVersion");
+    } finally {
+      await daemon.close();
+    }
+  });
+
   it("does not retry below the oldest supported version", async () => {
     const daemon = await fakeDaemon(socketPath, () => ({ type: "error", protocolVersion: 0, message: "x" }));
     try {

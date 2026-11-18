@@ -441,7 +441,24 @@ fn spawn_collector_manager(
     let interval = collector_config_poll_interval();
     std::thread::Builder::new()
         .name("fpai-collect-mgr".to_string())
-        .spawn(move || supervised("the collector manager", &daemon_shutdown, || {
+        .spawn(move || {
+        // Held OUTSIDE the supervised body, like the cloud lane's state: a
+        // panic unwinds the body, not these, so a restart still owns the
+        // deployments the last run started and stops them before anything new
+        // runs over the same queues and cursors. Dropped by the unwind, a
+        // handle mid-upload outlived its flush budget, detached, and kept
+        // running beside its replacement.
+        let mut collector_slot: Option<fpai_collect::CollectorHandle> = None;
+        let mut draining_slot: Option<fpai_collect::CollectorHandle> = None;
+        supervised("the collector manager", &daemon_shutdown, || {
+            let collector = &mut collector_slot;
+            let draining = &mut draining_slot;
+            let stop_budget = collector_stop_budget();
+            // What a run before a panic left running. Waited for, however long
+            // its in-flight upload takes: nothing starts beside it.
+            if !stop_inherited_collectors(collector, draining, stop_budget, &daemon_shutdown) {
+                return;
+            }
             // Wait until collection is enabled. A cheap config read each tick,
             // not the full task build, so an incomplete config waits quietly
             // rather than logging on every interval.
@@ -481,7 +498,7 @@ fn spawn_collector_manager(
             // flipped back to disabled between the check and the build, or the
             // runtime failed to start.
             let mut running_cfg = current_collector_config();
-            let Some(collector) =
+            let Some(first) =
                 fpai_collect::spawn_supervised(collector_tasks(running_cfg.clone()), daemon_shutdown.clone())
             else {
                 return;
@@ -492,11 +509,11 @@ fn spawn_collector_manager(
             // no telemetry code enters `fpai-collect`, and a task quietly
             // restarting in a loop stops being invisible from outside the
             // machine.
-            telemetry::set_collector_metrics(collector.metrics());
+            telemetry::set_collector_metrics(first.metrics());
             // `Option` because `join_with_flush` CONSUMES the handle: the loop
             // has to be able to give a deployment away and hold nothing until it
             // has a replacement.
-            let mut collector = Some(collector);
+            *collector = Some(first);
             // The config this deployment was built from. Comparing the whole
             // `CollectorConfig` rather than just the credential is deliberate:
             // it also covers a stream being switched off, a verbosity change and
@@ -508,11 +525,9 @@ fn spawn_collector_manager(
             // new starts over its queues, and no cursor is rewound under it,
             // until it has stopped. Giving up here used to end this thread and
             // with it all collection until the daemon restarted.
-            let mut draining: Option<fpai_collect::CollectorHandle> = None;
             // A backfill request already taken off disk while a deployment was
             // still draining. Applied once it has stopped, never dropped.
             let mut pending_backfill: Option<backfill::Request> = None;
-            let stop_budget = collector_stop_budget();
 
             loop {
                 if daemon_shutdown.load(Ordering::Relaxed) {
@@ -533,7 +548,7 @@ fn spawn_collector_manager(
                     match old.stop_within(Duration::from_millis(200)) {
                         Ok(()) => tracing::info!("previous collector stopped; starting its replacement"),
                         Err(still) => {
-                            draining = Some(still);
+                            *draining = Some(still);
                             continue;
                         }
                     }
@@ -550,7 +565,7 @@ fn spawn_collector_manager(
                         && let Err(still) = running.stop_within(stop_budget)
                     {
                         tracing::warn!("previous collector is still draining; the new one starts once it stops");
-                        draining = Some(still);
+                        *draining = Some(still);
                         pending_backfill = Some(request);
                         continue;
                     }
@@ -571,7 +586,7 @@ fn spawn_collector_manager(
                     {
                         Some(next_collector) => {
                             telemetry::set_collector_metrics(next_collector.metrics());
-                            collector = Some(next_collector);
+                            *collector = Some(next_collector);
                         }
                         None => tracing::warn!(
                             "backfill rewound cursors but the collector could not be restarted"
@@ -619,7 +634,7 @@ fn spawn_collector_manager(
                     // Next ticks keep waiting for it; once it stops, the
                     // compare above sees no collector and starts this config.
                     tracing::warn!("previous collector is still draining; the new one starts once it stops");
-                    draining = Some(still);
+                    *draining = Some(still);
                     continue;
                 }
 
@@ -668,7 +683,7 @@ fn spawn_collector_manager(
                 // slot left telemetry polling a collector that had been joined,
                 // reporting a dead deployment's totals as current.
                 telemetry::set_collector_metrics(next_collector.metrics());
-                collector = Some(next_collector);
+                *collector = Some(next_collector);
                 // What was BUILT FROM, not a fresh read. Re-reading here loses
                 // any edit that landed between the spawn and this line: it would
                 // be recorded as the running config and therefore never seen as
@@ -683,11 +698,43 @@ fn spawn_collector_manager(
             if let Some(old) = draining.take() {
                 old.join_with_flush(fpai_collect::DEFAULT_FLUSH_BUDGET);
             }
-        }))
+        });
+        // Shut down while waiting on an inherited deployment: give it the same
+        // flush budget the normal exit path gives a running one.
+        for handle in [collector_slot.take(), draining_slot.take()].into_iter().flatten() {
+            handle.join_with_flush(fpai_collect::DEFAULT_FLUSH_BUDGET);
+        }
+        })
         .inspect_err(|err| {
             tracing::warn!("could not start the collector manager: {err}; nothing is collected this run");
         })
         .ok()
+}
+
+/// Stop the deployments a collector-manager run left behind when it panicked,
+/// and wait until they HAVE stopped: a replacement started beside one that is
+/// still uploading would claim the same spooled batches and rewrite the same
+/// cursors. `false` when shutdown came first; the handle stays in `draining`
+/// for the exit path to flush.
+fn stop_inherited_collectors(
+    collector: &mut Option<fpai_collect::CollectorHandle>,
+    draining: &mut Option<fpai_collect::CollectorHandle>,
+    budget: Duration,
+    shutdown: &AtomicBool,
+) -> bool {
+    while let Some(old) = collector.take().or_else(|| draining.take()) {
+        match old.stop_within(budget) {
+            Ok(()) => tracing::info!("the collector a restarted manager inherited has stopped"),
+            Err(still) => {
+                *draining = Some(still);
+                if shutdown.load(Ordering::Relaxed) {
+                    return false;
+                }
+                std::thread::sleep(Duration::from_millis(200));
+            }
+        }
+    }
+    true
 }
 
 /// Run a long-lived lane's body until it returns, starting it again after a
@@ -2300,6 +2347,66 @@ mod tests {
                 panic!("lane bug");
             });
             assert_eq!(runs, 1);
+        }
+
+        /// F2: a manager that panics while its collector is mid-upload. The
+        /// handle lives outside the supervised body, so the restart owns it
+        /// and starts nothing until the old collector has really stopped.
+        #[test]
+        fn a_restart_waits_for_the_collector_a_panicked_run_left_uploading() {
+            use super::super::stop_inherited_collectors;
+            use fpai_collect::{CollectorHandle, TaskSpec, spawn_supervised};
+            use std::sync::Arc;
+
+            let daemon_shutdown = Arc::new(AtomicBool::new(false));
+            let finished = Arc::new(AtomicBool::new(false));
+            let mut collector: Option<CollectorHandle> = None;
+            let mut draining: Option<CollectorHandle> = None;
+            let mut runs = 0;
+            let mut old_was_done_at_restart = None;
+            supervised_with_backoff(
+                "collector manager",
+                &daemon_shutdown,
+                Duration::from_millis(1),
+                || {
+                    runs += 1;
+                    if runs == 1 {
+                        let done = finished.clone();
+                        collector = spawn_supervised(
+                            vec![TaskSpec::new("uploading", move |sd| {
+                                let done = done.clone();
+                                async move {
+                                    while !sd.is_set() {
+                                        sd.sleep(Duration::from_millis(10)).await;
+                                    }
+                                    // An upload in flight outlasts the stop budget.
+                                    tokio::time::sleep(Duration::from_millis(600)).await;
+                                    done.store(true, Ordering::SeqCst);
+                                    Ok(())
+                                }
+                            })],
+                            daemon_shutdown.clone(),
+                        );
+                        assert!(collector.is_some());
+                        std::thread::sleep(Duration::from_millis(50));
+                        panic!("manager bug after the collector started");
+                    }
+                    assert!(stop_inherited_collectors(
+                        &mut collector,
+                        &mut draining,
+                        Duration::from_millis(50),
+                        &daemon_shutdown,
+                    ));
+                    old_was_done_at_restart = Some(finished.load(Ordering::SeqCst));
+                    assert!(collector.is_none() && draining.is_none());
+                },
+            );
+            assert_eq!(runs, 2);
+            assert_eq!(
+                old_was_done_at_restart,
+                Some(true),
+                "the replacement may start only once the old collector has stopped"
+            );
         }
     }
 

@@ -262,7 +262,12 @@ only a marked copy or a link into a FailproofAI `hermes-plugin/`, refuses anythi
 else with the same name, and uses the `yaml` package's comment-preserving
 `Document` API for config changes. `failproofai update` migrates profiles already
 using FailproofAI (legacy shell hooks or a copy) to the link, gated on the daemon
-answering `policyEvaluation`; legacy shell hooks never run for Hermes cron jobs.
+answering `policyEvaluation`; legacy shell hooks never run for Hermes cron jobs. It then
+restarts each running gateway (Hermes and OpenClaw) through the host's own drain-aware
+restart (`hermes gateway restart`, `openclaw gateway restart --safe`) so it loads the
+updated plugin — a gateway keeps the plugin it imported at start. Only a service-managed
+gateway is touched: without a service, `hermes gateway restart` runs the new gateway in the
+caller's foreground (`src/hooks/gateway-restart.ts`; `update --no-restart` opts out).
 
 Settings file paths:
 

@@ -5,6 +5,7 @@
 ### Fixes
 
 - The daemon answers the previous plugin protocol, and clients re-ask an older daemon in its version, so a Hermes or OpenClaw gateway still running the plugin it loaded before an upgrade keeps getting real verdicts instead of denying every call (#PR)
+- `failproofai update` restarts running Hermes and OpenClaw gateways through their own drain-aware restart (after in-flight work finishes) so they load the updated plugin; only service-managed gateways are touched, and `--no-restart` opts out (#PR)
 
 ## 1.0.15 — 2026-11-18
 

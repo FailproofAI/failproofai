@@ -291,6 +291,24 @@ describe("failproofai update → Hermes migration", () => {
     expect(result.lines.join("\n")).toMatch(/Cron jobs load the plugin on their next run/);
   });
 
+  it("restarts the gateway of a profile on the linked plugin, and says so on its row", async () => {
+    writeConfig("default", LEGACY_CONFIG);
+    writeConfig("work", "model: other\n");
+    const restartGateway = vi.fn((p: { name: string }) => ({
+      host: "hermes" as const, profile: p.name, status: "restarting" as const,
+    }));
+    const result = await runHermesUpdateMigration({ daemonSupportsPolicyEvaluation: daemonYes(), restartGateway });
+    expect(restartGateway).toHaveBeenCalledTimes(1);
+    expect(restartGateway.mock.calls[0][0]).toMatchObject({ name: "default", home: home() });
+    expect(result.lines.join("\n")).toMatch(/hermes\/default\s+migrated — shell hooks → linked plugin, gateway restarting/);
+  });
+
+  it("without a restarter (update --no-restart) the rows are unchanged", async () => {
+    writeConfig("default", LEGACY_CONFIG);
+    const result = await runHermesUpdateMigration({ daemonSupportsPolicyEvaluation: daemonYes() });
+    expect(result.lines.join("\n")).not.toMatch(/, gateway restarting|, restart the gateway/);
+  });
+
   it("migrates a copied plugin (1.0.6–1.0.8) to the link", async () => {
     makeManagedCopy();
     const result = await runHermesUpdateMigration({ daemonSupportsPolicyEvaluation: daemonYes() });

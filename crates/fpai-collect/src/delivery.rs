@@ -427,6 +427,7 @@ pub async fn sweep(
     // nothing was listening.
     let mut next_failed_pass = SystemTime::now();
     let mut next_recovery_pass = SystemTime::now();
+    let mut next_probe = SystemTime::now();
     let mut replays = tokio::task::JoinSet::new();
 
     loop {
@@ -479,6 +480,13 @@ pub async fn sweep(
                 retry_parked(&delivery, &failed_dir, &sd, Duration::ZERO).await;
                 delivery.schedule_refused(&mut replays, &sd);
                 next_recovery_pass = SystemTime::now() + RECOVERY_RETRY_GAP;
+            }
+            // An idle machine sends nothing fresh to notice the server is back:
+            // while the last delivery failed, one parked batch goes as a probe
+            // each gap, and its success is the recovery above.
+            if SystemTime::now() >= next_probe && delivery.failing.load(Ordering::SeqCst) {
+                retry_parked_up_to(&delivery, &failed_dir, &sd, Duration::ZERO, 1).await;
+                next_probe = SystemTime::now() + RECOVERY_RETRY_GAP;
             }
             if SystemTime::now() >= deadline {
                 break;
@@ -543,6 +551,16 @@ fn sweepable(name: &str) -> bool {
 }
 
 async fn retry_parked(delivery: &Delivery, failed_dir: &Path, sd: &Shutdown, min_age: Duration) {
+    retry_parked_up_to(delivery, failed_dir, sd, min_age, FAILED_RETRY_MAX_FILES).await;
+}
+
+async fn retry_parked_up_to(
+    delivery: &Delivery,
+    failed_dir: &Path,
+    sd: &Shutdown,
+    min_age: Duration,
+    max: usize,
+) {
     let Ok(mut rd) = tokio::fs::read_dir(failed_dir).await else {
         return;
     };
@@ -573,12 +591,9 @@ async fn retry_parked(delivery: &Delivery, failed_dir: &Path, sd: &Shutdown, min
         return;
     }
     found.sort_by_key(|(t, _)| *t);
-    tracing::info!(
-        count = found.len().min(FAILED_RETRY_MAX_FILES),
-        "retrying parked batches"
-    );
+    tracing::info!(count = found.len().min(max), "retrying parked batches");
 
-    for (_, path) in found.into_iter().take(FAILED_RETRY_MAX_FILES) {
+    for (_, path) in found.into_iter().take(max) {
         if sd.is_set() {
             return;
         }
@@ -641,7 +656,8 @@ mod tests {
     }
 
     /// What an outage parked goes as soon as the server accepts a batch again,
-    /// not at the hourly pass and not only once it is five minutes old.
+    /// not at the hourly pass and not only once it is five minutes old — even
+    /// on an idle machine, through a one-batch probe.
     #[tokio::test(flavor = "multi_thread")]
     async fn an_accepted_delivery_after_an_outage_retries_parked_batches_now() {
         use wiremock::matchers::method;
@@ -657,6 +673,9 @@ mod tests {
         let failed = tmpdir("recovery-failed");
         let spool = tmpdir("recovery-spool");
         // Parked by the outage a moment ago: younger than FAILED_RETRY_MIN_AGE.
+        let probe_first = failed.join("hooks-activity-0-0.a1.jsonl");
+        std::fs::write(&probe_first, "{}\n").unwrap();
+        std::thread::sleep(Duration::from_millis(20));
         let parked = failed.join("hooks-activity-1-0.a1.jsonl");
         std::fs::write(&parked, "{}\n").unwrap();
         // A refusal is not an outage: it stays for the credential redrive.
@@ -675,22 +694,21 @@ mod tests {
             sd,
             Arc::new(std::sync::atomic::AtomicBool::new(false)),
         ));
-        // The cold-start pass keeps the age gate: the young park stays.
-        tokio::time::sleep(Duration::from_millis(1500)).await;
-        assert!(parked.exists(), "no recovery has been seen yet");
-
-        // A fresh batch the server accepts: it is back.
-        let fresh = spool.join("hooks-activity-2-0.jsonl");
-        std::fs::write(&fresh, "{}\n").unwrap();
-        delivery.deliver(fresh.clone()).await;
+        // Nothing fresh to send: the first parked batch goes as a probe, and
+        // its success lets the rest follow (an idle machine recovers too).
         let deadline = std::time::Instant::now() + Duration::from_secs(10);
-        while parked.exists() && std::time::Instant::now() < deadline {
+        while (probe_first.exists() || parked.exists()) && std::time::Instant::now() < deadline {
             tokio::time::sleep(Duration::from_millis(100)).await;
         }
         assert!(
-            !parked.exists(),
-            "the parked batch must go once the server is back"
+            !probe_first.exists(),
+            "the oldest parked batch is the probe"
         );
+        assert!(
+            !parked.exists(),
+            "an accepted probe lets the rest of the outage's batches go"
+        );
+
         assert!(
             refused.exists(),
             "a 422 refusal is not retried as an outage"

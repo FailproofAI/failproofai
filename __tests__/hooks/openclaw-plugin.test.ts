@@ -531,6 +531,17 @@ describe("openclaw-plugin hooks", () => {
     );
   });
 
+  it("names the tool call it checks, from the event or the tool context", async () => {
+    const { api, handlers } = fakeApi();
+    const evaluate = vi.fn(async () => ({ ok: true, verdict: { permission: "allow" } }));
+    registerFailproofaiHooks(api, { evaluate });
+    await handlers.get("before_tool_call")!({ ...toolCall, toolCallId: "call_evt" }, { ...ctx, toolCallId: "call_ctx" });
+    await handlers.get("after_tool_call")!({ ...toolCall, result: "ok" }, { ...ctx, toolCallId: "call_ctx" });
+    await handlers.get("before_tool_call")!(toolCall, ctx);
+    const sent = evaluate.mock.calls.map((call) => (call as unknown as [string, Record<string, unknown>])[1].tool_use_id);
+    expect(sent).toEqual(["call_evt", "call_ctx", undefined]);
+  });
+
   it("maps a deny to each gate's native shape", async () => {
     const { api, handlers } = fakeApi();
     registerFailproofaiHooks(api, {

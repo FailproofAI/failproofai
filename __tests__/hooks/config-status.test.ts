@@ -301,6 +301,20 @@ describe("config --status — delivery", () => {
     expect(deliveryRow({ refused: parked })).toBe("● Healthy, last event 12s ago, 2 batches queued");
   });
 
+  it("calls a long outage stuck even when the spool keeps moving into failed/", () => {
+    // Every spool batch is young (just written, then parked), but the parked
+    // ones are 2h old and nothing has been accepted since.
+    const parked = { ...facts().delivery!.refused, total: 40, retrying: 40, oldestAgeMs: 2 * 3_600_000 };
+    const down = { ...health, lastOkAt: NOW - 2 * 3_600_000 };
+    expect(deliveryRow({ queued: 3, oldestQueuedMs: 10_000, refused: parked, health: down })).toBe(
+      "▲ 43 batches queued, oldest 2h, last delivered 2h ago",
+    );
+    // The same backlog while uploads succeed is draining, not stuck.
+    expect(deliveryRow({ queued: 3, oldestQueuedMs: 10_000, refused: parked })).toBe(
+      "● Healthy, last event 12s ago, 43 batches queued",
+    );
+  });
+
   it("puts refused batches in the row, with their status and age", () => {
     const refused = { total: 26, rejected: 26, credentialRejected: 26, resending: 0, byStatus: { 401: 26 }, oldestAgeMs: 134 * 60_000 };
     expect(deliveryRow({ refused })).toBe("▲ 26 batches refused (401), oldest 2h14m");

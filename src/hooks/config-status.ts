@@ -532,15 +532,23 @@ export function renderStatusScreen(facts: StatusFacts, opts: ScreenKitOpts & { c
     // Batches an earlier key had refused wait for the daemon to re-send them
     // with the key that works now: queued, not refused.
     // So do batches an outage parked: the daemon retries them itself.
-    const pending = queued + (refused.resending ?? 0) + (refused.retrying ?? 0);
+    const retrying = refused.retrying ?? 0;
+    const pending = queued + (refused.resending ?? 0) + retrying;
     const backlog = pending === 0 ? "nothing queued" : `${many(pending, "batch", "batches")} queued`;
+    // A long outage moves the spool into `failed/` batch by batch, so the spool
+    // alone always looks young: the parked batches' age counts too.
+    const waiting = queued + retrying;
+    const oldestWaitingMs = Math.max(
+      queued > 0 ? (oldestQueuedMs ?? 0) : 0,
+      retrying > 0 ? (refused.oldestAgeMs ?? 0) : 0,
+    );
     const stuck =
-      queued > 0 &&
-      (oldestQueuedMs ?? 0) > STATUS_QUEUE_STUCK_MS &&
+      waiting > 0 &&
+      oldestWaitingMs > STATUS_QUEUE_STUCK_MS &&
       (health.lastOkAt === undefined || now - health.lastOkAt > STATUS_QUEUE_STUCK_MS);
     if (stuck) {
       const last = health.lastOkAt !== undefined ? `last delivered ${ago(health.lastOkAt)}` : "nothing delivered since failproofaid started";
-      return kit.caution(`${many(queued, "batch", "batches")} queued, oldest ${formatDuration(oldestQueuedMs ?? 0)}, ${last}`);
+      return kit.caution(`${many(waiting, "batch", "batches")} queued, oldest ${formatDuration(oldestWaitingMs)}, ${last}`);
     }
     const lastEvent = health.lastEventAt !== undefined ? `last event ${ago(health.lastEventAt)}` : "no events since failproofaid started";
     return `${kit.on} Healthy, ${lastEvent}, ${backlog}`;

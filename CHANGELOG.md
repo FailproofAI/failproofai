@@ -23,7 +23,7 @@
 - Batches an outage parked are retried as soon as the server accepts a batch again (or, on an idle machine, within one 5-minute probe) instead of at the hourly pass, and `config --status` counts them as queued rather than "nothing queued"; a long outage reads as stuck ("N batches queued, oldest …, last delivered …") instead of "Healthy", since its batches sit in the parked queue rather than the spool (#1023)
 - Allow roll-ups (the default `decisions` verbosity) are stamped when their first hook arrived instead of at the top of their minute, which put them before the tool calls they covered, and name the `tool_call_ids` they cover (#1023)
 - Setup's summary on a Cloud-managed machine says "Deploy from Cloud" instead of pointing at installing a pack (#1023)
-- The first `failproofai config` on a new version (a fresh install, or the first after `npm i -g failproofai`) finishes the upgrade the way `failproofai update` does: it migrates Hermes profiles and restarts running, service-managed Hermes and OpenClaw gateways so they load the plugin now on disk. Setup used to leave a gateway that was already running on the plugin it loaded before, or with none, until someone ran `update` (#1023)
+- The first `failproofai config` on a new version (a fresh install, or the first after `npm i -g failproofai`) finishes the upgrade the way `failproofai update` does: it migrates Hermes profiles and restarts running, service-managed Hermes and OpenClaw gateways so they load the plugin now on disk. A later setup that plugs in a profile created since restarts that profile's gateway. Setup used to leave a gateway that was already running on the plugin it loaded before, or with none, until someone ran `update` (#1023)
 
 ## 1.0.15 — 2026-11-18
 

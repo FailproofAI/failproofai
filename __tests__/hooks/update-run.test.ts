@@ -24,7 +24,16 @@ vi.mock("../../src/hooks/daemon-service", () => svc);
 vi.mock("../../src/hooks/hermes-update", () => hermes);
 vi.mock("../../src/hooks/gateway-restart", () => gateways);
 
-import { markUpdated, readUpdatedVersion, runUpdateSteps, setupGatewayLine, setupNeedsUpdateSteps } from "../../src/hooks/update-run";
+import {
+  markUpdated,
+  readUpdatedVersion,
+  restartNewlyPlugged,
+  runUpdateSteps,
+  setupGatewayLine,
+  setupNeedsUpdateSteps,
+  type PluggedProfile,
+} from "../../src/hooks/update-run";
+import type { GatewayRestart } from "../../src/hooks/gateway-restart";
 
 /** Hermes as `runHermesUpdateMigration` reports it, calling the restart it was handed. */
 function hermesWith(status: "current" | "migrated" | "untouched") {
@@ -155,5 +164,53 @@ describe("what config prints about it", () => {
       "hermes/default:restarting",
       "openclaw/ops:restarting",
     ]);
+  });
+});
+
+describe("a setup that plugs in a profile created after the version's first setup", () => {
+  const p = (host: "hermes" | "openclaw", name: string): PluggedProfile => ({ host, name, home: `/h/${host}-${name}` });
+  const before = [p("hermes", "default"), p("openclaw", "default")];
+  const restarted =
+    (host: "hermes" | "openclaw") =>
+    (q: { name: string; home: string }): GatewayRestart => ({ host, profile: q.name, status: "restarting" });
+
+  it("restarts only the gateways of the profiles it plugged in", async () => {
+    const restartHermes = vi.fn(restarted("hermes"));
+    const restartOpenClaw = vi.fn(restarted("openclaw"));
+    const restarts = await restartNewlyPlugged(before, {
+      plugged: async () => [...before, p("hermes", "work"), p("openclaw", "work")],
+      daemonRunning: async () => true,
+      restartHermes,
+      restartOpenClaw,
+    });
+    expect(restartHermes).toHaveBeenCalledTimes(1);
+    expect(restartHermes.mock.calls[0][0]).toMatchObject({ name: "work", home: "/h/hermes-work" });
+    expect(restartOpenClaw).toHaveBeenCalledTimes(1);
+    expect(setupGatewayLine(restarts)).toEqual({ ok: true, text: "hermes/work, openclaw/work: gateway restarting" });
+  });
+
+  it("restarts nothing when every plugged profile already was", async () => {
+    const restartHermes = vi.fn(restarted("hermes"));
+    const restarts = await restartNewlyPlugged(before, {
+      plugged: async () => before,
+      daemonRunning: async () => true,
+      restartHermes,
+      restartOpenClaw: restartHermes,
+    });
+    expect(restarts).toEqual([]);
+    expect(restartHermes).not.toHaveBeenCalled();
+    expect(setupGatewayLine(restarts)).toBeNull();
+  });
+
+  it("restarts nothing onto a daemon that is not running", async () => {
+    const restartHermes = vi.fn(restarted("hermes"));
+    const restarts = await restartNewlyPlugged([], {
+      plugged: async () => [p("hermes", "work")],
+      daemonRunning: async () => false,
+      restartHermes,
+      restartOpenClaw: restartHermes,
+    });
+    expect(restarts).toEqual([]);
+    expect(restartHermes).not.toHaveBeenCalled();
   });
 });

@@ -2019,6 +2019,8 @@ async function runCli() {
       if (refusal) throw new CliError(refusal);
     }
     const { runConfigureWizard } = await import("../src/hooks/configure-wizard");
+    const { pluggedProfiles } = await import("../src/hooks/update-run");
+    const pluggedBefore = await pluggedProfiles().catch(() => []);
     const result = await runConfigureWizard(
       {},
       {
@@ -2048,13 +2050,19 @@ async function runCli() {
     // the daemon to this version and the entry check migrated the home.
     let updateExit = 0;
     if (result.applied) {
-      const { runUpdateSteps, markUpdated, setupNeedsUpdateSteps, setupGatewayLine } = await import("../src/hooks/update-run");
-      if (setupNeedsUpdateSteps(version)) {
+      const { runUpdateSteps, markUpdated, setupNeedsUpdateSteps, setupGatewayLine, restartNewlyPlugged } =
+        await import("../src/hooks/update-run");
+      const { screenKit, colorsEnabled } = await import("../src/hooks/tui");
+      const kit = screenKit({ color: colorsEnabled(process.stdout) });
+      if (!setupNeedsUpdateSteps(version)) {
+        // Already updated on this version: only a profile this run plugged in
+        // (one created since) has a gateway still running without the plugin.
+        const gateway = setupGatewayLine(await restartNewlyPlugged(pluggedBefore).catch(() => []));
+        if (gateway) process.stdout.write(`${gateway.ok ? kit.ok(gateway.text) : kit.caution(gateway.text)}\n`);
+      } else {
         const run = await runUpdateSteps({ layout: false, daemon: false, restart: true });
         // One line at most, in update's own words; a Hermes failure keeps its
         // existing ✕ line so it is not lost.
-        const { screenKit, colorsEnabled } = await import("../src/hooks/tui");
-        const kit = screenKit({ color: colorsEnabled(process.stdout) });
         const gateway = setupGatewayLine(run.restarts);
         const out = [
           ...run.lines.filter((l) => l.startsWith("✕")),

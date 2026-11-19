@@ -193,6 +193,58 @@ export function setupGatewayLine(restarts: GatewayRestart[]): { ok: boolean; tex
   return null;
 }
 
+/** A Hermes or OpenClaw profile whose gateway loads FailproofAI's plugin when it starts. */
+export interface PluggedProfile {
+  host: "hermes" | "openclaw";
+  name: string;
+  home: string;
+}
+
+export async function pluggedProfiles(): Promise<PluggedProfile[]> {
+  const { hermesProfileHealth } = await import("./integrations");
+  const { openclawProfilesUsingFailproofai } = await import("./gateway-restart");
+  return [
+    ...hermesProfileHealth()
+      .filter((p) => p.pluginInstalled && p.pluginEnabled && !p.pluginDisabled)
+      .map((p): PluggedProfile => ({ host: "hermes", name: p.name, home: p.home })),
+    ...openclawProfilesUsingFailproofai().map((p): PluggedProfile => ({ host: "openclaw", ...p })),
+  ];
+}
+
+export interface NewlyPluggedDeps {
+  plugged?: () => Promise<PluggedProfile[]>;
+  daemonRunning?: () => Promise<boolean>;
+  restartHermes?: (p: { name: string; home: string }) => GatewayRestart;
+  restartOpenClaw?: (p: { name: string; home: string }) => GatewayRestart;
+}
+
+/**
+ * Restart the gateways of profiles this setup run plugged in, given
+ * `pluggedProfiles()` from before it. A profile created after the version's
+ * first setup gets the plugin on disk, but its gateway is already running and
+ * would go on without it, unchecked, until something restarted it.
+ */
+export async function restartNewlyPlugged(
+  before: PluggedProfile[],
+  deps: NewlyPluggedDeps = {},
+): Promise<GatewayRestart[]> {
+  const key = (p: PluggedProfile) => `${p.host}/${p.name}`;
+  const had = new Set(before.map(key));
+  const fresh = (await (deps.plugged ?? pluggedProfiles)()).filter((p) => !had.has(key(p)));
+  if (fresh.length === 0) return [];
+  const daemonRunning =
+    deps.daemonRunning ??
+    (async () => {
+      const svc = await import("./daemon-service");
+      return svc.isDaemonSupportedPlatform() && svc.daemonServiceStatus() === "running";
+    });
+  if (!(await daemonRunning())) return [];
+  const restart = await import("./gateway-restart");
+  const hermes = deps.restartHermes ?? ((p) => restart.restartHermesGateway(p));
+  const openclaw = deps.restartOpenClaw ?? ((p) => restart.restartOpenClawGateway(p));
+  return fresh.map((p) => (p.host === "hermes" ? hermes(p) : openclaw(p)));
+}
+
 function mentionsGateway(lines: string[]): boolean {
   return lines.some((l) => /gateway/.test(l));
 }

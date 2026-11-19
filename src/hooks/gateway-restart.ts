@@ -207,7 +207,7 @@ export function openclawProfileEnv(
 }
 
 /** Profiles whose openclaw.json loads our plugin; only their gateways run it. */
-function openclawProfilesUsingFailproofai(): Array<{ name: string; home: string }> {
+export function openclawProfilesUsingFailproofai(): Array<{ name: string; home: string }> {
   return listOpenClawProfiles().filter((profile) => {
     try {
       const settings = JSON.parse(readFileSync(join(profile.home, "openclaw.json"), "utf8")) as {

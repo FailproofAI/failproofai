@@ -275,6 +275,13 @@ const COMMAND_PREFIX_TOKENS = new Set([
   "sh", "bash", "zsh", "dash", "ksh", "fish", "ash",
 ]);
 
+/**
+ * The `command` builtin's flags when they ask for a lookup (`-v`, `-V`, also
+ * combined with `-p`, as in `-pv`). With one of them, `command` prints how the
+ * name resolves and does not execute it.
+ */
+const COMMAND_LOOKUP_FLAGS_RE = /^-p?[vV]p?$/;
+
 /** The binary itself, however it is pinned or pathed: `failproofai`,
  * `failproofai@latest`, `/usr/local/bin/failproofai`,
  * `./node_modules/.bin/failproofai`, `.../failproofai/bin/failproofai.mjs`. */
@@ -347,6 +354,9 @@ function classifySelfInvocation(raw: string): SelfInvocation | null {
   for (const segment of command.split(SEGMENT_SEPARATORS)) {
     const tokens = segment.split(/\s+/).filter(Boolean);
     let i = 0;
+    // Set when `command -v` / `command -V` stands in front of the name: the
+    // shell only looks the name up and never runs it.
+    let lookupOnly = false;
     // Walk off everything a shell resolves before it settles on the command:
     // prefix assignments, redirections, runner flags, and the runners.
     while (i < tokens.length) {
@@ -359,9 +369,16 @@ function classifySelfInvocation(raw: string): SelfInvocation | null {
         RUNNER_OPERAND_RE.test(token) ||
         COMMAND_PREFIX_TOKENS.has(token.slice(token.lastIndexOf("/") + 1));
       if (!isSkippable) break;
+      if (token.slice(token.lastIndexOf("/") + 1) === "command") {
+        lookupOnly = false;
+        for (let j = i + 1; j < tokens.length && tokens[j].startsWith("-"); j++) {
+          if (COMMAND_LOOKUP_FLAGS_RE.test(tokens[j])) lookupOnly = true;
+        }
+      }
       i++;
     }
     if (i >= tokens.length) continue;
+    if (lookupOnly) continue;
     if (
       !SELF_BINARY_TOKEN_RE.test(tokens[i]) &&
       !SELF_ENTRY_PATH_RE.test(tokens[i]) &&

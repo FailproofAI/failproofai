@@ -606,7 +606,10 @@ impl Scrub {
 enum Kind {
     Requested(String),
     Incident,
-    Errors,
+    /// What the roll-up carried: each entry's count, and the overflow count.
+    /// Only that is acknowledged, so a warning logged while the upload was in
+    /// flight stays for the next one.
+    Errors(Vec<(String, u64)>, u64),
 }
 
 fn wire_entries(entries: &[Entry], scrub: &Scrub) -> Vec<Value> {
@@ -733,8 +736,13 @@ fn ship_at(machine_id: &str, scrub: &Scrub, post: &dyn Fn(&Value) -> PostOutcome
                     last_ts: None,
                 });
             }
+            let sent: Vec<(String, u64)> = st
+                .error_order
+                .iter()
+                .filter_map(|k| st.errors.get(k).map(|e| (k.clone(), e.count)))
+                .collect();
             (
-                Kind::Errors,
+                Kind::Errors(sent, st.errors_overflow),
                 body(machine_id, "errors", None, None, &entries, scrub),
             )
         } else {
@@ -778,10 +786,23 @@ fn ship_at(machine_id: &str, scrub: &Scrub, post: &dyn Fn(&Value) -> PostOutcome
                 let _ = write_private(&stamp, sent.to_string().as_bytes());
             }
         }
-        Kind::Errors => {
-            st.errors.clear();
-            st.error_order.clear();
-            st.errors_overflow = 0;
+        Kind::Errors(sent, overflow) => {
+            for (key, count) in sent {
+                let left = st.errors.get_mut(&key).map(|e| {
+                    e.count = e.count.saturating_sub(count);
+                    e.count
+                });
+                if left == Some(0) {
+                    st.errors.remove(&key);
+                }
+            }
+            let State {
+                errors,
+                error_order,
+                ..
+            } = &mut *st;
+            error_order.retain(|k| errors.contains_key(k));
+            st.errors_overflow = st.errors_overflow.saturating_sub(overflow);
             st.last_errors_sent = Some(now);
         }
     }
@@ -884,6 +905,53 @@ mod tests {
         record(Level::WARN, "x", &line("WARN", "x", "again"), t0);
         assert!(collect(t0 + Duration::from_secs(60)).is_empty());
         assert_eq!(collect(t0 + ERRORS_EVERY).len(), 1);
+    }
+
+    #[test]
+    fn a_warning_logged_during_the_upload_is_kept_for_the_next_one() {
+        let _g = LOCK.lock().unwrap();
+        reset_for_test(true);
+        let t0 = Instant::now();
+        record(Level::WARN, "x", &line("WARN", "x", "retry 1"), t0);
+        record(Level::WARN, "x", &line("WARN", "x", "seen once"), t0);
+        let sent = RefCell::new(Vec::new());
+        ship_at(
+            "m-1",
+            &scrub(),
+            &|v| {
+                sent.borrow_mut().push(v.clone());
+                // Logged while the request is in flight (the lock is free):
+                // the same warning again, and new ones.
+                for _ in 0..5 {
+                    record(Level::WARN, "x", &line("WARN", "x", "retry 2"), t0);
+                }
+                record(Level::WARN, "x", &line("WARN", "x", "brand new"), t0);
+                PostOutcome::Stored
+            },
+            t0,
+        );
+        let first = sent.into_inner();
+        assert_eq!(first.len(), 1);
+        assert_eq!(first[0]["entries"].as_array().unwrap().len(), 2);
+        let next = collect(t0 + ERRORS_EVERY);
+        assert_eq!(next.len(), 1);
+        let entries = next[0]["entries"].as_array().unwrap();
+        let by_msg: Vec<(String, u64)> = entries
+            .iter()
+            .map(|e| {
+                (
+                    e["message"].as_str().unwrap().to_string(),
+                    e["count"].as_u64().unwrap(),
+                )
+            })
+            .collect();
+        // "retry N" folds to one fingerprint: 1 was sent, 5 arrived after.
+        assert_eq!(
+            by_msg,
+            vec![("retry 1".to_string(), 5), ("brand new".to_string(), 1)]
+        );
+        // Everything acknowledged now.
+        assert!(collect(t0 + ERRORS_EVERY * 2).is_empty());
     }
 
     #[test]

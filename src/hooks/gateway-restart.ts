@@ -22,7 +22,7 @@
  * host waits out its drain.
  */
 import { spawn, spawnSync } from "node:child_process";
-import { closeSync, mkdirSync, openSync, readFileSync } from "node:fs";
+import { chmodSync, closeSync, mkdirSync, openSync, readFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { homedir } from "node:os";
 import { listOpenClawProfiles, OPENCLAW_DEFAULT_PROFILE } from "../../lib/openclaw-profiles";
@@ -70,12 +70,23 @@ function restartLogPath(): string {
   return `${logsDir()}/gateway-restart.log`;
 }
 
+/**
+ * The gateways' restart output, owner-only like daemon.log. An existing file
+ * from before this was set is tightened too.
+ * @internal exported for tests
+ */
+export function openRestartLog(): number {
+  const log = restartLogPath();
+  mkdirSync(dirname(log), { recursive: true, mode: 0o700 });
+  const fd = openSync(log, "a", 0o600);
+  chmodSync(log, 0o600);
+  return fd;
+}
+
 function defaultSpawnDetached(cmd: string, args: string[], env: NodeJS.ProcessEnv): boolean {
   let fd: number | undefined;
   try {
-    const log = restartLogPath();
-    mkdirSync(dirname(log), { recursive: true });
-    fd = openSync(log, "a");
+    fd = openRestartLog();
     const child = spawn(cmd, args, { env, detached: true, stdio: ["ignore", fd, fd] });
     child.on("error", () => {});
     child.unref();

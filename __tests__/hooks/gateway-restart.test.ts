@@ -5,7 +5,11 @@
  * `hermes gateway restart` runs the new gateway in the caller's foreground.
  */
 import { describe, it, expect, vi } from "vitest";
+import { chmodSync, closeSync, mkdtempSync, rmSync, statSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import {
+  openRestartLog,
   openclawRestartLines,
   restartHermesGateway,
   restartOpenClawGateway,
@@ -168,6 +172,26 @@ describe("OpenClaw profile selection", () => {
     } finally {
       if (prev === undefined) delete process.env.OPENCLAW_PROFILE;
       else process.env.OPENCLAW_PROFILE = prev;
+    }
+  });
+});
+
+describe("the gateway restart log", () => {
+  it("is owner-only, and tightens one left world-readable", () => {
+    const home = mkdtempSync(join(tmpdir(), "fp-restart-log-"));
+    const prev = process.env.FAILPROOFAI_HOME;
+    process.env.FAILPROOFAI_HOME = home;
+    try {
+      closeSync(openRestartLog());
+      const log = join(home, "logs", "gateway-restart.log");
+      expect(statSync(log).mode & 0o777).toBe(0o600);
+      chmodSync(log, 0o664);
+      closeSync(openRestartLog());
+      expect(statSync(log).mode & 0o777).toBe(0o600);
+    } finally {
+      if (prev === undefined) delete process.env.FAILPROOFAI_HOME;
+      else process.env.FAILPROOFAI_HOME = prev;
+      rmSync(home, { recursive: true, force: true });
     }
   });
 });

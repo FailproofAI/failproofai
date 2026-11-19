@@ -669,7 +669,13 @@ async function runCli() {
       // test on a seeded layout-2 home, not by a unit test: nothing below the CLI
       // entry point can see this ordering.
       const { checkLayoutForCli } = await import("../src/hooks/fp-reset");
-      const check = await checkLayoutForCli();
+      // Setup brings the daemon to this version itself, so it is not told to
+      // run `update` first; its other modes (--status, --pause, …) still are.
+      const setupRun =
+        args[0] === "config" &&
+        !["--status", "--pause", "--resume", "--connect", "--disconnect"].some((f) => args.includes(f)) &&
+        !(args.includes("--machine-label") && !["--token", "--oss", "--agents"].some((f) => args.includes(f)));
+      const check = await checkLayoutForCli({ daemonUpdatedByCommand: setupRun });
       // Written rather than `console.error`, which Bun paints red on a terminal.
       if (check.lines.length > 0) process.stderr.write(`${check.lines.join("\n")}\n`);
       if (check.fatal) await exitAfterFlush(1);

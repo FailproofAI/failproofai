@@ -24,7 +24,7 @@ vi.mock("../../src/hooks/daemon-service", () => svc);
 vi.mock("../../src/hooks/hermes-update", () => hermes);
 vi.mock("../../src/hooks/gateway-restart", () => gateways);
 
-import { markUpdated, readUpdatedVersion, runUpdateSteps, setupNeedsUpdateSteps } from "../../src/hooks/update-run";
+import { markUpdated, readUpdatedVersion, runUpdateSteps, setupGatewayLine, setupNeedsUpdateSteps } from "../../src/hooks/update-run";
 
 /** Hermes as `runHermesUpdateMigration` reports it, calling the restart it was handed. */
 function hermesWith(status: "current" | "migrated" | "untouched") {
@@ -122,5 +122,38 @@ describe("runUpdateSteps as update runs it", () => {
     expect(run.ok).toBe(false);
     expect(gateways.restartHermesGateway).not.toHaveBeenCalled();
     expect(gateways.restartOpenClawGateways).not.toHaveBeenCalled();
+  });
+});
+
+describe("what config prints about it", () => {
+  const r = (host: "hermes" | "openclaw", profile: string, status: string) => ({ host, profile, status }) as never;
+
+  it("is one line, in update's own words, naming every profile", () => {
+    expect(setupGatewayLine([r("hermes", "default", "restarting"), r("hermes", "work", "restarting"), r("openclaw", "ops", "restarting")])).toEqual({
+      ok: true,
+      text: "hermes/default, hermes/work, openclaw/ops: gateway restarting",
+    });
+  });
+
+  it("asks for a manual restart first when a gateway could not be restarted", () => {
+    expect(setupGatewayLine([r("hermes", "default", "restarting"), r("openclaw", "lab", "not-supervised")])).toEqual({
+      ok: false,
+      text: "openclaw/lab: restart the gateway",
+    });
+  });
+
+  it("says nothing when no gateway runs", () => {
+    expect(setupGatewayLine([r("hermes", "default", "not-running")])).toBeNull();
+    expect(setupGatewayLine([])).toBeNull();
+  });
+
+  it("collects each profile's restart, Hermes and OpenClaw", async () => {
+    hermesWith("current");
+    gateways.restartOpenClawGateways.mockReturnValue([{ host: "openclaw", profile: "ops", status: "restarting" }]);
+    const run = await runUpdateSteps({ layout: false, daemon: false, restart: true });
+    expect(run.restarts.map((x) => `${x.host}/${x.profile}:${x.status}`)).toEqual([
+      "hermes/default:restarting",
+      "openclaw/ops:restarting",
+    ]);
   });
 });

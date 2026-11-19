@@ -13,6 +13,7 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname } from "node:path";
 import { updatedVersionFile } from "./fp-home";
+import type { GatewayRestart } from "./gateway-restart";
 
 export interface UpdateStepsOptions {
   /** Migrate the home layout (`update`); `config` relies on the CLI entry's. */
@@ -37,6 +38,8 @@ export interface UpdateStepsResult {
   hermesMigrated: number;
   /** Something a person should see: a migration, a daemon change, a restart. */
   changed: boolean;
+  /** Every gateway restart attempted, Hermes and OpenClaw, in report order. */
+  restarts: GatewayRestart[];
 }
 
 export async function runUpdateSteps(opts: UpdateStepsOptions): Promise<UpdateStepsResult> {
@@ -60,6 +63,7 @@ export async function runUpdateSteps(opts: UpdateStepsOptions): Promise<UpdateSt
         hermesOk: true,
         hermesMigrated: 0,
         changed: false,
+        restarts: [],
       };
     }
     if (state.kind === "stale") {
@@ -114,16 +118,23 @@ export async function runUpdateSteps(opts: UpdateStepsOptions): Promise<UpdateSt
   // Gateways are restarted only onto a daemon that is current AND running:
   // "nothing to update" on a machine with no service, or an unsupported
   // platform, is also `daemonOk`.
-  const restarts =
+  const restartsGateways =
     opts.restart && daemonOk && svc.isDaemonSupportedPlatform() && svc.daemonServiceStatus() === "running";
   let hermesOk = true;
   let hermesMigrated = 0;
+  const restarts: GatewayRestart[] = [];
   try {
     const { runHermesUpdateMigration } = await import("./hermes-update");
     const restart = await import("./gateway-restart");
     const hermesResult = await runHermesUpdateMigration({
       daemonSupportsPolicyEvaluation: () => svc.probeDaemonPolicyEvaluation(),
-      restartGateway: restarts ? (p) => restart.restartHermesGateway(p) : undefined,
+      restartGateway: restartsGateways
+        ? (p) => {
+            const r = restart.restartHermesGateway(p);
+            restarts.push(r);
+            return r;
+          }
+        : undefined,
     });
     if (hermesResult.lines.length > 0) {
       // Its lines open on a "Hermes:" heading over one row per profile; on a
@@ -141,10 +152,12 @@ export async function runUpdateSteps(opts: UpdateStepsOptions): Promise<UpdateSt
     hermesOk = false;
   }
 
-  if (restarts) {
+  if (restartsGateways) {
     try {
       const restart = await import("./gateway-restart");
-      const restartLines = restart.openclawRestartLines(restart.restartOpenClawGateways());
+      const openclaw = restart.restartOpenClawGateways();
+      restarts.push(...openclaw);
+      const restartLines = restart.openclawRestartLines(openclaw);
       if (restartLines.length > 0) {
         lines.push("", ...restartLines);
         changed = true;
@@ -162,7 +175,22 @@ export async function runUpdateSteps(opts: UpdateStepsOptions): Promise<UpdateSt
     hermesOk,
     hermesMigrated,
     changed,
+    restarts,
   };
+}
+
+/**
+ * `config`'s whole report of these steps: one line, or nothing. Built from
+ * update's own row words ("gateway restarting", "restart the gateway"), so
+ * setup gains no new wording and no second report.
+ */
+export function setupGatewayLine(restarts: GatewayRestart[]): { ok: boolean; text: string } | null {
+  const named = (r: GatewayRestart) => `${r.host}/${r.profile}`;
+  const manual = restarts.filter((r) => r.status === "not-supervised" || r.status === "failed").map(named);
+  if (manual.length > 0) return { ok: false, text: `${manual.join(", ")}: restart the gateway` };
+  const restarting = restarts.filter((r) => r.status === "restarting").map(named);
+  if (restarting.length > 0) return { ok: true, text: `${restarting.join(", ")}: gateway restarting` };
+  return null;
 }
 
 function mentionsGateway(lines: string[]): boolean {

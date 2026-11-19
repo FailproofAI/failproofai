@@ -2042,10 +2042,19 @@ async function runCli() {
     // the daemon to this version and the entry check migrated the home.
     let updateExit = 0;
     if (result.applied) {
-      const { runUpdateSteps, markUpdated, setupNeedsUpdateSteps } = await import("../src/hooks/update-run");
+      const { runUpdateSteps, markUpdated, setupNeedsUpdateSteps, setupGatewayLine } = await import("../src/hooks/update-run");
       if (setupNeedsUpdateSteps(version)) {
         const run = await runUpdateSteps({ layout: false, daemon: false, restart: true });
-        if (run.changed) await printReport("update", run.lines.filter((l, i) => i > 0 || l !== ""), { ok: run.ok });
+        // One line at most, in update's own words; a Hermes failure keeps its
+        // existing ✕ line so it is not lost.
+        const { screenKit, colorsEnabled } = await import("../src/hooks/tui");
+        const kit = screenKit({ color: colorsEnabled(process.stdout) });
+        const gateway = setupGatewayLine(run.restarts);
+        const out = [
+          ...run.lines.filter((l) => l.startsWith("✕")),
+          ...(gateway ? [gateway.ok ? kit.ok(gateway.text) : kit.caution(gateway.text)] : []),
+        ];
+        if (out.length > 0) process.stdout.write(`${out.join("\n")}\n`);
         if (run.ok) markUpdated(version);
         else updateExit = 1;
       }

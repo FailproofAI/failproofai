@@ -1165,127 +1165,43 @@ async function runCli() {
     // this file, which this command is exempt from. Reading the ledger and
     // inferring "the top-level check must have done it" was the first version, and
     // it is the kind of indirection that reads fine and reports the wrong thing
-    // the moment either half moves.
-    const { detectLayout } = await import("../src/hooks/fp-config");
-    const { LAYOUT_VERSION } = await import("../src/hooks/fp-home");
-    const { runMigrations } = await import("../src/hooks/migrations");
-    const state = detectLayout();
+    // the moment either half moves. The steps are shared with `config`, which
+    // runs them after the first setup on a new version (src/hooks/update-run.ts).
+    const { runUpdateSteps, markUpdated } = await import("../src/hooks/update-run");
+    const noDaemon = subArgs.includes("--no-daemon");
+    const run = await runUpdateSteps({
+      layout: true,
+      daemon: !noDaemon,
+      // A daemon left as it is may not serve the new plugin, so --no-daemon
+      // leaves the gateways alone too.
+      restart: !noDaemon && !subArgs.includes("--no-restart"),
+      noteSkippedDaemon: noDaemon,
+    });
 
-    if (state.kind === "future") {
+    if (run.futureLayout) {
       await printReport("update", [
         `This machine's failproofai directory was written by a NEWER version ` +
-          `(layout ${state.found}; this build speaks ${LAYOUT_VERSION}). This CLI is the stale half:`,
+          `(layout ${run.futureLayout.found}; this build speaks ${run.futureLayout.speaks}). This CLI is the stale half:`,
         "",
         "  npm install -g failproofai@latest",
-      ], { ok: false, meta: `layout ${state.found}` });
+      ], { ok: false, meta: `layout ${run.futureLayout.found}` });
       await track("cli_update", { ok: false, reason: "future_layout" });
       lastSubcommand = null;
       await exitAfterFlush(1);
       return;
     }
 
-    // Collected rather than printed as it goes, so `update` closes with ONE
-    // report — heading, then both halves of the upgrade under it — instead of
-    // a run of bare sentences at column zero.
-    const report = [];
-    let migrationsRan = 0;
-    let migrationFailed = false;
-    if (state.kind === "stale") {
-      const run = runMigrations(state.found);
-      migrationsRan = run.steps.length;
-      migrationFailed = Boolean(run.failed);
-      for (const step of run.steps) {
-        report.push(`  ${step.ok ? "migrated" : "FAILED  "} layout ${step.from} → ${step.to}`);
-      }
-      if (run.backedUp.length > 0) report.push("", `Saved first: ${run.backedUp.join(", ")}`);
-      // Each failing half marks its own line (the daemon's lines arrive with
-      // their ✕ already): the report opens on whatever ran first, often a
-      // success, and printReport's guess would put the ✕ there.
-      if (run.failed) {
-        report.push(
-          "",
-          `✕ Step ${run.failed.from} → ${run.failed.to} did not finish: ${run.failed.error}`,
-          `  The home is still marked layout ${state.found} and will be retried.`,
-        );
-      }
-    } else {
-      report.push(`Home is at layout ${LAYOUT_VERSION}; no migration was needed.`);
-    }
-
-    // The daemon is refreshed even when a step failed, and deliberately: the
-    // binary and the layout are independent halves, and leaving a version-skewed
-    // daemon behind on top of a failed migration is strictly worse than fixing
-    // the half that can be fixed. The exit code still reports the failure.
-    let daemonOk = true;
-    if (subArgs.includes("--no-daemon")) {
-      report.push("", "Skipped the daemon (--no-daemon). Its version may not match this CLI.");
-    } else {
-      const svc = await import("../src/hooks/daemon-service");
-      if (!svc.isDaemonSupportedPlatform()) {
-        report.push("", `failproofaid does not run on ${process.platform}; nothing to update.`);
-      } else {
-        // `refreshDaemonToCliVersion` answers "is there a service at all" itself,
-        // so there is no separate installed check to get out of step with it.
-        const result = await svc.refreshDaemonToCliVersion();
-        report.push("", ...result.lines);
-        daemonOk = result.ok;
-      }
-    }
-
-    // Hermes is migrated AFTER the daemon, and gated on what the daemon that is
-    // now running can do: the native plugin needs `policyEvaluation`, which
-    // ≤1.0.5 daemons lack, so when the swap above could not happen (a sudo
-    // system service with no sudo) the shell hooks stay and this fails loudly.
-    // Gateways are restarted only onto a daemon this run left current AND that
-    // is running: "nothing to update" on a machine with no service, or an
-    // unsupported platform, is also `daemonOk`.
-    let restartsGateways = daemonOk && !subArgs.includes("--no-daemon") && !subArgs.includes("--no-restart");
-    if (restartsGateways) {
-      const svc = await import("../src/hooks/daemon-service");
-      restartsGateways = svc.isDaemonSupportedPlatform() && svc.daemonServiceStatus() === "running";
-    }
-    let hermesOk = true;
-    let hermesMigrated = 0;
-    try {
-      const { runHermesUpdateMigration } = await import("../src/hooks/hermes-update");
-      const svc = await import("../src/hooks/daemon-service");
-      const restart = await import("../src/hooks/gateway-restart");
-      const hermesResult = await runHermesUpdateMigration({
-        daemonSupportsPolicyEvaluation: () => svc.probeDaemonPolicyEvaluation(),
-        restartGateway: restartsGateways ? (p) => restart.restartHermesGateway(p) : undefined,
-      });
-      if (hermesResult.lines.length > 0) {
-        // Its lines open on a "Hermes:" heading over one row per profile; on a
-        // failure the heading carries the ✕ and the rows say which profile.
-        const [heading, ...rest] = hermesResult.lines;
-        report.push("", hermesResult.ok ? heading : `✕ ${heading}`, ...rest);
-      }
-      hermesOk = hermesResult.ok;
-      hermesMigrated = hermesResult.profiles.filter((p) => p.status === "migrated").length;
-    } catch (err) {
-      report.push("", `✕ Hermes migration failed: ${err instanceof Error ? err.message : String(err)}`);
-      hermesOk = false;
-    }
-
-    if (restartsGateways) {
-      try {
-        const restart = await import("../src/hooks/gateway-restart");
-        const lines = restart.openclawRestartLines(restart.restartOpenClawGateways());
-        if (lines.length > 0) report.push("", ...lines);
-      } catch {
-        // Restarting is a convenience; the update itself already succeeded.
-      }
-    }
-
-    const updateOk = daemonOk && !migrationFailed && hermesOk;
+    const report = run.lines;
+    const updateOk = run.ok;
+    if (updateOk && !noDaemon) markUpdated(version);
     // No `v${version}` meta: the header already names the version.
     await printReport("update", report, { ok: updateOk });
     await track("cli_update", {
       ok: updateOk,
-      migrations: migrationsRan,
-      migration_failed: migrationFailed,
-      hermes_ok: hermesOk,
-      hermes_migrated: hermesMigrated,
+      migrations: run.migrationsRan,
+      migration_failed: run.migrationFailed,
+      hermes_ok: run.hermesOk,
+      hermes_migrated: run.hermesMigrated,
     });
     lastSubcommand = null;
     await exitAfterFlush(updateOk ? 0 : 1);
@@ -2120,6 +2036,20 @@ async function runCli() {
         labelExit = renamed.exitCode;
       }
     }
+    // The first setup on a new version finishes the upgrade too: without this a
+    // running Hermes or OpenClaw gateway kept the plugin it loaded before (or
+    // none) until someone thought to run `update`. Setup has already brought
+    // the daemon to this version and the entry check migrated the home.
+    let updateExit = 0;
+    if (result.applied) {
+      const { runUpdateSteps, markUpdated, setupNeedsUpdateSteps } = await import("../src/hooks/update-run");
+      if (setupNeedsUpdateSteps(version)) {
+        const run = await runUpdateSteps({ layout: false, daemon: false, restart: true });
+        if (run.changed) await printReport("update", run.lines.filter((l, i) => i > 0 || l !== ""), { ok: run.ok });
+        if (run.ok) markUpdated(version);
+        else updateExit = 1;
+      }
+    }
     await warnTokenOnArgv();
     await track("cli_configure_invoked", {
       applied: result.applied,
@@ -2138,7 +2068,7 @@ async function runCli() {
     // regardless discarded it: a fleet script could not tell "the user pressed
     // Esc" from "this machine could not install the required daemon and is
     // unconfigured". Cancelling is not a failure; the other two are.
-    await exitAfterFlush(!result.applied && result.abort && result.abort !== "cancelled" ? 1 : labelExit);
+    await exitAfterFlush(!result.applied && result.abort && result.abort !== "cancelled" ? 1 : labelExit || updateExit);
     return;
   }
 

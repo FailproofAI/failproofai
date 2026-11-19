@@ -1,0 +1,196 @@
+/**
+ * The steps that finish an npm upgrade on this machine, shared by
+ * `failproofai update` and by `failproofai config`.
+ *
+ * `update` runs all of them. `config` runs them after a setup that applied,
+ * when this CLI version has not finished them here yet (`updatedVersionFile`):
+ * the first setup after `npm i -g failproofai` (or on a fresh machine) would
+ * otherwise leave a running Hermes or OpenClaw gateway on the plugin it loaded
+ * before, or with no plugin at all, until someone thought to run `update`.
+ * Setup has already brought the daemon to this version and the CLI entry has
+ * already migrated the home, so `config` skips those two.
+ */
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { dirname } from "node:path";
+import { updatedVersionFile } from "./fp-home";
+
+export interface UpdateStepsOptions {
+  /** Migrate the home layout (`update`); `config` relies on the CLI entry's. */
+  layout: boolean;
+  /** Bring the daemon to this CLI's version (`update` without --no-daemon). */
+  daemon: boolean;
+  /** Restart running, service-managed Hermes and OpenClaw gateways. */
+  restart: boolean;
+  /** Say the daemon was skipped on purpose (`update --no-daemon`). */
+  noteSkippedDaemon?: boolean;
+}
+
+export interface UpdateStepsResult {
+  /** Report lines, grouped by step with blank lines between. */
+  lines: string[];
+  ok: boolean;
+  /** True when the layout is NEWER than this CLI: nothing else ran. */
+  futureLayout?: { found: number; speaks: number };
+  migrationsRan: number;
+  migrationFailed: boolean;
+  hermesOk: boolean;
+  hermesMigrated: number;
+  /** Something a person should see: a migration, a daemon change, a restart. */
+  changed: boolean;
+}
+
+export async function runUpdateSteps(opts: UpdateStepsOptions): Promise<UpdateStepsResult> {
+  const lines: string[] = [];
+  let migrationsRan = 0;
+  let migrationFailed = false;
+  let changed = false;
+
+  if (opts.layout) {
+    const { detectLayout } = await import("./fp-config");
+    const { LAYOUT_VERSION } = await import("./fp-home");
+    const { runMigrations } = await import("./migrations");
+    const state = detectLayout();
+    if (state.kind === "future") {
+      return {
+        lines: [],
+        ok: false,
+        futureLayout: { found: state.found, speaks: LAYOUT_VERSION },
+        migrationsRan: 0,
+        migrationFailed: false,
+        hermesOk: true,
+        hermesMigrated: 0,
+        changed: false,
+      };
+    }
+    if (state.kind === "stale") {
+      const run = runMigrations(state.found);
+      migrationsRan = run.steps.length;
+      migrationFailed = Boolean(run.failed);
+      changed = changed || migrationsRan > 0;
+      for (const step of run.steps) {
+        lines.push(`  ${step.ok ? "migrated" : "FAILED  "} layout ${step.from} → ${step.to}`);
+      }
+      if (run.backedUp.length > 0) lines.push("", `Saved first: ${run.backedUp.join(", ")}`);
+      // Each failing half marks its own line (the daemon's lines arrive with
+      // their ✕ already): the report opens on whatever ran first, often a
+      // success, and printReport's guess would put the ✕ there.
+      if (run.failed) {
+        lines.push(
+          "",
+          `✕ Step ${run.failed.from} → ${run.failed.to} did not finish: ${run.failed.error}`,
+          `  The home is still marked layout ${state.found} and will be retried.`,
+        );
+      }
+    } else {
+      lines.push(`Home is at layout ${LAYOUT_VERSION}; no migration was needed.`);
+    }
+  }
+
+  // The daemon is refreshed even when a step failed, and deliberately: the
+  // binary and the layout are independent halves, and leaving a version-skewed
+  // daemon behind on top of a failed migration is strictly worse than fixing
+  // the half that can be fixed. The exit code still reports the failure.
+  let daemonOk = true;
+  const svc = await import("./daemon-service");
+  if (opts.noteSkippedDaemon) {
+    lines.push("", "Skipped the daemon (--no-daemon). Its version may not match this CLI.");
+  } else if (opts.daemon) {
+    if (!svc.isDaemonSupportedPlatform()) {
+      lines.push("", `failproofaid does not run on ${process.platform}; nothing to update.`);
+    } else {
+      // `refreshDaemonToCliVersion` answers "is there a service at all" itself,
+      // so there is no separate installed check to get out of step with it.
+      const result = await svc.refreshDaemonToCliVersion();
+      lines.push("", ...result.lines);
+      daemonOk = result.ok;
+      changed = changed || !result.lines.some((l) => /nothing to update/.test(l));
+    }
+  }
+
+  // Hermes is migrated AFTER the daemon, and gated on what the daemon that is
+  // now running can do: the native plugin needs `policyEvaluation`, which
+  // ≤1.0.5 daemons lack, so when the swap above could not happen (a sudo
+  // system service with no sudo) the shell hooks stay and this fails loudly.
+  // Gateways are restarted only onto a daemon that is current AND running:
+  // "nothing to update" on a machine with no service, or an unsupported
+  // platform, is also `daemonOk`.
+  const restarts =
+    opts.restart && daemonOk && svc.isDaemonSupportedPlatform() && svc.daemonServiceStatus() === "running";
+  let hermesOk = true;
+  let hermesMigrated = 0;
+  try {
+    const { runHermesUpdateMigration } = await import("./hermes-update");
+    const restart = await import("./gateway-restart");
+    const hermesResult = await runHermesUpdateMigration({
+      daemonSupportsPolicyEvaluation: () => svc.probeDaemonPolicyEvaluation(),
+      restartGateway: restarts ? (p) => restart.restartHermesGateway(p) : undefined,
+    });
+    if (hermesResult.lines.length > 0) {
+      // Its lines open on a "Hermes:" heading over one row per profile; on a
+      // failure the heading carries the ✕ and the rows say which profile.
+      const [heading, ...rest] = hermesResult.lines;
+      lines.push("", hermesResult.ok ? heading : `✕ ${heading}`, ...rest);
+    }
+    hermesOk = hermesResult.ok;
+    hermesMigrated = hermesResult.profiles.filter((p) => p.status === "migrated").length;
+    // "already current" with no gateway touched is not news.
+    changed =
+      changed || !hermesOk || hermesMigrated > 0 || mentionsGateway(hermesResult.lines);
+  } catch (err) {
+    lines.push("", `✕ Hermes migration failed: ${err instanceof Error ? err.message : String(err)}`);
+    hermesOk = false;
+  }
+
+  if (restarts) {
+    try {
+      const restart = await import("./gateway-restart");
+      const restartLines = restart.openclawRestartLines(restart.restartOpenClawGateways());
+      if (restartLines.length > 0) {
+        lines.push("", ...restartLines);
+        changed = true;
+      }
+    } catch {
+      // Restarting is a convenience; the update itself already succeeded.
+    }
+  }
+
+  return {
+    lines,
+    ok: daemonOk && !migrationFailed && hermesOk,
+    migrationsRan,
+    migrationFailed,
+    hermesOk,
+    hermesMigrated,
+    changed,
+  };
+}
+
+function mentionsGateway(lines: string[]): boolean {
+  return lines.some((l) => /gateway/.test(l));
+}
+
+/** The CLI version whose upgrade steps last finished here, or null. */
+export function readUpdatedVersion(home?: string): string | null {
+  try {
+    const v = readFileSync(updatedVersionFile(home), "utf8").trim();
+    return v.length > 0 ? v : null;
+  } catch {
+    return null;
+  }
+}
+
+/** Record that this version's upgrade steps finished. Best effort. */
+export function markUpdated(version: string, home?: string): void {
+  try {
+    const file = updatedVersionFile(home);
+    if (!existsSync(dirname(file))) mkdirSync(dirname(file), { recursive: true, mode: 0o700 });
+    writeFileSync(file, `${version}\n`, { mode: 0o600 });
+  } catch {
+    // A missing marker only means the next setup runs these steps again.
+  }
+}
+
+/** Whether `config` should run the upgrade steps after a setup that applied. */
+export function setupNeedsUpdateSteps(version: string, home?: string): boolean {
+  return readUpdatedVersion(home) !== version;
+}

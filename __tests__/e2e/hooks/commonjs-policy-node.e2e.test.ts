@@ -1,0 +1,78 @@
+// @vitest-environment node
+/**
+ * A CommonJS policy, run by Node.
+ *
+ * Every policy's temporary copy used to be `.mjs`, and Node gives an ES module
+ * no `require`, `module` or `exports`: a policy written with `require()` (or an
+ * ES module policy importing a `module.exports` helper) threw at load, was
+ * skipped, and the call it should have denied was allowed. The rest of the e2e
+ * suite runs the CLI under Bun, which defines `require` in ES modules, so it
+ * never saw this. Here the CLI is bundled and run by `node`, as an install is.
+ */
+import { afterAll, describe, expect, it } from "vitest";
+import { spawnSync } from "node:child_process";
+import { mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join, resolve } from "node:path";
+
+const root = mkdtempSync(join(tmpdir(), "fpai-cjs-policy-"));
+const home = join(root, "home");
+const dist = join(root, "dist");
+const policies = join(root, "policies");
+const proj = join(root, "proj");
+const repo = resolve(__dirname, "../../..");
+symlinkSync(join(repo, "node_modules"), join(root, "node_modules"), "dir");
+for (const dir of [join(home, ".failproofai"), dist, policies, proj]) mkdirSync(dir, { recursive: true });
+
+const builds = [
+  ["build", "--target=node", "--format=esm", `--outfile=${join(dist, "cli.mjs")}`, "bin/failproofai.mjs",
+    "--external", "posthog-node", "--external", "sql.js"],
+  ["build", "--target=node", "--format=cjs", `--outfile=${join(dist, "index.js")}`, "src/index.ts"],
+].map((args) => spawnSync("bun", args, { cwd: repo, encoding: "utf8", timeout: 60000 }));
+afterAll(() => rmSync(root, { recursive: true, force: true }));
+
+writeFileSync(join(policies, "util.js"), `module.exports = { isCurl: (c) => c.includes("curl") };\n`);
+writeFileSync(join(policies, "cjs.js"), [
+  `const { customPolicies, deny, allow } = require("failproofai");`,
+  `const { isCurl } = require("./util.js");`,
+  `customPolicies.add({ name: "cjs-no-curl", match: { events: ["PreToolUse"] },`,
+  `  fn: async (ctx) => isCurl(String(ctx.toolInput?.command ?? "")) ? deny("cjs says no curl") : allow() });`,
+].join("\n"));
+writeFileSync(join(policies, "mixed.mjs"), [
+  `import { customPolicies, deny, allow } from "failproofai";`,
+  `import util from "./util.js";`,
+  `customPolicies.add({ name: "mixed-no-curl", match: { events: ["PreToolUse"] },`,
+  `  fn: async (ctx) => util.isCurl(String(ctx.toolInput?.command ?? "")) ? deny("mixed says no curl") : allow() });`,
+].join("\n"));
+
+function hook(policyFile: string, command: string) {
+  writeFileSync(join(home, ".failproofai/policies-config.json"),
+    JSON.stringify({ enabledPolicies: [], customPoliciesPath: join(policies, policyFile) }));
+  const stdin = JSON.stringify({ session_id: "s", hook_event_name: "PreToolUse", tool_name: "Bash",
+    tool_input: { command }, cwd: proj });
+  return spawnSync("node", [join(dist, "cli.mjs"), "--hook", "PreToolUse", "--cli", "claude"], {
+    input: stdin, encoding: "utf8", timeout: 20000,
+    env: { ...process.env, HOME: home, USERPROFILE: home, FAILPROOFAI_HOME: join(home, ".failproofai"),
+      FAILPROOFAI_DIST_PATH: dist, FAILPROOFAI_TELEMETRY_DISABLED: "1" },
+  });
+}
+
+describe("a CommonJS policy run by node", () => {
+  it("builds", () => {
+    for (const b of builds) expect(b.status, b.stderr).toBe(0);
+  });
+
+  it("require('failproofai') and a required module.exports helper load and deny", () => {
+    const denied = hook("cjs.js", "curl example.com");
+    expect(denied.stdout, denied.stderr).toContain("cjs says no curl");
+    expect(denied.stderr).not.toContain("require is not defined");
+    const allowed = hook("cjs.js", "ls");
+    expect(allowed.status).toBe(0);
+    expect(allowed.stdout).not.toContain("deny");
+  });
+
+  it("an ES module policy importing a module.exports helper loads and denies", () => {
+    const denied = hook("mixed.mjs", "curl example.com");
+    expect(denied.stdout, denied.stderr).toContain("mixed says no curl");
+  });
+});

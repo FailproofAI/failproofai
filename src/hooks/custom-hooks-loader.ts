@@ -22,6 +22,7 @@ import {
   findDistIndex,
   rewriteFileTree,
   TMP_SUFFIX,
+  commonJsTmpSuffix,
   cleanupTmpFiles,
   isTmpArtifact,
   sweepStaleTmpArtifacts,
@@ -227,7 +228,9 @@ async function loadSingleFile(
       return null;
     }
 
-    const entryTmp = absPath + tmpSuffix;
+    // `.cjs` when the policy is CommonJS (see `isCommonJsSource`).
+    const entryTmp =
+      tmpFiles.find((f) => f === absPath + commonJsTmpSuffix(tmpSuffix)) ?? absPath + tmpSuffix;
     const fileUrl = pathToFileURL(entryTmp).href;
     const hooksBefore = getCustomHooks().length;
     const semanticBefore = getSemanticRegistrations().length;
@@ -282,9 +285,13 @@ async function fingerprintTemporaryTree(tmpFiles: string[], tmpSuffix: string): 
   for (const tmpFile of [...tmpFiles].sort()) {
     // The generated filenames change per load. Normalize both the logical path
     // and rewritten import specifiers so identical source graphs hash equally.
-    hash.update(tmpFile.replaceAll(tmpSuffix, TMP_SUFFIX));
+    // A CommonJS source's copy ends `.cjs` (see `isCommonJsSource`).
+    const cjsSuffix = commonJsTmpSuffix(tmpSuffix);
+    const normalize = (text: string) =>
+      text.replaceAll(tmpSuffix, TMP_SUFFIX).replaceAll(cjsSuffix, commonJsTmpSuffix(TMP_SUFFIX));
+    hash.update(normalize(tmpFile));
     const contents = await readFile(tmpFile, "utf8");
-    hash.update(contents.replaceAll(tmpSuffix, TMP_SUFFIX));
+    hash.update(normalize(contents));
   }
   return hash.digest("hex");
 }

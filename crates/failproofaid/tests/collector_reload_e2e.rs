@@ -124,6 +124,10 @@ fn spawn_daemon_with(home: &Path, env: &[(&str, &str)]) -> DaemonGuard {
     let mut child = Command::new(binary_path())
         .envs(env.iter().copied())
         .env("FAILPROOFAI_HOME", home)
+        // The agents' own folders resolve from HOME. Left as the developer's, the
+        // daemon backfilled their real Claude sessions, and on a machine with a
+        // big history the reload these tests wait for missed its window.
+        .env("HOME", home)
         .env(
             "FAILPROOFAI_DAEMON_SOCKET",
             home.join("run/failproofaid.sock"),

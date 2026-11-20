@@ -4,6 +4,7 @@
 
 ### Fixes
 
+- A policy file written with `require()` loads and enforces under Node. Every policy's temporary copy was written as `.mjs`, where Node defines no `require`, `module` or `exports`, so a CommonJS policy (or an ES module policy importing a `module.exports` helper) failed to load and the calls it should have denied were allowed. A CommonJS file's copy is now `.cjs`. A new e2e test runs the bundled CLI under `node`; the rest of the suite runs under Bun, which hid this (#1023)
 - The daemon answers the previous plugin protocol, and clients re-ask an older daemon in its version, so a Hermes or OpenClaw gateway still running the plugin it loaded before an upgrade keeps getting real verdicts instead of denying every call; where the Cloud deployment targets policies at agents, which a request naming no agent would escape, it still fails closed (#1023)
 - `failproofai update` restarts running Hermes and OpenClaw gateways through their own drain-aware restart (after in-flight work finishes) so they load the updated plugin; only service-managed gateways are touched, and `--no-restart` opts out (#1023)
 - A batch refused with a key the machine has since replaced (the seconds after a reconnect) is left for the new key instead of being parked as a refusal, so `config --status` no longer reports "the cloud is refusing this machine's key" right after a successful connect (#1023)

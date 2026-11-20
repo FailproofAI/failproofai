@@ -80,6 +80,33 @@ export async function sweepStaleTmpArtifacts(dir: string, now = Date.now()): Pro
   return removed;
 }
 
+/**
+ * Whether a policy source is CommonJS: no `import` / `export` statement and no
+ * `import.meta`, but a `require(...)`, `module.exports` or `exports.x`.
+ *
+ * Its temporary copy must then be `.cjs`, not `.mjs`. Node gives an ES module
+ * no `require`, `module` or `exports`, so a CommonJS policy written as `.mjs`
+ * threw "require is not defined in ES module scope" at load, was skipped, and
+ * every call it was meant to check was allowed. Bun, which the test suite runs
+ * under, defines `require` in ES modules too, which is why nothing caught it.
+ * Comments are ignored, so a commented-out `import` does not decide it.
+ */
+export function isCommonJsSource(code: string): boolean {
+  const stripped = code.replace(/\/\*[\s\S]*?\*\//g, "").replace(/(^|[^:\\])\/\/.*$/gm, "$1");
+  if (/^\s*(?:import|export)\b(?!\s*\()/m.test(stripped) || /\bimport\.meta\b/.test(stripped)) return false;
+  return /\brequire\s*\(|\bmodule\.exports\b|\bexports\.[A-Za-z_$]/.test(stripped);
+}
+
+/** The suffix a CommonJS source's temporary copy gets in place of `tmpSuffix`. */
+export function commonJsTmpSuffix(tmpSuffix: string): string {
+  return tmpSuffix.replace(/\.mjs$/, ".cjs");
+}
+
+/** Where a source's temporary copy is written: beside it, `.cjs` for CommonJS. */
+export function tmpPathFor(filePath: string, tmpSuffix: string, commonJs: boolean): string {
+  return filePath + (commonJs ? commonJsTmpSuffix(tmpSuffix) : tmpSuffix);
+}
+
 /** Regex to find local relative import specifiers (ESM). */
 const LOCAL_IMPORT_RE = /(?:import\s+(?:[\s\S]*?\s+from\s+)?|export\s+(?:[\s\S]*?\s+from\s+))(['"])(\.\.?\/[^'"]+)\1/g;
 
@@ -259,6 +286,17 @@ export async function rewriteFileTree(
   const queue: string[] = [entryPath];
   const visited = new Set<string>();
   const tmpFiles: string[] = [];
+  // Each file's module kind, read once: it names the file's own copy and every
+  // specifier that points at it.
+  const commonJs = new Map<string, boolean>();
+  const isCommonJsFile = async (path: string): Promise<boolean> => {
+    let kind = commonJs.get(path);
+    if (kind === undefined) {
+      kind = isCommonJsSource(await readFile(path, "utf-8").catch(() => ""));
+      commonJs.set(path, kind);
+    }
+    return kind;
+  };
 
   let esmShimUrl: string | null = null;
   if (distIndex && distUrl) {
@@ -288,6 +326,8 @@ export async function rewriteFileTree(
     } else {
       code = await readFile(filePath, "utf-8");
     }
+    // From the source as read (the entry's verified bytes), before any rewrite.
+    if (!commonJs.has(filePath)) commonJs.set(filePath, isCommonJsSource(code));
 
     // Rewrite 'failproofai' or legacy 'claudeye' imports to the ESM shim (or direct CJS for require)
     if (esmShimUrl) {
@@ -317,7 +357,9 @@ export async function rewriteFileTree(
         if (!visited.has(resolved) && !queue.includes(resolved)) {
           queue.push(resolved);
         }
-        let relPath = relative(dir, resolved + tmpSuffix).split("\\").join("/");
+        let relPath = relative(dir, tmpPathFor(resolved, tmpSuffix, await isCommonJsFile(resolved)))
+          .split("\\")
+          .join("/");
         if (!relPath.startsWith(".")) relPath = "./" + relPath;
         rewrites.set(specifier, relPath);
       }
@@ -332,7 +374,7 @@ export async function rewriteFileTree(
       code = code.replace(new RegExp(`"${escaped}"`, "g"), `"${replacement}"`);
     }
 
-    const tmpPath = filePath + tmpSuffix;
+    const tmpPath = tmpPathFor(filePath, tmpSuffix, commonJs.get(filePath) === true);
     await writeFile(tmpPath, code, "utf-8");
     tmpFiles.push(tmpPath);
   }

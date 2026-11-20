@@ -74,3 +74,31 @@ describe("hooks/loader-utils - findDistIndex", () => {
     expect(result).toBeNull();
   });
 });
+
+describe("hooks/loader-utils - isCommonJsSource", () => {
+  it("is CommonJS with require or module.exports and no import/export", async () => {
+    const { isCommonJsSource } = await import("../../src/hooks/loader-utils");
+    expect(isCommonJsSource(`const { deny } = require("failproofai");`)).toBe(true);
+    expect(isCommonJsSource(`module.exports = { a: 1 };`)).toBe(true);
+    expect(isCommonJsSource(`exports.a = 1;`)).toBe(true);
+    // Dynamic import() is allowed in CommonJS.
+    expect(isCommonJsSource(`const m = require("x");\nconst later = import("y");`)).toBe(true);
+  });
+
+  it("is not CommonJS once a real import, export or import.meta appears", async () => {
+    const { isCommonJsSource } = await import("../../src/hooks/loader-utils");
+    expect(isCommonJsSource(`import { deny } from "failproofai";`)).toBe(false);
+    expect(isCommonJsSource(`export const a = 1;\nconst b = require("x");`)).toBe(false);
+    expect(isCommonJsSource(`const r = createRequire(import.meta.url);\nr("x");`)).toBe(false);
+    // Neither kind of marker: left as an ES module, as before.
+    expect(isCommonJsSource(`globalThis.x = 1;`)).toBe(false);
+  });
+
+  it("ignores import and require that only appear in comments", async () => {
+    const { isCommonJsSource } = await import("../../src/hooks/loader-utils");
+    expect(isCommonJsSource(`// import x from "y"\nconst a = require("a");`)).toBe(true);
+    expect(isCommonJsSource(`/* require("a") */\nglobalThis.x = 1;`)).toBe(false);
+    // A URL's "//" is not a comment start.
+    expect(isCommonJsSource(`const u = "http://x";\nmodule.exports = u;`)).toBe(true);
+  });
+});

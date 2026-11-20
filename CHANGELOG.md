@@ -28,6 +28,10 @@
 - Setup's summary on a Cloud-managed machine says "Deploy from Cloud" instead of pointing at installing a pack (#1023)
 - The first `failproofai config` on a new version (a fresh install, or the first after `npm i -g failproofai`) finishes the upgrade the way `failproofai update` does: it migrates Hermes profiles and restarts running, service-managed Hermes and OpenClaw gateways so they load the plugin now on disk. A later setup that plugs in a profile created since restarts that profile's gateway. Setup used to leave a gateway that was already running on the plugin it loaded before, or with none, until someone ran `update` (#1023)
 
+### Dependencies
+
+- The Python SDK's dev/test lockfile moves crewai to 1.15.44, which made chromadb optional, so chromadb 1.5.9 and its four unfixable advisories leave the lockfile; their expired OSV allow-list entries are removed (#1023)
+
 ## 1.0.15 — 2026-11-18
 
 The stable release of the OpenClaw plugin fix for tool calls blocked as "failproofaid could not be reached" while the daemon was healthy, plus the refreshed README and docs and the dependency updates that landed on `main` since 1.0.14.

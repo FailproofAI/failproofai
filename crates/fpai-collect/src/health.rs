@@ -53,6 +53,35 @@ pub struct SourceHealth {
     /// Total failed polls. Kept even after `last_error` clears, so a source
     /// that fails intermittently is distinguishable from one that never has.
     pub errors: u64,
+    /// `tool_use` events stamped within [`LIVE_WINDOW_SECS`] of when they were
+    /// spooled, since the daemon started: tool calls an agent is making now,
+    /// not ones a backfill is re-reading. The daemon compares them with the
+    /// hook calls the same agent made, to notice an agent working with its
+    /// hooks not firing.
+    #[serde(default)]
+    pub live_tool_calls: u64,
+}
+
+/// How recent a `tool_use` must be to count as live.
+pub const LIVE_WINDOW_SECS: i64 = 15 * 60;
+
+/// Whether `event` is a tool call the agent made within [`LIVE_WINDOW_SECS`].
+pub fn is_live_tool_call(event: &serde_json::Value, now_secs: i64) -> bool {
+    if event.get("type").and_then(serde_json::Value::as_str) != Some("tool_use") {
+        return false;
+    }
+    let Some(at) = event
+        .get("timestamp")
+        .and_then(serde_json::Value::as_str)
+        .and_then(|t| {
+            time::OffsetDateTime::parse(t, &time::format_description::well_known::Rfc3339).ok()
+        })
+    else {
+        return false;
+    };
+    let age = now_secs - at.unix_timestamp();
+    // A little slack the other way: an agent's clock and ours need not agree.
+    (-60..=LIVE_WINDOW_SECS).contains(&age)
 }
 
 /// What delivery reports about itself, across every source AND the SDK spool.
@@ -152,6 +181,14 @@ impl Health {
             entry.events += events;
             entry.last_event_ts = now_secs();
         }
+    }
+
+    /// Record one live tool call seen by a source (see `live_tool_calls`).
+    pub fn record_live_tool_call(&self, source: &str) {
+        let Ok(mut map) = self.sources.lock() else {
+            return;
+        };
+        map.entry(source.to_string()).or_default().live_tool_calls += 1;
     }
 
     /// Record that a source's poll failed.
@@ -266,6 +303,13 @@ pub fn report_poll(source: &str, root_present: bool, events: u64, cursor: u64) {
     }
 }
 
+/// Report a live tool call to the process registry, if one is installed.
+pub fn report_live_tool_call(source: &str) {
+    if let Some(h) = current() {
+        h.record_live_tool_call(source);
+    }
+}
+
 /// Report a failed poll to the process registry, if one is installed.
 pub fn report_error(source: &str, error: &str) {
     if let Some(h) = current() {
@@ -316,7 +360,7 @@ pub async fn writer_task(
 /// How often the record is rewritten.
 pub const WRITE_INTERVAL: std::time::Duration = std::time::Duration::from_secs(30);
 
-fn now_secs() -> u64 {
+pub(crate) fn now_secs() -> u64 {
     std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .map(|d| d.as_secs())

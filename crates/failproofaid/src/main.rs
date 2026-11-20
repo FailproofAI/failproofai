@@ -4,6 +4,7 @@ mod audit_lane;
 mod backfill;
 mod cloud_client;
 pub mod cloud_policies;
+mod hook_watch;
 mod lock;
 mod logfile;
 mod logship;
@@ -1199,6 +1200,7 @@ fn collector_tasks(config: Option<fpai_collect::CollectorConfig>) -> Vec<fpai_co
     // whether ingest was storing every event or discarding all of them.
     health.attach_delivery(upload_metrics);
     fpai_collect::health::install(health.clone());
+    let health_for_watch = health.clone();
     let health_file = fpai_collect::health_path(&home);
     tasks.push(fpai_collect::TaskSpec::new("health", move |sd| {
         fpai_collect::health::writer_task(
@@ -1248,6 +1250,23 @@ fn collector_tasks(config: Option<fpai_collect::CollectorConfig>) -> Vec<fpai_co
                 sd,
             )
         }));
+        // Says so in daemon.log when hook data stops reaching Cloud while the
+        // rest of the collector works (hook_watch.rs). Not when verbosity is
+        // off: the source then produces nothing on purpose.
+        let watch = cfg.settings.hooks_verbosity != fpai_collect::config::HooksVerbosity::Off;
+        let watch_health = health_for_watch.clone();
+        let watch_spool = cfg.own_spool_dir.clone();
+        let watch_failed = cfg.failed_dir.clone();
+        if watch {
+            tasks.push(fpai_collect::TaskSpec::new("hook-watch", move |sd| {
+                hook_watch::run(
+                    watch_health.clone(),
+                    watch_spool.clone(),
+                    watch_failed.clone(),
+                    sd,
+                )
+            }));
+        }
     }
 
     if cfg.settings.sessions
@@ -2675,6 +2694,7 @@ mod tests {
         let mut expected: Vec<String> = [
             "health",
             "hook-activity",
+            "hook-watch",
             "claude",
             "claude:work",
             "claude-subagent",
@@ -2733,6 +2753,7 @@ mod tests {
                 "codex:box",
                 "health",
                 "hook-activity",
+                "hook-watch",
                 "otlp-delivery",
                 "spool-sweeper",
                 "spool-watcher",
@@ -2790,6 +2811,7 @@ mod tests {
             [
                 "health",
                 "hook-activity",
+                "hook-watch",
                 "otlp-delivery",
                 "spool-sweeper",
                 "spool-watcher"
@@ -2816,6 +2838,7 @@ mod tests {
         let infrastructure = [
             "health",
             "hook-activity",
+            "hook-watch",
             "spool-watcher",
             "spool-sweeper",
             "otlp-delivery",

@@ -487,12 +487,15 @@ fn evaluate(request: ClientMessage, worker: &Worker) -> ServerMessage {
                 cwd.as_deref(),
                 worker_agent_settings_path(agent_settings_path.as_deref()),
             ) {
-                Ok(outcome) => ServerMessage::HookResult {
-                    protocol_version: PROTOCOL_VERSION,
-                    exit_code: outcome.exit_code,
-                    stdout: outcome.stdout,
-                    stderr: outcome.stderr,
-                },
+                Ok(outcome) => {
+                    crate::hook_watch::note_answered(&cli, &stdin);
+                    ServerMessage::HookResult {
+                        protocol_version: PROTOCOL_VERSION,
+                        exit_code: outcome.exit_code,
+                        stdout: outcome.stdout,
+                        stderr: outcome.stderr,
+                    }
+                }
                 Err(err) => ServerMessage::Error {
                     protocol_version: PROTOCOL_VERSION,
                     message: format!("worker call failed: {err}"),
@@ -531,6 +534,7 @@ fn evaluate(request: ClientMessage, worker: &Worker) -> ServerMessage {
                             "allow" | "deny" | "instruct"
                         ) =>
                     {
+                        crate::hook_watch::note_answered(&integration, &stdin);
                         let policy_names = if evaluation.policy_names.is_empty() {
                             evaluation.policy_name.into_iter().collect()
                         } else {

@@ -171,6 +171,9 @@ struct State {
     requested: Option<String>,
     answered: Option<String>,
     paused_until: Option<Instant>,
+    /// The org has troubleshooting off: Cloud's policy poll said
+    /// `machineLogs: false`. Nothing is queued or sent while it is.
+    cloud_off: bool,
 }
 
 static STATE: LazyLock<Mutex<State>> = LazyLock::new(|| Mutex::new(State::default()));
@@ -349,7 +352,11 @@ fn record(level: Level, target: &str, line: &str, now: Instant) {
     {
         st.ring.pop_front();
     }
-    if level <= Level::WARN && !own {
+    // While the org has troubleshooting off, nothing is queued to send later:
+    // turning it back on must not deliver what happened while it was off.
+    // The ring (local context) is still kept.
+    let queue = !own && !st.cloud_off;
+    if level <= Level::WARN && queue {
         let key = fingerprint(&entry.target, &entry.message);
         if let Some(existing) = st.errors.get_mut(&key) {
             existing.count += 1;
@@ -361,7 +368,7 @@ fn record(level: Level, target: &str, line: &str, now: Instant) {
             st.errors_overflow += 1;
         }
     }
-    if level == Level::ERROR && !own {
+    if level == Level::ERROR && queue {
         let trigger = truncate(&entry.message, MAX_TRIGGER_BYTES).to_string();
         maybe_open_incident(&mut st, trigger, None, now);
     }
@@ -549,12 +556,34 @@ pub fn mark_clean_shutdown(logs_dir: &Path) {
 }
 
 /// The desired-state poll carried `logRequest.id`.
+/// Whether the org lets this machine send its daemon log: `false` when
+/// Cloud's policy poll says `machineLogs: false` (the org's troubleshooting
+/// switch is off), `true` otherwise, including from a Cloud that predates the
+/// key. Turning off drops whatever is pending, an open request included.
+pub fn set_cloud_allows(allowed: bool) {
+    let mut st = state();
+    if allowed == !st.cloud_off {
+        return;
+    }
+    st.cloud_off = !allowed;
+    if !allowed {
+        st.errors.clear();
+        st.error_order.clear();
+        st.errors_overflow = 0;
+        st.incident = None;
+        st.requested = None;
+    }
+}
+
 pub fn note_request(id: &str) {
     let id = truncate(id, 128);
     if id.is_empty() {
         return;
     }
     let mut st = state();
+    if st.cloud_off {
+        return;
+    }
     if st.answered.as_deref() != Some(id) && st.requested.as_deref() != Some(id) {
         st.requested = Some(id.to_string());
     }
@@ -688,7 +717,7 @@ pub fn ship(machine_id: &str, scrub: &Scrub, post: &dyn Fn(&Value) -> PostOutcom
 fn ship_at(machine_id: &str, scrub: &Scrub, post: &dyn Fn(&Value) -> PostOutcome, now: Instant) {
     let (kind, value) = {
         let mut st = state();
-        if !st.enabled || st.paused_until.is_some_and(|until| now < until) {
+        if !st.enabled || st.cloud_off || st.paused_until.is_some_and(|until| now < until) {
             return;
         }
         st.paused_until = None;
@@ -927,6 +956,41 @@ mod tests {
         record(Level::WARN, "x", &line("WARN", "x", "again"), t0);
         assert!(collect(t0 + Duration::from_secs(60)).is_empty());
         assert_eq!(collect(t0 + ERRORS_EVERY).len(), 1);
+    }
+
+    #[test]
+    fn troubleshooting_off_sends_nothing_and_queues_nothing_until_it_is_back_on() {
+        let _g = LOCK.lock().unwrap();
+        reset_for_test(true);
+        let t0 = Instant::now();
+        record(Level::WARN, "x", &line("WARN", "x", "pending before"), t0);
+        set_cloud_allows(false);
+        // Pending dropped; new warnings, errors and requests are not queued.
+        record(Level::WARN, "x", &line("WARN", "x", "while off"), t0);
+        record(
+            Level::ERROR,
+            "x",
+            &line("ERROR", "x", "crash while off"),
+            t0,
+        );
+        note_request("req-off");
+        assert!(
+            collect(t0 + INCIDENT_SETTLE + ERRORS_EVERY).is_empty(),
+            "nothing sent while off"
+        );
+        // Back on: what happened while off is not delivered; new is.
+        set_cloud_allows(true);
+        assert!(collect(t0 + INCIDENT_SETTLE + ERRORS_EVERY * 2).is_empty());
+        record(Level::WARN, "x", &line("WARN", "x", "after"), t0);
+        let sent = collect(t0 + ERRORS_EVERY * 3);
+        assert_eq!(sent.len(), 1);
+        let msgs: Vec<&str> = sent[0]["entries"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|e| e["message"].as_str().unwrap())
+            .collect();
+        assert_eq!(msgs, vec!["after"]);
     }
 
     #[test]

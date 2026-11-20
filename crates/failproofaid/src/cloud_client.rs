@@ -891,6 +891,12 @@ impl CloudClient {
                 // payload instead of a stale server. Reading the version off an
                 // untyped value first means the error names both halves and says
                 // which to upgrade.
+                // The org's troubleshooting switch: `machineLogs: false` means
+                // send no daemon log (logship.rs). Absent, from a Cloud with it
+                // on or one that predates the key, means send.
+                crate::logship::set_cloud_allows(
+                    raw.get("machineLogs").and_then(serde_json::Value::as_bool) != Some(false),
+                );
                 // An operator asked for this machine's logs (logship.rs).
                 if let Some(id) = raw
                     .get("logRequest")

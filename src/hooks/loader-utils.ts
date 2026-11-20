@@ -16,6 +16,7 @@ import { tmpdir } from "os";
 import { resolve, dirname, relative, join } from "path";
 import { pathToFileURL } from "url";
 import { createHash } from "crypto";
+import { Script } from "vm";
 import { shimsDir } from "./fp-home";
 import { hookLogWarn } from "./hook-logger";
 
@@ -81,20 +82,35 @@ export async function sweepStaleTmpArtifacts(dir: string, now = Date.now()): Pro
 }
 
 /**
- * Whether a policy source is CommonJS: no `import` / `export` statement and no
- * `import.meta`, but a `require(...)`, `module.exports` or `exports.x`.
+ * Whether a policy source is CommonJS, decided the way Node decides an
+ * ambiguous `.js` file: compile it as a CommonJS module body. Module syntax
+ * (an `import` / `export` statement wherever it sits on a line, `import.meta`,
+ * top-level `await`) does not compile there, so the source stays an ES module.
+ * The engine parses it, so text inside strings, template literals and
+ * comments never decides it either way. Nothing is run.
  *
- * Its temporary copy must then be `.cjs`, not `.mjs`. Node gives an ES module
+ * Its temporary copy must be `.cjs` when this is true. Node gives an ES module
  * no `require`, `module` or `exports`, so a CommonJS policy written as `.mjs`
  * threw "require is not defined in ES module scope" at load, was skipped, and
  * every call it was meant to check was allowed. Bun, which the test suite runs
  * under, defines `require` in ES modules too, which is why nothing caught it.
- * Comments are ignored, so a commented-out `import` does not decide it.
+ *
+ * A source with none of those three names has nothing CommonJS would give it
+ * and stays an ES module, as every policy did before. One that does not
+ * compile at all stays one too, so its error is the one it always reported.
  */
 export function isCommonJsSource(code: string): boolean {
-  const stripped = code.replace(/\/\*[\s\S]*?\*\//g, "").replace(/(^|[^:\\])\/\/.*$/gm, "$1");
-  if (/^\s*(?:import|export)\b(?!\s*\()/m.test(stripped) || /\bimport\.meta\b/.test(stripped)) return false;
-  return /\brequire\s*\(|\bmodule\.exports\b|\bexports\.[A-Za-z_$]/.test(stripped);
+  if (!/\b(?:require|module|exports)\b/.test(code)) return false;
+  // A leading hashbang is legal in a file and not inside a function body.
+  const body = code.startsWith("#!") ? code.replace(/^#![^\n]*/, "") : code;
+  try {
+    new Script(`(function (exports, require, module, __filename, __dirname) {${body}\n})`, {
+      filename: "failproofai-policy-syntax-check.cjs",
+    });
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 /** The suffix a CommonJS source's temporary copy gets in place of `tmpSuffix`. */

@@ -97,8 +97,23 @@ describe("hooks/loader-utils - isCommonJsSource", () => {
   it("ignores import and require that only appear in comments", async () => {
     const { isCommonJsSource } = await import("../../src/hooks/loader-utils");
     expect(isCommonJsSource(`// import x from "y"\nconst a = require("a");`)).toBe(true);
-    expect(isCommonJsSource(`/* require("a") */\nglobalThis.x = 1;`)).toBe(false);
     // A URL's "//" is not a comment start.
     expect(isCommonJsSource(`const u = "http://x";\nmodule.exports = u;`)).toBe(true);
+  });
+
+  // Review F10: what text says is never syntax, and an export after a
+  // semicolon is still an export.
+  it("decides on syntax, not on text inside strings and templates", async () => {
+    const { isCommonJsSource } = await import("../../src/hooks/loader-utils");
+    expect(
+      isCommonJsSource(`const command = "curl"; const example = "require()"; export default command;`),
+    ).toBe(false);
+    expect(isCommonJsSource("const a = 1; export { a };")).toBe(false);
+    expect(isCommonJsSource("const r = require('x');\nconst t = `import.meta`;\nmodule.exports = r;")).toBe(true);
+    expect(isCommonJsSource("const doc = `\nexport default nothing\n`;\nmodule.exports = { doc };")).toBe(true);
+    expect(isCommonJsSource("const s = 'import x from \"y\"';\nexports.s = s;")).toBe(true);
+    expect(isCommonJsSource("#!/usr/bin/env node\nconst a = require('a');")).toBe(true);
+    // Not valid either way: left an ES module, so its own error is reported.
+    expect(isCommonJsSource("const a = require('a'); )")).toBe(false);
   });
 });

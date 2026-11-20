@@ -640,6 +640,21 @@ pub fn body(
     entries: &[Entry],
     scrub: &Scrub,
 ) -> Value {
+    body_from(machine_id, kind, trigger, request_id, entries, scrub).0
+}
+
+/// [`body`], and the index of the first entry it kept: `entries[start..]` is
+/// exactly what the body carries. The error roll-up acknowledges only those,
+/// so the older ones dropped to fit stay pending for the next roll-up instead
+/// of being counted as delivered.
+fn body_from(
+    machine_id: &str,
+    kind: &str,
+    trigger: Option<&str>,
+    request_id: Option<&str>,
+    entries: &[Entry],
+    scrub: &Scrub,
+) -> (Value, usize) {
     let mut start = entries.len().saturating_sub(MAX_ENTRIES);
     loop {
         let mut v = json!({
@@ -656,7 +671,7 @@ pub fn body(
         }
         let size = serde_json::to_vec(&v).map_or(usize::MAX, |b| b.len());
         if size <= MAX_BODY_BYTES || start >= entries.len() {
-            return v;
+            return (v, start);
         }
         // Drop the oldest quarter of what is left, at least one entry.
         start += ((entries.len() - start) / 4).max(1);
@@ -736,15 +751,22 @@ fn ship_at(machine_id: &str, scrub: &Scrub, post: &dyn Fn(&Value) -> PostOutcome
                     last_ts: None,
                 });
             }
+            let (value, start) = body_from(machine_id, "errors", None, None, &entries, scrub);
+            // `entries` is the itemised errors in `error_order`, then the
+            // overflow line; the body carries `entries[start..]`. Acknowledge
+            // only those: an error dropped to fit was never delivered.
             let sent: Vec<(String, u64)> = st
                 .error_order
                 .iter()
                 .filter_map(|k| st.errors.get(k).map(|e| (k.clone(), e.count)))
+                .skip(start)
                 .collect();
-            (
-                Kind::Errors(sent, st.errors_overflow),
-                body(machine_id, "errors", None, None, &entries, scrub),
-            )
+            let overflow_sent = if start < entries.len() {
+                st.errors_overflow
+            } else {
+                0
+            };
+            (Kind::Errors(sent, overflow_sent), value)
         } else {
             return;
         }
@@ -905,6 +927,55 @@ mod tests {
         record(Level::WARN, "x", &line("WARN", "x", "again"), t0);
         assert!(collect(t0 + Duration::from_secs(60)).is_empty());
         assert_eq!(collect(t0 + ERRORS_EVERY).len(), 1);
+    }
+
+    #[test]
+    fn errors_dropped_to_fit_a_body_stay_pending_for_the_next_roll_up() {
+        let _g = LOCK.lock().unwrap();
+        reset_for_test(true);
+        let t0 = Instant::now();
+        // 180 distinct long warnings: more than one body holds. Letters, not
+        // digits, so the fingerprint keeps them apart.
+        let name = |i: usize| {
+            let mut n = String::new();
+            let mut i = i + 1;
+            while i > 0 {
+                n.push((b'a' + ((i - 1) % 26) as u8) as char);
+                i = (i - 1) / 26;
+            }
+            format!("{n} {}", "x".repeat(1900))
+        };
+        for i in 0..180 {
+            record(Level::WARN, "x", &line("WARN", "x", &name(i)), t0);
+        }
+        let mut delivered = std::collections::BTreeSet::new();
+        let mut uploads = 0;
+        let mut at = t0;
+        while uploads < 10 {
+            let batch = collect(at);
+            if batch.is_empty() {
+                break;
+            }
+            uploads += 1;
+            for b in &batch {
+                assert!(serde_json::to_vec(b).unwrap().len() <= MAX_BODY_BYTES);
+                for e in b["entries"].as_array().unwrap() {
+                    delivered.insert(e["message"].as_str().unwrap().to_string());
+                }
+            }
+            at += ERRORS_EVERY;
+        }
+        assert!(uploads >= 2, "180 long warnings need more than one body");
+        let expected: std::collections::BTreeSet<String> = (0..180)
+            .map(|i| truncate(&name(i), MAX_MESSAGE_BYTES).to_string())
+            .collect();
+        assert_eq!(
+            delivered.len(),
+            180,
+            "every warning delivered, none acknowledged unsent"
+        );
+        assert_eq!(delivered, expected);
+        assert!(collect(at).is_empty(), "all acknowledged once delivered");
     }
 
     #[test]

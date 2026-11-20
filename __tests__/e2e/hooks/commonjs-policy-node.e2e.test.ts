@@ -45,6 +45,30 @@ writeFileSync(join(policies, "mixed.mjs"), [
   `  fn: async (ctx) => util.isCurl(String(ctx.toolInput?.command ?? "")) ? deny("mixed says no curl") : allow() });`,
 ].join("\n"));
 
+// Review F10: an ES module helper whose STRINGS mention require(), with its
+// export on the same line as other statements, imported by an ES module
+// policy. A text-based check called the helper CommonJS and the policy was
+// skipped, so curl was allowed.
+writeFileSync(join(policies, "esm-helper.mjs"),
+  `const command = "curl"; const example = "require()"; export default command;\n`);
+writeFileSync(join(policies, "esm-literal.mjs"), [
+  `import { customPolicies, deny, allow } from "failproofai";`,
+  `import command from "./esm-helper.mjs";`,
+  `customPolicies.add({ name: "esm-literal-no-curl", match: { events: ["PreToolUse"] },`,
+  `  fn: async (ctx) => String(ctx.toolInput?.command ?? "").includes(command) ? deny("esm literal says no curl") : allow() });`,
+].join("\n"));
+// And the reverse: CommonJS whose template literals contain import.meta and a
+// line starting with `export`.
+writeFileSync(join(policies, "cjs-literal.js"), [
+  "const { customPolicies, deny, allow } = require(\"failproofai\");",
+  "const note = `import.meta is not used here`;",
+  "const doc = `",
+  "export default nothing",
+  "`;",
+  "customPolicies.add({ name: \"cjs-literal-no-curl\", match: { events: [\"PreToolUse\"] },",
+  "  fn: async (ctx) => String(ctx.toolInput?.command ?? \"\").includes(\"curl\") ? deny(\"cjs literal says no curl \" + note.length + doc.length) : allow() });",
+].join("\n"));
+
 function hook(policyFile: string, command: string) {
   writeFileSync(join(home, ".failproofai/policies-config.json"),
     JSON.stringify({ enabledPolicies: [], customPoliciesPath: join(policies, policyFile) }));
@@ -69,6 +93,16 @@ describe("a CommonJS policy run by node", () => {
     const allowed = hook("cjs.js", "ls");
     expect(allowed.status).toBe(0);
     expect(allowed.stdout).not.toContain("deny");
+  });
+
+  it("an ES module helper that mentions require() in a string stays an ES module", () => {
+    const denied = hook("esm-literal.mjs", "curl example.com");
+    expect(denied.stdout, denied.stderr).toContain("esm literal says no curl");
+  });
+
+  it("CommonJS with import.meta and export inside template literals stays CommonJS", () => {
+    const denied = hook("cjs-literal.js", "curl example.com");
+    expect(denied.stdout, denied.stderr).toContain("cjs literal says no curl");
   });
 
   it("an ES module policy importing a module.exports helper loads and denies", () => {

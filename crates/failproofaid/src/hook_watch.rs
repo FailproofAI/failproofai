@@ -268,25 +268,27 @@ impl Watch {
         }
 
         let mut out = Vec::new();
-        // Cleared: raised before, not found now. A refusal is an event, not a
-        // state, so it never "clears".
+        // Cleared only on evidence that it is fixed, never because it was not
+        // found again: falling traffic stops a problem being detected without
+        // fixing it. A refusal is an event, not a state, so it never clears.
         let now_kinds: Vec<Kind> = found.iter().map(Problem::kind).collect();
-        let agents_working: Vec<&String> = self
-            .last_agent_deltas
-            .iter()
-            .filter(|(_, (tools, answered))| *tools > 0 || *answered > 0)
-            .map(|(agent, _)| agent)
-            .collect();
+        let stuck = s.waiting > 0 && s.oldest_waiting_secs >= STALE_AFTER.as_secs();
+        let deltas = &self.last_agent_deltas;
         self.raised.retain(|(kind, _)| {
-            let still = now_kinds.contains(kind)
-                || *kind == Kind::Refused
-                // An unhooked agent that has gone quiet is not fixed: only a
-                // hook call from it, or it working again without one, decides.
-                || matches!(kind, Kind::NotHooked(agent) if !agents_working.contains(&agent));
-            if !still {
+            let fixed = !now_kinds.contains(kind)
+                && match kind {
+                    // The hook activity source produced events.
+                    Kind::NotCollected => produced > 0,
+                    // The stuck hook batch is gone.
+                    Kind::NotDelivered => !stuck,
+                    // A hook call from that agent was answered.
+                    Kind::NotHooked(agent) => deltas.get(agent).is_some_and(|(_, a)| *a > 0),
+                    Kind::Refused => false,
+                };
+            if fixed {
                 out.push(Verdict::Cleared(kind.clone()));
             }
-            still
+            !fixed
         });
         for problem in found {
             let kind = problem.kind();
@@ -760,6 +762,84 @@ mod tests {
             &serde_json::json!({"type": "tool_use"}),
             now
         ));
+    }
+
+    #[test]
+    fn falling_traffic_is_not_recovery_only_evidence_is() {
+        // The reviewer's case: four unhooked tool calls raise it; later one
+        // more unhooked call (below the threshold) must not "recover" it.
+        let mut w = Watch::default();
+        w.check(with(0, &[("pi", agent(0, 0))]));
+        w.check(with(1, &[("pi", agent(2, 0))]));
+        assert_eq!(
+            raised(&w.check(with(2, &[("pi", agent(4, 0))]))),
+            vec![Kind::NotHooked("pi".into())]
+        );
+        assert!(w.check(with(3, &[("pi", agent(4, 0))])).is_empty());
+        assert!(
+            w.check(with(4, &[("pi", agent(5, 0))])).is_empty(),
+            "one unhooked call is not recovery"
+        );
+        // A hook call is.
+        assert_eq!(
+            w.check(with(5, &[("pi", agent(6, 1))])),
+            vec![Verdict::Cleared(Kind::NotHooked("pi".into()))]
+        );
+
+        // Nothing recorded: fewer answered calls is not recovery; events are.
+        let mut w = Watch::default();
+        w.check(at(0));
+        w.check(Sample {
+            answered: 10,
+            ..at(1)
+        });
+        assert_eq!(
+            raised(&w.check(Sample {
+                answered: 20,
+                ..at(2)
+            })),
+            vec![Kind::NotCollected]
+        );
+        assert!(
+            w.check(Sample {
+                answered: 21,
+                ..at(3)
+            })
+            .is_empty(),
+            "quieter is not recovery"
+        );
+        assert_eq!(
+            w.check(Sample {
+                answered: 22,
+                hook_events: 1,
+                ..at(4)
+            }),
+            vec![Verdict::Cleared(Kind::NotCollected)]
+        );
+
+        // Stuck batch: an outage hides the condition, it does not clear it.
+        let mut w = Watch::default();
+        w.check(at(0));
+        let stuck = Sample {
+            waiting: 2,
+            oldest_waiting_secs: 20 * 60,
+            ..at(1)
+        };
+        assert_eq!(raised(&w.check(stuck.clone())), vec![Kind::NotDelivered]);
+        let outage = Sample {
+            delivered_at: T0 - 3600,
+            oldest_waiting_secs: 25 * 60,
+            ..stuck.clone()
+        };
+        assert!(
+            w.check(Sample {
+                now: T0 + 2 * STEP,
+                ..outage
+            })
+            .is_empty(),
+            "still stuck"
+        );
+        assert_eq!(w.check(at(3)), vec![Verdict::Cleared(Kind::NotDelivered)]);
     }
 
     #[test]

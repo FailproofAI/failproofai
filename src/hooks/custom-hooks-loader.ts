@@ -183,9 +183,45 @@ export interface PolicyLoadFailure {
 
 const warnedSemanticOutsidePack = new Set<string>();
 
+/**
+ * Node's own words when a file it loaded as an ES module is CommonJS: a
+ * CommonJS binding used at run time, or, when an ES module imports a
+ * `module.exports` helper, the link failing for want of that export. Only these
+ * retry a load as CommonJS (see `loadSingleFile`). A genuine ES-module mistake
+ * that happens to read the same fails the retry the same way, and that is what
+ * is reported.
+ */
+const COMMONJS_IN_ESM_RE =
+  /\b(?:require|module|exports|__filename|__dirname) is not defined in ES module scope|does not provide an export named/;
+
+/** A first attempt that failed only because the file is CommonJS. */
+const RETRY_AS_COMMONJS = Symbol("retry-as-commonjs");
+
+/**
+ * Load one policy file, as an ES module first, which is what every policy was
+ * loaded as before CommonJS support: a file that runs as an ES module is never
+ * reinterpreted, whatever its comments or strings say. Only when Node refuses
+ * it for using `require`, `module` or `exports` (Bun, which the test suite runs
+ * under, defines `require` in ES modules, so it never refuses) is the tree
+ * loaded again with CommonJS files written as `.cjs`. Whatever the failed
+ * attempt registered before it threw is taken back first, so nothing is
+ * registered twice.
+ */
 async function loadSingleFile(
   absPath: string,
-  opts?: {
+  opts?: LoadOptions,
+): Promise<PolicyLoadFailure | null> {
+  const hooksBefore = getCustomHooks().length;
+  const semanticBefore = getSemanticRegistrations().length;
+  const first = await loadSingleFileAs(absPath, opts, false);
+  if (first !== RETRY_AS_COMMONJS) return first;
+  getCustomHooks().splice(hooksBefore);
+  getSemanticRegistrations().splice(semanticBefore);
+  const second = await loadSingleFileAs(absPath, opts, true);
+  return second === RETRY_AS_COMMONJS ? null : second;
+}
+
+interface LoadOptions {
     strict?: boolean;
     conventionScope?: "project" | "user";
     /** Cloud-managed policies pass their pinned digest for load-time re-verification. */
@@ -196,8 +232,13 @@ async function loadSingleFile(
      * file, whether or not Jev is configured — the declaration is dead either way.
      */
     outsidePack?: boolean;
-  },
-): Promise<PolicyLoadFailure | null> {
+}
+
+async function loadSingleFileAs(
+  absPath: string,
+  opts: LoadOptions | undefined,
+  commonJs: boolean,
+): Promise<PolicyLoadFailure | null | typeof RETRY_AS_COMMONJS> {
   const g = globalThis as Record<string, unknown>;
   g[LOADING_KEY] = true;
 
@@ -219,6 +260,7 @@ async function loadSingleFile(
       distIndex,
       tmpSuffix,
       opts?.verifyEntrySha,
+      commonJs,
     );
 
     const fingerprint = await fingerprintTemporaryTree(tmpFiles, tmpSuffix);
@@ -253,6 +295,7 @@ async function loadSingleFile(
     return null;
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
+    if (!commonJs && COMMONJS_IN_ESM_RE.test(msg)) return RETRY_AS_COMMONJS;
     // An import that names no module, apart from a file the policy itself
     // reads at load (a `readFileSync` of its data): both are ENOENT underneath,
     // but "module not found" sent people looking for a missing package (B13).

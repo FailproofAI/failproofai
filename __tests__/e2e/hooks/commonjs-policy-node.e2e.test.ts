@@ -69,6 +69,21 @@ writeFileSync(join(policies, "cjs-literal.js"), [
   "  fn: async (ctx) => String(ctx.toolInput?.command ?? \"\").includes(\"curl\") ? deny(\"cjs literal says no curl \" + note.length + doc.length) : allow() });",
 ].join("\n"));
 
+// Review F10 (round 3): a valid ES module with no import/export at all, whose
+// only CommonJS "hints" are a comment and a template string. Run as CommonJS it
+// is sloppy-mode, `strict` is false and curl is allowed; it must stay an ES
+// module, where it denies.
+writeFileSync(join(policies, "esm-hints.mjs"), [
+  "// Ported from an old version that did: const { deny } = require(\"failproofai\");",
+  "const note = `module.exports used to be how this was shared`;",
+  "const KEY = \"__failproofai_custom_hooks__\";",
+  "if (!Array.isArray(globalThis[KEY])) globalThis[KEY] = [];",
+  "const strict = (function () { return this === undefined; })();",
+  "globalThis[KEY].push({ name: \"esm-hints-no-curl\", match: { events: [\"PreToolUse\"] },",
+  "  fn: async (ctx) => strict && String(ctx.toolInput?.command ?? \"\").includes(\"curl\")",
+  "    ? { decision: \"deny\", reason: \"esm hints says no curl \" + note.length } : { decision: \"allow\" } });",
+].join("\n"));
+
 function hook(policyFile: string, command: string) {
   writeFileSync(join(home, ".failproofai/policies-config.json"),
     JSON.stringify({ enabledPolicies: [], customPoliciesPath: join(policies, policyFile) }));
@@ -93,6 +108,11 @@ describe("a CommonJS policy run by node", () => {
     const allowed = hook("cjs.js", "ls");
     expect(allowed.status).toBe(0);
     expect(allowed.stdout).not.toContain("deny");
+  });
+
+  it("an ES module with only comment and template CommonJS hints keeps ES module semantics", () => {
+    const denied = hook("esm-hints.mjs", "curl example.com");
+    expect(denied.stdout, denied.stderr).toContain("esm hints says no curl");
   });
 
   it("an ES module helper that mentions require() in a string stays an ES module", () => {

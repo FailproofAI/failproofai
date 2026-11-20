@@ -298,6 +298,13 @@ export async function rewriteFileTree(
    * Only the entry is content-addressed; transitive local imports are not.
    */
   entrySha256?: string | null,
+  /**
+   * Write CommonJS sources (`isCommonJsSource`) as `.cjs`. Off for the first
+   * load of a policy, which is always as ES modules; on only for the retry
+   * after Node refused that load for a CommonJS binding
+   * (custom-hooks-loader.ts, `loadSingleFile`).
+   */
+  detectCommonJs = false,
 ): Promise<string[]> {
   const queue: string[] = [entryPath];
   const visited = new Set<string>();
@@ -308,7 +315,7 @@ export async function rewriteFileTree(
   const isCommonJsFile = async (path: string): Promise<boolean> => {
     let kind = commonJs.get(path);
     if (kind === undefined) {
-      kind = isCommonJsSource(await readFile(path, "utf-8").catch(() => ""));
+      kind = detectCommonJs && isCommonJsSource(await readFile(path, "utf-8").catch(() => ""));
       commonJs.set(path, kind);
     }
     return kind;
@@ -343,7 +350,7 @@ export async function rewriteFileTree(
       code = await readFile(filePath, "utf-8");
     }
     // From the source as read (the entry's verified bytes), before any rewrite.
-    if (!commonJs.has(filePath)) commonJs.set(filePath, isCommonJsSource(code));
+    if (!commonJs.has(filePath)) commonJs.set(filePath, detectCommonJs && isCommonJsSource(code));
 
     // Rewrite 'failproofai' or legacy 'claudeye' imports to the ESM shim (or direct CJS for require)
     if (esmShimUrl) {

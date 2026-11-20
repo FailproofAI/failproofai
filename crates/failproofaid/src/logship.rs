@@ -172,8 +172,29 @@ struct State {
     answered: Option<String>,
     paused_until: Option<Instant>,
     /// The org has troubleshooting off: Cloud's policy poll said
-    /// `machineLogs: false`. Nothing is queued or sent while it is.
+    /// `machineLogs: false`. Nothing is queued, kept for context or sent while
+    /// it is.
     cloud_off: bool,
+    /// When troubleshooting was last turned back on: no upload of any kind
+    /// carries a line older than this, so nothing logged while it was off (or
+    /// before) leaves, however it is read back (the context ring, or the
+    /// daemon.log tail a request or an unclean-exit incident reads). Kept in
+    /// `upload-floor` beside daemon.log so a restart honours it.
+    floor: Option<time::OffsetDateTime>,
+    floor_path: Option<PathBuf>,
+}
+
+/// Where the floor is kept, beside daemon.log.
+const FLOOR_FILE: &str = "upload-floor";
+
+/// Whether a line is old enough that the floor holds it back. A line whose
+/// time cannot be read is held back too: the floor is a privacy promise.
+fn before_floor(ts: &str, floor: Option<time::OffsetDateTime>) -> bool {
+    let Some(floor) = floor else {
+        return false;
+    };
+    time::OffsetDateTime::parse(ts.trim(), &time::format_description::well_known::Rfc3339)
+        .map_or(true, |at| at < floor)
 }
 
 static STATE: LazyLock<Mutex<State>> = LazyLock::new(|| Mutex::new(State::default()));
@@ -372,7 +393,11 @@ fn record(level: Level, target: &str, line: &str, now: Instant) {
         let trigger = truncate(&entry.message, MAX_TRIGGER_BYTES).to_string();
         maybe_open_incident(&mut st, trigger, None, now);
     }
-    st.ring.push_back(Captured { entry, at: now });
+    // Kept only while uploads are allowed: the ring is context for an upload,
+    // and a line logged while troubleshooting is off must never become one.
+    if !st.cloud_off {
+        st.ring.push_back(Captured { entry, at: now });
+    }
 }
 
 fn maybe_open_incident(st: &mut State, trigger: String, entries: Option<Vec<Entry>>, now: Instant) {
@@ -523,6 +548,12 @@ pub fn init(logs_dir: &Path, prior_len: Option<u64>) {
             std::env::var_os("FAILPROOFAI_NO_LOG_UPLOAD").is_none_or(|v| v.is_empty() || v == "0");
         st.log_path = Some(log_path.clone());
         st.stamp_path = Some(stamp);
+        let floor_path = logs_dir.join(FLOOR_FILE);
+        st.floor = fs::read_to_string(&floor_path)
+            .ok()
+            .and_then(|t| t.trim().parse::<i128>().ok())
+            .and_then(|ns| time::OffsetDateTime::from_unix_timestamp_nanos(ns).ok());
+        st.floor_path = Some(floor_path);
     }
     // Nothing is read when uploads are off: the previous run's lines would
     // only ever be read to send them.
@@ -555,7 +586,6 @@ pub fn mark_clean_shutdown(logs_dir: &Path) {
     let _ = fs::remove_file(logs_dir.join(MARKER));
 }
 
-/// The desired-state poll carried `logRequest.id`.
 /// Whether the org lets this machine send its daemon log: `false` when
 /// Cloud's policy poll says `machineLogs: false` (the org's troubleshooting
 /// switch is off), `true` otherwise, including from a Cloud that predates the
@@ -572,9 +602,18 @@ pub fn set_cloud_allows(allowed: bool) {
         st.errors_overflow = 0;
         st.incident = None;
         st.requested = None;
+        st.ring.clear();
+    } else {
+        // Back on: from now, and never before.
+        let now = time::OffsetDateTime::now_utc();
+        st.floor = Some(now);
+        if let Some(path) = st.floor_path.clone() {
+            let _ = write_private(&path, now.unix_timestamp_nanos().to_string().as_bytes());
+        }
     }
 }
 
+/// The desired-state poll carried `logRequest.id`.
 pub fn note_request(id: &str) {
     let id = truncate(id, 128);
     if id.is_empty() {
@@ -733,10 +772,11 @@ fn ship_at(machine_id: &str, scrub: &Scrub, post: &dyn Fn(&Value) -> PostOutcome
                 .log_path
                 .as_deref()
                 .and_then(|p| tail(p, None, TAIL_BYTES));
-            let entries = match text {
+            let mut entries = match text {
                 Some(t) => entries_from_text(&t, true),
                 None => st.ring.iter().map(|c| c.entry.clone()).collect(),
             };
+            entries.retain(|e| !before_floor(&e.ts, st.floor));
             let v = body(machine_id, "requested", None, Some(&id), &entries, scrub);
             (Kind::Requested(id), v)
         } else if let Some(incident) = st
@@ -744,10 +784,11 @@ fn ship_at(machine_id: &str, scrub: &Scrub, post: &dyn Fn(&Value) -> PostOutcome
             .as_ref()
             .filter(|i| i.entries.is_some() || now.duration_since(i.at) >= INCIDENT_SETTLE)
         {
-            let entries: Vec<Entry> = match &incident.entries {
+            let mut entries: Vec<Entry> = match &incident.entries {
                 Some(e) => e.clone(),
                 None => st.ring.iter().map(|c| c.entry.clone()).collect(),
             };
+            entries.retain(|e| !before_floor(&e.ts, st.floor));
             let v = body(
                 machine_id,
                 "incident",
@@ -984,6 +1025,102 @@ mod tests {
         record(Level::WARN, "x", &line("WARN", "x", "after"), t0);
         let sent = collect(t0 + ERRORS_EVERY * 3);
         assert_eq!(sent.len(), 1);
+        let msgs: Vec<&str> = sent[0]["entries"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|e| e["message"].as_str().unwrap())
+            .collect();
+        assert_eq!(msgs, vec!["after"]);
+    }
+
+    /// A line stamped now, for the floor tests (`line` is a fixed past time).
+    fn line_now(level: &str, target: &str, msg: &str) -> String {
+        let at = time::OffsetDateTime::now_utc()
+            .format(&time::format_description::well_known::Rfc3339)
+            .unwrap();
+        format!("{at} {level:>5} {target}: {msg}\n")
+    }
+
+    /// Review (privacy): disable, an error, enable, another error. The second
+    /// error's incident carries its context, but nothing logged while off.
+    #[test]
+    fn an_incident_after_re_enabling_carries_nothing_logged_while_off() {
+        let _g = LOCK.lock().unwrap();
+        reset_for_test(true);
+        let dir = temp_dir("floor-incident");
+        state().floor_path = Some(dir.join(FLOOR_FILE));
+        let t0 = Instant::now();
+        set_cloud_allows(false);
+        record(
+            Level::INFO,
+            "x",
+            &line_now("INFO", "x", "context while off"),
+            t0,
+        );
+        record(
+            Level::ERROR,
+            "x",
+            &line_now("ERROR", "x", "refused batch while off"),
+            t0,
+        );
+        assert!(
+            collect(t0 + INCIDENT_SETTLE).is_empty(),
+            "nothing while off"
+        );
+        std::thread::sleep(Duration::from_millis(5));
+        set_cloud_allows(true);
+        std::thread::sleep(Duration::from_millis(5));
+        record(
+            Level::INFO,
+            "x",
+            &line_now("INFO", "x", "context after"),
+            t0,
+        );
+        record(
+            Level::ERROR,
+            "x",
+            &line_now("ERROR", "x", "crash after"),
+            t0,
+        );
+        let sent = collect(t0 + INCIDENT_SETTLE * 2);
+        let incident = sent
+            .iter()
+            .find(|v| v["kind"] == "incident")
+            .expect("an incident");
+        let msgs: Vec<&str> = incident["entries"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|e| e["message"].as_str().unwrap())
+            .collect();
+        assert!(
+            msgs.contains(&"crash after") && msgs.contains(&"context after"),
+            "{msgs:?}"
+        );
+        assert!(!msgs.iter().any(|m| m.contains("while off")), "{msgs:?}");
+        // The floor survived to disk, for a restart.
+        assert!(dir.join(FLOOR_FILE).exists());
+    }
+
+    /// The daemon.log tail a request reads still holds lines from while it was
+    /// off (and from before); none of them is sent once it is back on.
+    #[test]
+    fn a_requested_tail_after_re_enabling_starts_at_the_floor() {
+        let _g = LOCK.lock().unwrap();
+        reset_for_test(true);
+        let dir = temp_dir("floor-request");
+        state().floor_path = Some(dir.join(FLOOR_FILE));
+        set_cloud_allows(false);
+        let off = line("WARN", "x", "logged while off");
+        std::thread::sleep(Duration::from_millis(5));
+        set_cloud_allows(true);
+        std::thread::sleep(Duration::from_millis(5));
+        let log = dir.join("daemon.log");
+        fs::write(&log, off + &line_now("INFO", "x", "after")).unwrap();
+        state().log_path = Some(log);
+        note_request("req-floor");
+        let sent = collect(Instant::now());
         let msgs: Vec<&str> = sent[0]["entries"]
             .as_array()
             .unwrap()

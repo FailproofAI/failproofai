@@ -9,6 +9,8 @@ vi.mock("../../src/hooks/hook-logger", () => ({
 
 vi.mock("../../src/hooks/custom-hooks-registry", () => ({
   getCustomHooks: vi.fn(() => []),
+  // Read before every load, so a failed ES-module attempt can be rolled back.
+  getSemanticRegistrations: vi.fn(() => []),
   clearCustomHooks: vi.fn(),
 }));
 

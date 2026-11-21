@@ -1,7 +1,7 @@
 {
   "name": "failproofai",
   "version": "1.0.16-beta.1",
-  "description": "The reliability layer for AI agents: see every failure, stop it in realtime. Policies hooked into 12 agent harnesses — Claude Code, Codex, Cursor, Hermes, OpenClaw and more — block the tool call before it runs. Local dashboard included, no account needed.",
+  "description": "The reliability layer for AI agents: see every failure, stop it in realtime. Policies hooked into 12 agent harnesses \u2014 Claude Code, Codex, Cursor, Hermes, OpenClaw and more \u2014 block the tool call before it runs. Local dashboard included, no account needed.",
   "bin": {
     "failproofai": "./dist/cli.mjs",
     "failproofaid": "./bin/failproofaid-shim.mjs"
@@ -24,12 +24,12 @@
   },
   "scripts": {
     "predev": "bun run build:cli && bun link",
-    "dev": "FAILPROOFAI_TELEMETRY_DISABLED=1 bun scripts/dev.ts --port 8020",
-    "build:cli": "bun build --target=node --format=esm --outfile=dist/cli.mjs bin/failproofai.mjs --external posthog-node --external sql.js && node -e \"const fs=require('fs');const c=fs.readFileSync('dist/cli.mjs','utf8');fs.writeFileSync('dist/cli.mjs',c.replace('#!/usr/bin/env bun','#!/usr/bin/env node').replace('// @bun\\n',''))\"",
-    "build:worker": "bun build --target=node --format=esm --outfile=dist/worker.mjs bin/failproofai-worker.mjs --external posthog-node --external sql.js",
-    "build": "bun build --target=node --format=cjs --outfile=dist/index.js src/index.ts && bun run build:cli && bun run build:worker && bun --bun next build && node -e \"const {cpSync}=require('fs');cpSync('.next/static','.next/standalone/.next/static',{recursive:true});\" && node scripts/prune-standalone.mjs",
+    "dev": "node init && FAILPROOFAI_TELEMETRY_DISABLED=1 bun scripts/dev.ts --port 8020",
+    "build:cli": "node init && bun build --target=node --format=esm --outfile=dist/cli.mjs bin/failproofai.mjs --external posthog-node --external sql.js && node -e \"const fs=require('fs');const c=fs.readFileSync('dist/cli.mjs','utf8');fs.writeFileSync('dist/cli.mjs',c.replace('#!/usr/bin/env bun','#!/usr/bin/env node').replace('// @bun\\n',''))\"",
+    "build:worker": "node init && bun build --target=node --format=esm --outfile=dist/worker.mjs bin/failproofai-worker.mjs --external posthog-node --external sql.js",
+    "build": "node init && bun build --target=node --format=cjs --outfile=dist/index.js src/index.ts && bun run build:cli && bun run build:worker && bun --bun next build && node -e \"const {cpSync}=require('fs');cpSync('.next/static','.next/standalone/.next/static',{recursive:true});\" && node scripts/prune-standalone.mjs",
     "prestart": "bun run build:cli && bun link",
-    "start": "FAILPROOFAI_TELEMETRY_DISABLED=1 bun scripts/start.ts",
+    "start": "node init && FAILPROOFAI_TELEMETRY_DISABLED=1 bun scripts/start.ts",
     "test": "vitest",
     "test:run": "vitest run",
     "lint": "eslint . --config eslint.config.mjs",
@@ -43,7 +43,7 @@
     "translate:validate": "bun scripts/translate-docs/cli.ts --validate",
     "validate:mdx": "bun scripts/validate-mdx.ts",
     "docs:audit": "bun scripts/docs-audit.ts",
-    "build:pack": "bun scripts/build-policy-pack.mjs"
+    "build:pack": "node init && bun scripts/build-policy-pack.mjs"
   },
   "keywords": [
     "agent-observability",

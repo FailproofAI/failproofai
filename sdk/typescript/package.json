@@ -359,7 +359,7 @@
   ],
   "scripts": {
     "clean": "node -e \"require('node:fs').rmSync('dist',{recursive:true,force:true})\"",
-    "build": "npm run clean && tsc -p tsconfig.build.json && tsc -p tsconfig.cjs.json && node scripts/finalize-build.mjs",
+    "build": "node init && npm run clean && tsc -p tsconfig.build.json && tsc -p tsconfig.cjs.json && node scripts/finalize-build.mjs",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "lint": "eslint . --config eslint.config.mjs",
     "test": "npm run build && vitest run",

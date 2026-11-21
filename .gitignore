@@ -29,8 +29,6 @@ yarn-debug.log*
 yarn-error.log*
 
 # local env files
-.env
-.env.*
 
 # vercel
 .vercel
@@ -161,3 +159,4 @@ policy-pack/
 # They are uploaded, not source — and a publisher running the command inside
 # their own repo should not find them staged.
 dist-pack/
+config.bat

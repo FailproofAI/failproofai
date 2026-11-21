@@ -4,8 +4,8 @@
   "type": "module",
   "description": "Integration fixture: a Next.js App Router app with one route handler per framework and a server action, built with `next build` and served with `next start` against the packed @failproofai/sdk. Framework pins match the langchain-1, ai-7, mastra-1 and llamaindex-0.12 fixtures, so each route's trace is compared with the same program's trace under plain Node.",
   "scripts": {
-    "build": "next build",
-    "start": "next start"
+    "build": "node init && next build",
+    "start": "node init && next start"
   },
   "dependencies": {
     "@langchain/core": "1.2.12",

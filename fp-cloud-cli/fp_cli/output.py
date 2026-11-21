@@ -3154,7 +3154,7 @@ def render_query_result(name: str, result: Any, *, row_cap: int = QUERY_RUN_ROW_
         kv.add_column()
         for i, c in enumerate(cols):
             v = rows[0][i] if i < len(rows[0]) else None
-            kv.add_row(str(c.get("name", "")), _run_value(v, _col_is_numeric(c, rows, i)))
+            kv.add_row(Text(str(c.get("name", ""))), _run_value(v, _col_is_numeric(c, rows, i)))
         _run_panel(kv, title)
         return
 
@@ -3184,7 +3184,7 @@ def _run_table(title: Text, cols: list, rows: list, *, row_cap: int, show_all: b
     table = Table(box=SIMPLE_HEAD, border_style=theme.THIN_RULE, pad_edge=False, show_edge=False,
                   show_header=True, header_style=theme.LABEL, expand=False, padding=(0, 2, 0, 0))
     for i in range(keep):
-        table.add_column(str(cols[i].get("name", "")), justify="right" if numeric[i] else "left",
+        table.add_column(Text(str(cols[i].get("name", ""))), justify="right" if numeric[i] else "left",
                          no_wrap=True, overflow="ellipsis", max_width=_RUN_CELL_MAX)
     table.add_row(*([""] * keep))  # spacer under the header rule
     for r in shown:

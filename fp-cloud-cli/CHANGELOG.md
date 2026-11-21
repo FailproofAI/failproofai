@@ -4,7 +4,7 @@
 
 ### Fixed
 
-- Preserve bracketed units in Cloud CLI query results, so column labels like `latency [ms]` keep their units in the terminal.
+- Preserve bracketed units in Cloud CLI query results, so column labels like `latency [ms]` keep their units in the terminal (#1031).
 
 ## 0.0.3 — 2026-11-16
 

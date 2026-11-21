@@ -374,6 +374,22 @@ def test_query_run_inline_renders_rows(logged_in, runner):
     assert data["elapsed_ms"] == 3
 
 
+@pytest.mark.parametrize(("args", "rows"), [
+    (["run"], [[15, 1]]),
+    (["run"], [[15, 1], [25, 2]]),
+    (["export", "--format", "json"], [[15, 1]]),
+])
+@respx.mock
+def test_query_result_preserves_bracketed_column_units(logged_in, runner, args, rows):
+    respx.post(f"{BASE}/api/queries/run").respond(200, json={
+        "columns": [{"name": "latency [ms]", "type": "Int64"}, {"name": "n", "type": "Int64"}],
+        "rows": rows,
+    })
+    result = runner.invoke(app, ["query", *args, "--sql", 'select latency as "latency [ms]", n from events'])
+    assert result.exit_code == 0, result.output
+    assert "latency [ms]" in result.stdout
+
+
 def test_query_run_requires_sql_or_saved(logged_in, runner):
     result = runner.invoke(app, ["query", "run"])
     assert result.exit_code == 2

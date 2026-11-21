@@ -2,10 +2,9 @@
 
 ## 0.0.4b0 — 2026-11-16
 
-Open for the next release. `0.0.3` published on 2026-11-16 and the `bump` job
-moved the version here automatically; nothing has landed against `0.0.4b0` yet.
-Add entries as changes merge — this section becomes the GitHub Release body when
-it ships.
+### Fixed
+
+- Preserve bracketed units in Cloud CLI query results, so column labels like `latency [ms]` keep their units in the terminal (#1031).
 
 ## 0.0.3 — 2026-11-16
 

@@ -72,7 +72,7 @@ def table(columns, rows, *, empty_message: str, command: str) -> None:
         return
     grid = output.Table(box=None, padding=(0, 2, 0, 0), pad_edge=False, header_style=theme.LABEL)
     for column in columns:
-        grid.add_column(column, overflow="fold")
+        grid.add_column(Text(column), overflow="fold")
     for row in rows:
         grid.add_row(*[v if isinstance(v, Text) else Text(value(v)) for v in row])
     output._stdout.print(grid)

@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.0.16-beta.0 — 2026-11-22
+
+### Fixes
+
+- Preserve bracketed units in Cloud CLI query results, so column labels like `latency [ms]` keep their units in the terminal (#1031).
+
 ## 1.0.15 — 2026-11-18
 
 The stable release of the OpenClaw plugin fix for tool calls blocked as "failproofaid could not be reached" while the daemon was healthy, plus the refreshed README and docs and the dependency updates that landed on `main` since 1.0.14.

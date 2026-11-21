@@ -299,12 +299,13 @@ export async function rewriteFileTree(
    */
   entrySha256?: string | null,
   /**
-   * Write CommonJS sources (`isCommonJsSource`) as `.cjs`. Off for the first
-   * load of a policy, which is always as ES modules; on only for the retry
-   * after Node refused that load for a CommonJS binding
-   * (custom-hooks-loader.ts, `loadSingleFile`).
+   * The source files to write as `.cjs`: only the ones Node refused to load as
+   * ES modules for being CommonJS (custom-hooks-loader.ts, `loadSingleFile`),
+   * and only when they compile as CommonJS (`isCommonJsSource`). Empty for the
+   * first load of a policy, which is always all ES modules, so a file Node
+   * loaded as an ES module is never reinterpreted.
    */
-  detectCommonJs = false,
+  commonJsFiles: ReadonlySet<string> = new Set(),
 ): Promise<string[]> {
   const queue: string[] = [entryPath];
   const visited = new Set<string>();
@@ -315,7 +316,8 @@ export async function rewriteFileTree(
   const isCommonJsFile = async (path: string): Promise<boolean> => {
     let kind = commonJs.get(path);
     if (kind === undefined) {
-      kind = detectCommonJs && isCommonJsSource(await readFile(path, "utf-8").catch(() => ""));
+      kind =
+        commonJsFiles.has(path) && isCommonJsSource(await readFile(path, "utf-8").catch(() => ""));
       commonJs.set(path, kind);
     }
     return kind;
@@ -350,7 +352,7 @@ export async function rewriteFileTree(
       code = await readFile(filePath, "utf-8");
     }
     // From the source as read (the entry's verified bytes), before any rewrite.
-    if (!commonJs.has(filePath)) commonJs.set(filePath, detectCommonJs && isCommonJsSource(code));
+    if (!commonJs.has(filePath)) commonJs.set(filePath, commonJsFiles.has(filePath) && isCommonJsSource(code));
 
     // Rewrite 'failproofai' or legacy 'claudeye' imports to the ESM shim (or direct CJS for require)
     if (esmShimUrl) {

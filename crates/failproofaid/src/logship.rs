@@ -182,7 +182,14 @@ struct State {
     /// `upload-floor` beside daemon.log so a restart honours it.
     floor: Option<time::OffsetDateTime>,
     floor_path: Option<PathBuf>,
+    /// `uploads-off` beside daemon.log, present while troubleshooting is off,
+    /// so a restart starts off (sending nothing before its first poll) and the
+    /// poll that turns it back on is seen as the change it is.
+    off_path: Option<PathBuf>,
 }
+
+/// Present while the org has troubleshooting off (see `State::off_path`).
+const OFF_FILE: &str = "uploads-off";
 
 /// Where the floor is kept, beside daemon.log.
 const FLOOR_FILE: &str = "upload-floor";
@@ -554,10 +561,13 @@ pub fn init(logs_dir: &Path, prior_len: Option<u64>) {
             .and_then(|t| t.trim().parse::<i128>().ok())
             .and_then(|ns| time::OffsetDateTime::from_unix_timestamp_nanos(ns).ok());
         st.floor_path = Some(floor_path);
+        let off_path = logs_dir.join(OFF_FILE);
+        st.cloud_off = off_path.exists();
+        st.off_path = Some(off_path);
     }
     // Nothing is read when uploads are off: the previous run's lines would
     // only ever be read to send them.
-    if unclean && state().enabled {
+    if unclean && state().enabled && !state().cloud_off {
         // The previous run's lines: daemon.log up to where it was before this
         // start, or the rotated file when opening rotated it away.
         let text = match prior_len {
@@ -603,12 +613,19 @@ pub fn set_cloud_allows(allowed: bool) {
         st.incident = None;
         st.requested = None;
         st.ring.clear();
+        if let Some(path) = st.off_path.clone() {
+            let _ = write_private(&path, b"1");
+        }
     } else {
-        // Back on: from now, and never before.
+        // Back on: from now, and never before. The floor is written before the
+        // off marker goes, so a crash between the two still starts off.
         let now = time::OffsetDateTime::now_utc();
         st.floor = Some(now);
         if let Some(path) = st.floor_path.clone() {
             let _ = write_private(&path, now.unix_timestamp_nanos().to_string().as_bytes());
+        }
+        if let Some(path) = st.off_path.clone() {
+            let _ = fs::remove_file(path);
         }
     }
 }
@@ -1101,6 +1118,69 @@ mod tests {
         assert!(!msgs.iter().any(|m| m.contains("while off")), "{msgs:?}");
         // The floor survived to disk, for a restart.
         assert!(dir.join(FLOOR_FILE).exists());
+    }
+
+    /// Review F13: off, a restart (clean or not), then on again. The restarted
+    /// daemon starts off, sends nothing from the previous run, and the poll
+    /// that turns it on sets the floor, so nothing from while it was off leaves.
+    #[test]
+    fn a_restart_while_off_starts_off_and_re_enabling_still_sets_the_floor() {
+        let _g = LOCK.lock().unwrap();
+        for unclean in [true, false] {
+            reset_for_test(true);
+            let dir = temp_dir(if unclean { "off-crash" } else { "off-clean" });
+            init(&dir, None);
+            set_cloud_allows(false);
+            assert!(dir.join(OFF_FILE).exists());
+            let off = line_now("ERROR", "x", "refused batch while off");
+            fs::write(dir.join("daemon.log"), &off).unwrap();
+            if !unclean {
+                mark_clean_shutdown(&dir);
+            }
+            // The restart.
+            reset_for_test(true);
+            init(
+                &dir,
+                Some(fs::metadata(dir.join("daemon.log")).unwrap().len()),
+            );
+            let t0 = Instant::now();
+            assert!(state().cloud_off, "starts off");
+            record(
+                Level::ERROR,
+                "x",
+                &line_now("ERROR", "x", "at startup, still off"),
+                t0,
+            );
+            assert!(
+                collect(t0 + INCIDENT_SETTLE * 2).is_empty(),
+                "nothing before Cloud says on"
+            );
+            std::thread::sleep(Duration::from_millis(5));
+            set_cloud_allows(true);
+            assert!(!dir.join(OFF_FILE).exists());
+            std::thread::sleep(Duration::from_millis(5));
+            let mut log = fs::read_to_string(dir.join("daemon.log")).unwrap();
+            log.push_str(&line_now("INFO", "x", "after"));
+            fs::write(dir.join("daemon.log"), log).unwrap();
+            record(
+                Level::ERROR,
+                "x",
+                &line_now("ERROR", "x", "crash after"),
+                t0,
+            );
+            note_request("req-after");
+            let sent = collect(t0 + INCIDENT_SETTLE * 4);
+            assert!(!sent.is_empty());
+            for body in &sent {
+                for e in body["entries"].as_array().unwrap() {
+                    let m = e["message"].as_str().unwrap();
+                    assert!(
+                        !m.contains("while off") && !m.contains("still off"),
+                        "{unclean}: {m}"
+                    );
+                }
+            }
+        }
     }
 
     /// The daemon.log tail a request reads still holds lines from while it was

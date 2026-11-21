@@ -194,18 +194,51 @@ const warnedSemanticOutsidePack = new Set<string>();
 const COMMONJS_IN_ESM_RE =
   /\b(?:require|module|exports|__filename|__dirname) is not defined in ES module scope|does not provide an export named/;
 
-/** A first attempt that failed only because the file is CommonJS. */
-const RETRY_AS_COMMONJS = Symbol("retry-as-commonjs");
+/** A failed attempt that names the files Node refused for being CommonJS. */
+interface RetryAsCommonJs {
+  retryAsCommonJs: string[];
+}
+
+/** At most this many retries, one per CommonJS file in the tree. */
+const MAX_COMMONJS_RETRIES = 32;
 
 /**
- * Load one policy file, as an ES module first, which is what every policy was
- * loaded as before CommonJS support: a file that runs as an ES module is never
- * reinterpreted, whatever its comments or strings say. Only when Node refuses
- * it for using `require`, `module` or `exports` (Bun, which the test suite runs
- * under, defines `require` in ES modules, so it never refuses) is the tree
- * loaded again with CommonJS files written as `.cjs`. Whatever the failed
- * attempt registered before it threw is taken back first, so nothing is
- * registered twice.
+ * The source files a "this is CommonJS" error names: the requested module of a
+ * link error, or the file whose code used `require`. Both appear as a
+ * temporary copy's path; its source is that path less the suffix. A file is
+ * matched by its full path first, then, for a link error's relative
+ * specifier, by its copy's file name.
+ */
+function blamedSources(err: unknown, tmpFiles: readonly string[], tmpSuffix: string): string[] {
+  const message = err instanceof Error ? err.message : String(err);
+  const stack = err instanceof Error ? (err.stack ?? "") : "";
+  const copies = tmpFiles.filter((f) => f.endsWith(tmpSuffix) || f.endsWith(commonJsTmpSuffix(tmpSuffix)));
+  const source = (f: string) => f.slice(0, f.length - (f.endsWith(tmpSuffix) ? tmpSuffix.length : commonJsTmpSuffix(tmpSuffix).length));
+  for (const text of [message, stack]) {
+    let best: { at: number; files: string[] } | null = null;
+    for (const f of copies) {
+      for (const form of [pathToFileURL(f).href, f]) {
+        const at = text.indexOf(form);
+        if (at >= 0 && (!best || at < best.at)) best = { at, files: [source(f)] };
+      }
+    }
+    if (best) return best.files;
+    const byName = copies.filter((f) => text.includes(`/${basename(f)}`) || text.includes(`'${basename(f)}`));
+    if (byName.length > 0) return byName.map(source);
+  }
+  return [];
+}
+
+/**
+ * Load one policy file, as ES modules first, which is what every policy was
+ * loaded as before CommonJS support. Only when Node refuses a file for being
+ * CommonJS (it uses `require`, `module` or `exports`, or an ES module imports
+ * its `module.exports`) is the tree loaded again with THAT file written as
+ * `.cjs`, and so on for the next one Node names. A file Node loaded as an ES
+ * module is never reinterpreted, whatever its comments or strings say. (Bun,
+ * which the test suite runs under, defines `require` in ES modules, so it
+ * never refuses.) Whatever a failed attempt registered before it threw is
+ * taken back first, so nothing is registered twice.
  */
 async function loadSingleFile(
   absPath: string,
@@ -213,12 +246,14 @@ async function loadSingleFile(
 ): Promise<PolicyLoadFailure | null> {
   const hooksBefore = getCustomHooks().length;
   const semanticBefore = getSemanticRegistrations().length;
-  const first = await loadSingleFileAs(absPath, opts, false);
-  if (first !== RETRY_AS_COMMONJS) return first;
-  getCustomHooks().splice(hooksBefore);
-  getSemanticRegistrations().splice(semanticBefore);
-  const second = await loadSingleFileAs(absPath, opts, true);
-  return second === RETRY_AS_COMMONJS ? null : second;
+  const commonJs = new Set<string>();
+  for (let attempt = 0; ; attempt++) {
+    const result = await loadSingleFileAs(absPath, opts, commonJs, attempt < MAX_COMMONJS_RETRIES);
+    if (!result || !("retryAsCommonJs" in result)) return result;
+    getCustomHooks().splice(hooksBefore);
+    getSemanticRegistrations().splice(semanticBefore);
+    for (const f of result.retryAsCommonJs) commonJs.add(f);
+  }
 }
 
 interface LoadOptions {
@@ -237,12 +272,15 @@ interface LoadOptions {
 async function loadSingleFileAs(
   absPath: string,
   opts: LoadOptions | undefined,
-  commonJs: boolean,
-): Promise<PolicyLoadFailure | null | typeof RETRY_AS_COMMONJS> {
+  commonJs: ReadonlySet<string>,
+  mayRetry: boolean,
+): Promise<PolicyLoadFailure | null | RetryAsCommonJs> {
   const g = globalThis as Record<string, unknown>;
   g[LOADING_KEY] = true;
 
   let tmpFiles: string[] = [];
+  // Out here so a failed load can name the files it blames (`blamedSources`).
+  let tmpSuffix = "";
   try {
     const distIndex = await findDistIndex();
     const distUrl = distIndex ? pathToFileURL(distIndex).href : null;
@@ -253,7 +291,7 @@ async function loadSingleFileAs(
     // fallback path a collision means EEXIST, which fails the load OPEN. A
     // random id removes the class. It costs nothing: `fingerprintTemporaryTree`
     // normalises the whole suffix away, so the module cache still hits.
-    const tmpSuffix = `${TMP_SUFFIX}.${process.pid}.${sequence}.${randomUUID()}.mjs`;
+    tmpSuffix = `${TMP_SUFFIX}.${process.pid}.${sequence}.${randomUUID()}.mjs`;
     tmpFiles = await rewriteFileTree(
       absPath,
       distUrl,
@@ -295,7 +333,10 @@ async function loadSingleFileAs(
     return null;
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
-    if (!commonJs && COMMONJS_IN_ESM_RE.test(msg)) return RETRY_AS_COMMONJS;
+    if (mayRetry && COMMONJS_IN_ESM_RE.test(msg)) {
+      const blamed = blamedSources(err, tmpFiles, tmpSuffix).filter((f) => !commonJs.has(f));
+      if (blamed.length > 0) return { retryAsCommonJs: blamed };
+    }
     // An import that names no module, apart from a file the policy itself
     // reads at load (a `readFileSync` of its data): both are ENOENT underneath,
     // but "module not found" sent people looking for a missing package (B13).

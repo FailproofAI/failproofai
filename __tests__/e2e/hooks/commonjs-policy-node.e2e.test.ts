@@ -84,6 +84,24 @@ writeFileSync(join(policies, "esm-hints.mjs"), [
   "    ? { decision: \"deny\", reason: \"esm hints says no curl \" + note.length } : { decision: \"allow\" } });",
 ].join("\n"));
 
+// Review F10 (round 4): a MIXED graph. The entry imports a module.exports
+// helper, so its load is retried with CommonJS copies; it also imports, for its
+// side effect, an ES module whose only CommonJS hints are a comment and a
+// template. That one must stay an ES module (strict), or curl is allowed.
+writeFileSync(join(policies, "strict-flag.js"), [
+  "// Was: module.exports.strict = ...; see require() notes in the README.",
+  "const note = `exports moved to the ES module below`;",
+  "globalThis.__fpaiStrictFlag = (function () { return this === undefined; })() && note.length > 0;",
+].join("\n"));
+writeFileSync(join(policies, "mixed-graph.mjs"), [
+  `import { customPolicies, deny, allow } from "failproofai";`,
+  `import util from "./util.js";`,
+  `import "./strict-flag.js";`,
+  `customPolicies.add({ name: "mixed-graph-no-curl", match: { events: ["PreToolUse"] },`,
+  `  fn: async (ctx) => globalThis.__fpaiStrictFlag === true && util.isCurl(String(ctx.toolInput?.command ?? ""))`,
+  `    ? deny("mixed graph says no curl") : allow() });`,
+].join("\n"));
+
 function hook(policyFile: string, command: string) {
   writeFileSync(join(home, ".failproofai/policies-config.json"),
     JSON.stringify({ enabledPolicies: [], customPoliciesPath: join(policies, policyFile) }));
@@ -123,6 +141,11 @@ describe("a CommonJS policy run by node", () => {
   it("CommonJS with import.meta and export inside template literals stays CommonJS", () => {
     const denied = hook("cjs-literal.js", "curl example.com");
     expect(denied.stdout, denied.stderr).toContain("cjs literal says no curl");
+  });
+
+  it("a mixed graph turns only the helper Node refused into CommonJS", () => {
+    const denied = hook("mixed-graph.mjs", "curl example.com");
+    expect(denied.stdout, denied.stderr).toContain("mixed graph says no curl");
   });
 
   it("an ES module policy importing a module.exports helper loads and denies", () => {

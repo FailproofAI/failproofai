@@ -102,12 +102,20 @@ writeFileSync(join(policies, "mixed-graph.mjs"), [
   `    ? deny("mixed graph says no curl") : allow() });`,
 ].join("\n"));
 
-function hook(policyFile: string, command: string) {
+// Node before 22.12 cannot require() an ES module (ERR_REQUIRE_ESM), and 20.9
+// is the minimum supported. Where the running node has require(esm), this flag
+// turns it off so that path is tested on whatever node CI has.
+const noRequireEsm =
+  spawnSync("node", ["--no-experimental-require-module", "-e", ""], { encoding: "utf8" }).status === 0
+    ? ["--no-experimental-require-module"]
+    : [];
+
+function hook(policyFile: string, command: string, nodeArgs: string[] = []) {
   writeFileSync(join(home, ".failproofai/policies-config.json"),
     JSON.stringify({ enabledPolicies: [], customPoliciesPath: join(policies, policyFile) }));
   const stdin = JSON.stringify({ session_id: "s", hook_event_name: "PreToolUse", tool_name: "Bash",
     tool_input: { command }, cwd: proj });
-  return spawnSync("node", [join(dist, "cli.mjs"), "--hook", "PreToolUse", "--cli", "claude"], {
+  return spawnSync("node", [...nodeArgs, join(dist, "cli.mjs"), "--hook", "PreToolUse", "--cli", "claude"], {
     input: stdin, encoding: "utf8", timeout: 20000,
     env: { ...process.env, HOME: home, USERPROFILE: home, FAILPROOFAI_HOME: join(home, ".failproofai"),
       FAILPROOFAI_DIST_PATH: dist, FAILPROOFAI_TELEMETRY_DISABLED: "1" },
@@ -124,6 +132,15 @@ describe("a CommonJS policy run by node", () => {
     expect(denied.stdout, denied.stderr).toContain("cjs says no curl");
     expect(denied.stderr).not.toContain("require is not defined");
     const allowed = hook("cjs.js", "ls");
+    expect(allowed.status).toBe(0);
+    expect(allowed.stdout).not.toContain("deny");
+  });
+
+  it("a required module.exports helper loads where node cannot require() an ES module", () => {
+    const denied = hook("cjs.js", "curl example.com", noRequireEsm);
+    expect(denied.stdout, denied.stderr).toContain("cjs says no curl");
+    expect(denied.stderr).not.toContain("require() of ES Module");
+    const allowed = hook("cjs.js", "ls", noRequireEsm);
     expect(allowed.status).toBe(0);
     expect(allowed.stdout).not.toContain("deny");
   });

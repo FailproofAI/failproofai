@@ -186,13 +186,15 @@ const warnedSemanticOutsidePack = new Set<string>();
 /**
  * Node's own words when a file it loaded as an ES module is CommonJS: a
  * CommonJS binding used at run time, or, when an ES module imports a
- * `module.exports` helper, the link failing for want of that export. Only these
- * retry a load as CommonJS (see `loadSingleFile`). A genuine ES-module mistake
- * that happens to read the same fails the retry the same way, and that is what
- * is reported.
+ * `module.exports` helper, the link failing for want of that export, or, on
+ * Node before 22.12 (`require(esm)`), a CommonJS file `require()`-ing a helper
+ * still written as `.mjs` (`ERR_REQUIRE_ESM`, which names the required file
+ * first). Only these retry a load as CommonJS (see `loadSingleFile`). A genuine
+ * ES-module mistake that happens to read the same fails the retry the same way,
+ * and that is what is reported.
  */
 const COMMONJS_IN_ESM_RE =
-  /\b(?:require|module|exports|__filename|__dirname) is not defined in ES module scope|does not provide an export named/;
+  /\b(?:require|module|exports|__filename|__dirname) is not defined in ES module scope|does not provide an export named|require\(\) of ES Module|ERR_REQUIRE_ESM/;
 
 /** A failed attempt that names the files Node refused for being CommonJS. */
 interface RetryAsCommonJs {
@@ -333,7 +335,8 @@ async function loadSingleFileAs(
     return null;
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
-    if (mayRetry && COMMONJS_IN_ESM_RE.test(msg)) {
+    const code = (err as { code?: unknown } | null)?.code;
+    if (mayRetry && (COMMONJS_IN_ESM_RE.test(msg) || code === "ERR_REQUIRE_ESM")) {
       const blamed = blamedSources(err, tmpFiles, tmpSuffix).filter((f) => !commonJs.has(f));
       if (blamed.length > 0) return { retryAsCommonJs: blamed };
     }

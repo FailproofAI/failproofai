@@ -1,5 +1,15 @@
 # Changelog
 
+## 1.0.16-beta.0 — 2026-11-22
+
+### Fixes
+
+- The daemon no longer aborts with a stack overflow when a policy's `artifactUrl` from Cloud is a deeply nested `blob:` URL: `url` moves to 2.5.9 for RUSTSEC-2026-0592, and such a URL is refused by the origin check (#1032)
+
+### Dependencies
+
+- OSV gate: the Python SDK's dev/test lockfile moves crewai to 1.15.42, where chromadb is an optional extra, so chromadb and its four advisories with no fixed version leave it. The allow-list is now empty: those four expired entries are removed, along with picomatch GHSA-fc5q-39xc-vjpf, which was withdrawn upstream (#1032)
+
 ## 1.0.15 — 2026-11-18
 
 The stable release of the OpenClaw plugin fix for tool calls blocked as "failproofaid could not be reached" while the daemon was healthy, plus the refreshed README and docs and the dependency updates that landed on `main` since 1.0.14.

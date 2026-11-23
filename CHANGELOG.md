@@ -4,6 +4,7 @@
 
 ### Fixes
 
+- The daemon no longer aborts with a stack overflow when a policy's `artifactUrl` from Cloud is a deeply nested `blob:` URL: `url` moves to 2.5.9 for RUSTSEC-2026-0592, and such a URL is refused by the origin check (#1032)
 - The daemon sends no daemon log while the org has troubleshooting off: when Cloud's policy poll says `machineLogs: false` it drops what was pending (an open log request included) and queues nothing until it is back on, and keeps nothing for context while it is. The off state is kept beside daemon.log, so a daemon restarted while it is off (cleanly or not) sends nothing before its first poll. Turning it back on sets a floor (kept there too): no later upload carries a line older than it, so an incident or a requested tail never delivers what was logged while it was off. A Cloud that sends no such key means on, as before (#1033)
 - The daemon logs an ERROR when hook data stops reaching Cloud while the rest of the collector keeps working: an agent whose sessions show tool calls in the last 10 minutes with none of them reaching failproofai's hooks (its hooks not installed or not firing, so those calls ran unchecked), hook calls answered with nothing recorded by the hook activity source, hook batches waiting 15 minutes while other events deliver, or hook batches Cloud refused. Only tool calls an agent is making now count, so the backfill after setup never raises it. The line reaches Cloud with the daemon's error roll-up. A problem clears only on evidence it is fixed (a hook call from that agent, events from the hook source, the stuck batch gone), never because traffic fell, and its clearing is logged once. Checked every 5 minutes, repeated hourly while it lasts, and not when hook collection is off (#1033)
 - A policy file written with `require()` loads and enforces under Node. Every policy's temporary copy was written as `.mjs`, where Node defines no `require`, `module` or `exports`, so a CommonJS policy (or an ES module policy importing a `module.exports` helper) failed to load and the calls it should have denied were allowed. A CommonJS file's copy is now `.cjs`; which a file is gets decided the way Node decides an ambiguous `.js` file, by compiling it as CommonJS, and only for a file Node itself refused to load as an ES module for being CommonJS, one file at a time: a file Node loaded as an ES module, in a mixed graph included, is never reinterpreted, whatever its comments or strings say. On Node before 22.12, which cannot `require()` an ES module, a CommonJS policy's required `module.exports` helper is converted the same way, from the file Node's `ERR_REQUIRE_ESM` names. A new e2e test runs the bundled CLI under `node`; the rest of the suite runs under Bun, which hid this (#1033)
@@ -30,7 +31,8 @@
 
 ### Dependencies
 
-- The Python SDK's dev/test lockfile moves crewai to 1.15.44, which made chromadb optional, so chromadb 1.5.9 and its four unfixable advisories leave the lockfile; their expired OSV allow-list entries are removed (#1033)
+- OSV gate: the Python SDK's dev/test lockfile moves crewai to 1.15.44, where chromadb is an optional extra, so chromadb and its four advisories with no fixed version leave it. The allow-list is now empty: those four expired entries are removed, along with picomatch GHSA-fc5q-39xc-vjpf, which was withdrawn upstream (#1032)
+
 
 ## 1.0.15 — 2026-11-18
 

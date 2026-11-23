@@ -325,7 +325,6 @@ async fn org_switch_never_delivers_old_records_even_after_backfill_reselect_and_
     let old = json!({"timestamp":old_ts,"type":"response_item","payload":{
         "type":"message","role":"assistant","content":[{"type":"output_text","text":"OLD_ORG_RECORD"}]
     }});
-    std::fs::write(&session, format!("{header}\n{old}\n")).unwrap();
     let write_identity = |id: &str, since: u64| {
         std::fs::write(
             s.fp().join("credentials.json"),
@@ -339,6 +338,20 @@ async fn org_switch_never_delivers_old_records_even_after_backfill_reselect_and_
     write_identity("A", 0);
     let daemon = spawn_daemon(&s);
     daemon.wait_for("collector started", 1);
+    // A collector re-sends one credential refusal after its first accepted
+    // delivery, under its own key (`Delivery::redrive_refused`). That is right
+    // for A, but if the pass ran after the refusal planted below, A would
+    // deliver it and the switch would have nothing left to quarantine. So the
+    // pass gets a refusal of its own, written after the start (which
+    // quarantines whatever `failed/` already held) and before A's transcript,
+    // so before any delivery. The one under test is planted once it is spent.
+    let failed = s.fp().join("state/failed");
+    std::fs::create_dir_all(&failed).unwrap();
+    let earlier = json!({"timestamp":old_ts,"type":"response_item","payload":{
+        "type":"message","role":"assistant","content":[{"type":"output_text","text":"EARLIER_REFUSAL"}]
+    }});
+    std::fs::write(failed.join("earlier.a1.c401.jsonl"), format!("{earlier}\n")).unwrap();
+    std::fs::write(&session, format!("{header}\n{old}\n")).unwrap();
     // Wait until A's old transcript has actually arrived.
     let deadline = Instant::now() + Duration::from_secs(20);
     loop {
@@ -358,18 +371,10 @@ async fn org_switch_never_delivers_old_records_even_after_backfill_reselect_and_
         );
         tokio::time::sleep(Duration::from_millis(100)).await;
     }
+    daemon.wait_for("re-sent a batch an earlier key had refused", 1);
     // Poison/refused queues cannot be delivered; they must be quarantined.
-    std::fs::create_dir_all(s.fp().join("state/failed")).unwrap();
-    std::fs::write(
-        s.fp().join("state/failed/old.a1.c401.jsonl"),
-        format!("{old}\n"),
-    )
-    .unwrap();
-    std::fs::write(
-        s.fp().join("state/failed/old.jsonl.poison"),
-        format!("{old}\n"),
-    )
-    .unwrap();
+    std::fs::write(failed.join("old.a1.c401.jsonl"), format!("{old}\n")).unwrap();
+    std::fs::write(failed.join("old.jsonl.poison"), format!("{old}\n")).unwrap();
     let boundary = ms(SystemTime::now());
     write_identity("B", boundary);
     daemon.wait_for("retained previous-org batches", 1);

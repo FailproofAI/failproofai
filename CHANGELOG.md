@@ -1,5 +1,15 @@
 # Changelog
 
+## 1.0.16-beta.0 — 2026-11-23
+
+### Fixes
+
+- `rust-quality` no longer fails at random on the daemon's org-switch end-to-end test (it went red on `main` on 2026-10-25 and 2026-11-06, and on two Dependabot PRs). Org A's collector re-sends one credential refusal after its first accepted upload, under A's own key, and the test planted the refusal the switch must quarantine at the moment that upload was answered, so now and then A re-sent it first. The test now gives that pass a refusal of its own before A's first upload, and plants the one under test once it is spent (#1015)
+
+### Dependencies
+
+- `notify` 8.2.1 → 8.2.2 and `rusqlite` 0.41.1 → 0.42.0, which bundles SQLite 3.54.1 through `libsqlite3-sys` 0.40.0 (#1015)
+
 ## 1.0.16-beta.0 — 2026-11-22
 
 ### Fixes

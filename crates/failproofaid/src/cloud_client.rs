@@ -2630,6 +2630,27 @@ mod tests {
         assert!(cloud.artifact(&policy).unwrap_err().contains("outside"));
     }
 
+    /// RUSTSEC-2026-0592: `artifactUrl` is the server's to choose, and the origin
+    /// check is what reads it first. Before url 2.5.9 `Url::origin()` recursed
+    /// once per `blob:` prefix, so this URL overflowed the stack, which aborts
+    /// the whole daemon rather than failing the one fetch.
+    #[test]
+    fn refuses_a_deeply_nested_blob_artifact_url() {
+        let cloud =
+            CloudClient::new("https://cloud.example", "secret".into(), "machine".into()).unwrap();
+        let policy = DesiredPolicy {
+            id: "guard".into(),
+            version: 1,
+            sha256: "0".repeat(64),
+            artifact_url: format!("{}https://cloud.example/artifact", "blob:".repeat(10_000)),
+            effect: PolicyEffect::Enforce,
+            authority: None,
+            reviewed_by: None,
+            agent_targets: None,
+        };
+        assert!(cloud.artifact(&policy).unwrap_err().contains("outside"));
+    }
+
     /// A failed poll names its cause. reqwest's own message is only "error
     /// sending request for url"; a refused connection, a DNS failure and an
     /// untrusted certificate all read the same until the source chain is kept.

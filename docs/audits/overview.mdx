@@ -16,7 +16,7 @@ See how an audit moves from a scheduled run to evidence-backed failures you can 
 
 <Tabs>
   <Tab title="Dashboard">
-    Go to **Analyze → Audits**. The page shows scheduled state, open findings, last run, next run, cadence, and whether the audit has a brief or reference pages. Select a card for settings and run history; select **new audit** to create one.
+    Go to **analyse → checks → audits**. Each audit's row shows its runs, cadence, latest run, and the insights its latest run found, with **run now**; filter by state or search. Select a row for settings and run history; select **new check**, or **analyse → checks → new audit**, to create one.
 
     ![The Audits page showing recurring audits with their schedule, sensitivity, and run state.](/images/dashboard/audits.png)
   </Tab>
@@ -40,11 +40,11 @@ Use an audit when you need to answer a population-level question such as:
 ## Audit response flow
 
 ```text
-Session → Audit → Finding → Issue → Policy
+Session → Audit → Finding → Insight → Policy
                          ↘ Alert for recurrence
 ```
 
-A finding should name the failure mode and point to evidence. An issue owns the remediation. A policy prevents a known action pattern; an alert detects recurrence when prevention is not possible or needs monitoring.
+A finding should name the failure mode and point to evidence. An insight owns the remediation. A policy prevents a known action pattern; an alert detects recurrence when prevention is not possible or needs monitoring.
 
 <Columns cols={2}>
   <Card title="Set up an audit" icon="sliders-horizontal" href="/audits/setup">

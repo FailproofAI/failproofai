@@ -1,10 +1,10 @@
 ---
-title: "Failproof Assistant"
+title: "Failproof agent"
 description: "Analyze and operate Failproof AI in natural language, from questions and queries to dashboards and audits."
 icon: "message-square-text"
 ---
 
-Ask the Failproof Assistant to do anything in Failproof AI in natural language. It can analyze sessions and failures, run queries, build dashboards, investigate evaluations and alerts, and help create and run audits without making you translate the task into product screens or CLI commands.
+Ask the failproof agent to do anything in Failproof AI in natural language. It can analyze sessions and failures, run queries, build dashboards, investigate evaluations and alerts, and help create and run audits without making you translate the task into product screens or CLI commands.
 
 ```text
 Why did production checkout agents regress this week?
@@ -13,18 +13,18 @@ Create an audit that finds agents retrying the same failed action without changi
 Show me the sessions behind the most common audit finding.
 ```
 
-The assistant works with the data and permissions available in the active organization. Review its evidence and proposed changes before applying actions that affect other users or agents.
+The failproof agent works with the data and permissions available in the active organization. Review its evidence and proposed changes before applying actions that affect other users or agents.
 
-## Ask the assistant
+## Ask the failproof agent
 
 <Tabs>
   <Tab title="Dashboard">
-    1. Select **Open agent chat** and describe what you want to understand, create, or operate.
-    2. Review the assistant's tool calls, tables, and query results while it works.
+    1. On **home**, type in the chat box (“ask anything about your agents”), or open the dock on any page with **ask failproof** (⌘J / Ctrl+J) to ask about that page. Describe what you want to understand, create, or operate.
+    2. Review the agent's tool calls, tables, and query results while it works.
     3. Open the cited session, alert, or query to verify the result against source data.
-    4. Start a new chat for a different investigation, or use chat history to continue the same line of analysis.
+    4. Select **new chat** in the sidebar for a different investigation, or search the sidebar for an earlier chat to continue the same line of analysis.
 
-    ![The Cloud assistant answering an observability question with supporting analysis and queries.](/images/dashboard/assistant.png)
+    ![The failproof agent answering an observability question with supporting analysis and queries.](/images/dashboard/assistant.png)
   </Tab>
   <Tab title="CLI">
     ```bash
@@ -40,14 +40,14 @@ The assistant works with the data and permissions available in the active organi
   </Tab>
 </Tabs>
 
-## Work effectively with the assistant
+## Work effectively with the failproof agent
 
 - Give it a goal first; add an environment, workflow, or time range when those boundaries matter.
 - Treat generated SQL and summaries as an investigation aid, not final evidence.
-- Open representative sessions before creating an audit, issue, alert, or policy.
+- Open representative sessions before creating an audit, insight, alert, or policy.
 - Keep organization, environment, and time filters explicit.
 - Save useful SQL as a query so another operator can reproduce the result.
 
 <Warning>
-  The assistant can read only what your current user can access. Do not broaden permissions to make a question work; ask an authorized operator to run the investigation instead.
+  The failproof agent can read only what your current user can access. Do not broaden permissions to make a question work; ask an authorized operator to run the investigation instead.
 </Warning>

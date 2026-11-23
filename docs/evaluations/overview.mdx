@@ -14,17 +14,17 @@ An evaluation scores a finished agent session. When a session ends, every enable
 
 | | Hosted Python | Your own worker |
 | --- | --- | --- |
-| Written | In the dashboard, under **Analyze → eval authoring** | In Python, with the [Evaluator SDK](/reference/evaluator-sdk) |
+| Written | In the dashboard, under **analyse → checks → new evaluation** (or **new check**) | In Python, with the [Evaluator SDK](/reference/evaluator-sdk) |
 | Runs | On Failproof AI's managed evaluator, in a sandbox | On your infrastructure |
 | Best for | Deterministic checks, and model-backed ones we host for you | Packages, secrets, your own network, models you host yourself, heavy processing |
 
-Hosted evaluations come in three shapes, and the assistant picks between them for you:
+Hosted evaluations come in three shapes — the methods under **how should it score?** — and failproof picks between them when it drafts one:
 
 | | Reads the session with | Gives you |
 | --- | --- | --- |
 | **Code** | nothing — one Python expression, no imports, no network | a score, a metric, or an assertion |
-| **[Jev classifier](/evaluations/jev)** | a small model built for classification | a score, and nothing else — it does not explain itself |
-| **[Judge](/evaluations/judge)** | a general-purpose model | a score **and** the reasoning behind it |
+| **[Decision model](/evaluations/jev)** (Jev) | a small model built for classification | a score, and nothing else — it does not explain itself |
+| **[LLM as judge](/evaluations/judge)** | a general-purpose model | a score **and** the reasoning behind it |
 
 Code costs nothing to run. The other two cost a model call per session, so give them a condition that narrows them to the sessions the question is actually about.
 
@@ -32,13 +32,13 @@ Your own worker is still where an evaluation goes when it needs something we do 
 
 ## Each organization evaluates its own agents
 
-Evaluations belong to the organization that defines them. Each organization on an instance writes its own — its own checks, conditions, thresholds, and labels — versions and deploys them without affecting any other, and sees only its own results. Filter those results by agent, environment, evaluation, and time, or ask the assistant about them.
+Evaluations belong to the organization that defines them. Each organization on an instance writes its own — its own checks, conditions, thresholds, and labels — versions and deploys them without affecting any other, and sees only its own results. Filter those results by agent, environment, evaluation, and time, or ask the failproof agent about them.
 
 ## From first draft to live scores
 
 <Steps>
   <Step title="Write it">
-    Describe what to measure and let the assistant draft it, or write it yourself. See [Write an evaluation](/evaluations/write).
+    Describe what to measure and let failproof draft it, or write it yourself. See [Write an evaluation](/evaluations/write).
   </Step>
   <Step title="Test it">
     Run it against real sessions before it goes live; nothing is stored. See [Test an evaluation](/evaluations/test).
@@ -47,7 +47,7 @@ Evaluations belong to the organization that defines them. Each organization on a
     Deploy an immutable version, publish new ones as it evolves, and roll back to an earlier one. See [Deploy and version](/evaluations/deploy).
   </Step>
   <Step title="Read the results">
-    Chart scores over time, compare agents and environments, and ask the assistant. See [Read evaluation results](/sessions/evaluations).
+    Chart scores over time, compare agents and environments, and ask the failproof agent. See [Read evaluation results](/sessions/evaluations).
   </Step>
 </Steps>
 

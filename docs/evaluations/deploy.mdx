@@ -6,16 +6,16 @@ icon: "cloud-upload"
 
 ## Deploy it
 
-Select **deploy `<key>@<version>`** at the bottom of the authoring page. The version is immutable once published: from then on, every session that finishes, and that its condition applies to, is scored by it.
+Select **deploy evaluation →** in the last step of the new evaluation page (**deploy v…** followed by the version number, for a new version). The version is immutable once published: from then on, every session that finishes, and that its condition applies to, is scored by it. For a code evaluation, leave **also score past sessions** ticked to score the last seven days as well.
 
 ## See what is live
 
-**Analyze → eval authoring** lists your organization's hosted definitions, the evaluations the managed evaluator runs for it. Each row shows:
+**analyse → checks → evals** lists your organization's evaluations, and each one opens its own page: its scores, whether it is **on**, and its **versions**, newest first. Each version shows:
 
-- its name, key, version, and result type
+- whether it is **live**, and whether it is on
+- when it last changed
 - its source checksum, which tells deployed revisions apart without opening the code
-- whether it is **conditional** or runs on **all completed sessions** — the condition is what scopes an evaluation to particular agents or environments
-- its timeout, its labels, and when it last changed
+- its timeout, and its condition — or **every finished session** when it has none. The condition is what scopes an evaluation to particular agents or environments
 
 ![The hosted definitions list: each evaluation's name, key, version, result type, checksum, timeout, and scope, with new version and enable or disable.](/images/dashboard/eval-definitions.png)
 
@@ -25,21 +25,21 @@ An organization can have up to 100 different hosted evaluations enabled at once.
 
 ## Publish a new version
 
-Select **new version** on a row. The authoring page opens with that version's code; change it, test it, and deploy it. Its key and result type carry over and cannot change.
+Select **edit as new version** on the evaluation's page, or **new version from this** on an older version under **versions**. The new evaluation form opens with that version's code; change it, try it, and deploy it. Its key and result type carry over and cannot change.
 
-Publishing a successor disables its predecessor and keeps it on the list. Results keep the version that produced them, so a chart shows exactly when the new logic took over.
+Publishing a successor disables its predecessor and keeps it under **versions**. Results keep the version that produced them, so a chart shows exactly when the new logic took over.
 
 ## Roll back
 
-Select **disable** on the current version and **enable** on the one you want back. Nothing is deleted, and every result stays as it was.
+Under **versions**, select **turn off** on the current version and **turn on** on the one you want back. Nothing is deleted, and every result stays as it was.
 
 ## Stop an evaluation
 
-Select **disable**. With no enabled version, it stops running on new sessions. To stop an evaluation your own worker runs, stop registering it: remove it from the worker, or stop the worker.
+Switch its **on** badge, at the top of its page, to **off**. With no enabled version, it stops running on new sessions. To stop an evaluation your own worker runs, stop registering it: remove it from the worker, or stop the worker.
 
 ## Score sessions you already have
 
-Evaluation runs forward: a version deployed now never scores a session that ended before it. To score history, open **score sessions you already have** on the eval authoring page, choose a window of up to 90 days and, optionally, a single evaluation, and count before you run. The count is exactly what will run, and each session-and-evaluation pair in it is a billable evaluation.
+Evaluation runs forward: a version deployed now never scores a session that ended before it. To score history, select **score past sessions** on the evaluation's page and choose a window, from the last 24 hours up to the last 90 days. It counts the sessions missing a score before anything runs, and scoring starts only when you confirm. Each session-and-evaluation pair it scores is a billable evaluation.
 
 It fills gaps only. A session that already has a result for that evaluation keeps it, and running the same window twice scores nothing new.
 
@@ -49,7 +49,7 @@ To score one session again — after a fix, or for a session that never ended cl
 
 | Permission | Lets you |
 | --- | --- |
-| `evaluations:read` | See results, and open the eval authoring page |
+| `evaluations:read` | See results |
 | `evaluations:trigger` | See, deploy, version, enable, and disable hosted definitions; test them; score history; re-evaluate a session |
 | `events:read` | Test against real sessions, and ground drafts in your payload keys, on top of `evaluations:trigger` |
 | `evaluations:run` | Run your own evaluator worker |

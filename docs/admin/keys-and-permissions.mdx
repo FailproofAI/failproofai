@@ -10,20 +10,20 @@ API keys belong to an organization and carry explicit permissions. Use separate 
 
 <Tabs>
   <Tab title="Dashboard">
-    1. Go to **Administration → Keys**, select **new key**, and enter a workload name.
-    2. Choose a permission set and adjust individual permissions only when the preset is insufficient.
-    3. Create the key and copy its one-time secret immediately.
-    4. Open the key later to update grants, disable it, or regenerate the secret.
+    1. Go to **settings → api keys** and, in the **new key** form beside the table, enter a workload name.
+    2. Answer **what is it for?**: **a machine running failproofai**, **sending logs only**, or **your own evaluator worker**. Choose **pick permissions yourself** only when none of these fits.
+    3. Select **create key** and copy its one-time secret immediately.
+    4. Open the key later to edit its permissions, regenerate the secret, or revoke it.
 
-    The creation drawer is where you choose the narrowest grants required by the workload.
+    Choose the narrowest purpose, or the narrowest individual grants, the workload needs. A key never has more access than the person who made it.
 
     ![The new API key drawer with permission presets and individual grants.](/images/dashboard/key-create.png)
 
-    After creation, the Keys page shows the persistent metadata and management actions. The one-time secret is not shown again.
+    After creation, the **api keys** page shows the persistent metadata and management actions. The one-time secret is not shown again.
 
     ![The API Keys page showing key permissions, creation time, and regenerate and disable actions.](/images/dashboard/api-keys.png)
 
-    Use this list to review grants regularly and disable keys that no longer map to an active workload.
+    Use this list to review grants regularly and revoke keys that no longer map to an active workload.
   </Tab>
   <Tab title="CLI">
     ```bash
@@ -45,7 +45,7 @@ The two permissions required by a connected Failproof AI machine are independent
 - `events:add` sends events and session data.
 - `policies:pull` retrieves assigned policy deployments.
 
-To run [Jev policies through FailproofAI Cloud](/policies/jev), select the **machine** key preset. It adds `jev:evaluate` to both permissions above. Cloud Jev cannot run with a key that lacks it.
+To run [Jev policies through FailproofAI Cloud](/policies/jev), choose **a machine running failproofai**. It adds `jev:evaluate` to both permissions above. Cloud Jev cannot run with a key that lacks it.
 
 Key secrets are shown when created or regenerated. Store them in a secret manager and rotate them without reusing an operator's interactive credentials.
 
@@ -59,18 +59,19 @@ Key secrets are shown when created or regenerated. Store them in a secret manage
 | Evaluations | `evaluations:read`, `evaluations:trigger`, `evaluations:run` |
 | Dashboards | `dashboards:read`, `dashboards:write`, `dashboards:delete` |
 | Queries | `queries:read`, `queries:write`, `queries:delete`, `queries:run` |
-| Assistant | `agent:use` |
+| Failproof agent | `agent:use` |
 | Settings | `settings:read`, `settings:write` |
 | Alerts | `alerts:read`, `alerts:write` |
-| Issues | `issues:read`, `issues:create`, `issues:close` |
+| Insights | `issues:read`, `issues:create`, `issues:close` |
 | Audits | `audits:read`, `audits:write` |
 | Policies | `policies:read`, `policies:write`, `policies:pull` |
-| Usage | `usage:read` |
+| Code fixes | `code_fixes:read`, `code_fixes:write` |
+| Usage | `usage:read`; `billing:manage` is human-session only |
 | Jev | `jev:evaluate` (requires `events:add` and `policies:pull`) |
 
 `orgs:admin` is reserved for the instance operator and cannot be granted to an organization key or ordinary member. Retired `incidents:*` and `alerts:ack` tokens are accepted for compatibility and normalize to current `issues:*` permissions.
 
-Builtin permission sets are `read-only`, `standard`, and `admin`. `standard` adds evaluation triggering, query execution, issue response, and assistant use to read permissions. Key creation strips human-only grants even when a permission set contains them.
+Builtin permission sets are `read-only`, `standard`, and `admin`. `standard` adds evaluation triggering, query execution, insight response, and failproof agent use to read permissions. Key creation strips human-only grants even when a permission set contains them.
 
 <Warning>
   Instance-scoped keys can select an organization with the `X-AgentEye-Org` header. Set it explicitly on multi-organization deployments; omission may select the default organization.

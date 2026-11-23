@@ -110,10 +110,10 @@ Without sudo, and on Windows, the hooks stay in `~/.codex/hooks.json`. `failproo
 
 <Tabs>
   <Tab title="Dashboard">
-    1. Open **Administration → Keys** and create a key with `events:add` and `policies:pull`, named for the machine or environment.
+    1. Open **settings → api keys** and create a key with `events:add` and `policies:pull`, named for the machine or environment.
     2. On the target machine, connect the local CLI with the displayed key and install the harness hooks.
-    3. Start a new agent session, then confirm its hook and session events under **Observe → Events**.
-    4. Open **Observe → policy** for the same time window and confirm a policy decision is attributed to the machine.
+    3. Start a new agent session, then confirm its hook and session events under **trace → live events**.
+    4. Open **fix → activity** for the same time window and confirm a policy decision is attributed to the machine.
 
     The connection starts with a machine key. Confirm that it includes both ingestion and policy-delivery permissions before copying its secret.
 
@@ -167,7 +167,7 @@ Without sudo, and on Windows, the hooks stay in `~/.codex/hooks.json`. `failproo
 
 <Tabs>
   <Tab title="Dashboard">
-    Extra paths are registered on the machine, not in Cloud. After adding one, open **Observe → Sessions**, filter to the machine's environment, and confirm sessions from the new path appear. Open a session and check the agent, harness, and event timestamps before relying on it in an audit.
+    Extra paths are registered on the machine, not in Cloud. After adding one, open **trace → sessions**, filter to the machine's environment, and confirm sessions from the new path appear. Open a session and check the agent, harness, and event timestamps before relying on it in an audit.
 
     ![The Sessions list filtered to the environment receiving data from the additional capture path.](/images/dashboard/sessions-list.png)
   </Tab>

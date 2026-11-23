@@ -1,6 +1,6 @@
 ---
 title: "Prevent your first failure with a policy"
-description: "Author a policy version, deploy it in observe mode, and then enforce it."
+description: "Write a policy, deploy it in observe mode, and then enforce it."
 icon: "shield-check"
 ---
 
@@ -9,18 +9,18 @@ Use a policy only after you can describe the unsafe action and the legitimate ac
 <Tabs>
   <Tab title="Dashboard">
     <Steps>
-      <Step title="Author the policy">
-        Go to **Admin → policy editor**. Start with the demo policy, review or edit its source, then select **publish version**. Publishing creates the immutable version that you can deploy to machines.
+      <Step title="Write the policy">
+        Go to **fix → policies → new policy**. Describe the action to stop, review the rule it drafts, and test it on past calls. At **turn on**, choose **observing first**, pick the machines, then select **publish v1**. Publishing creates the version that you can deploy to machines.
 
         ![The Policy editor compose view with a demo policy ready to publish as an immutable version.](/images/dashboard/policy-editor.png)
       </Step>
       <Step title="Deploy it to a machine">
-        Go to **Admin → enforcement**, expand the target machine, and select **edit this machine**. Add the published demo policy, pin its version, choose **observe**, and apply the deployment.
+        If you did not pick the machine when you published, go to **fix → deploy policies** and open the target machine. Select **add a policy**, add the published policy, choose **observe**, and select **apply**.
 
         ![The machine deployment editor with a published policy version selected in observe mode before applying the deployment.](/images/dashboard/enforcement-editor.png)
       </Step>
       <Step title="Verify the policy">
-        Run a new agent session on that machine, then open **Observe → policy**. Select the machine and confirm that the demo policy appears in the policy mapping and decision timeline. Observe mode records what the policy would do without blocking the action.
+        Run a new agent session on that machine, then open **fix → activity**. Select the machine and confirm that the policy appears in its row per policy and decision timeline. Observe mode records what the policy would do (**would block**) without blocking the action.
 
         ![The Policy page showing decision totals, enforcement activity over time, and local and Cloud-managed policy mappings.](/images/dashboard/policy-observe.png)
       </Step>
@@ -42,6 +42,6 @@ Use a policy only after you can describe the unsafe action and the legitimate ac
     fp sessions --env production --since 24h
     ```
 
-    Both steps are available from the CLI too: `fp policies publish <id> <file>` mints a version and `fp fleet deploy <machine-id> --add <id>` puts it on a machine. The dashboard equivalents are **Admin → policy editor** and **Admin → enforcement**.
+    Both steps are available from the CLI too: `fp policies publish <id> <file>` mints a version and `fp fleet deploy <machine-id> --add <id>` puts it on a machine. The dashboard equivalents are **fix → policies → new policy** and **fix → deploy policies**.
   </Tab>
 </Tabs>

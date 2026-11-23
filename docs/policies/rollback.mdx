@@ -10,7 +10,7 @@ A published policy version never changes. Editing a policy and publishing again 
 
 <Tabs>
   <Tab title="Dashboard">
-    Go to **Admin → policy editor** and open **library** to compare a policy's versions or disable one.
+    Go to **fix → policies** and open the policy. Its **versions** section lists every version, which one is latest and which are on machines, and the code of each; its machines table shows the mode and version each machine runs. **pause on all machines**, under its more menu, takes it off every machine.
   </Tab>
   <Tab title="CLI">
     ```bash
@@ -24,10 +24,10 @@ A published policy version never changes. Editing a policy and publishing again 
 
 <Tabs>
   <Tab title="Dashboard">
-    1. Go to **Admin → enforcement**, expand the affected machine, and identify its last known-good policy set.
-    2. Select **edit**, restore those versions and effects, and apply the new deployment.
+    1. Go to **fix → deploy policies**, open the affected machine, and select **see all changes** to identify its last known-good policy set.
+    2. Select **restore this set** on it. That puts back the whole set: which policies are on the machine, their versions, their **observe** | **block** modes and their agent targets. Editing rows by hand and selecting **apply** works too, but then restore all of it yourself — remove any policy the bad deployment added, re-add any it removed, and reset changed targets as well as versions and modes.
     3. Wait for the machine's check-in, then verify the reported deployment.
-    4. Open **Observe → policy** and the affected sessions to confirm valid work is no longer blocked.
+    4. Open **fix → activity** and the affected sessions to confirm valid work is no longer blocked.
   </Tab>
   <Tab title="CLI">
     Every deployment to a machine is a numbered generation. List them, then reinstate one:

@@ -6,17 +6,19 @@ icon: "scan-search"
 
 An audit turns a set of sessions into ranked, evidence-backed failure findings. Start with one narrow failure question.
 
+Cloud already runs a first audit on its own once sessions from the last seven days arrive, so your first findings may be waiting under **analyse → insights**. Create your own audit when you have a specific failure to look for.
+
 <Tabs>
   <Tab title="Dashboard">
     <Steps>
-      <Step title="Open Audits">
-        In the Cloud sidebar, go to **Analyze → Audits**. Select **new audit**.
+      <Step title="Open a new audit">
+        In the Cloud sidebar, go to **analyse → checks → new audit**, or start from **new check** and choose an audit.
       </Step>
       <Step title="Set up the audit">
-        Enter a name and a direct failure goal, such as “find production sessions that retry the same failed payment call without changing input or escalating.” Select the agent, environment, time window, and schedule. Add a short brief and reference URLs when the auditor needs your workflow rules.
+        Describe what it looks for with a direct failure goal, such as “find production sessions that retry the same failed payment call without changing input or escalating.” You can also ask failproof above the form to draft the whole audit. Pick the agents and environments it reads and how often it runs. Add a short brief and reference URLs when the auditor needs your workflow rules.
       </Step>
       <Step title="Create and wait for the run">
-        Select **create audit**. The first run is queued immediately. Open the audit card to watch it move from queued to running to complete.
+        Select **create audit →**. The first run is queued immediately. Open the audit card to watch it move from queued to running to complete.
       </Step>
     </Steps>
 

@@ -11,13 +11,13 @@ A deployment puts published policy versions on a machine, each with one of two e
 
 ## Add a machine
 
-A machine appears under **Admin → enforcement** once it is connected to Cloud. If the one you want is not there yet:
+A machine appears under **fix → deploy policies** once it is connected to Cloud. If the one you want is not there yet:
 
 <Tabs>
   <Tab title="Dashboard">
-    1. Go to **Administration → Keys** and create a key with `policies:pull`, so the machine can receive deployments, and `events:add`, so its decisions reach Cloud.
+    1. Go to **settings → api keys** and create a key with `policies:pull`, so the machine can receive deployments, and `events:add`, so its decisions reach Cloud.
     2. Connect the machine with that key — [Connect a machine to Cloud](/start/setup#connect-a-machine-to-cloud) walks through it.
-    3. Confirm it shows up under **Admin → enforcement**.
+    3. Confirm it shows up under **fix → deploy policies**.
   </Tab>
   <Tab title="CLI">
     On the machine:
@@ -36,10 +36,12 @@ A machine appears under **Admin → enforcement** once it is connected to Cloud.
 
 <Tabs>
   <Tab title="Dashboard">
-    1. Go to **Admin → enforcement**, find the machine, and expand its row.
-    2. Select **edit**, add the tested policy version, and choose **observe**.
-    3. Apply the change, then wait for the machine's next check-in and confirm its deployment and coverage state.
-    4. Go to **Observe → policy** to inspect live decisions.
+    1. Go to **fix → deploy policies**, find the machine, and open it.
+    2. Select **+ add a policy**, add the tested policy, check its version, and choose **observe** on its row.
+    3. Select **apply**, then wait for the machine's next check-in and confirm its deployment and coverage state.
+    4. Go to **fix → activity** to inspect live decisions.
+
+    A policy's own page under **fix → policies** sets the same mode for all its machines at once (**enforcing** or **observing**), or per machine in its machines table.
 
     ![The machine deployment editor with policy versions, enforce and observe effects, and the apply deployment action.](/images/dashboard/enforcement-editor.png)
   </Tab>
@@ -80,9 +82,9 @@ same published version can target different agents on different machines.
 
 <Tabs>
   <Tab title="Dashboard">
-    1. In **Admin → enforcement**, expand the machine and select **edit**.
-    2. On the policy's **agents** control, keep **all agents**, select **all hermes profiles** (for example), or search for a reported profile by its label and `agt_` ID. You can select multiple alternatives; a call matches if it belongs to any one of them.
-    3. Review the target listed for **each** assignment in the deployment plan, apply the change, then check the machine's reported deployment after its next check-in. History and rollback retain the selected targets.
+    1. In **fix → deploy policies**, open the machine.
+    2. On the policy row's agents control, keep **all agents**, or pick one or more of the profiles the machine reported, listed as integration and profile label (for example `hermes · work`). A call matches if it belongs to any one of them. To target a whole integration, including profiles added later, use the CLI.
+    3. Review the target on **each** policy row, select **apply**, then check the machine's reported deployment after its next check-in. History and rollback retain the selected targets.
   </Tab>
   <Tab title="CLI">
     ```bash
@@ -166,9 +168,9 @@ One Jev request carries a limited amount of question text. FailproofAI Cloud's c
 
 Coverage answers whether a policy is running where the risk is.
 
-1. Go to **Admin → enforcement** and review the enforcing and observing totals.
-2. Search for a machine by ID or label, or filter for machines missing a policy.
-3. Expand a row to compare assigned policies, reported deployment, last check-in, and history.
+1. Go to **fix → deploy policies** and review the grid of policies and the machines they run on.
+2. Search for a machine by ID or label, filter by status, or filter for machines missing a policy.
+3. Open a machine to compare assigned policies, reported deployment, last check-in, and history.
 4. Refresh after the machine's polling interval when an applied deployment is still pending.
 
 ![The Enforcement fleet showing policy coverage, machine deployment state, and observe and enforce assignments.](/images/dashboard/enforcement-fleet.png)

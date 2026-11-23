@@ -1,5 +1,32 @@
 # Changelog
 
+## 1.0.16-beta.0 — 2026-11-22
+
+### Fixes
+
+- The daemon no longer aborts with a stack overflow when a policy's `artifactUrl` from Cloud is a deeply nested `blob:` URL: `url` moves to 2.5.9 for RUSTSEC-2026-0592, and such a URL is refused by the origin check (#1032)
+
+### Dependencies
+
+- OSV gate: the Python SDK's dev/test lockfile moves crewai to 1.15.42, where chromadb is an optional extra, so chromadb and its four advisories with no fixed version leave it. The allow-list is now empty: those four expired entries are removed, along with picomatch GHSA-fc5q-39xc-vjpf, which was withdrawn upstream (#1032)
+
+## 1.0.15 — 2026-11-18
+
+The stable release of the OpenClaw plugin fix for tool calls blocked as "failproofaid could not be reached" while the daemon was healthy, plus the refreshed README and docs and the dependency updates that landed on `main` since 1.0.14.
+
+### Fixes
+
+- The OpenClaw plugin's 250 ms connect timer no longer blocks tool calls as "failproofaid could not be reached" while the gateway's event loop is busy and the daemon is healthy. The timer ran on the gateway's own event loop and fired ahead of a connect that had already completed; it is gone. A missing daemon still fails at once and a hung one within the 30 s request budget, which both attempts now share; a connect that fails outright is retried once after 100 ms; and the gateway log says why a call was blocked: each attempt's cause, the elapsed time and the attempt count (#1024, #1029)
+
+### Docs
+
+- Bring the README, npm description and English docs up to date with the website and the live Cloud dashboard: trace / analyse / fix navigation, insights, checks, the failproof agent, the free plan, and corrected CLI and OTLP details (#1022)
+
+### Dependencies
+
+- OSV gate: time-boxed allow-list entry for picomatch GHSA-fc5q-39xc-vjpf (ReDoS, no fixed release). It is in build/test tooling and ships inside the Next.js dashboard bundle, where it only matches image URLs against globs from next.config, of which we declare none; re-review by 2026-12-18 (#1029)
+- Bump `posthog-node` to 5.73.0 (#1012) and `sql.js` to 1.16.0 (#1013), and Next.js to 16.4.6 in the bundled dashboard (#1007)
+
 ## 1.0.14-beta.0 — 2026-11-16
 
 ### Features

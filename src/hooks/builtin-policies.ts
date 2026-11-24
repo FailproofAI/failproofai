@@ -2012,7 +2012,7 @@ function downloadLandings(words: string[]): Array<{ dir: string; name: string | 
  * `cat ~/.failproofai/config.json && rm /tmp/scratch` has to stay allowed, and
  * does, because nothing in the second command reaches the state.
  */
-function destroysFailproofaiState(command: string, depth = 0, startDir?: string): boolean {
+function destroysFailproofaiState(command: string, depth = 0, startDir?: string, startUnknown = false): boolean {
   // A substitution runs its body as a command of its own, so it is judged as
   // one — `echo $(rm -rf ~/.failproofai)` otherwise presents `echo` as the head
   // and walks straight through. Bounded, because a body can contain another.
@@ -2023,7 +2023,7 @@ function destroysFailproofaiState(command: string, depth = 0, startDir?: string)
   if (depth === 0) {
     const bodies = substitutionBodies(command);
     for (let i = 0; i < bodies.length && i < 64; i++) {
-      if (destroysFailproofaiState(bodies[i], 1, startDir)) return true;
+      if (destroysFailproofaiState(bodies[i], 1, startDir, startUnknown)) return true;
       bodies.push(...substitutionBodies(bodies[i]));
     }
   }
@@ -2099,7 +2099,10 @@ function destroysFailproofaiState(command: string, depth = 0, startDir?: string)
   // dropped and `deep` set. `lost` marks a `cd` the walk could not follow
   // (`cd "$(npm root)/.bin"`, `cd $ELSEWHERE`): a relative word is then also
   // judged as if it stood in an installed location (`AS_IF_INSTALLED`).
-  type Where = { dir: string | undefined; full: string | undefined; deep: boolean; lost: boolean; inState: boolean };
+  // `anywhere` marks a directory read from where the line started when the
+  // agent may have run it somewhere its hook does not report (Codex's
+  // `workdir`): a relative destination there may be npm's bin directory.
+  type Where = { dir: string | undefined; full: string | undefined; deep: boolean; lost: boolean; inState: boolean; anywhere?: boolean };
   const startFull = typeof startDir === "string" && startDir !== "" ? shellPath(undefined, startDir) || "." : ".";
   let at: Where = {
     dir: startFull === "." ? undefined : shellTail(startFull),
@@ -2107,8 +2110,11 @@ function destroysFailproofaiState(command: string, depth = 0, startDir?: string)
     deep: false,
     lost: false,
     inState: false,
+    anywhere: startUnknown,
   };
   let previous: Where | null = null;
+  // `set -P` / `set -o physical`: every later `cd` is a `cd -P`.
+  let physicalMoves = false;
   const dirStack: Where[] = [];
   // Where the shell may stand instead. A `cd` can fail, and a command after
   // `;`, a newline, `&` or `||` runs anyway, in the directory the shell never
@@ -2324,11 +2330,81 @@ function destroysFailproofaiState(command: string, depth = 0, startDir?: string)
   // those this line makes: `printf x > bins/failproofai` where `bins` links to
   // `node_modules/.bin`. Only a link counts, so a backup that merely carries a
   // protected name somewhere else (`/tmp/backup/.failproofai`) does not.
+  // A glob expands where its literal directories really are: `cp x bins/fail*`
+  // with `bins` a link to `node_modules/.bin`, and `fail*` from a directory
+  // reached through one, both expand onto the entry (found by hermes on
+  // FailproofAI/failproofai#1058). So the directories before the first pattern
+  // are resolved, and the pattern is read from there.
+  const globLandsOnState = (written: string): boolean => {
+    const parts = written.split("/");
+    const first = parts.findIndex((part) => GLOB_METACHAR_RE.test(part));
+    if (first === -1) return false;
+    const prefix = first === 0 ? "" : parts.slice(0, first).join("/") || "/";
+    const pattern = parts.slice(first).join("/");
+    if (/[$`]/.test(prefix)) return false;
+    return [at, ...alts].some((base) => {
+      const raw =
+        prefix === ""
+          ? !base.lost && base.full?.startsWith("/")
+            ? base.full
+            : undefined
+          : absoluteFrom(base, prefix)?.raw;
+      if (raw === undefined) return false;
+      const real = realPath(raw);
+      if (real === ELOOP) return true;
+      if (typeof real !== "string") return lostNamesState({ via: real.via, lost: real.lost === "" ? pattern : `${real.lost}/${pattern}` });
+      return real !== shellPath(undefined, raw) && namesState(`${real === "/" ? "" : real}/${pattern}`);
+    });
+  };
   const landsOnState = (written: string): boolean =>
     realPathsOf(written).some(({ plain, real }) =>
       real === ELOOP ? true : typeof real !== "string" ? lostNamesState(real) : real !== plain && namesState(real),
-    );
+    ) ||
+    (GLOB_METACHAR_RE.test(written) && globLandsOnState(written));
   const namesHere = (text: string): boolean => namesState(text) || resolvesOntoState(text) || landsOnState(text);
+  // From a directory the agent may have run the line in without saying so
+  // (`anywhere`), a relative destination that would be the entry, or the
+  // package, if that directory were npm's bin directory or a `node_modules`:
+  // `printf … > failproofai`, `../failproofai`, `failproofai/dist/cli.mjs`.
+  const anywhereHere = (): boolean => at.anywhere === true || alts.some((base) => base.anywhere === true);
+  const plantsAnywhere = (written: string): boolean => {
+    if (!relativeWord(written) || /[$`]/.test(written)) return false;
+    const path = written.replace(/[\\/]+$/, "");
+    const slash = Math.max(path.lastIndexOf("/"), path.lastIndexOf("\\"));
+    return (
+      AS_IF_INSTALLED.some((dir) => FAILPROOFAI_CODE_PATH_RE.test(dir + path)) ||
+      (couldBeEntryName(path.slice(slash + 1)) && /^(?:\.\.?[\\/]+)*$/.test(path.slice(0, slash + 1)))
+    );
+  };
+  // What a simple command writes that its options or operands name, read from
+  // such a directory: an output flag's value, separate or glued (`curl -o`,
+  // `wget -O`, `gcc -o`, `--output=`), every operand of a command that writes
+  // them all (`tee`), the last of one that writes its second (`uniq`), and
+  // `dd of=`. Copies, moves, links and downloads are judged where they land.
+  const writesEntryAnywhere = (list: string[]): boolean => {
+    if (list.length === 0) return false;
+    const head = commandBasename(list[0]);
+    const args = list.slice(1);
+    const operands = args.filter((arg) => !arg.startsWith("-"));
+    if (OPERAND_WRITE_COMMANDS.has(head) && operands.some(plantsAnywhere)) return true;
+    if (SECOND_OPERAND_WRITERS.has(head) && operands.length > 1 && plantsAnywhere(operands[operands.length - 1])) return true;
+    if (head === "dd" && args.some((arg) => arg.startsWith("of=") && plantsAnywhere(arg.slice(3)))) return true;
+    return args.some((arg, i) => {
+      const long = /^--(?:output|out)[\w-]*(=)?/.exec(arg);
+      if (long) return plantsAnywhere(long[1] ? arg.slice(arg.indexOf("=") + 1) : (args[i + 1] ?? ""));
+      if (!/^-[A-Za-z]/.test(arg)) return false;
+      if (/^-[A-Za-z]*[oO]$/.test(arg)) return plantsAnywhere(args[i + 1] ?? "");
+      // Glued on after an `o` or `O`; read as getopt reads it where the
+      // command's value letters are known.
+      const known = SHORT_VALUE_OPTIONS[head];
+      for (let c = 1; c < arg.length - 1 && /[A-Za-z]/.test(arg[c]); c++) {
+        if (c > MAX_OPTION_CLUSTER) return /failproof/i.test(arg);
+        if ((arg[c] === "o" || arg[c] === "O") && plantsAnywhere(arg.slice(c + 1))) return true;
+        if (known?.includes(arg[c])) return false;
+      }
+      return false;
+    });
+  };
   // `namesHere` for a value glued to an option, of which a long command line
   // has one per letter of its option words. Every protected name spells
   // `failproof`, so a value that spells none, climbs nowhere and expands to
@@ -2391,7 +2467,12 @@ function destroysFailproofaiState(command: string, depth = 0, startDir?: string)
   const expandEverywhere = (word: string): string[] =>
     NAMES_PWD_RE.test(word) ? alts.map((alt) => expandAt(word, alt)) : [];
   // `named` is the operand as written, judged when the walk cannot follow it.
-  const whereAfter = (base: Where, target: string, named: string): Where => {
+  // A `physical` move (`cd -P`, or any `cd` after `set -P`) goes where the path
+  // really is, each link followed and each `..` taken after it: with `deep` a
+  // link to `node_modules/.bin/sub`, `cd -P deep/..` stands in `.bin`, which
+  // collapsing `..` as text read as the directory it started from (found by
+  // hermes on FailproofAI/failproofai#1058).
+  const whereAfter = (base: Where, target: string, named: string, physical = false): Where => {
     if (/\$|`/.test(target)) return { dir: undefined, full: undefined, deep: false, lost: true, inState: namesState(named) };
     const relative = relativeWord(target);
     if (relative && base.lost) {
@@ -2407,6 +2488,22 @@ function destroysFailproofaiState(command: string, depth = 0, startDir?: string)
       : base.full !== undefined
         ? shellPath(base.full === "." ? undefined : base.full, target) || "."
         : undefined;
+    if (physical) {
+      const raw = !relative
+        ? target.startsWith("/")
+          ? target
+          : homeBased
+            ? homedir() + target.slice(1)
+            : undefined
+        : base.full?.startsWith("/")
+          ? `${base.full}/${target}`
+          : undefined;
+      if (raw !== undefined) {
+        const real = realPath(raw);
+        if (typeof real !== "string") return { dir: undefined, full: undefined, deep: false, lost: true, inState: namesState(named) };
+        full = real;
+      }
+    }
     // `~user` and a `cd` from a directory too deep to keep are read from `dir`.
     const fromDir = shellPath(relative ? base.dir : undefined, target);
     let deep = relative && base.deep;
@@ -2424,7 +2521,7 @@ function destroysFailproofaiState(command: string, depth = 0, startDir?: string)
       (relative && !climbs
         ? base.inState
         : full !== undefined && (!relative || base.inState) && FAILPROOFAI_STATE_PATH_RE.test(full));
-    return { dir: kept, full, deep, lost: false, inState };
+    return { dir: kept, full, deep, lost: false, inState, anywhere: relative && base.anywhere };
   };
   // Moves the shell to `to`, and anywhere else it may stand to `others`. If
   // the move fails, it stays wherever it was, which `pending` keeps — unless
@@ -2448,6 +2545,17 @@ function destroysFailproofaiState(command: string, depth = 0, startDir?: string)
   const moveShell = (head: string, args: string[], expandedArgs: string[]) => {
     const stackOnly = head !== "cd" && args.includes("-n");
     const k = args.findIndex((w) => !w.startsWith("-") || w === "-" || /^[+-]\d+$/.test(w));
+    // `cd -P` and `-L`, the last one given winning; `pushd` follows `set -P`.
+    let physical = physicalMoves;
+    if (head === "cd") {
+      for (const option of args.slice(0, k === -1 ? args.length : k)) {
+        if (!/^-[A-Za-z@]+$/.test(option)) continue;
+        for (const flag of option.slice(1)) {
+          if (flag === "P") physical = true;
+          else if (flag === "L") physical = false;
+        }
+      }
+    }
     const named = k === -1 ? undefined : args[k];
     const operand = k === -1 ? undefined : expandedArgs[k];
     if (operand !== undefined && head !== "cd" && /^[+-]\d+$/.test(operand)) {
@@ -2482,13 +2590,13 @@ function destroysFailproofaiState(command: string, depth = 0, startDir?: string)
     }
     if (operand === "-") {
       const oldpwd = values.get("OLDPWD");
-      if (oldpwd !== undefined) moveTo(whereAfter(at, expand(oldpwd), oldpwd));
+      if (oldpwd !== undefined) moveTo(whereAfter(at, expand(oldpwd), oldpwd, physical));
       else if (previous) moveTo(previous, [], true);
       return;
     }
     if (operand === "") return;
     const target = operand ?? expand("$HOME");
-    const to = whereAfter(at, target, named ?? target);
+    const to = whereAfter(at, target, named ?? target, physical);
     if (stackOnly) {
       dirStack.push(to);
       return;
@@ -2497,7 +2605,7 @@ function destroysFailproofaiState(command: string, depth = 0, startDir?: string)
     // Wherever else the shell may stand moves too, the same way.
     moveTo(
       to,
-      alts.map((where) => whereAfter(where, target, named ?? target)),
+      alts.map((where) => whereAfter(where, target, named ?? target, physical)),
       startFull.startsWith("/") && to.full === startFull,
     );
   };
@@ -2653,6 +2761,7 @@ function destroysFailproofaiState(command: string, depth = 0, startDir?: string)
     for (const [, target] of pipeline.matchAll(REDIRECT_TARGET_RE)) {
       const written = target.replace(/^["']|["']$/g, "");
       if (namesHere(written) || namesHere(expand(written)) || expandEverywhere(written).some(namesHere)) return true;
+      if (anywhereHere() && (plantsAnywhere(written) || plantsAnywhere(expand(written)))) return true;
     }
 
     for (const simple of simpleCommands) {
@@ -2681,18 +2790,22 @@ function destroysFailproofaiState(command: string, depth = 0, startDir?: string)
           lists.some(
             (list) =>
               landsInDirectoryAs(list, namesState, (word) => fromBase(base, word), base.lost, landsOnState, isBinDir) ||
+              // From a directory the agent may have run the line in without
+              // saying, a copy is also read as written, from somewhere unknown.
+              (base.anywhere === true && landsInDirectoryAs(list, namesState, (word) => word, true, landsOnState, isBinDir)) ||
               downloadLandings(list).some(({ dir, name }) => {
                 const into = fromBase(base, dir).replace(/(?:[\\/]+\.?)+$/, "");
-                if (name === null) return NPM_BIN_DIRECTORY_RE.test(into) || isBinDir(dir);
+                if (name === null) return NPM_BIN_DIRECTORY_RE.test(into) || isBinDir(dir) || (base.anywhere === true && relativeWord(dir));
                 const landing = `${dir.replace(/[\\/]+$/, "")}/${name}`;
                 return (
                   namesState(fromBase(base, landing)) ||
                   landsOnState(landing) ||
-                  (base.lost && relativeWord(dir) && couldBeEntryName(name))
+                  ((base.lost || base.anywhere === true) && relativeWord(dir) && couldBeEntryName(name))
                 );
               }),
           ),
-        )
+        ) ||
+        (anywhereHere() && lists.some(writesEntryAnywhere))
       ) {
         // Before the `reachesState` gate, because the point is that nothing on
         // the line names the path: the source's name and the directory do.
@@ -2727,6 +2840,11 @@ function destroysFailproofaiState(command: string, depth = 0, startDir?: string)
         return true;
       } else if (head === "ln" && simpleCommands.length === 1) {
         recordLink(expanded.slice(1));
+      } else if (head === "set" && simpleCommands.length === 1) {
+        for (let i = 1; i < words.length; i++) {
+          if (/^[-+][A-Za-z]+$/.test(words[i]) && words[i].includes("P")) physicalMoves = words[i][0] === "-";
+          else if ((words[i] === "-o" || words[i] === "+o") && words[i + 1] === "physical") physicalMoves = words[i] === "-o";
+        }
       }
       parenDepth = Math.max(0, parenDepth - (shellText.match(/\)/g) ?? []).length);
       if (cdParenDepth !== null && parenDepth < cdParenDepth) {
@@ -3926,30 +4044,68 @@ function patchTargets(input: Record<string, unknown> | undefined): string[] {
 /** The builtins that print their arguments and run none of them. */
 const PRINT_COMMANDS = new Set(["echo", "printf"]);
 
+/** Readers a pipeline can hand printed text to without running any of it. */
+const TEXT_READERS = new Set([
+  "cat", "less", "more", "head", "tail", "wc", "grep", "egrep", "fgrep", "sort", "uniq", "cut", "tr", "column",
+  "nl", "fold", "fmt", "rev",
+]);
+
+/** Where a print's own redirect can send it without keeping it anywhere it may be run from. */
+const HARMLESS_OUTPUT_RE = /^(?:&\d*-?|\/dev\/(?:null|stdout|stderr|tty))$/;
+
 /**
- * `command` with each `>` and `<` blanked where it is quoted text that `echo`
- * or `printf` only prints: `echo 'cat > node_modules/.bin/failproofai'`
- * documents a command rather than running one (found by hermes on
+ * Commands after which what a line prints may be run or kept to run: a
+ * compound command (`for … do echo '…'; done | sh`), a function or alias
+ * definition that can stand in for `echo`, and `exec`, which redirects the
+ * shell itself.
+ */
+const RUNS_PRINTED_TEXT = new Set([
+  "if", "then", "elif", "else", "fi", "for", "while", "until", "do", "done", "case", "esac", "select", "function",
+  "coproc", "alias", "enable", "shopt", "exec",
+]);
+
+/**
+ * `command` with each `>` and `<` blanked where it is text that `echo` or
+ * `printf` only prints: `echo 'cat > node_modules/.bin/failproofai'` documents
+ * a command rather than running one (found by hermes on
  * FailproofAI/failproofai#1058). The walk reads redirects from the text,
  * quotes and all, because a quoted program handed to `bash -c` or piped into
  * `sh` really does redirect, and the unescaped pass drops the quotes, so both
- * read that `>` as a redirect. Blanked only where nothing on the line can run
- * the text: a pipeline that is one `echo` or `printf` (not `printf -v`, which
- * stores it), with no redirect of its own, on a line with no subshell, group,
- * substitution, `$'…'` or heredoc. Otherwise `command` comes back unchanged.
+ * read that `>` as a redirect.
+ *
+ * Text means quoted (`'…'`, `"…"`, `$'…'`) or escaped (`\>`). Blanked only
+ * where nothing on the line can run it: an `echo` or `printf` (not
+ * `printf -v`, which stores it) outside any subshell, group or substitution,
+ * holding no substitution, piped into nothing but text readers, and
+ * redirected, if at all, to another descriptor or `/dev/null`; on a line with
+ * no compound command, function, alias, `exec`, heredoc or process
+ * substitution. Otherwise the text is left as it is.
  */
 function blankPrintedRedirects(command: string): string {
-  if (!/['"]/.test(command) || !/[<>]/.test(command)) return command;
-  const quotedAt = new Uint8Array(command.length);
-  const pieces: Array<{ start: number; end: number; piped: boolean }> = [];
-  let quote: string | null = null;
+  if (!/['"\\]/.test(command) || !/[<>]/.test(command)) return command;
+  // Per character: text (quoted or escaped), and inside a subshell, group or
+  // substitution, or a substitution's own start.
+  const text = new Uint8Array(command.length);
+  const nested = new Uint8Array(command.length);
+  const pieces: Array<{ start: number; end: number; pipeIn: boolean; pipeOut: boolean }> = [];
+  let quote: "'" | '"' | "$'" | null = null;
+  let depth = 0;
+  let backquoted = false;
   let start = 0;
-  let pipedIn = false;
+  let pipeIn = false;
   for (let i = 0; i < command.length; i++) {
     const ch = command[i];
     if (quote === "'") {
       if (ch === "'") quote = null;
-      else quotedAt[i] = 1;
+      else text[i] = 1;
+      continue;
+    }
+    if (quote === "$'") {
+      if (ch === "'") quote = null;
+      else {
+        text[i] = 1;
+        if (ch === "\\" && i + 1 < command.length) text[++i] = 1;
+      }
       continue;
     }
     if (quote === '"') {
@@ -3957,44 +4113,86 @@ function blankPrintedRedirects(command: string): string {
         quote = null;
         continue;
       }
-      if (ch === "`" || (ch === "$" && command[i + 1] === "(")) return command;
-      quotedAt[i] = 1;
-      if (ch === "\\" && i + 1 < command.length) quotedAt[++i] = 1;
+      text[i] = 1;
+      // A substitution inside double quotes still runs.
+      if (ch === "`" || (ch === "$" && command[i + 1] === "(")) nested[i] = 1;
+      if (ch === "\\" && i + 1 < command.length) text[++i] = 1;
       continue;
     }
     if (ch === "\\") {
-      i++;
+      if (i + 1 < command.length) text[++i] = 1;
       continue;
     }
     if (ch === "'" || ch === '"') {
-      if (command[i - 1] === "$") return command;
-      quote = ch;
+      quote = ch === "'" && command[i - 1] === "$" ? "$'" : ch;
       continue;
     }
-    if ("`(){}".includes(ch) || (ch === "<" && command[i + 1] === "<")) return command;
-    if ("|;&\n\r".includes(ch)) {
+    if ((ch === "<" || ch === ">") && command[i + 1] === "(") return command;
+    if (ch === "<" && command[i + 1] === "<") return command;
+    if (ch === "(" || ch === "{") depth++;
+    if (ch === "`") backquoted = !backquoted;
+    if (depth > 0 || backquoted || "`(){}".includes(ch)) nested[i] = 1;
+    if (ch === ")" || ch === "}") depth = Math.max(0, depth - 1);
+    // `&` beside a `>`, and `|` after one, belong to a redirect (`>&2`, `&>`,
+    // `>|`), not a separator.
+    const redirecting = (ch === "&" && (command[i - 1] === ">" || command[i + 1] === ">")) || (ch === "|" && command[i - 1] === ">");
+    if ("|;&\n\r".includes(ch) && !redirecting) {
       let j = i;
       while (j < command.length && "|;&\n\r".includes(command[j])) j++;
-      const pipe = command.slice(i, j) === "|" || command.slice(i, j) === "|&";
-      pieces.push({ start, end: i, piped: pipedIn || pipe });
-      pipedIn = pipe;
+      const run = command.slice(i, j);
+      const pipe = run === "|" || run === "|&";
+      pieces.push({ start, end: i, pipeIn, pipeOut: pipe });
+      pipeIn = pipe;
       start = j;
       i = j - 1;
     }
   }
-  // An unterminated quote is a line the shell refuses: left as it is.
-  if (quote !== null) return command;
-  pieces.push({ start, end: command.length, piped: pipedIn });
-  const out = command.split("");
-  for (const { start: from, end: to, piped } of pieces) {
-    if (piped) continue;
+  if (quote !== null || depth > 0 || backquoted) return command;
+  pieces.push({ start, end: command.length, pipeIn, pipeOut: false });
+  // The line read with its text blanked, for the commands that can run it.
+  let bare = "";
+  for (let i = 0; i < command.length; i++) bare += text[i] ? " " : command[i];
+  if (/\w\s*\(\s*\)/.test(bare)) return command;
+  for (const { start: from, end: to } of pieces) {
+    if (RUNS_PRINTED_TEXT.has(bare.slice(from, to).trim().split(/\s+/)[0])) return command;
+  }
+
+  // Whether a piece stands alone at the top of the line with only harmless
+  // output redirects, and the command it runs.
+  const plain = (from: number, to: number): string | undefined => {
+    for (let k = from; k < to; k++) if (nested[k]) return undefined;
+    for (let k = from; k < to; k++) {
+      if (command[k] !== ">" || text[k]) continue;
+      let j = k + 1;
+      if (command[j] === ">" || command[j] === "|") j++;
+      const duplicate = command[j] === "&";
+      if (duplicate) j++;
+      while (j < to && /[ \t]/.test(command[j])) j++;
+      let target = duplicate ? "&" : "";
+      for (; j < to && !/\s/.test(command[j]); j++) if (command[j] !== "'" && command[j] !== '"') target += command[j];
+      if (!HARMLESS_OUTPUT_RE.test(target)) return undefined;
+      k = j - 1;
+    }
     const words = shellWords(command.slice(from, to));
-    if (words.length === 0 || !PRINT_COMMANDS.has(words[0].raw)) continue;
-    if (words[0].raw === "printf" && words.some(({ raw }) => /^-[A-Za-z]*v/.test(raw))) continue;
-    let redirected = false;
-    for (let k = from; k < to && !redirected; k++) redirected = (command[k] === ">" || command[k] === "<") && !quotedAt[k];
-    if (redirected) continue;
-    for (let k = from; k < to; k++) if (quotedAt[k] && (command[k] === ">" || command[k] === "<")) out[k] = "_";
+    return words.length > 0 ? words[0].raw : undefined;
+  };
+  const out = command.split("");
+  for (let p = 0; p < pieces.length; p++) {
+    if (pieces[p].pipeIn) continue;
+    // The pipeline this piece starts.
+    let last = p;
+    while (pieces[last].pipeOut && last + 1 < pieces.length) last++;
+    const head = plain(pieces[p].start, pieces[p].end);
+    if (head === undefined || !PRINT_COMMANDS.has(head)) continue;
+    const words = shellWords(command.slice(pieces[p].start, pieces[p].end));
+    if (head === "printf" && words.some(({ raw }) => /^-[A-Za-z]*v/.test(raw))) continue;
+    let readers = true;
+    for (let q = p + 1; q <= last && readers; q++) {
+      const reader = plain(pieces[q].start, pieces[q].end);
+      readers = reader !== undefined && TEXT_READERS.has(reader);
+    }
+    if (!readers) continue;
+    for (let k = pieces[p].start; k < pieces[last].end; k++) if (text[k] && (command[k] === ">" || command[k] === "<")) out[k] = "_";
   }
   return out.join("");
 }
@@ -4083,18 +4281,26 @@ function blockFailproofaiCommands(ctx: PolicyContext): PolicyResult {
   // the binary walk is: `rm -rf ~/.failproof"ai"` presents a broken literal to a
   // matcher and a real path to the shell. The walk starts where the command runs:
   // the session's directory, or the one an Antigravity `run_command` names.
-  const toolCwd = ctx.toolInput?.cwd;
-  const shellCwd = typeof toolCwd === "string" && toolCwd !== "" ? toolCwd : ctx.session?.cwd;
-  // The walk must not throw: a policy that throws is skipped by the evaluator,
-  // and for this one that is an allow. So a throw is a deny, said as one.
+  const toolCwd = ctx.toolInput?.cwd ?? ctx.toolInput?.workdir;
+  const reported = typeof toolCwd === "string" && toolCwd !== "";
+  const shellCwd = reported ? toolCwd : ctx.session?.cwd;
+  // Codex runs a command in the `workdir` its shell tool names, and its hook
+  // payload carries the session's directory and the command only: a native
+  // `printf … > failproofai` with workdir `node_modules/.bin` arrived as a
+  // write in the project root (found by hermes on FailproofAI/failproofai#1058).
+  // Unless the call reports one, the line may start anywhere, which the walk
+  // reads as it reads a directory it has lost.
+  const startUnknown = ctx.cli === "codex" && !reported;
   // Quoted text an `echo` or `printf` only prints is read as text, in both
   // passes (see `blankPrintedRedirects`).
   const walked = blankPrintedRedirects(cmd);
+  // The walk must not throw: a policy that throws is skipped by the evaluator,
+  // and for this one that is an allow. So a throw is a deny, said as one.
   let destroys: boolean;
   try {
     destroys =
-      destroysFailproofaiState(walked, 0, shellCwd) ||
-      destroysFailproofaiState(walked === cmd ? unescaped : stripShellQuoting(walked), 0, shellCwd);
+      destroysFailproofaiState(walked, 0, shellCwd, startUnknown) ||
+      destroysFailproofaiState(walked === cmd ? unescaped : stripShellQuoting(walked), 0, shellCwd, startUnknown);
   } catch (err) {
     return deny(
       "failproofai could not read this command to check it against its own files, so it is refused. " +

@@ -195,6 +195,44 @@ describe("E2E: Codex integration — native apply_patch", () => {
     }
   });
 
+  // Codex's shell tool runs a command in its `workdir`, but the hook payload
+  // carries the session's directory and the command only (found by hermes on
+  // FailproofAI/failproofai#1058). A native write that plants the entry if it
+  // runs in node_modules/.bin is refused from the project's root; with the
+  // workdir reported, it is read from there.
+  it("PreToolUse: a native shell write that may run in node_modules/.bin is denied", () => {
+    const env = createCodexEnv();
+    try {
+      writeConfig(env.cwd, []);
+      mkdirSync(resolve(env.cwd, "node_modules", ".bin"), { recursive: true });
+      const result = runHook(
+        "PreToolUse",
+        CodexPayloads.preToolUse.bash("printf '#!/bin/sh\\nexit 0\\n' > failproofai", env.cwd),
+        { homeDir: env.home, cli: "codex" },
+      );
+      assertPreToolUseDeny(result);
+    } finally {
+      env.cleanup();
+    }
+  });
+
+  it("PreToolUse: a native shell write is read from the workdir the call reports", () => {
+    const env = createCodexEnv();
+    try {
+      writeConfig(env.cwd, []);
+      const withWorkdir = (workdir: string) => ({
+        ...CodexPayloads.preToolUse.bash("printf x > failproofai", env.cwd),
+        tool_input: { command: "printf x > failproofai", workdir },
+      });
+      assertPreToolUseDeny(
+        runHook("PreToolUse", withWorkdir(resolve(env.cwd, "node_modules", ".bin")), { homeDir: env.home, cli: "codex" }),
+      );
+      assertAllow(runHook("PreToolUse", withWorkdir(resolve(env.cwd, "src")), { homeDir: env.home, cli: "codex" }));
+    } finally {
+      env.cleanup();
+    }
+  });
+
   it("PreToolUse: a native patch to project files is allowed", () => {
     const env = createCodexEnv();
     try {

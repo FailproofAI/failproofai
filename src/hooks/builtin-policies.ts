@@ -1115,9 +1115,92 @@ function bracketExpressionAt(token: string, start: number): { source: string; en
  * One `/`-delimited prefix of a brace-expanded word, compiled and tried against
  * the candidates. Braces are already gone by here; an unmatched one is literal.
  */
+/** One atom of a glob with no extended-glob groups. */
+type GlobAtom = { kind: "char"; ch: string } | { kind: "one" } | { kind: "star" } | { kind: "class"; test: RegExp };
+
+/**
+ * A glob of literals, `?`, `*` and bracket expressions as atoms, or null when
+ * it holds an extended-glob group (left to the regex path). Runs of `*`
+ * collapse into one, as the shell reads them without globstar.
+ */
+function globAtoms(token: string): GlobAtom[] | null {
+  const atoms: GlobAtom[] = [];
+  for (let i = 0; i < token.length; i++) {
+    if (extglobAt(token, i)) return null;
+    const ch = token[i];
+    if (ch === "*") {
+      if (atoms[atoms.length - 1]?.kind !== "star") atoms.push({ kind: "star" });
+    } else if (ch === "?") atoms.push({ kind: "one" });
+    else if (ch === "[") {
+      const bracket = bracketExpressionAt(token, i);
+      if (!bracket) {
+        atoms.push({ kind: "char", ch: "[" });
+        continue;
+      }
+      atoms.push({ kind: "class", test: new RegExp(`^${bracket.source}$`) });
+      i = bracket.end;
+    } else atoms.push({ kind: "char", ch });
+  }
+  return atoms;
+}
+
+/**
+ * Whether one path segment matches a segment's atoms, with no backtracking
+ * beyond the last `*`: the classic greedy wildcard walk, O(atoms × length).
+ * A regex built from many `*` backtracked through every way of splitting a
+ * candidate between them — a 226-character word ran for over a minute.
+ */
+function globSegmentMatches(atoms: GlobAtom[], text: string): boolean {
+  let a = 0;
+  let t = 0;
+  let starAtom = -1;
+  let starText = 0;
+  while (t < text.length) {
+    const atom = atoms[a];
+    if (atom && atom.kind === "star") {
+      starAtom = a++;
+      starText = t;
+      continue;
+    }
+    if (
+      atom &&
+      (atom.kind === "one" || (atom.kind === "char" && atom.ch === text[t]) || (atom.kind === "class" && atom.test.test(text[t])))
+    ) {
+      a++;
+      t++;
+      continue;
+    }
+    if (starAtom === -1) return false;
+    a = starAtom + 1;
+    t = ++starText;
+  }
+  while (atoms[a]?.kind === "star") a++;
+  return a === atoms.length;
+}
+
+/**
+ * A matcher for a glob word against whole paths: segment by segment, since no
+ * `*`, `?` or bracket expression matches `/`. Null when the word holds an
+ * extended-glob group.
+ */
+function globMatcher(token: string): ((path: string) => boolean) | null {
+  const segments = token.split("/").map((segment) => globAtoms(segment));
+  if (segments.some((atoms) => atoms === null)) return null;
+  return (path: string): boolean => {
+    const parts = path.split("/");
+    return parts.length === segments.length && parts.every((part, i) => globSegmentMatches(segments[i]!, part));
+  };
+}
+
 function globPrefixNamesTarget(token: string, target: ProtectedPathTarget): boolean {
   if (!GLOB_METACHAR_RE.test(token)) return false;
-  const pattern = "^" + compileGlobPattern(token);
+  const matcher = globMatcher(token);
+  if (matcher) {
+    if (!target.globCandidates.some(matcher)) return false;
+    return !target.globDecoys.some(matcher);
+  }
+  // Extended-glob groups go through a regex, with runs of `*` collapsed first.
+  const pattern = "^" + compileGlobPattern(token.replace(/\*{2,}/g, "*"));
   let re: RegExp;
   try {
     re = new RegExp(pattern + "$");
@@ -1664,8 +1747,9 @@ function ghTakesBodyFromStdin(command: LexEndedCommand): boolean {
 
 /** Commands whose `$(cat <<'EOF' …)` argument is a message they store, never run. */
 function outerStoresMessage(outer: LexEndedCommand | null | undefined): boolean {
+  // Not `echo` or `printf`: their output is the body itself, and
+  // `echo "$(cat <<'EOF' …)" > x.sh && sh x.sh` runs it.
   if (!outer || outer.head === null) return false;
-  if (outer.head === "echo" || outer.head === "printf") return true;
   const sub = outer.words.slice(1).find((word) => !word.startsWith("-"));
   if (outer.head === "git") return sub === "commit" || sub === "tag" || sub === "notes" || sub === "merge";
   if (outer.head === "gh" || outer.head === "glab") return sub !== "alias" && sub !== "extension";
@@ -1707,10 +1791,10 @@ function heredocIsStoredText(
   doc: PendingHeredoc,
   own: LexEndedCommand,
   downstream: LexEndedCommand[],
-  later: string,
+  later: { runsText: boolean; names: ReadonlySet<string> },
   substitutionBody: boolean,
 ): boolean {
-  if (RUNS_TEXT_LATER_RE.test(later)) return false;
+  if (later.runsText) return false;
   if (downstream.length === 0) {
     if (catReadsOnlyStdin(own)) {
       // Inside a substitution whose text the outer command stores; or a body
@@ -1721,7 +1805,7 @@ function heredocIsStoredText(
     const file = doc.outer === undefined ? heredocWritesFile(own) : null;
     if (file) {
       const name = file.slice(file.lastIndexOf("/") + 1);
-      return name.length > 0 && !later.includes(name);
+      return name.length > 0 && !later.names.has(name);
     }
     return false;
   }
@@ -1879,7 +1963,13 @@ function lexShell(text: string, substitutionBody = false): ShellLex {
       spans.push({ doc, start: pos, end: bodyEnd });
       pos = next;
     }
-    const later = text.slice(pos);
+    // What runs after the bodies, read once for every heredoc on the line: a
+    // check per heredoc made thousands of operators on one line quadratic.
+    const rest = text.slice(pos);
+    const later = {
+      runsText: RUNS_TEXT_LATER_RE.test(rest),
+      names: new Set(rest.split(/[\s;&|<>()'"`=]+/).map((word) => word.slice(word.lastIndexOf("/") + 1))),
+    };
     for (const { doc, start, end } of spans) {
       const own = lineCommands[doc.commandIndex] ?? { head: null, words: [] };
       const downstream = lineCommands.slice(doc.commandIndex + 1);
@@ -3750,7 +3840,7 @@ function blockFailproofaiCommands(ctx: PolicyContext): PolicyResult {
   // backslashes before running the binary, so `fail\proofai config --pause`
   // reaches the pause CLI even though the literal name is broken.
   const unescaped = stripShellQuoting(cmd);
-  const kind = classifySelfInvocation(cmd) ?? classifySelfInvocation(unescaped);
+  const kind = classifySelfInvocation(cmd) ?? classifySelfInvocation(unescaped) ?? classifyTextPipedIntoShell(cmd);
 
   if (kind === "pause") {
     return deny(
@@ -3806,6 +3896,21 @@ function blockFailproofaiCommands(ctx: PolicyContext): PolicyResult {
     );
   }
   return allow();
+}
+
+/**
+ * The failproofai CLI inside text piped into a shell, which runs it:
+ * `echo 'failproofai config --pause' | sh`. Each quoted string is read as the
+ * command it becomes there.
+ */
+function classifyTextPipedIntoShell(cmd: string): SelfInvocation | null {
+  if (!/\|\s*(?:\S*\/)?(?:sh|bash|zsh|dash|ksh|ash|fish)(?=[\s;&|)]|$)/.test(cmd)) return null;
+  for (const [, single, double] of cmd.matchAll(/'([^']*)'|"((?:[^"\\]|\\.)*)"/g)) {
+    const piped = single ?? double ?? "";
+    const kind = classifySelfInvocation(piped) ?? classifySelfInvocation(stripShellQuoting(piped));
+    if (kind) return kind;
+  }
+  return null;
 }
 
 /**

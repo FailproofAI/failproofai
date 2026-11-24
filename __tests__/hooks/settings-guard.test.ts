@@ -809,6 +809,44 @@ describe("block-failproofai-commands — review round four", () => {
   });
 });
 
+/** The last review pass. */
+describe("block-failproofai-commands — review round five", () => {
+  const stateDenied = async (command: string) => {
+    const result = await run("Bash", { command });
+    return result.decision === "deny" && /failproofai's own state/.test(result.reason ?? "");
+  };
+
+  it("reads an echoed or printed heredoc that a later command runs", async () => {
+    expect(await stateDenied(`echo "$(cat <<'EOF'\nrm -rf ~/.failproofai\nEOF\n)" > /tmp/x.sh && sh /tmp/x.sh`)).toBe(true);
+    expect(await stateDenied(`printf '%s\\n' "$(cat <<'EOF'\nrm -rf ~/.failproofai\nEOF\n)" > /tmp/x.sh; bash /tmp/x.sh`)).toBe(true);
+  });
+
+  it("reads the failproofai CLI in text piped into a shell", async () => {
+    const result = await run("Bash", { command: "echo 'failproofai config --pause' | sh" });
+    expect(result.decision).toBe("deny");
+    expect(result.reason).toMatch(/Pausing failproofai/);
+    expect(await bashDecision("echo 'failproofai config --pause' | cat")).toBe("allow");
+  });
+
+  it("stays fast on thousands of heredocs on one line", async () => {
+    const command = "cat <<A;".repeat(8000) + "\n" + "A\n".repeat(8000);
+    const started = performance.now();
+    await bashDecision(command);
+    expect(performance.now() - started).toBeLessThan(3000);
+  }, 60_000);
+
+  it("matches a glob with a run of stars without backtracking through it", async () => {
+    const command = "rm ~/.c" + "*".repeat(200) + "laude/settings.json";
+    const started = performance.now();
+    expect(await bash(command)).toBe(true);
+    expect(performance.now() - started).toBeLessThan(3000);
+    const spread = "rm ~/.c" + "*l".repeat(60) + "*aude/settings.json";
+    const startedSpread = performance.now();
+    await bashDecision(spread);
+    expect(performance.now() - startedSpread).toBeLessThan(3000);
+  }, 60_000);
+});
+
 describe("agent-settings-guard helpers", () => {
   it("matches settings files anchored at the end, and config directories exactly", () => {
     expect(isAgentSettingsPath("/h/.claude/settings.json")).toBe(true);

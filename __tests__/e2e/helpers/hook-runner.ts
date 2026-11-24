@@ -41,13 +41,17 @@ export function runHook(
   event: string,
   payload: Record<string, unknown>,
   opts?: {
+    /** Node exercises the packaged CLI; Bun exercises the source entrypoint. */
+    runtime?: "bun" | "node";
     homeDir?: string;
     cwd?: string;
     agentScope?: "user" | "project" | "local";
     cli?: "claude" | "codex" | "copilot" | "cursor" | "opencode" | "pi" | "hermes" | "openclaw" | "factory" | "devin" | "antigravity" | "goose";
   },
 ): HookRunResult {
-  const binaryPath = getBinaryPath();
+  const binaryPath = opts?.runtime === "node"
+    ? resolve(REPO_ROOT, "dist", "cli.mjs")
+    : getBinaryPath();
 
   if (!existsSync(binaryPath)) {
     throw new Error(`E2E binary not found: ${binaryPath}`);
@@ -63,7 +67,7 @@ export function runHook(
   const args = [binaryPath, "--hook", event];
   if (opts?.cli) args.push("--cli", opts.cli);
   if (opts?.agentScope) args.push("--agent-scope", opts.agentScope);
-  const result = spawnSync("bun", args, {
+  const result = spawnSync(opts?.runtime ?? "bun", args, {
     input: JSON.stringify(payload),
     env,
     cwd: opts?.cwd,

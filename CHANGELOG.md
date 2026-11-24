@@ -4,7 +4,13 @@
 
 ### Fixes
 
+- Remove automated Dependabot approvals that GitHub rejects with workflow reviews disabled; contributor welcomes continue and dependency updates require human review (#1049)
+- Preserve CommonJS policy files and their helpers as `.cjs` during import rewriting so packaged Node installs support `require`, `module.exports` and mixed ESM imports (#1049)
 - Release workflows now open the version-bump pull request themselves, using the job's own token, when the repository lets GitHub Actions create pull requests. When it does not, the run prints the pre-filled link as a warning and the release still succeeds. A re-run reuses an open bump pull request instead of opening a second one (#1052)
+
+### Dependencies
+
+- Update `notify` from 8.2.2 to 9.0.0 and `rusqlite` from 0.42.0 to 0.43.0 (#1049)
 
 ## 1.0.16-beta.0 — 2026-11-24
 
@@ -15,6 +21,7 @@
 ### Fixes
 
 - Releases no longer depend on the removed version-bot GitHub App. Its absence stopped the 1.0.16 npm publish at its first step and failed every post-release version bump. Nothing in CI pushes to `main` any more: each release workflow pushes its bump commit to a `version-bump/<package>-<version>` branch with the job's own token (`scripts/push-version-bump.sh`) and links a pre-filled pull request, which lands through review. `bump-platform-submodule.yml` is gone; Dependabot's `gitsubmodule` updates now keep `skills` current, and `platform` and `agenteye` need the same entry. `@failproofai/sdk`'s post-publish install check now reads the registry with `--prefer-online` and waits up to about 12 minutes; it had gone red on both releases even though both published. `@failproofai/sdk` opens 0.0.1-beta.3 (#1048)
+
 
 ## 1.0.16-beta.0 — 2026-11-23
 

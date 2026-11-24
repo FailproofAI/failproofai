@@ -462,6 +462,15 @@ const GIT_COMMIT_MERGE_RE = /git\s+(commit|merge|rebase|cherry-pick)\b/;
 
 // blockFailproofaiCommands
 /**
+ * Where a path component may start: after a separator, a space, a quote or `=`,
+ * or glued to a cluster of short options (`wget -Onode_modules/…`, `curl
+ * -sonode_modules/…`), which is how those tools take an output file. Not after a
+ * letter, digit, `_`, `.` or `-` of the same name: `cached_node_modules/…` and
+ * `my-node_modules/…` are somebody's fixtures.
+ */
+const PATH_COMPONENT_START = String.raw`(?:(?<![\w.-])|(?<=(?:^|\s)-[A-Za-z]+))`;
+
+/**
  * failproofai's INSTALLED CODE: the package a hook command runs, and the bin
  * entry that names it.
  *
@@ -492,11 +501,12 @@ const FAILPROOFAI_CODE_PATH_RE = new RegExp(
     // The package, in every layout a package manager uses, and the daemon's
     // platform package, which `failproofai config` and `update` copy into place
     // (on Linux as root, under `/opt`). `node_modules` as a whole path
-    // component: `cached_node_modules/failproofai` is somebody's fixture.
-    String.raw`(?<![\w.-])node_modules[\\/](?:\.?[\\/])*(?:failproofai(?![\w.@-])|@failproofai[\\/](?:\.?[\\/])*failproofaid\b)`,
+    // component (`PATH_COMPONENT_START`).
+    PATH_COMPONENT_START +
+      String.raw`node_modules[\\/](?:\.?[\\/])*(?:failproofai(?![\w.@-])|@failproofai[\\/](?:\.?[\\/])*failproofaid\b)`,
     // pnpm's virtual store, which holds each package one directory above its
     // own `node_modules/failproofai`.
-    String.raw`(?<![\w.-])\.pnpm[\\/](?:\.?[\\/])*(?:failproofai|@failproofai\+failproofaid[\w.-]*)@`,
+    PATH_COMPONENT_START + String.raw`\.pnpm[\\/](?:\.?[\\/])*(?:failproofai|@failproofai\+failproofaid[\w.-]*)@`,
     // The entry a hook command names: `…/bin/failproofai` for npm, nvm,
     // Homebrew, bun, Volta and yarn, `…/pnpm/failproofai` for pnpm's home, and
     // the variables nvm and pnpm export for those directories. A FILE, so a

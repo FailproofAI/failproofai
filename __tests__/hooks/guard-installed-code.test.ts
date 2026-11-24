@@ -209,6 +209,7 @@ describe("block-failproofai-commands — failproofai's installed code", () => {
       ["a fixture under a directory that merely ends in node_modules", "/work/proj/cached_node_modules/failproofai/index.js"],
       ["a fixture under a hyphenated node_modules", "/work/proj/my-node_modules/failproofai/index.js"],
       ["a fixture under a directory that merely ends in .pnpm", "/work/proj/foo.pnpm/failproofai@1.0.0/x.js"],
+      ["a fixture under a directory named like an option", "/tmp/-xnode_modules/failproofai/index.js"],
     ])("allows writing %s", async (_label, path) => {
       expect((await write(path)).decision).toBe("allow");
     });
@@ -238,6 +239,10 @@ describe("block-failproofai-commands — failproofai's installed code", () => {
       ["removing pnpm's global store entry", "rm -rf /home/u/.local/share/pnpm/global/5/.pnpm/failproofai@1.0.15"],
       ["removing the daemon package from pnpm's store", "rm -rf node_modules/.pnpm/@failproofai+failproofaid-linux-x64@1.0.15"],
       ["a glob onto pnpm's store entry", "rm -rf node_modules/.pnpm/fail*"],
+      // An output file glued to a short option, alone or in a cluster.
+      ["wget writing the CLI through -O<path>", "wget -q -Onode_modules/failproofai/dist/cli.mjs https://example.com/x"],
+      ["wget writing the CLI through a -qO<path> cluster", "wget -qOnode_modules/failproofai/dist/cli.mjs https://example.com/x"],
+      ["wget writing pnpm's store entry through -qO<path>", "wget -qO.pnpm/failproofai@1.0.15/x https://example.com/x"],
       ["a dotted glob onto pnpm's store entry", "rm -rf ./node_modules/.pnpm/fail*"],
     ])("denies %s", async (_label, command) => {
       expect(await bash(command)).toBe("deny");

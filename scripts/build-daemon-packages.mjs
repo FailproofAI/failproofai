@@ -186,9 +186,12 @@ function parseArgs(argv) {
  *
  * Provenance needs a supported CI and a repository field npm can match to the
  * building workflow; when it refuses, the publish itself is still correct, so
- * this retries once without the flag rather than failing the release.
+ * this retries once without provenance rather than failing the release. The
+ * retry has to say `--provenance=false`: under trusted publishing npm attaches
+ * provenance by itself, so a retry that merely dropped the flag would generate
+ * it again and fail the same way.
  */
-function publishPackage(dir, distTag, dryRun) {
+export function publishPackage(dir, distTag, dryRun) {
   const args = ["publish", "--tag", distTag];
   if (dryRun) args.push("--dry-run");
 
@@ -203,7 +206,7 @@ function publishPackage(dir, distTag, dryRun) {
     if (output.includes("cannot publish over")) return "[skip] already published at this version";
     if (withProvenance && /provenance/i.test(output)) {
       console.log("::warning::provenance was rejected — retrying the publish without it");
-      return attempt([]);
+      return attempt(["--provenance=false"]);
     }
     // Fatal on purpose: see the header. The root package pins these names, so
     // a half-published set must stop the release rather than ship 404s.

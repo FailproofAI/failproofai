@@ -1229,10 +1229,12 @@ function globSegmentMatches(atoms: GlobAtom[], text: string): boolean {
  * extended-glob group.
  */
 function globMatcher(token: string): ((path: string) => boolean) | null {
-  const segments = token.split("/").map((segment) => globAtoms(segment));
+  // Case-insensitively, on both sides: macOS resolves a path's literal parts
+  // whatever their case, so `rm ~/.CLAUDE/settings.js*` reaches the settings.
+  const segments = token.toLowerCase().split("/").map((segment) => globAtoms(segment));
   if (segments.some((atoms) => atoms === null)) return null;
   return (path: string): boolean => {
-    const parts = path.split("/");
+    const parts = path.toLowerCase().split("/");
     return parts.length === segments.length && parts.every((part, i) => globSegmentMatches(segments[i]!, part));
   };
 }
@@ -1248,7 +1250,7 @@ function globPrefixNamesTarget(token: string, target: ProtectedPathTarget): bool
   const pattern = "^" + compileGlobPattern(token.replace(/\*{2,}/g, "*"));
   let re: RegExp;
   try {
-    re = new RegExp(pattern + "$");
+    re = new RegExp(pattern + "$", "i");
   } catch {
     return false;
   }

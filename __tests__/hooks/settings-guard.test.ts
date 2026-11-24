@@ -1206,6 +1206,11 @@ describe("block-failproofai-commands — review round seven", () => {
     expect(await bashDecision(`pushd /tmp && ls && popd && cp /tmp/x settings.json`, p7)).toBe("allow");
   });
 
+  it("matches a glob whatever the case of its literal parts (macOS resolves them so)", async () => {
+    expect(await bash(`rm -rf ~/.CLAUDE/settings.js*`, p7)).toBe(true);
+    expect(await bashDecision(`rm -rf ~/.CACHE/*`, p7)).toBe("allow");
+  });
+
   it("resolves git -C the way chdir walks it", async () => {
     expect(await bash(`git -C physical-link/.. log -1 --format='format:{"disableAllHooks":true}' --output=settings.json`, p7)).toBe(true);
     expect(await bashDecision(`git -C physical-link log -1 --output=/tmp/out.txt`, p7)).toBe("allow");

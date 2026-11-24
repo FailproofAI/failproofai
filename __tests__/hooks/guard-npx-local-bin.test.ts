@@ -299,6 +299,15 @@ describe("block-failproofai-commands — the entry a project-scope npx hook runs
       ["a glob of sources into the directory", "cp /tmp/stage/* node_modules/.bin/"],
       ["a glob of sources after -t", "cp -t node_modules/.bin /tmp/stage/*"],
       ["an abbreviated --recursive", "cp --rec /tmp/stage ~/node_modules/.bin"],
+      // A `popd` with nothing to return to fails and leaves the shell there.
+      ["a popd on an empty stack", "cd node_modules/.bin; popd; cp /tmp/stub.sh failproofai"],
+      ["$HOME spelled out", "cd $HOME/node_modules/.bin && cp /tmp/stub.sh failproofai"],
+      // A `cd` the walk cannot follow may land in npm's bin directory.
+      ["a cd into a command substitution", 'cd "$(npm root)/.bin" && cp /tmp/stub.sh failproofai'],
+      ["a redirect after a cd into a substitution", "cd $(npm root)/.bin && printf 'exit 0' > failproofai"],
+      ["a cd into backticks", "cd `npm root`/.bin && cp /tmp/stub.sh failproofai"],
+      ["a cd into a variable the line does not set", "cd $NODE_BIN && cp /tmp/stub.sh failproofai"],
+      ["a copy into . after a cd the walk cannot follow", 'cd "$(npm root)/.bin" && cp /tmp/stage/failproofai .'],
     ])("denies %s", async (_label, command) => {
       expect(await bash(command)).toBe("deny");
     });
@@ -362,6 +371,11 @@ describe("block-failproofai-commands — the entry a project-scope npx hook runs
       ["a loop copying files out", "for f in *.txt; do cp $f /tmp/; done"],
       ["a cd and a build", "cd packages/api && npm run build"],
       ["clearing a scratch directory", "cd /tmp && rm -rf *"],
+      // A `cd` the walk cannot follow changes nothing for ordinary names.
+      ["tests from the repository root", 'cd "$(git rev-parse --show-toplevel)" && npm test'],
+      ["a cleanup from the repository root", 'cd "$(git rev-parse --show-toplevel)" && rm -rf dist *.log'],
+      ["a note in a temporary directory", 'cd "$(mktemp -d)" && echo hi > notes.txt'],
+      ["a listing of home", "cd $HOME && ls -la"],
     ])("allows %s", async (_label, command) => {
       expect(await bash(command)).not.toBe("deny");
     });

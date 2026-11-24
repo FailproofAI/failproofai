@@ -39,13 +39,30 @@ jobs:
     outputs:
       languages: ${{ steps.langs.outputs.languages }}
     steps:
+      # The requested codes become the `translate` matrix, and that job holds
+      # the Anthropic credentials. So the input reaches this script through
+      # `env:` only: a `${{ }}` expression is pasted into the script's source
+      # before bash runs, and the old one ran whatever the dispatcher typed.
+      # Only supported codes go on, because each one is then used in shell
+      # steps, cache keys and artifact paths downstream.
       - id: langs
+        env:
+          LANGUAGES: ${{ inputs.languages }}
+          SUPPORTED: '["zh","ja","ko","es","pt-br","de","fr","ru","hi","tr","vi","it","ar","he"]'
         run: |
-          if [ -n "${{ inputs.languages }}" ]; then
-            echo "languages=$(echo '${{ inputs.languages }}' | jq -Rc 'split(",") | map(gsub("\\s"; ""))')" >> "$GITHUB_OUTPUT"
-          else
-            echo 'languages=["zh","ja","ko","es","pt-br","de","fr","ru","hi","tr","vi","it","ar","he"]' >> "$GITHUB_OUTPUT"
+          # Comma-separated; whitespace is ignored, as it always was.
+          REQUESTED="${LANGUAGES//[[:space:]]/}"
+          if [ -z "$REQUESTED" ]; then
+            echo "languages=$SUPPORTED" >> "$GITHUB_OUTPUT"
+            exit 0
           fi
+          CODES=$(jq -cn --arg s "$REQUESTED" '$s | split(",") | map(select(. != "")) | unique')
+          UNSUPPORTED=$(jq -cn --argjson c "$CODES" --argjson s "$SUPPORTED" '$c - $s')
+          if [ "$CODES" = "[]" ] || [ "$UNSUPPORTED" != "[]" ]; then
+            echo "::error title=Unsupported language code::languages takes a comma-separated list of: $(jq -r 'join(",")' <<< "$SUPPORTED")"
+            exit 1
+          fi
+          echo "languages=$CODES" >> "$GITHUB_OUTPUT"
 
   translate:
     needs: prepare
@@ -74,7 +91,7 @@ jobs:
 
       - uses: oven-sh/setup-bun@v2
         with:
-          bun-version: latest
+          bun-version: 1.4.5
 
       - uses: actions/cache@v6
         with:
@@ -109,13 +126,23 @@ jobs:
             translation-cache-${{ matrix.lang }}-
             translation-cache-
 
+      # `matrix.lang` came from the dispatch input (see `prepare`), so in a
+      # script it is read from `env:`, never spliced in with `${{ }}`.
       - name: Warn on translation cache miss
         if: steps.restore-cache.outputs.cache-matched-key == ''
+        env:
+          DOC_LANG: ${{ matrix.lang }}
         run: |
-          echo "::warning title=Translation cache MISS::${{ matrix.lang }} will re-translate every page (~9 runner-minutes and one full LLM pass)"
+          echo "::warning title=Translation cache MISS::${DOC_LANG} will re-translate every page (~9 runner-minutes and one full LLM pass)"
 
       - name: Translate ${{ matrix.lang }}
-        run: bun run translate --languages ${{ matrix.lang }} ${{ inputs.force == true && '--force' || '' }}
+        env:
+          DOC_LANG: ${{ matrix.lang }}
+          FORCE: ${{ inputs.force }}
+        run: |
+          ARGS=(--languages "$DOC_LANG")
+          if [ "$FORCE" = "true" ]; then ARGS+=(--force); fi
+          bun run translate "${ARGS[@]}"
 
       # Fail the language that actually broke, before its artifact is uploaded.
       # `consolidate` re-runs this on the merged tree, but only after every
@@ -183,7 +210,7 @@ jobs:
 
       - uses: oven-sh/setup-bun@v2
         with:
-          bun-version: latest
+          bun-version: 1.4.5
 
       - name: Install dependencies
         run: bun install --frozen-lockfile --ignore-scripts

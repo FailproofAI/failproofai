@@ -28,6 +28,7 @@ import { trackHookEvent, flushHookTelemetry } from "@/src/hooks/hook-telemetry";
 interface CapturedRequest {
   url: string;
   body: string;
+  authorization?: string;
 }
 
 interface TestServer {
@@ -60,12 +61,22 @@ async function startServer(opts: { failFirst?: number } = {}): Promise<TestServe
         req.headers["content-encoding"] === "gzip"
           ? gunzipSync(raw).toString("utf-8")
           : raw.toString("utf-8");
-      received.push({ url: req.url ?? "", body });
+      received.push({ url: req.url ?? "", body, authorization: req.headers.authorization });
       if (opts.failFirst && hits <= opts.failFirst) {
         res.writeHead(500, { "Content-Type": "application/json" }).end("{}");
         return;
       }
-      res.writeHead(200, { "Content-Type": "application/json" }).end(JSON.stringify({ status: 1 }));
+      // PostHog 6's Capture V1 acknowledges each event by UUID. The raw hook
+      // dispatcher still uses /capture/ and its legacy response shape.
+      const response = req.url === "/i/v1/analytics/events"
+        ? {
+          results: Object.fromEntries(
+            (JSON.parse(body) as { batch: Array<{ uuid: string }> }).batch
+              .map(({ uuid }) => [uuid, { result: "ok" }]),
+          ),
+        }
+        : { status: 1 };
+      res.writeHead(200, { "Content-Type": "application/json" }).end(JSON.stringify(response));
     });
   });
 
@@ -115,6 +126,7 @@ describe("lib/telemetry delivery (real posthog-node)", () => {
 
   afterEach(async () => {
     await shutdownTelemetry().catch(() => {});
+    vi.restoreAllMocks();
     globalThis.__FAILPROOFAI_POSTHOG__ = undefined;
     delete process.env.FAILPROOFAI_POSTHOG_KEY;
     delete process.env.FAILPROOFAI_POSTHOG_HOST;
@@ -136,7 +148,9 @@ describe("lib/telemetry delivery (real posthog-node)", () => {
     await waitFor(() => deliveredEvents(ph!.received).includes("app_started"), 10_000);
 
     expect(deliveredEvents(ph.received)).toContain("app_started");
-    expect(ph.received.map((r) => r.url)).toContain("/batch/");
+    expect(ph.received.map((r) => r.url)).toContain("/i/v1/analytics/events");
+    expect(ph.received.find((r) => r.url === "/i/v1/analytics/events")?.authorization)
+      .toBe("Bearer phc_delivery_test");
 
     // The payload is the point — assert the properties survived the trip, not
     // just that some request arrived.
@@ -152,18 +166,13 @@ describe("lib/telemetry delivery (real posthog-node)", () => {
       failproofai_version: expect.any(String),
     });
 
-    // `$lib` is NOT ours on this path, despite trackEvent() setting it to
-    // "failproofai": posthog-node owns that reserved property and overwrites it
-    // with its own name and version on every event. (The raw-fetch dispatcher in
-    // src/hooks/hook-telemetry.ts has no SDK to overwrite it, so its
-    // "failproofai-hooks" value does survive — the two paths disagree by
-    // construction.) Attribution that actually holds across both is `product`,
-    // asserted above; pinned here so nobody "fixes" trackEvent to fight the SDK.
-    expect((event!.properties as Record<string, unknown>).$lib).toBe("posthog-node");
+    // Capture V1 preserves the application-provided $lib attribution.
+    expect((event!.properties as Record<string, unknown>).$lib).toBe("failproofai");
   }, 15_000);
 
   it("does not log a flush error when delivery succeeds", async () => {
     const consoleError = vi.spyOn(console, "error").mockImplementation(() => {});
+    const consoleWarn = vi.spyOn(console, "warn").mockImplementation(() => {});
     ph = await startServer();
     process.env.FAILPROOFAI_POSTHOG_HOST = ph.url;
 
@@ -171,14 +180,12 @@ describe("lib/telemetry delivery (real posthog-node)", () => {
     trackEvent("app_started");
     await waitFor(() => deliveredEvents(ph!.received).includes("app_started"), 10_000);
 
-    // posthog-node reports flush failures through a hardcoded console.error
-    // (`logFlushError`) on a fire-and-forget internal promise — no `.catch()` at
-    // our call sites can intercept it, so this is the only way to assert it.
-    const flushErrors = consoleError.mock.calls.filter((c) =>
-      String(c[0]).includes("Error while flushing PostHog"),
-    );
-    expect(flushErrors).toEqual([]);
-    consoleError.mockRestore();
+    expect(deliveredEvents(ph.received)).toContain("app_started");
+    // Wait for the SDK to process the acknowledgement. A request reaching the
+    // server is insufficient if the client rejects the response as unreadable.
+    await shutdownTelemetry();
+    expect(consoleError).not.toHaveBeenCalled();
+    expect(consoleWarn).not.toHaveBeenCalled();
   }, 15_000);
 
   it("retries a failed send and still delivers the event", async () => {
@@ -190,7 +197,7 @@ describe("lib/telemetry delivery (real posthog-node)", () => {
     await initTelemetry();
     trackEvent("app_started");
 
-    // posthog-node's first retry waits `fetchRetryDelay` (3s), so budget past it.
+    // Allow time for the SDK's retry backoff.
     await waitFor(() => ph!.hits() >= 2, 20_000);
 
     expect(ph.hits()).toBeGreaterThanOrEqual(2);

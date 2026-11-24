@@ -29,6 +29,43 @@ failproofai policies --install --cli codex --scope project
 ```
 which writes a portable `npx -y failproofai --hook ... --cli codex` command.
 
+**User scope with sudo: Codex's system config, through the hook runner.** Codex ≥0.129
+runs a `~/.codex/hooks.json` hook only once a person trusts it, but runs hooks from its
+system config (`/etc/codex/config.toml`) as managed, with no trust. So with root,
+`src/hooks/codex-system-hooks.ts` puts the user-scope hooks there, in one marked block that
+serves every account on the machine. Every hook in it runs the **hook runner**,
+`/opt/failproofai-codex/codex-hook` (its own directory: `/opt/failproofai/<user>` is the
+daemon's): a root-owned `sh` script with one `case` arm per uid that set the hooks up,
+`<uid>) exec '<that account's failproofai>' "$@"`, which for any other uid drains stdin with
+`cat` and exits 0 (no decision). It names `sh`, `id` and `cat` by absolute path from `/bin`
+or `/usr/bin`. Rules that keep it safe:
+- **Check what it runs, every time.** `untrustedPathReason()` walks a path the way the
+  kernel resolves it, following each symlink, and requires every directory, link and the
+  final file to be owned by a trusted uid and writable by no one else (a sticky directory,
+  like `/tmp`, is allowed). For `/etc/codex/config.toml` the trusted uid is root alone
+  (`codexTrustedOwners`); only a test's config path (`FAILPROOFAI_CODEX_SYSTEM_CONFIG`)
+  also trusts that path's owner. The runner's directory, the runner, `sh`, `id`, `cat`
+  and each account's line are checked on install (`installCodexSystemHooks`) and on every
+  `failproofai update` (`refreshCodexSystemHooks`, a step in `update-run.ts`). A runner
+  that fails takes the block out; a line that fails is taken out of the runner.
+- **Each line runs only that account's own install.** An account's line must resolve
+  through files owned by root or that account (its group may write them: a umask of 002).
+  Root's line must be root's alone, group included, and names its interpreter by absolute
+  path, so nothing on it goes through PATH. Another account's line that this process
+  cannot read (a 0750 home) is kept as it is.
+- **One block, many accounts.** Install adds this uid and keeps the others. Uninstall
+  removes only this uid, and the block and runner once none is left.
+  `codexSystemHooksPresent()` / `codexHookTrust()` answer for **this** uid. A runner with
+  no block is stale: its lines are never merged back.
+- **Earlier blocks.** A block in the format earlier versions wrote is rewritten to run the
+  runner for the account that owns the program it ran; one whose program is root's alone
+  is left as it is. `update` asks for root (`sudo -n`) only when this account is one the
+  block runs for or owns what it runs; any other account gets a notice and its update
+  does not fail.
+- **Tests never reach `/opt`.** The runner sits beside the system config whenever
+  `FAILPROOFAI_CODEX_SYSTEM_CONFIG` points anywhere but `/etc/codex/config.toml`
+  (`codexHookRunnerPath`). Both vitest configs set that variable to `off`.
+
 ### Copilot hooks (`.github/hooks/failproofai.json`)
 
 Copilot's project-scope hook config lives under `.github/hooks/`, **not**

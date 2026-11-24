@@ -111,6 +111,26 @@ export async function runUpdateSteps(opts: UpdateStepsOptions): Promise<UpdateSt
     }
   }
 
+  // Codex's system config: every update checks failproofai's hooks there (the
+  // hook runner, what it runs, and a block in an earlier format, which it
+  // rewrites). Root only when something has to change and this account is one
+  // the hooks run for, through `sudo -n` like the daemon above. Anyone else is
+  // told, and their update does not fail for it.
+  let codexOk = true;
+  try {
+    const codexHooks = await import("./codex-system-hooks");
+    const refreshed = codexHooks.refreshCodexSystemHooks();
+    const codexLines = codexHooks.codexRefreshLines(refreshed);
+    if (codexLines.length > 0) {
+      lines.push("", ...codexLines);
+      changed = true;
+    }
+    codexOk = refreshed.status !== "needs-root" && refreshed.status !== "failed";
+  } catch (err) {
+    lines.push("", `✕ Codex: could not check failproofai's hooks: ${err instanceof Error ? err.message : String(err)}`);
+    codexOk = false;
+  }
+
   // Hermes is migrated AFTER the daemon, and gated on what the daemon that is
   // now running can do: the native plugin needs `policyEvaluation`, which
   // ≤1.0.5 daemons lack, so when the swap above could not happen (a sudo
@@ -169,7 +189,7 @@ export async function runUpdateSteps(opts: UpdateStepsOptions): Promise<UpdateSt
 
   return {
     lines,
-    ok: daemonOk && !migrationFailed && hermesOk,
+    ok: daemonOk && !migrationFailed && hermesOk && codexOk,
     migrationsRan,
     migrationFailed,
     hermesOk,

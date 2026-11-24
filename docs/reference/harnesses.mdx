@@ -102,7 +102,13 @@ loads the updated plugin.
 
 Codex 0.129 and later runs a hook from `~/.codex/hooks.json` only after you approve it in interactive `codex` ("Review hooks"); until then, every Codex session — headless `codex exec` included — skips it. Hooks in Codex's system config, `/etc/codex/config.toml` on Linux and macOS, run without that approval.
 
-So when `failproofai config` (or `policies --install --cli codex` at user scope) can use sudo, it writes the Codex hooks into `/etc/codex/config.toml`, between `# >>> failproofai managed hooks >>>` and `# <<< failproofai managed hooks <<<`, and leaves the rest of that file as it was. The file applies to every account on the machine. `failproofai uninstall` and unticking Codex in `failproofai config` take the block out again.
+So when `failproofai config` (or `policies --install --cli codex` at user scope) can use sudo, it writes the Codex hooks into `/etc/codex/config.toml`, between `# >>> failproofai managed hooks >>>` and `# <<< failproofai managed hooks <<<`, and leaves the rest of that file as it was.
+
+That file applies to every account on the machine, so each hook in it runs `/opt/failproofai-codex/codex-hook`, a short script that root owns. The script hands the event to an account's own failproofai for each account that set the hooks up there, and does nothing for any other account. Another account that wants failproofai's Codex hooks sets them up for itself.
+
+Before writing the block, and again on every `failproofai update`, failproofai checks that the script, every directory above it, and the `sh`, `id` and `cat` it runs belong to root and can be written by no one else, and that each account's failproofai belongs to that account or root. On install, when that check fails, your hooks stay in `~/.codex/hooks.json`. On update, a script that fails it takes the block out, and an account whose failproofai fails it is taken out of the script; run `failproofai config` again once it is fixed. `failproofai update` also rewrites a block written by an earlier version to use the script, which needs sudo.
+
+`failproofai uninstall` and unticking Codex in `failproofai config` take your account out again, and the block with it once no account is left.
 
 Without sudo, and on Windows, the hooks stay in `~/.codex/hooks.json`. `failproofai config` and `failproofai config --status` then do not count Codex as enforcing until the hooks are approved, and say how to fix it: re-run `failproofai config` and allow sudo, or open `codex` once and approve the hooks.
 

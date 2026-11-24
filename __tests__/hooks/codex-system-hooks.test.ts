@@ -8,26 +8,47 @@
  * `trustStatus: "managed"`.
  */
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
-import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { spawnSync } from "node:child_process";
+import {
+  chmodSync,
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  realpathSync,
+  rmSync,
+  statSync,
+  symlinkSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 
 import {
   CODEX_MANAGED_BEGIN,
   CODEX_MANAGED_END,
   codexGatesHookTrust,
   codexHookHash,
+  codexHookRunnerPath,
   codexHookTrust,
+  codexRefreshLines,
   codexSystemBackupPath,
   codexSystemConfigPath,
+  codexSystemHooksPresent,
   conflictingHooksDefinition,
   failproofaiCodexHookIdentities,
   hasCodexManagedBlock,
   installCodexSystemHooks,
   mergeCodexManagedBlock,
+  parseCodexHookRunner,
+  parseCodexManagedBlock,
   parseCodexTrustedHashes,
+  refreshCodexSystemHooks,
   removeCodexSystemHooks,
+  renderCodexHookRunner,
   renderCodexManagedBlock,
+  codexTrustedOwners,
+  untrustedPathReason,
 } from "../../src/hooks/codex-system-hooks";
 import { codex, codexSystemHookEntries } from "../../src/hooks/integrations";
 
@@ -38,7 +59,8 @@ const CURRENT = () => "0.162.1";
 
 let dir: string;
 beforeEach(() => {
-  dir = mkdtempSync(join(tmpdir(), "fp-codex-system-"));
+  // Resolved: the ownership check reports paths as the kernel resolves them.
+  dir = realpathSync(mkdtempSync(join(tmpdir(), "fp-codex-system-")));
 });
 afterEach(() => {
   rmSync(dir, { recursive: true, force: true });
@@ -104,95 +126,230 @@ describe("conflictingHooksDefinition", () => {
   });
 });
 
+/** Directories as the tests make them: 0755 whatever the umask, as the runner's check needs. */
+function mkdirs(path: string): void {
+  const missing: string[] = [];
+  for (let d = path; !existsSync(d); d = dirname(d)) missing.unshift(d);
+  for (const d of missing) {
+    mkdirSync(d);
+    chmodSync(d, 0o755);
+  }
+}
+
+/** An executable shell script at `path`, 0755. */
+function script(path: string, body: string): string {
+  mkdirs(dirname(path));
+  writeFileSync(path, `#!/bin/sh\n${body}\n`);
+  chmodSync(path, 0o755);
+  return path;
+}
+
+/** The program each hook in the system config's block runs. */
+function blockPrograms(configPath: string): string[] {
+  const text = readFileSync(configPath, "utf8");
+  const entries = parseCodexManagedBlock(text.slice(text.indexOf(CODEX_MANAGED_BEGIN)));
+  return (entries ?? []).map((e) => /^"([^"]*)"/.exec(e.command)?.[1] ?? e.command);
+}
+
+const ME = process.getuid?.() ?? 0;
+
+/** This account's own failproofai, as a real file: the runner's per-account check reads it. */
+const myCli = () => script(join(dir, "home", "me", "failproofai"), "true");
+
 describe("installCodexSystemHooks", () => {
   const path = () => join(dir, "etc", "codex", "config.toml");
+  const runner = () => codexHookRunnerPath(path())!;
+  const install = (over: Record<string, unknown> = {}, cli = myCli()) =>
+    installCodexSystemHooks(cli, codexSystemHookEntries, { path: path(), codexVersion: CURRENT, ...over });
+  const block = () => renderCodexManagedBlock(codexSystemHookEntries(runner()));
 
   it("creates the file (and its directory) with mode 0644 when there is none, and backs nothing up", () => {
-    const result = installCodexSystemHooks(ENTRIES, { path: path(), codexVersion: CURRENT });
-    expect(result).toEqual({ ok: true, path: path(), changed: true });
-    expect(readFileSync(path(), "utf8")).toBe(BLOCK);
+    const result = install();
+    expect(result).toEqual({ ok: true, path: path(), changed: true, dropped: [] });
+    expect(readFileSync(path(), "utf8")).toBe(block());
     expect(statSync(path()).mode & 0o777).toBe(0o644);
     expect(existsSync(codexSystemBackupPath(path()))).toBe(false);
   });
 
+  it("runs every hook through the hook runner, never through the account's own failproofai", () => {
+    expect(install()).toMatchObject({ ok: true });
+    const programs = blockPrograms(path());
+    expect(programs).toHaveLength(codex.eventTypes.length);
+    expect(new Set(programs)).toEqual(new Set([runner()]));
+    expect(readFileSync(path(), "utf8")).not.toContain(myCli());
+    // The runner: 0755, failproofai's, naming this account's failproofai for this uid alone.
+    expect(statSync(runner()).mode & 0o777).toBe(0o755);
+    expect(parseCodexHookRunner(readFileSync(runner(), "utf8"))?.accounts).toEqual([
+      expect.objectContaining({ uid: ME, cli: myCli() }),
+    ]);
+  });
+
   it("merges into an existing file, backs it up once, and is a no-op the second time", () => {
-    mkdirSync(join(dir, "etc", "codex"), { recursive: true });
+    mkdirs(join(dir, "etc", "codex"));
     const original = '# admin\napproval_policy = "never"\n';
     writeFileSync(path(), original);
     chmodSync(path(), 0o640);
-    expect(installCodexSystemHooks(ENTRIES, { path: path(), codexVersion: CURRENT })).toMatchObject({ ok: true, changed: true });
-    expect(readFileSync(path(), "utf8")).toBe(`${original}\n${BLOCK}`);
+    expect(install()).toMatchObject({ ok: true, changed: true });
+    expect(readFileSync(path(), "utf8")).toBe(`${original}\n${block()}`);
     expect(readFileSync(codexSystemBackupPath(path()), "utf8")).toBe(original);
     expect(statSync(path()).mode & 0o777).toBe(0o640);
 
-    expect(installCodexSystemHooks(ENTRIES, { path: path(), codexVersion: CURRENT })).toMatchObject({ ok: true, changed: false });
-    // A new binary path replaces the block and leaves the first backup alone.
-    const moved = codexSystemHookEntries("/opt/failproofai/cli.mjs");
-    expect(installCodexSystemHooks(moved, { path: path(), codexVersion: CURRENT })).toMatchObject({ ok: true, changed: true });
-    expect(readFileSync(path(), "utf8")).toBe(`${original}\n${renderCodexManagedBlock(moved)}`);
+    const runnerBefore = readFileSync(runner(), "utf8");
+    expect(install()).toMatchObject({ ok: true, changed: false });
+    expect(readFileSync(runner(), "utf8")).toBe(runnerBefore);
+    // A new failproofai path changes the runner, not the block or the backup.
+    const elsewhere = script(join(dir, "elsewhere", "failproofai"), "true");
+    expect(install({}, elsewhere)).toMatchObject({ ok: true, changed: true });
+    expect(readFileSync(path(), "utf8")).toBe(`${original}\n${block()}`);
+    expect(parseCodexHookRunner(readFileSync(runner(), "utf8"))?.accounts).toEqual([
+      expect.objectContaining({ uid: ME, cli: elsewhere }),
+    ]);
     expect(readFileSync(codexSystemBackupPath(path()), "utf8")).toBe(original);
   });
 
   it("falls back, writing nothing, where the system layer cannot be used", () => {
-    expect(installCodexSystemHooks(ENTRIES, { path: null, codexVersion: CURRENT })).toMatchObject({
-      ok: false,
-      reason: "unsupported-platform",
-    });
-    expect(installCodexSystemHooks(ENTRIES, { path: path(), codexVersion: () => null })).toMatchObject({
-      ok: false,
-      reason: "codex-not-found",
-    });
-    expect(installCodexSystemHooks(ENTRIES, { path: path(), codexVersion: () => "0.128.0" })).toMatchObject({
-      ok: false,
-      reason: "codex-too-old",
-    });
+    expect(install({ path: null })).toMatchObject({ ok: false, reason: "unsupported-platform" });
+    expect(install({ codexVersion: () => null })).toMatchObject({ ok: false, reason: "codex-not-found" });
+    expect(install({ codexVersion: () => "0.128.0" })).toMatchObject({ ok: false, reason: "codex-too-old" });
     expect(existsSync(path())).toBe(false);
+    expect(existsSync(runner())).toBe(false);
   });
 
   it("needs root for a file it cannot write itself, and leaves it untouched without", () => {
-    if (process.getuid?.() === 0) return; // root can write anything
+    if (ME === 0) return; // root can write anything
     const etc = join(dir, "etc", "codex");
-    mkdirSync(etc, { recursive: true });
+    mkdirs(etc);
     writeFileSync(path(), "x = 1\n");
     chmodSync(path(), 0o444);
     chmodSync(etc, 0o555);
     try {
-      expect(installCodexSystemHooks(ENTRIES, { path: path(), codexVersion: CURRENT, canElevate: () => false })).toEqual({
-        ok: false,
-        reason: "no-root",
-        path: path(),
-      });
+      expect(install({ canElevate: () => false })).toEqual({ ok: false, reason: "no-root", path: path() });
       expect(readFileSync(path(), "utf8")).toBe("x = 1\n");
+      expect(existsSync(runner())).toBe(false);
     } finally {
       chmodSync(etc, 0o755);
     }
   });
 
   it("will not write a block that would break the file's TOML", () => {
-    mkdirSync(join(dir, "etc", "codex"), { recursive: true });
+    mkdirs(join(dir, "etc", "codex"));
     writeFileSync(path(), "hooks = {}\n");
-    expect(installCodexSystemHooks(ENTRIES, { path: path(), codexVersion: CURRENT })).toMatchObject({
-      ok: false,
-      reason: "conflict",
-      detail: "hooks = {}",
-    });
+    expect(install()).toMatchObject({ ok: false, reason: "conflict", detail: "hooks = {}" });
     expect(readFileSync(path(), "utf8")).toBe("hooks = {}\n");
+    expect(existsSync(runner())).toBe(false);
+  });
+
+  it("will not replace a file at the runner's path that failproofai did not write", () => {
+    script(runner(), "echo mine");
+    expect(install()).toMatchObject({ ok: false, reason: "conflict", detail: expect.stringContaining(runner()) });
+    expect(readFileSync(runner(), "utf8")).toBe("#!/bin/sh\necho mine\n");
+    expect(existsSync(path())).toBe(false);
+  });
+
+  it("refuses hooks that would run anything else", () => {
+    const direct = () => codexSystemHookEntries(BIN);
+    expect(installCodexSystemHooks(myCli(), direct, { path: path(), codexVersion: CURRENT })).toMatchObject({
+      ok: false,
+      reason: "write-failed",
+    });
+    expect(existsSync(path())).toBe(false);
+  });
+});
+
+describe("the hook runner, run", () => {
+  const path = () => join(dir, "etc", "codex", "config.toml");
+  const runner = () => codexHookRunnerPath(path())!;
+  // `id` stands in for the account Codex runs as; the rest is the real system's.
+  const programs = () => ({ sh: "/bin/sh", id: script(join(dir, "fake", "id"), 'echo "$FAKE_UID"'), cat: "/bin/cat" });
+  /** An account's own failproofai: writes who it is, its arguments and the event to $MARKER. */
+  const fakeCli = (home: string, label = home) =>
+    script(join(dir, "accounts", home, "failproofai"), `printf "%s %s\\n" ${label} "$*" >"$MARKER"; cat >>"$MARKER"`);
+  const marker = () => join(dir, "ran");
+  const payload = '{"hook_event_name":"PreToolUse","tool_name":"Bash","tool_input":{"command":"ls"}}';
+
+  /** Every hook in the block, run as `uid` the way Codex runs one: through a shell, the event on stdin. */
+  function runHooksAs(uid: number): Array<{ status: number | null; stdout: string }> {
+    const text = readFileSync(path(), "utf8");
+    const entries = parseCodexManagedBlock(text.slice(text.indexOf(CODEX_MANAGED_BEGIN))) ?? [];
+    expect(entries.length).toBeGreaterThan(0);
+    return entries.map((entry) => {
+      const result = spawnSync("/bin/sh", ["-c", entry.command], {
+        input: payload,
+        env: { ...process.env, FAKE_UID: String(uid), MARKER: marker() },
+        encoding: "utf8",
+        timeout: 10_000,
+      });
+      return { status: result.status, stdout: result.stdout };
+    });
+  }
+
+  it("hands the event to the account's own failproofai for that account, and runs nothing for root or anyone else", () => {
+    const cli = fakeCli("alice");
+    expect(
+      installCodexSystemHooks(cli, codexSystemHookEntries, {
+        path: path(),
+        codexVersion: CURRENT,
+        uid: 4242,
+        userName: "alice",
+        programs: programs(),
+      }),
+    ).toMatchObject({ ok: true });
+
+    for (const uid of [0, 4243]) {
+      const results = runHooksAs(uid);
+      expect(results.every((r) => r.status === 0 && r.stdout === "")).toBe(true);
+      expect(existsSync(marker())).toBe(false);
+    }
+
+    const [first] = runHooksAs(4242);
+    expect(first.status).toBe(0);
+    const ran = readFileSync(marker(), "utf8");
+    expect(ran).toMatch(/^alice --hook \w+ --cli codex --agent-scope user\n/);
+    expect(ran).toContain(payload);
+  });
+
+  it("runs each account that set it up its own failproofai", () => {
+    const alice = fakeCli("alice");
+    const bob = fakeCli("bob");
+    const deps = { path: path(), codexVersion: CURRENT, programs: programs() };
+    expect(installCodexSystemHooks(alice, codexSystemHookEntries, { ...deps, uid: 4242 })).toMatchObject({ ok: true });
+    expect(installCodexSystemHooks(bob, codexSystemHookEntries, { ...deps, uid: 4243 })).toMatchObject({ ok: true });
+    runHooksAs(4243);
+    expect(readFileSync(marker(), "utf8")).toMatch(/^bob --hook /);
+    runHooksAs(4242);
+    expect(readFileSync(marker(), "utf8")).toMatch(/^alice --hook /);
+    expect(parseCodexHookRunner(readFileSync(runner(), "utf8"))?.accounts.map((a) => [a.uid, a.cli])).toEqual([
+      [4242, alice],
+      [4243, bob],
+    ]);
+  });
+
+  it("quotes a failproofai path that holds a quote", () => {
+    const cli = fakeCli("o'brien", "obrien");
+    installCodexSystemHooks(cli, codexSystemHookEntries, { path: path(), codexVersion: CURRENT, uid: 4242, programs: programs() });
+    expect(parseCodexHookRunner(readFileSync(runner(), "utf8"))?.accounts[0].cli).toBe(cli);
+    runHooksAs(4242);
+    expect(existsSync(marker())).toBe(true);
   });
 });
 
 describe("removeCodexSystemHooks", () => {
   const path = () => join(dir, "config.toml");
+  const runner = () => codexHookRunnerPath(path())!;
+  const install = (over: Record<string, unknown> = {}) =>
+    installCodexSystemHooks(myCli(), codexSystemHookEntries, { path: path(), codexVersion: CURRENT, ...over });
 
-  it("deletes a file failproofai created and nobody else added to", () => {
-    installCodexSystemHooks(ENTRIES, { path: path(), codexVersion: CURRENT });
-    expect(removeCodexSystemHooks({ path: path() })).toEqual({ status: "removed", path: path(), hooks: ENTRIES.length });
+  it("deletes a file failproofai created and nobody else added to, and the runner with it", () => {
+    install();
+    expect(removeCodexSystemHooks({ path: path() })).toEqual({ status: "removed", path: path(), hooks: ENTRIES.length, remaining: 0 });
     expect(existsSync(path())).toBe(false);
+    expect(existsSync(runner())).toBe(false);
   });
 
   it("restores the exact original from the backup, even one with no final newline", () => {
     const original = 'model = "o3"'; // no trailing newline
     writeFileSync(path(), original);
-    installCodexSystemHooks(ENTRIES, { path: path(), codexVersion: CURRENT });
+    install();
     expect(removeCodexSystemHooks({ path: path() }).status).toBe("removed");
     expect(readFileSync(path(), "utf8")).toBe(original);
     expect(existsSync(codexSystemBackupPath(path()))).toBe(false);
@@ -200,7 +357,7 @@ describe("removeCodexSystemHooks", () => {
 
   it("keeps edits made since, and the backup, when the rest of the file changed", () => {
     writeFileSync(path(), "a = 1\n");
-    installCodexSystemHooks(ENTRIES, { path: path(), codexVersion: CURRENT });
+    install();
     writeFileSync(path(), `${readFileSync(path(), "utf8")}b = 2\n`);
     expect(removeCodexSystemHooks({ path: path() }).status).toBe("removed");
     expect(readFileSync(path(), "utf8")).toBe("a = 1\n\nb = 2\n");
@@ -212,6 +369,253 @@ describe("removeCodexSystemHooks", () => {
     writeFileSync(path(), "a = 1\n");
     expect(removeCodexSystemHooks({ path: path() })).toEqual({ status: "absent" });
     expect(readFileSync(path(), "utf8")).toBe("a = 1\n");
+  });
+
+  it("takes out only this account while another still has its hooks there", () => {
+    install({ uid: 4242 });
+    install({ uid: 4243 });
+    const config = readFileSync(path(), "utf8");
+    expect(removeCodexSystemHooks({ path: path(), uid: 4242 })).toMatchObject({ status: "removed", remaining: 1 });
+    expect(readFileSync(path(), "utf8")).toBe(config);
+    expect(parseCodexHookRunner(readFileSync(runner(), "utf8"))?.accounts.map((a) => a.uid)).toEqual([4243]);
+    expect(codexSystemHooksPresent({ path: path(), uid: 4242 })).toBe(false);
+    expect(codexSystemHooksPresent({ path: path(), uid: 4243 })).toBe(true);
+    // An account with nothing there removes nothing.
+    expect(removeCodexSystemHooks({ path: path(), uid: 4244 })).toEqual({ status: "absent" });
+    expect(removeCodexSystemHooks({ path: path(), uid: 4243 })).toMatchObject({ status: "removed" });
+    expect(existsSync(path())).toBe(false);
+    expect(existsSync(runner())).toBe(false);
+  });
+});
+
+describe("what the runner may run before it knows the account", () => {
+  const path = () => join(dir, "etc", "codex", "config.toml");
+  const runner = () => codexHookRunnerPath(path())!;
+  const install = (over: Record<string, unknown> = {}) =>
+    installCodexSystemHooks(myCli(), codexSystemHookEntries, { path: path(), codexVersion: CURRENT, ...over });
+
+  it("is root's alone when the system config is: the runner of an account is refused and the hooks stay out", () => {
+    if (ME === 0) return; // root's own files are root's
+    // As on a real machine, where /etc/codex is root's: this test's files are an account's.
+    const result = install({ trustedUids: [0] });
+    expect(result).toMatchObject({ ok: false, reason: "unsafe", detail: expect.stringMatching(/is owned by uid \d+/) });
+    expect(existsSync(path())).toBe(false);
+    expect(existsSync(runner())).toBe(false);
+  });
+
+  it("refuses a directory others can write, and takes out the block that was there", () => {
+    expect(install()).toMatchObject({ ok: true });
+    chmodSync(dirname(runner()), 0o775);
+    expect(install()).toMatchObject({
+      ok: false,
+      reason: "unsafe",
+      detail: `${dirname(runner())} can be written by accounts other than its owner`,
+    });
+    expect(existsSync(path())).toBe(false);
+    expect(existsSync(runner())).toBe(false);
+  });
+
+  it("refuses an `id` or `cat` another account could replace", () => {
+    const loose = join(dir, "loose");
+    const id = script(join(loose, "id"), "echo 0");
+    chmodSync(loose, 0o777);
+    expect(install({ programs: { sh: "/bin/sh", id, cat: "/bin/cat" } })).toMatchObject({
+      ok: false,
+      reason: "unsafe",
+      detail: `${loose} can be written by accounts other than its owner`,
+    });
+    expect(existsSync(path())).toBe(false);
+  });
+
+  describe("untrustedPathReason", () => {
+    const trusted = new Set([0, ME]);
+
+    it("accepts a file only its owner can write, under directories only their owners can", () => {
+      const file = script(join(dir, "a", "b", "f"), "true");
+      expect(untrustedPathReason(file, trusted)).toBeNull();
+      expect(untrustedPathReason(join(dir, "a"), trusted, { dir: true })).toBeNull();
+      expect(untrustedPathReason("/bin/sh", new Set([0]), { link: true })).toBeNull();
+    });
+
+    it("names the first entry that belongs to someone else, or that others can write", () => {
+      const file = script(join(dir, "a", "f"), "true");
+      if (ME !== 0) expect(untrustedPathReason(file, new Set([0]))).toMatch(/is owned by uid \d+$/);
+      chmodSync(file, 0o775);
+      expect(untrustedPathReason(file, trusted)).toBe(`${file} can be written by accounts other than its owner`);
+      chmodSync(file, 0o755);
+      chmodSync(join(dir, "a"), 0o757);
+      expect(untrustedPathReason(file, trusted)).toBe(`${join(dir, "a")} can be written by accounts other than its owner`);
+    });
+
+    it("accepts a sticky directory everyone can write, as /tmp is", () => {
+      const file = script(join(dir, "sticky", "own", "f"), "true");
+      chmodSync(join(dir, "sticky"), 0o1777);
+      expect(untrustedPathReason(file, trusted)).toBeNull();
+    });
+
+    it("refuses a link as the runner, and checks every directory a link passes through", () => {
+      const file = script(join(dir, "y", "f"), "true");
+      // a/l -> x/l2 -> y/f, with x writable by others: resolving a/l reads x.
+      mkdirs(join(dir, "x"));
+      symlinkSync(file, join(dir, "x", "l2"));
+      chmodSync(join(dir, "x"), 0o777);
+      mkdirs(join(dir, "a"));
+      symlinkSync(join(dir, "x", "l2"), join(dir, "a", "l"));
+      expect(untrustedPathReason(join(dir, "a", "l"), trusted)).toBe(`${join(dir, "a", "l")} is a symbolic link`);
+      expect(untrustedPathReason(join(dir, "a", "l"), trusted, { link: true })).toBe(
+        `${join(dir, "x")} can be written by accounts other than its owner`,
+      );
+      chmodSync(join(dir, "x"), 0o755);
+      expect(untrustedPathReason(join(dir, "a", "l"), trusted, { link: true })).toBeNull();
+    });
+
+    it("refuses a relative path and one that is not there", () => {
+      expect(untrustedPathReason("bin/sh", trusted)).toBe("bin/sh is not an absolute path");
+      expect(untrustedPathReason(join(dir, "nope"), trusted)).toBe(`${join(dir, "nope")} does not exist`);
+    });
+  });
+});
+
+describe("refreshCodexSystemHooks (failproofai update)", () => {
+  const path = () => join(dir, "etc", "codex", "config.toml");
+  const runner = () => codexHookRunnerPath(path())!;
+  /** A block in the format earlier versions wrote: every hook runs `cli` itself. */
+  const writeOlderBlock = (cli: string, before = "") => {
+    mkdirs(dirname(path()));
+    writeFileSync(path(), mergeCodexManagedBlock(before, renderCodexManagedBlock(codexSystemHookEntries(cli))));
+  };
+
+  it("rewrites a block from before the runner to run it, for the account whose failproofai it ran", () => {
+    if (ME === 0) return; // root owns every file here, so the block would be the running account's
+    const cli = script(join(dir, "home", "failproofai"), "true");
+    writeOlderBlock(cli, 'model = "o3"\n');
+    expect(codexSystemHooksPresent({ path: path(), uid: 4242 })).toBe(true); // it runs for every account
+    expect(refreshCodexSystemHooks({ path: path(), uid: 4242 })).toEqual({
+      status: "rewritten",
+      path: path(),
+      runner: runner(),
+      migrated: true,
+      dropped: [],
+    });
+    expect(new Set(blockPrograms(path()))).toEqual(new Set([runner()]));
+    expect(readFileSync(path(), "utf8").startsWith('model = "o3"\n')).toBe(true);
+    // The failproofai it ran is this test's, so it runs for this test's uid and no other.
+    expect(parseCodexHookRunner(readFileSync(runner(), "utf8"))?.accounts).toEqual([{ uid: ME, cli }]);
+    expect(codexSystemHooksPresent({ path: path(), uid: 4242 })).toBe(false);
+    expect(refreshCodexSystemHooks({ path: path() })).toEqual({ status: "current", path: path() });
+  });
+
+  it("keeps the same events, arguments and timeouts", () => {
+    const cli = script(join(dir, "home", "failproofai"), "true");
+    writeOlderBlock(cli);
+    refreshCodexSystemHooks({ path: path() });
+    const text = readFileSync(path(), "utf8");
+    expect(parseCodexManagedBlock(text)).toEqual(
+      codexSystemHookEntries(cli).map((e) => ({ ...e, command: e.command.replace(`"${cli}"`, `"${runner()}"`) })),
+    );
+  });
+
+  it("takes out a block from before the runner rather than replace a file failproofai did not write", () => {
+    const cli = script(join(dir, "home", "failproofai"), "true");
+    writeOlderBlock(cli);
+    script(runner(), "echo mine");
+    expect(refreshCodexSystemHooks({ path: path() })).toEqual({
+      status: "removed",
+      path: path(),
+      reason: `${runner()} is there, and failproofai did not write it`,
+    });
+    expect(existsSync(path())).toBe(false);
+    expect(readFileSync(runner(), "utf8")).toBe("#!/bin/sh\necho mine\n");
+  });
+
+  it("takes out a block from before the runner whose failproofai is gone", () => {
+    writeOlderBlock(join(dir, "gone", "failproofai"));
+    expect(refreshCodexSystemHooks({ path: path() })).toEqual({
+      status: "removed",
+      path: path(),
+      reason: "the failproofai they ran is gone",
+    });
+    expect(existsSync(path())).toBe(false);
+    expect(existsSync(runner())).toBe(false);
+  });
+
+  it("changes nothing without root, and says so", () => {
+    if (ME === 0) return;
+    const cli = script(join(dir, "home", "failproofai"), "true");
+    writeOlderBlock(cli);
+    const before = readFileSync(path(), "utf8");
+    chmodSync(dirname(path()), 0o555);
+    try {
+      expect(refreshCodexSystemHooks({ path: path(), canElevate: () => false })).toMatchObject({ status: "needs-root", path: path() });
+      expect(readFileSync(path(), "utf8")).toBe(before);
+    } finally {
+      chmodSync(dirname(path()), 0o755);
+    }
+  });
+
+  it("takes the block out when the runner stops passing the check", () => {
+    expect(installCodexSystemHooks(myCli(), codexSystemHookEntries, { path: path(), codexVersion: CURRENT })).toMatchObject({ ok: true });
+    expect(refreshCodexSystemHooks({ path: path() })).toEqual({ status: "current", path: path() });
+    chmodSync(runner(), 0o777);
+    expect(refreshCodexSystemHooks({ path: path() })).toEqual({
+      status: "removed",
+      path: path(),
+      reason: `${runner()} can be written by accounts other than its owner`,
+    });
+    expect(existsSync(path())).toBe(false);
+    expect(existsSync(runner())).toBe(false);
+  });
+
+  it("takes the block out when its runner is missing or replaced", () => {
+    const install = () => installCodexSystemHooks(myCli(), codexSystemHookEntries, { path: path(), codexVersion: CURRENT });
+    install();
+    rmSync(runner());
+    expect(refreshCodexSystemHooks({ path: path() })).toMatchObject({ status: "removed", reason: `${runner()} is missing` });
+    install();
+    rmSync(runner());
+    symlinkSync("/bin/true", runner());
+    expect(refreshCodexSystemHooks({ path: path() })).toMatchObject({
+      status: "removed",
+      reason: `${runner()} was not written by failproofai`,
+    });
+    expect(existsSync(path())).toBe(false);
+  });
+
+  it("says what changed, and how to finish when it needs root", () => {
+    expect(codexRefreshLines({ status: "current", path: path() })).toEqual([]);
+    expect(codexRefreshLines({ status: "rewritten", path: path(), runner: runner(), migrated: true, dropped: [] })[0]).toMatch(/^✓ Codex: /);
+    expect(codexRefreshLines({ status: "rewritten", path: path(), runner: runner(), migrated: false, dropped: [{ uid: 7, reason: "x" }] })).toEqual([
+      `▲ Codex: took uid 7 out of failproofai's hooks in ${path()}: x.`,
+      "  That account can run `failproofai config` to set them up again.",
+    ]);
+    expect(codexRefreshLines({ status: "others", path: path(), reason: "x" })).toEqual([
+      `▲ Codex: failproofai's hooks in ${path()} need updating by an account that set them up, or by root: x.`,
+    ]);
+    expect(codexRefreshLines({ status: "removed", path: path(), reason: "x" })[0]).toMatch(/^▲ Codex: took/);
+    expect(codexRefreshLines({ status: "needs-root", path: path(), reason: "x" })).toEqual([
+      `✕ Codex: failproofai's hooks in ${path()} need updating, which needs root: x.`,
+      "  Run `sudo -v` and then `failproofai update` again.",
+    ]);
+  });
+});
+
+describe("installing over a block from before the runner", () => {
+  const path = () => join(dir, "etc", "codex", "config.toml");
+  const runner = () => codexHookRunnerPath(path())!;
+
+  it("keeps it for the account whose failproofai it ran, and adds this one", () => {
+    if (ME === 0) return; // root owns every file here, so the block would be the running account's
+    const theirs = script(join(dir, "home", "failproofai"), "true");
+    mkdirs(dirname(path()));
+    writeFileSync(path(), renderCodexManagedBlock(codexSystemHookEntries(theirs)));
+    // This account is not the one that owns `theirs`.
+    expect(
+      installCodexSystemHooks(myCli(), codexSystemHookEntries, { path: path(), codexVersion: CURRENT, uid: 4242 }),
+    ).toMatchObject({ ok: true, changed: true });
+    expect(new Set(blockPrograms(path()))).toEqual(new Set([runner()]));
+    expect(parseCodexHookRunner(readFileSync(runner(), "utf8"))?.accounts.map((a) => [a.uid, a.cli])).toEqual(
+      [[ME, theirs], [4242, myCli()]].sort((a, b) => Number(a[0]) - Number(b[0])),
+    );
   });
 });
 
@@ -304,11 +708,19 @@ describe("trust", () => {
     expect(codexHookTrust(deps())).toMatchObject({ kind: "untrusted", untrusted: 1 });
   });
 
-  it("is system (managed) whenever failproofai's block is in the system config", () => {
+  it("is system (managed) for every account while the block runs failproofai itself, as before the runner", () => {
     writeHooksJson();
     mkdirSync(join(dir, "etc"), { recursive: true });
     writeFileSync(systemPath(), BLOCK);
     expect(codexHookTrust(deps())).toEqual({ kind: "system", path: systemPath() });
+  });
+
+  it("is system (managed) only for an account the hook runner runs failproofai for", () => {
+    writeHooksJson();
+    writeFileSync(userConfig(), 'model = "o3"\n');
+    expect(installCodexSystemHooks(myCli(), codexSystemHookEntries, deps({ uid: 4242 }))).toMatchObject({ ok: true });
+    expect(codexHookTrust(deps({ uid: 4242 }))).toEqual({ kind: "system", path: systemPath() });
+    expect(codexHookTrust(deps({ uid: 4243 }))).toMatchObject({ kind: "untrusted" });
   });
 
   it("is ungated on a Codex older than the trust gate", () => {
@@ -333,6 +745,169 @@ describe("trust", () => {
     expect(found.get("/home/u/.codex/hooks.json:stop:0:0")).toBe("sha256:real");
     expect(found.get("/lit:stop:0:0")).toBe("sha256:lit");
     expect(found.has("/fake:stop:0:0")).toBe(false);
+  });
+});
+
+describe("the lines the runner keeps", () => {
+  const path = () => join(dir, "etc", "codex", "config.toml");
+  const runner = () => codexHookRunnerPath(path())!;
+  const install = (over: Record<string, unknown> = {}, cli = myCli()) =>
+    installCodexSystemHooks(cli, codexSystemHookEntries, { path: path(), codexVersion: CURRENT, ...over });
+  const accounts = () => parseCodexHookRunner(readFileSync(runner(), "utf8"))?.accounts;
+
+  it("never gives root a line that runs anything another account can change", () => {
+    if (ME === 0) return; // root's own files are root's
+    // As on a real machine: root's line must be root's alone, and this test's file is an account's.
+    expect(install({ uid: 0, interpreter: "/bin/sh", trustedUids: [0] })).toMatchObject({
+      ok: false,
+      reason: "unsafe",
+      detail: expect.stringMatching(/is owned by uid \d+$/),
+    });
+    expect(existsSync(path())).toBe(false);
+    expect(existsSync(runner())).toBe(false);
+  });
+
+  it("runs root's own install through the interpreter it names, by absolute path", () => {
+    expect(install({ uid: 0, interpreter: "/bin/sh", trustedUids: [0, ME] }, "/bin/true")).toMatchObject({ ok: true });
+    expect(readFileSync(runner(), "utf8")).toContain(`  0) exec '/bin/sh' '/bin/true' "$@" ;;`);
+    expect(accounts()).toEqual([expect.objectContaining({ uid: 0, interpreter: "/bin/sh", cli: "/bin/true" })]);
+  });
+
+  it("takes out a root line that names no interpreter", () => {
+    expect(install()).toMatchObject({ ok: true });
+    const programs = parseCodexHookRunner(readFileSync(runner(), "utf8"))!.programs;
+    writeFileSync(runner(), renderCodexHookRunner([...accounts()!, { uid: 0, cli: "/bin/true" }], programs));
+    expect(refreshCodexSystemHooks({ path: path() })).toMatchObject({
+      status: "rewritten",
+      migrated: false,
+      dropped: [{ uid: 0, reason: "root's line must name the program that runs failproofai" }],
+    });
+    expect(accounts()?.map((a) => a.uid)).toEqual([ME]);
+  });
+
+  it("refuses an account's line that runs another account's install", () => {
+    // This test's file, put forward as uid 4242's own failproofai.
+    expect(install({ uid: 4242, trustedUids: [0] })).toMatchObject({
+      ok: false,
+      reason: "unsafe",
+      detail: expect.stringMatching(/is owned by uid \d+$/),
+    });
+    expect(existsSync(path())).toBe(false);
+  });
+
+  it("accepts an install its own group can write, as a umask of 002 leaves it, but not one everyone can", () => {
+    const home = dirname(myCli());
+    chmodSync(home, 0o775);
+    expect(install()).toMatchObject({ ok: true });
+    chmodSync(home, 0o777);
+    expect(install()).toMatchObject({
+      ok: false,
+      reason: "unsafe",
+      detail: `${home} can be written by accounts other than its owner`,
+    });
+    // This account's old line goes too: its hooks are not in the system config now.
+    expect(existsSync(path())).toBe(false);
+    expect(existsSync(runner())).toBe(false);
+  });
+
+  it("keeps another account's line that this account cannot read", () => {
+    if (ME === 0) return; // root reads everything
+    const locked = join(dir, "locked");
+    const theirs = script(join(locked, "failproofai"), "true");
+    expect(install({ uid: 4243 }, theirs)).toMatchObject({ ok: true });
+    chmodSync(locked, 0o000);
+    try {
+      expect(install({ uid: 4242 })).toMatchObject({ ok: true, dropped: [] });
+      expect(accounts()?.map((a) => a.uid)).toEqual([4242, 4243]);
+      expect(refreshCodexSystemHooks({ path: path(), uid: 4242 })).toEqual({ status: "current", path: path() });
+    } finally {
+      chmodSync(locked, 0o755);
+    }
+  });
+
+  it("does not bring back accounts from a runner whose block was taken out", () => {
+    install({ uid: 4242 });
+    install({ uid: 4243 });
+    // Taken out by hand, or by an earlier version's uninstall: the runner stays.
+    writeFileSync(path(), mergeCodexManagedBlock(readFileSync(path(), "utf8"), null));
+    expect(install({ uid: 4242 })).toMatchObject({ ok: true });
+    expect(accounts()?.map((a) => a.uid)).toEqual([4242]);
+  });
+
+  it("tidies away a runner no block runs, on update", () => {
+    install();
+    writeFileSync(path(), mergeCodexManagedBlock(readFileSync(path(), "utf8"), null));
+    expect(refreshCodexSystemHooks({ path: path() })).toEqual({ status: "absent" });
+    expect(existsSync(runner())).toBe(false);
+  });
+
+  it("drains an event larger than a pipe holds for an account it does not run, rather than leave Codex writing", () => {
+    install({ uid: 4242, programs: { sh: "/bin/sh", id: script(join(dir, "fake", "id"), 'echo "$FAKE_UID"'), cat: "/bin/cat" } });
+    const text = readFileSync(path(), "utf8");
+    const command = parseCodexManagedBlock(text.slice(text.indexOf(CODEX_MANAGED_BEGIN)))![0].command;
+    const big = JSON.stringify({ hook_event_name: "PostToolUse", tool_response: "x".repeat(256 * 1024) });
+    const result = spawnSync("/bin/sh", ["-c", command], {
+      input: big,
+      env: { ...process.env, FAKE_UID: "0" },
+      encoding: "utf8",
+      timeout: 10_000,
+    });
+    expect(result.error).toBeUndefined();
+    expect(result.status).toBe(0);
+    expect(result.stdout).toBe("");
+  });
+});
+
+describe("a block in the earlier format", () => {
+  const path = () => join(dir, "etc", "codex", "config.toml");
+  const runner = () => codexHookRunnerPath(path())!;
+  const writeOlderBlock = (cli: string) => {
+    mkdirs(dirname(path()));
+    writeFileSync(path(), renderCodexManagedBlock(codexSystemHookEntries(cli)));
+  };
+
+  it("is left as it is when everything it runs is root's alone", () => {
+    writeOlderBlock("/bin/true");
+    const before = readFileSync(path(), "utf8");
+    expect(refreshCodexSystemHooks({ path: path() })).toEqual({ status: "current", path: path() });
+    expect(readFileSync(path(), "utf8")).toBe(before);
+    expect(existsSync(runner())).toBe(false);
+  });
+
+  it("asks no one for root, and fails no update, when it is not this account's", () => {
+    writeOlderBlock(myCli()); // this test's install, seen from uid 4242
+    const before = readFileSync(path(), "utf8");
+    let asked = 0;
+    const canElevate = () => {
+      asked++;
+      return true;
+    };
+    expect(refreshCodexSystemHooks({ path: path(), uid: 4242, direct: false, canElevate })).toEqual({
+      status: "others",
+      path: path(),
+      reason: "they predate the hook runner",
+    });
+    expect(asked).toBe(0);
+    expect(readFileSync(path(), "utf8")).toBe(before);
+    // The account whose install it runs is asked, and told when root is not there.
+    expect(refreshCodexSystemHooks({ path: path(), direct: false, canElevate: () => false })).toMatchObject({
+      status: "needs-root",
+    });
+  });
+});
+
+describe("codexHookRunnerPath and codexTrustedOwners", () => {
+  it("puts the runner in its own directory under /opt for Codex's config, and beside any other", () => {
+    expect(codexHookRunnerPath("/etc/codex/config.toml")).toBe("/opt/failproofai-codex/codex-hook");
+    expect(codexHookRunnerPath("/tmp/x/config.toml")).toBe("/tmp/x/failproofai-codex-hook");
+    expect(codexHookRunnerPath(null)).toBeNull();
+  });
+
+  it("trusts root alone for Codex's config, and the directory's owner too for any other", () => {
+    expect([...codexTrustedOwners("/etc/codex/config.toml")]).toEqual([0]);
+    expect([...codexTrustedOwners(join(dir, "etc", "config.toml"))].sort()).toEqual([...new Set([0, ME])].sort());
+    // A directory that does not exist yet: its nearest parent decides.
+    expect([...codexTrustedOwners("/usr/share/fp-codex-nonexistent/config.toml")]).toEqual([0]);
   });
 });
 

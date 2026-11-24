@@ -20,9 +20,25 @@ const gateways = vi.hoisted(() => ({
   restartOpenClawGateways: vi.fn(() => [] as unknown[]),
   openclawRestartLines: vi.fn((r: unknown[]) => (r.length > 0 ? ["OpenClaw:", "  openclaw/default  gateway restarting"] : [])),
 }));
+const codexHooks = vi.hoisted(() => ({
+  refreshCodexSystemHooks: vi.fn(
+    (): {
+      status: string;
+      path?: string;
+      runner?: string;
+      reason?: string;
+      migrated?: boolean;
+      dropped?: Array<{ uid: number; reason: string }>;
+    } => ({ status: "absent" }),
+  ),
+}));
 vi.mock("../../src/hooks/daemon-service", () => svc);
 vi.mock("../../src/hooks/hermes-update", () => hermes);
 vi.mock("../../src/hooks/gateway-restart", () => gateways);
+vi.mock("../../src/hooks/codex-system-hooks", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../../src/hooks/codex-system-hooks")>()),
+  refreshCodexSystemHooks: codexHooks.refreshCodexSystemHooks,
+}));
 
 import {
   markUpdated,
@@ -131,6 +147,59 @@ describe("runUpdateSteps as update runs it", () => {
     expect(run.ok).toBe(false);
     expect(gateways.restartHermesGateway).not.toHaveBeenCalled();
     expect(gateways.restartOpenClawGateways).not.toHaveBeenCalled();
+  });
+});
+
+describe("Codex's system config, on every update", () => {
+  const AS_UPDATE = { layout: false, daemon: false, restart: false } as const;
+
+  it("is checked, and a block rewritten to run through the hook runner is reported", async () => {
+    hermesWith("untouched");
+    codexHooks.refreshCodexSystemHooks.mockReturnValueOnce({
+      status: "rewritten",
+      path: "/etc/codex/config.toml",
+      runner: "/opt/failproofai-codex/codex-hook",
+      migrated: true,
+      dropped: [],
+    });
+    const run = await runUpdateSteps(AS_UPDATE);
+    expect(codexHooks.refreshCodexSystemHooks).toHaveBeenCalledTimes(1);
+    expect(run).toMatchObject({ ok: true, changed: true });
+    expect(run.lines).toContain(
+      "✓ Codex: failproofai's hooks in /etc/codex/config.toml now go through /opt/failproofai-codex/codex-hook,",
+    );
+  });
+
+  it("fails the update when the hooks have to change and root was not available", async () => {
+    hermesWith("untouched");
+    codexHooks.refreshCodexSystemHooks.mockReturnValueOnce({
+      status: "needs-root",
+      path: "/etc/codex/config.toml",
+      reason: "they predate the hook runner",
+    });
+    const run = await runUpdateSteps(AS_UPDATE);
+    expect(run.ok).toBe(false);
+    expect(run.lines).toContain("  Run `sudo -v` and then `failproofai update` again.");
+  });
+
+  it("tells an account the hooks are not for to ask one that set them up, without failing its update", async () => {
+    hermesWith("untouched");
+    codexHooks.refreshCodexSystemHooks.mockReturnValueOnce({
+      status: "others",
+      path: "/etc/codex/config.toml",
+      reason: "they predate the hook runner",
+    });
+    const run = await runUpdateSteps(AS_UPDATE);
+    expect(run.ok).toBe(true);
+    expect(run.lines).toContain(
+      "▲ Codex: failproofai's hooks in /etc/codex/config.toml need updating by an account that set them up, or by root: they predate the hook runner.",
+    );
+  });
+
+  it("says nothing when the hooks are current", async () => {
+    hermesWith("untouched");
+    codexHooks.refreshCodexSystemHooks.mockReturnValueOnce({ status: "current", path: "/etc/codex/config.toml" });
+    expect(await runUpdateSteps(AS_UPDATE)).toMatchObject({ ok: true, changed: false, lines: [] });
   });
 });
 

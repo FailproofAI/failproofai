@@ -15,7 +15,7 @@ from fp_cli.errors import (
 )
 from fp_cli.models import Page
 
-BASE = "http://dash.test"
+BASE = "https://dash.test"
 
 
 def ctx() -> ClientContext:

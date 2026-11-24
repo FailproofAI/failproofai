@@ -20,7 +20,7 @@ from fp_cli.app import app
 from fp_cli.client import ClientContext
 from fp_cli.errors import ApiError, AuthError, ForbiddenError, NetworkError, NotFoundError
 
-BASE = "http://dash.test"
+BASE = "https://dash.test"
 TRACE_ID = re.compile(r"^[0-9a-f]{32}$")
 SERVER_ID = "4bf92f3577b34da6a3ce929d0e0e4736"
 

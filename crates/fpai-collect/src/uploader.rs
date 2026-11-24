@@ -231,8 +231,58 @@ pub fn is_credential_status(status: u16) -> bool {
     status == 401 || status == 403
 }
 
+/// Why `url` must not be sent the ingest key, or `None` when it may.
+///
+/// Every request to it carries the key as a bearer token, and the body is the
+/// user's prompts and command text. Plain http to another machine hands both to
+/// anyone on the network path, so only https is accepted, plus plain http to a
+/// loopback host, which has no path to read. That is the rule `failproofai otel`
+/// (`otel-cli.ts`), `failproofai config` (`validateCloudUrl`) and the policy
+/// client (`cloud_client.rs`) already apply. Nothing applied it here, and
+/// `FAILPROOFAI_INGEST_URL` takes precedence over the credentials file, so an
+/// `http://` value reached the wire unchecked on every batch.
+pub fn cleartext_refusal(url: &str) -> Option<String> {
+    let parsed = match reqwest::Url::parse(url) {
+        Ok(parsed) => parsed,
+        Err(err) => return Some(format!("the ingest URL is not a valid URL ({err})")),
+    };
+    match parsed.scheme() {
+        "https" => None,
+        "http" if host_is_loopback(&parsed) => None,
+        "http" => Some(format!(
+            "refusing to send the ingest key to {} over plain http. \
+             Use https, or http only for localhost during development.",
+            parsed.origin().ascii_serialization()
+        )),
+        other => Some(format!("the ingest URL must use https, not {other}:")),
+    }
+}
+
+/// `localhost`, or an address that is loopback by definition (all of
+/// 127.0.0.0/8, and `::1`). Judged by what the address is, the same as
+/// `cloud_client.rs`'s copy: no other name is trusted to resolve to loopback.
+fn host_is_loopback(url: &reqwest::Url) -> bool {
+    let Some(host) = url.host_str() else {
+        return false;
+    };
+    if host.eq_ignore_ascii_case("localhost") {
+        return true;
+    }
+    // `host_str` keeps the brackets on an IPv6 literal (`[::1]`), which
+    // `IpAddr::from_str` will not accept.
+    let bare = host
+        .strip_prefix('[')
+        .and_then(|h| h.strip_suffix(']'))
+        .unwrap_or(host);
+    bare.parse::<std::net::IpAddr>()
+        .is_ok_and(|ip| ip.is_loopback())
+}
+
 impl Uploader {
     pub fn new(url: String, key: String, failed_dir: PathBuf) -> Result<Self, String> {
+        if let Some(reason) = cleartext_refusal(&url) {
+            return Err(reason);
+        }
         let client = reqwest::Client::builder()
             .user_agent(concat!("failproofaid/", env!("CARGO_PKG_VERSION")))
             .connect_timeout(Duration::from_secs(10))
@@ -1375,5 +1425,54 @@ mod tests {
             filter_boundary(b"{\"type\":\"unknown\"}\n", Some(100), Some(100)),
             b"{\"type\":\"unknown\"}\n"
         );
+    }
+
+    /// `FAILPROOFAI_INGEST_URL` (or a hand-edited credentials file) could name
+    /// any `http://` host, and every batch then crossed the network in clear
+    /// with the key in its `Authorization` header (FailproofAI/agenteye#1799).
+    #[test]
+    fn plain_http_to_another_host_is_refused_before_any_request() {
+        for url in [
+            "http://10.0.0.5:8080/v1/events",
+            "http://ingest.example/v1/events",
+            "http://localhost.example.com/v1/events",
+            "http://[2001:db8::1]/v1/events",
+            "http://0.0.0.0:8080/v1/events",
+        ] {
+            let refused = Uploader::new(
+                url.into(),
+                "secret-ingest-key".into(),
+                PathBuf::from("/nonexistent"),
+            );
+            let reason = refused
+                .err()
+                .unwrap_or_else(|| panic!("{url} was accepted"));
+            assert!(reason.contains("plain http"), "{url}: {reason}");
+            assert!(!reason.contains("secret-ingest-key"), "{reason}");
+        }
+        for url in ["ftp://ingest.example/v1/events", "not a url"] {
+            assert!(
+                Uploader::new(url.into(), "k".into(), PathBuf::from("/nonexistent")).is_err(),
+                "{url} was accepted"
+            );
+        }
+    }
+
+    #[test]
+    fn https_and_loopback_http_are_accepted() {
+        for url in [
+            "https://app.befailproof.ai/v1/events",
+            "https://10.0.0.5:8443/v1/events",
+            "http://localhost:8080/v1/events",
+            "http://LOCALHOST:8080/v1/events",
+            "http://127.0.0.1:8080/v1/events",
+            "http://127.0.0.2:8080/v1/events",
+            "http://[::1]:8080/v1/events",
+        ] {
+            assert!(
+                Uploader::new(url.into(), "k".into(), PathBuf::from("/nonexistent")).is_ok(),
+                "{url} was refused"
+            );
+        }
     }
 }

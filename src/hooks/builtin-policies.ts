@@ -516,10 +516,13 @@ const FAILPROOFAI_CODE_PATH_RE = new RegExp(
     // `firmware.bin/failproofai` is not it, but anything that is not part of a
     // name may stand before it (`>.bin/…`), and so may a short option the
     // path is glued to, alone or at the end of a cluster (`-O.bin/…`,
-    // `-so.bin/…`). A FILE, like the entry above: the rest of
+    // `-so.bin/…`). The lookbehind comes after the literal and the cluster is
+    // bounded: before it, a long run of letters made every position scan back
+    // over the whole run, and a padded 32 KB command took 16 s. A FILE, like
+    // the entry above: the rest of
     // `node_modules/.bin` (every other package's binary, run by path all the
     // time) stays out of it.
-    String.raw`(?:(?<![\w.-])|(?<=(?:^|\s)-[A-Za-z]+))\.bin[\\/](?:\.?[\\/])*failproofai(?:\.(?:cmd|ps1|exe|bunx))?(?![\w.@\\/-])`,
+    String.raw`\.bin(?<=(?:^|[^\w.-])\.bin|(?:^|\s)-[A-Za-z]{1,16}\.bin)[\\/](?:\.?[\\/])*failproofai(?:\.(?:cmd|ps1|exe|bunx))?(?![\w.@\\/-])`,
   ].join("|"),
   "i",
 );
@@ -2155,6 +2158,9 @@ function destroysFailproofaiState(command: string, depth = 0, startDir?: string)
   };
   const realPaths = new Map<string, string>();
   const realPath = (path: string): string => {
+    // Longer than PATH_MAX, no write can open it, and walking it on disk one
+    // component at a time cost a second for a 128 KB word of `a/a/a/…`.
+    if (path.length > PATH_MAX_BYTES) return shellPath(undefined, path);
     let real = realPaths.get(path);
     if (real === undefined) realPaths.set(path, (real = resolveWriteTarget(path, undefined) || shellPath(undefined, path)));
     return real;
@@ -2472,6 +2478,9 @@ const FULL_DIR_SEGMENTS = 64;
 
 /** How many directories a failed `cd` can leave the shell in that the walk tracks. */
 const MAX_ALTERNATE_DIRS = 4;
+
+/** Linux's PATH_MAX: `open(2)` refuses a longer path with ENAMETOOLONG. */
+const PATH_MAX_BYTES = 4096;
 
 /**
  * Where a relative word is also read once the walk has lost the shell's

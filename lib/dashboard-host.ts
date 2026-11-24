@@ -27,6 +27,16 @@
  *
  * Layer 2 is what makes layer 3 trustworthy: without it, a rebound page is
  * same-origin by the browser's own reckoning and layer 3 waves it through.
+ *
+ * Layers 2 and 3 only stop a *browser* that was tricked into calling us. A
+ * network peer writes whatever `Host` and `Origin` it likes, so on a
+ * deliberately non-loopback bind (`--host`, `FAILPROOFAI_DASHBOARD_HOST`), where
+ * layer 1 is off by the operator's choice, they stopped nothing: one `curl` with
+ * a matching `Host` and `Origin` could disable policies, uninstall hooks, read
+ * transcripts, or install a policy pack, which imports and runs its code
+ * (FailproofAI/agenteye#1799). Such a bind therefore gets one more layer: every
+ * request must carry a random token the launcher makes per launch and prints in
+ * the dashboard's address (see `ensureDashboardToken` and `proxy.ts`).
  */
 
 /** The default bind address. Loopback — never the wildcard. */
@@ -98,4 +108,55 @@ export function hostnameFromOrigin(origin: string): string | null {
 export function resolveDashboardHost(flagHost?: string, envHost?: string): string {
   const chosen = (flagHost ?? envHost ?? "").trim();
   return chosen || DEFAULT_DASHBOARD_HOST;
+}
+
+/** Carries this launch's access token from the launcher to the server's `proxy.ts`. */
+export const DASHBOARD_TOKEN_ENV = "FAILPROOFAI_DASHBOARD_TOKEN";
+/** The query parameter the printed address presents the token in, once. */
+export const DASHBOARD_TOKEN_PARAM = "token";
+/** The HttpOnly cookie the browser keeps the token in after that first request. */
+export const DASHBOARD_TOKEN_COOKIE = "failproofai_dashboard_token";
+/** A generated token is 64 hex characters. A shorter value is not accepted as one. */
+const MIN_TOKEN_LENGTH = 32;
+
+/**
+ * This launch's access token, when the dashboard is bound off loopback.
+ *
+ * Made once per launch and kept in `FAILPROOFAI_DASHBOARD_TOKEN`, which the
+ * server inherits. A value already there (at least 32 characters) is kept, so
+ * `failproofai audit`, which prints the address before it starts the server,
+ * and the launcher agree on one token, and so a container can pin one across
+ * restarts. A loopback bind needs none and gets `undefined`.
+ */
+export function ensureDashboardToken(bindHost: string): string | undefined {
+  if (isLoopbackHostname(bindHost)) return undefined;
+  const existing = dashboardToken();
+  if (existing) return existing;
+  const bytes = new Uint8Array(32);
+  globalThis.crypto.getRandomValues(bytes);
+  const token = Array.from(bytes, (b) => b.toString(16).padStart(2, "0")).join("");
+  process.env[DASHBOARD_TOKEN_ENV] = token;
+  return token;
+}
+
+/** The token the server was launched with, or `null` when it has none usable. */
+export function dashboardToken(): string | null {
+  const token = (process.env[DASHBOARD_TOKEN_ENV] ?? "").trim();
+  return token.length >= MIN_TOKEN_LENGTH ? token : null;
+}
+
+/** `url` with the token added for the browser to present, or `url` unchanged when there is none. */
+export function withDashboardToken(url: string, token: string | undefined): string {
+  if (!token) return url;
+  const parsed = new URL(url);
+  parsed.searchParams.set(DASHBOARD_TOKEN_PARAM, token);
+  return parsed.toString();
+}
+
+/** Compares a presented token in time that does not depend on where it first differs. */
+export function sameDashboardToken(presented: string, expected: string): boolean {
+  if (presented.length !== expected.length) return false;
+  let diff = 0;
+  for (let i = 0; i < expected.length; i++) diff |= presented.charCodeAt(i) ^ expected.charCodeAt(i);
+  return diff === 0;
 }

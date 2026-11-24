@@ -35,6 +35,7 @@ import { trackHookEvent } from "../hooks/hook-telemetry";
 import { getInstanceId } from "../../lib/telemetry-id";
 import { sanitizeErrorMessage } from "../../lib/telemetry-sanitize";
 import { openWhenReady } from "./open-browser";
+import { ensureDashboardToken, resolveDashboardHost, withDashboardToken } from "../../lib/dashboard-host";
 import { describeOutcome, reportHarm } from "./report-harm";
 import {
   INDENT,
@@ -774,7 +775,11 @@ export async function runAuditCli(args: string[]): Promise<void> {
 
   // The hand-off: where the audit is, and how to stop the server that shows it.
   // No logomark here — the design keeps it to bare `failproofai` and `config`.
-  const url = `http://localhost:${DASHBOARD_PORT}/audit`;
+  // On a routable bind every request needs this launch's access token
+  // (proxy.ts). It is made here, before launch() below, so the address printed
+  // and opened now carries the same token launch() hands the server.
+  const token = ensureDashboardToken(resolveDashboardHost(undefined, process.env.FAILPROOFAI_DASHBOARD_HOST));
+  const url = withDashboardToken(`http://localhost:${DASHBOARD_PORT}/audit`, token);
   printAfter([
     ...(persisted ? [] : [k.caution("Could not save the audit, so the dashboard may show nothing.")]),
     k.ok(`The audit is ready:  ${k.cmd(url)}`),
@@ -785,7 +790,8 @@ export async function runAuditCli(args: string[]): Promise<void> {
   // Open the page once the server answers (best-effort, detached), then start
   // the server. `launch("start")` blocks-by-keeping-alive — it spawns the
   // bundled standalone dashboard and the process stays up serving it.
-  openWhenReady(DASHBOARD_PORT, "/audit");
+  const page = new URL(url);
+  openWhenReady(DASHBOARD_PORT, `${page.pathname}${page.search}`);
   const { launch } = await import("../../scripts/launch");
   launch("start", { screen: false });
   // Intentionally no process.exit(): launch() keeps this process alive running

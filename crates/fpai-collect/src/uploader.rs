@@ -231,8 +231,58 @@ pub fn is_credential_status(status: u16) -> bool {
     status == 401 || status == 403
 }
 
+/// Why `url` must not be sent the ingest key, or `None` when it may.
+///
+/// Every request to it carries the key as a bearer token, and the body is the
+/// user's prompts and command text. Plain http to another machine hands both to
+/// anyone on the network path, so only https is accepted, plus plain http to a
+/// loopback host, which has no path to read. That is the rule `failproofai otel`
+/// (`otel-cli.ts`), `failproofai config` (`validateCloudUrl`) and the policy
+/// client (`cloud_client.rs`) already apply. Nothing applied it here, and
+/// `FAILPROOFAI_INGEST_URL` takes precedence over the credentials file, so an
+/// `http://` value reached the wire unchecked on every batch.
+pub fn cleartext_refusal(url: &str) -> Option<String> {
+    let parsed = match reqwest::Url::parse(url) {
+        Ok(parsed) => parsed,
+        Err(err) => return Some(format!("the ingest URL is not a valid URL ({err})")),
+    };
+    match parsed.scheme() {
+        "https" => None,
+        "http" if host_is_loopback(&parsed) => None,
+        "http" => Some(format!(
+            "refusing to send the ingest key to {} over plain http. \
+             Use https, or http only for localhost during development.",
+            parsed.origin().ascii_serialization()
+        )),
+        other => Some(format!("the ingest URL must use https, not {other}:")),
+    }
+}
+
+/// `localhost`, or an address that is loopback by definition (all of
+/// 127.0.0.0/8, and `::1`). Judged by what the address is, the same as
+/// `cloud_client.rs`'s copy: no other name is trusted to resolve to loopback.
+fn host_is_loopback(url: &reqwest::Url) -> bool {
+    let Some(host) = url.host_str() else {
+        return false;
+    };
+    if host.eq_ignore_ascii_case("localhost") {
+        return true;
+    }
+    // `host_str` keeps the brackets on an IPv6 literal (`[::1]`), which
+    // `IpAddr::from_str` will not accept.
+    let bare = host
+        .strip_prefix('[')
+        .and_then(|h| h.strip_suffix(']'))
+        .unwrap_or(host);
+    bare.parse::<std::net::IpAddr>()
+        .is_ok_and(|ip| ip.is_loopback())
+}
+
 impl Uploader {
     pub fn new(url: String, key: String, failed_dir: PathBuf) -> Result<Self, String> {
+        if let Some(reason) = cleartext_refusal(&url) {
+            return Err(reason);
+        }
         let client = reqwest::Client::builder()
             .user_agent(concat!("failproofaid/", env!("CARGO_PKG_VERSION")))
             .connect_timeout(Duration::from_secs(10))

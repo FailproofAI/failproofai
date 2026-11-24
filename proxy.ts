@@ -1,8 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
 import {
+  DASHBOARD_TOKEN_COOKIE,
+  DASHBOARD_TOKEN_PARAM,
+  dashboardToken,
   hostnameFromHostHeader,
   isLoopbackHostname,
   resolveDashboardHost,
+  sameDashboardToken,
 } from "./lib/dashboard-host";
 
 /** Methods that can change something. Safe methods are not origin-checked. */
@@ -15,6 +19,62 @@ const MUTATING_METHODS = new Set(["POST", "PUT", "PATCH", "DELETE"]);
  */
 function forbid(): NextResponse {
   return new NextResponse("Forbidden", { status: 403, headers: { "cache-control": "no-store" } });
+}
+
+/**
+ * On a non-loopback bind, every request must carry this launch's access token.
+ *
+ * The checks below this one judge `Host` and `Origin`, which only a *browser*
+ * cannot forge. On a routable bind any peer on the network can connect and send
+ * both, so they stopped nothing there: GETs (transcripts, downloads) were not
+ * checked at all, and a POST passed with `Origin` set to the `Host` the caller
+ * itself sent. That reached every server action, including installing a policy
+ * pack, which imports the downloaded code (FailproofAI/agenteye#1799).
+ *
+ * The launcher prints the address with `?token=`. A GET or HEAD presenting it
+ * gets it back as an HttpOnly cookie and a redirect to the same address
+ * without it, so it is not left in history, a bookmark, or a Referer. After
+ * that the cookie must match. `SameSite=Lax` keeps it off cross-site POSTs and
+ * subresource requests, while a link opened from chat or mail still works.
+ * There is no `Secure` flag because the dashboard serves plain http.
+ *
+ * A server with no usable token (started by something other than the launcher)
+ * refuses everything rather than falling back to no check.
+ */
+function requireAccessToken(request: NextRequest, bindHost: string): NextResponse | null {
+  const expected = dashboardToken();
+  if (!expected) {
+    console.warn(
+      `[failproofai] refused a request: the dashboard is bound to ${bindHost}, not loopback, ` +
+        "and was started without an access token",
+    );
+    return forbid();
+  }
+  const presented = request.nextUrl.searchParams.get(DASHBOARD_TOKEN_PARAM);
+  if (
+    presented !== null &&
+    (request.method === "GET" || request.method === "HEAD") &&
+    sameDashboardToken(presented, expected)
+  ) {
+    const clean = request.nextUrl.clone();
+    clean.searchParams.delete(DASHBOARD_TOKEN_PARAM);
+    // Absolute: Next's middleware adapter parses `Location` with no base URL, so
+    // a relative one throws. It makes the header relative again itself when the
+    // host matches the request's.
+    const res = NextResponse.redirect(clean, 303);
+    res.headers.set("cache-control", "no-store");
+    res.cookies.set(DASHBOARD_TOKEN_COOKIE, expected, { httpOnly: true, sameSite: "lax", path: "/" });
+    return res;
+  }
+  const cookie = request.cookies.get(DASHBOARD_TOKEN_COOKIE)?.value;
+  if (!cookie || !sameDashboardToken(cookie, expected)) {
+    console.warn(
+      `[failproofai] refused a ${request.method} without this launch's access token ` +
+        `(the dashboard is bound to ${bindHost}, not loopback)`,
+    );
+    return forbid();
+  }
+  return null;
 }
 
 /**
@@ -55,6 +115,11 @@ function forbid(): NextResponse {
 export async function proxy(request: NextRequest): Promise<NextResponse> {
   const bindHost = resolveDashboardHost(undefined, process.env.FAILPROOFAI_DASHBOARD_HOST);
   const boundToLoopback = isLoopbackHostname(bindHost);
+
+  if (!boundToLoopback) {
+    const refused = requireAccessToken(request, bindHost);
+    if (refused) return refused;
+  }
 
   const hostHeader = request.headers.get("host");
 

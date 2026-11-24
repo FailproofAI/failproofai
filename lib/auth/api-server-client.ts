@@ -12,15 +12,46 @@
 
 import { trackEvent } from "../telemetry";
 import { isAbortError } from "../fetch-with-timeout";
+import { isLoopbackHostname } from "../dashboard-host";
 
 export const DEFAULT_API_BASE = "https://api.befailproof.ai";
 
+/** `AuthApiError.code` when the configured base URL would carry credentials in clear. */
+export const INSECURE_API_URL = "insecure_api_url";
+
+/**
+ * The api-server base URL, or an `AuthApiError` when it may not be used.
+ *
+ * Every call through this client carries something worth stealing: the emailed
+ * code and the token pair it is exchanged for, a refresh token, or an access
+ * token. `FAILPROOF_API_URL` used to be taken as given, so an `http://` value
+ * for another machine put all of that on the wire in clear. It is now held to
+ * the rule failproofai's Cloud clients already follow (`validateCloudUrl`,
+ * `cloud_client.rs`): https, or plain http only to loopback, which is what the
+ * documented local api-server (`http://localhost:8080`) uses.
+ */
 export function getApiBase(): string {
   const raw =
     process.env.FAILPROOF_API_URL ??
     process.env.FAILPROOFAI_API_URL ??
     DEFAULT_API_BASE;
-  return raw.replace(/\/+$/, "");
+  const base = raw.replace(/\/+$/, "");
+  let url: URL;
+  try {
+    url = new URL(base);
+  } catch {
+    throw new AuthApiError(0, INSECURE_API_URL, "FAILPROOF_API_URL is not a valid URL.");
+  }
+  if (url.protocol === "https:") return base;
+  if (url.protocol !== "http:") {
+    throw new AuthApiError(0, INSECURE_API_URL, "FAILPROOF_API_URL must use https, or http only for localhost.");
+  }
+  if (isLoopbackHostname(url.hostname)) return base;
+  throw new AuthApiError(
+    0,
+    INSECURE_API_URL,
+    `Refusing to send credentials to ${url.origin} over plain http. Use https, or http only for localhost.`,
+  );
 }
 
 export class AuthApiError extends Error {

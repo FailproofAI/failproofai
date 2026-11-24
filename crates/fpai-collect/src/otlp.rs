@@ -26,7 +26,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::config::{Ingest, OtlpSettings};
 use crate::supervisor::{Shutdown, TaskError, TaskSpec};
-use crate::uploader::{ParkedName, new_request_id};
+use crate::uploader::{ParkedName, cleartext_refusal, new_request_id};
 
 pub const MAX_BODY_BYTES: usize = 8 * 1024 * 1024;
 /// The local OTLP paths: what the relay listens on and what the SDK spool
@@ -90,6 +90,11 @@ const OFFLINE_BACKOFF_MAX: Duration = Duration::from_secs(300);
 
 impl Relay {
     fn new(home: &Path, ingest: &Ingest) -> Result<Self, TaskError> {
+        // The relay forwards with the same key to the same origin as the
+        // uploader, so it refuses the same URLs (see `cleartext_refusal`).
+        if let Some(reason) = cleartext_refusal(&ingest.url) {
+            return Err(TaskError(reason));
+        }
         let url = reqwest::Url::parse(&ingest.url).map_err(|e| TaskError(e.to_string()))?;
         let cloud_base = format!("{}{CLOUD_OTLP_PREFIX}", url.origin().ascii_serialization());
         let health_file = home.join("state/otlp-health.json");

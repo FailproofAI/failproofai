@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.0.18-beta.0 — 2026-11-24
+
+### Fixes
+
+- `fp`, the dashboard's api-server client, and the collector's uploader and OTLP relay refuse a plain `http://` URL for any host but `localhost` and loopback addresses, so `FP_DASHBOARD_URL`, `FAILPROOF_API_URL` or `FAILPROOFAI_INGEST_URL` can no longer put a session, a token, a sign-in code or the ingest key on the network in clear; `fp logout` still clears a session saved against such a URL, without sending it (#1057)
+- A dashboard bound off loopback (`FAILPROOFAI_DASHBOARD_HOST`) requires a per-launch access token on every request: the launch screen and `failproofai audit` print the address with `?token=`, which the browser trades for an HttpOnly cookie. Before, any machine on the network could set `Host` and `Origin` itself and read transcripts, change policies, or install a policy pack, which runs its code (#1057)
+- The dashboard sends `Content-Security-Policy: frame-ancestors 'none'` and `X-Frame-Options: DENY`, so another page cannot frame it and steer clicks onto its policy toggles (#1057)
+- Dashboard telemetry names a page by its route (`/project/[name]/session/[sessionId]`) instead of its address, which held the project's directory, the session id and filter values, and no longer sends error message text (#1057)
+
 ## 1.0.17 — 2026-11-24
 
 ### Fixes

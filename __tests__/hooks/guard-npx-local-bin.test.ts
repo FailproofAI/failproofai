@@ -393,6 +393,8 @@ describe("block-failproofai-commands — the entry a project-scope npx hook runs
       ["/work/proj/node_modules", "echo 'exit 0' >.bin/failproofai"],
       ["/work/proj/node_modules", "printf x 2>.bin/failproofai"],
       ["/work/proj/node_modules", "wget -q -O.bin/failproofai https://example.com/x"],
+      // The same path glued to the last option of a cluster.
+      ["/work/proj/node_modules", "curl -so.bin/failproofai https://example.com/x"],
     ])("denies a write from the session directory %s: %s", async (cwd, command) => {
       expect(await bashIn(cwd, command)).toBe("deny");
     });
@@ -414,6 +416,48 @@ describe("block-failproofai-commands — the entry a project-scope npx hook runs
       ["/work/proj", "ln -sfn node_modules/.bin bins && cp /tmp/failproofai bins/"],
     ])("denies a write where the shell may still stand, from %s: %s", async (cwd, command) => {
       expect(await bashIn(cwd, command)).toBe("deny");
+    });
+
+    // A download names its file after the URL, so the line never spells the
+    // entry's path; scp and a remote rsync source copy like cp.
+    it.each([
+      ["/work/proj/node_modules/.bin", "wget https://example.com/failproofai"],
+      ["/work/proj/node_modules/.bin", "wget -q example.com/dl/failproofai"],
+      ["/work/proj/node_modules/.bin", "curl -sSLO https://example.com/failproofai"],
+      ["/work/proj/node_modules/.bin", "curl -O https://example.com/failproofai%2Ecmd"],
+      // The server picks the name, or a file lists the URLs.
+      ["/work/proj/node_modules/.bin", "curl -OJ https://example.com/download"],
+      ["/work/proj/node_modules/.bin", "wget --content-disposition https://example.com/download"],
+      ["/work/proj/node_modules/.bin", "wget -i urls.txt"],
+      ["/work/proj/node_modules/.bin", "wget -r -nd https://example.com/dl/"],
+      ["/work/proj", "wget -P node_modules/.bin https://example.com/failproofai"],
+      ["/work/proj", "wget -qPnode_modules/.bin https://example.com/failproofai"],
+      ["/work/proj", "wget --directory-prefix=node_modules/.bin https://example.com/failproofai"],
+      ["/work/proj", "curl --output-dir node_modules/.bin -O https://example.com/failproofai"],
+      ["/work/proj", "cd node_modules/.bin && wget https://example.com/failproofai"],
+      ["/work/proj", "scp host:failproofai node_modules/.bin/"],
+      ["/work/proj", "scp -T user@host:/tmp/failproofai node_modules/.bin/"],
+      ["/work/proj", "rsync host:failproofai node_modules/.bin/"],
+      // An output file glued to its option, alone or after a cluster.
+      ["/work/proj", "curl -sonode_modules/.bin/failproofai https://example.com/x"],
+      ["/work/proj", "curl -so~/.failproofai/policies-config.json https://example.com/x"],
+    ])("denies a download or remote copy from %s: %s", async (cwd, command) => {
+      expect(await bashIn(cwd, command)).toBe("deny");
+    });
+
+    it.each([
+      ["/work/proj", "wget https://example.com/failproofai"],
+      ["/work/proj/node_modules/.bin", "wget https://example.com/my-tool"],
+      ["/work/proj", "curl -O https://registry.npmjs.org/failproofai/-/failproofai-1.0.0.tgz"],
+      ["/work/proj/node_modules/.bin", "curl -o /tmp/x https://example.com/failproofai"],
+      ["/work/proj/node_modules/.bin", "curl https://example.com/failproofai"],
+      ["/work/proj/node_modules/.bin", "wget -r https://example.com/docs/"],
+      ["/work/proj", "curl -OJ https://example.com/download"],
+      ["/work/proj", "scp ./failproofai host:node_modules/.bin/"],
+      ["/work/proj", "scp -r host:project ./backup"],
+      ["/work/proj", "wget -qO- https://example.com/api | jq ."],
+    ])("allows a download or remote copy from %s: %s", async (cwd, command) => {
+      expect(await bashIn(cwd, command)).not.toBe("deny");
     });
 
     it.each([

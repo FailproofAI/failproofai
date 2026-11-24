@@ -73,10 +73,8 @@ on:
 # `workflow_dispatch` — and this pipeline is not safe to run twice at once.
 # Overlapping runs both pass the preflight's "this version is unpublished"
 # `npm view` check before either has published, and the "Bump version for next
-# development cycle" step then has both racing an unguarded
-# `git fetch → checkout main → commit → push`, where the loser's push simply
-# fails. `ci.yml` and `bump-platform-submodule.yml` both serialize for the same
-# reason; this one was the exception.
+# development cycle" step then has both racing to push the same bump branch.
+# `ci.yml` serializes for the same reason; this one was the exception.
 #
 # NOT `cancel-in-progress`: a half-cancelled publish is the one outcome worse
 # than a queued one — the release assets attach before the npm publish, so a run
@@ -528,31 +526,18 @@ jobs:
       # publishes a tarball built elsewhere for this reason).
       id-token: write
     steps:
-      # Token for the version-bot GitHub App — a bypass actor on the org-level
-      # `failproofai-rules` ruleset (PR + 1 review required on main). The default
-      # GITHUB_TOKEN is not a bypass actor, so the "Bump version for next
-      # development cycle" push below is rejected with GH013 without this. Same
-      # app and secrets the bump-platform-submodule workflow uses.
-      - name: Mint version-bot app token
-        id: app-token
-        uses: actions/create-github-app-token@v3
-        with:
-          app-id: ${{ secrets.VERSION_BOT_APP_ID }}
-          private-key: ${{ secrets.VERSION_BOT_PRIVATE_KEY }}
-
+      # Nothing before the npm publish needs a write credential. The version-bot
+      # App token minted here once made every release depend on that App: when
+      # it was removed, this job failed at its first step and nothing reached
+      # npm. The bump at the end now uses the job's own token, on a branch.
       - uses: actions/checkout@v7.0.1
         with:
           fetch-depth: 0
-          # NOT persisted. This token bypasses the org ruleset on `main`, and
-          # persisting it writes it into `.git/config` for the whole job — where
-          # it sat, readable, through `bun install` (which runs `prepare`, a full
-          # Next build) and every dependency lifecycle script, long before the
-          # one step at the end that actually needs it. Any compromised
-          # build-time dependency could read it and push to `main` unreviewed.
-          # The version-bump step supplies it directly to the single `git push`
-          # that needs it instead. `ci.yml` and `build-daemon.yml` were hardened
-          # for the identical risk; this job, holding the more dangerous token,
-          # was missed.
+          # NOT persisted. The job's token can push branches and tags, and
+          # persisting it writes it into `.git/config` for the whole job, where
+          # `bun install`'s lifecycle scripts and the build below could read it.
+          # The bump step hands it to the one `git push` that needs it instead.
+          # `ci.yml` and `build-daemon.yml` are hardened the same way.
           persist-credentials: false
 
       - uses: oven-sh/setup-bun@v2
@@ -791,10 +776,14 @@ jobs:
 
           echo "All packages published at $PUBLISH_VERSION."
 
-      # The bump targets main unconditionally — it checks main out and pushes to
-      # it — so it must never run for a build that did not come from main. A
-      # dispatch from a feature branch would otherwise rewrite main's version
-      # line to whatever that branch happens to carry.
+      # The bump targets main unconditionally — it checks main out and branches
+      # from it — so it must never run for a build that did not come from main.
+      # A dispatch from a feature branch would otherwise propose rewriting main's
+      # version line to whatever that branch happens to carry.
+      #
+      # It lands through review: the commit goes to a `version-bump/` branch and
+      # scripts/push-version-bump.sh links the pull request to open (see that
+      # script for why nothing in CI can push to main).
       - name: Bump version for next development cycle
         if: >-
           needs.preflight.outputs.next_version != '' &&
@@ -804,7 +793,7 @@ jobs:
           NEXT_VERSION: ${{ needs.preflight.outputs.next_version }}
           # Scoped to this step alone rather than persisted in `.git/config` for
           # the whole job — see the checkout above.
-          APP_TOKEN: ${{ steps.app-token.outputs.token }}
+          GITHUB_TOKEN: ${{ github.token }}
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
@@ -818,11 +807,11 @@ jobs:
           npm version "$NEXT_VERSION" --no-git-tag-version
 
           # The Cargo workspace version has to move WITH package.json.
-          # `ci.yml`'s version-consistency job compares the two, and this commit
-          # carries `[skip ci]` — so a bump that touched only package.json left
-          # main red, and the failure surfaced on the next unrelated PR as
-          # "Version mismatch: Cargo.toml has <old>, expected <new>" from a
-          # change that had nothing to do with it. Every release did this.
+          # `ci.yml`'s version-consistency job compares the two. When bump
+          # commits went straight to main with `[skip ci]`, a bump that touched
+          # only package.json left main red, and the failure surfaced on the
+          # next unrelated PR as "Version mismatch: Cargo.toml has <old>,
+          # expected <new>". Every release did this.
           #
           # Anchored to the [workspace.package] table rather than a bare
           # `^version = `: the file has several `version = ` lines and only the
@@ -849,18 +838,11 @@ jobs:
           fi
 
           git add package.json Cargo.toml Cargo.lock hermes-plugin/plugin.yaml
-          git commit -m "chore: bump version to $NEXT_VERSION [skip ci]"
+          git commit -m "chore: bump version to $NEXT_VERSION"
 
-          # Authenticated as the version-bot App, which bypasses the ruleset's
-          # pull-request requirement on main. Passed on this one command rather
-          # than persisted in `.git/config`, so it is never on disk while build
-          # scripts run. `-c http.extraheader` is used because a token in the
-          # remote URL would be echoed by git's own error output on a failed
-          # push; `::add-mask::` covers the log, not the URL git prints.
-          echo "::add-mask::$APP_TOKEN"
-          AUTH_HEADER="Authorization: Basic $(printf 'x-access-token:%s' "$APP_TOKEN" | base64 -w0)"
-          git -c "http.https://github.com/.extraheader=$AUTH_HEADER" \
-              push "https://github.com/${GITHUB_REPOSITORY}.git" HEAD:main
+          bash scripts/push-version-bump.sh "version-bump/failproofai-$NEXT_VERSION" \
+            "chore: bump version to $NEXT_VERSION" \
+            "Opens $NEXT_VERSION on main after a release. Only version lines change: package.json, Cargo.toml, Cargo.lock and hermes-plugin/plugin.yaml."
 
       - name: Note skipped bump
         if: >-

@@ -1,12 +1,12 @@
-name: Welcome contributors and approve Dependabot PRs
+name: Welcome contributors
 
 on:
   pull_request_target:
     types: [opened]
 
+# GitHub Actions approvals stay disabled; dependency updates require human review.
 permissions:
   contents: read
-  pull-requests: write
   issues: write
 
 jobs:
@@ -29,21 +29,4 @@ jobs:
               repo: context.repo.repo,
               issue_number: context.payload.pull_request.number,
               body,
-            });
-
-  approve-dependabot:
-    name: Approve Dependabot PR
-    if: github.event.pull_request.user.login == 'dependabot[bot]'
-    runs-on: ubuntu-latest
-    steps:
-      - name: Approve pull request
-        uses: actions/github-script@v9
-        with:
-          script: |
-            await github.rest.pulls.createReview({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              pull_number: context.payload.pull_request.number,
-              event: 'APPROVE',
-              body: 'Automated approval for Dependabot dependency update.',
             });

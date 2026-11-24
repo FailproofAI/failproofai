@@ -10,7 +10,7 @@ import respx
 from fp_cli import auth, config
 from fp_cli.errors import ApiError, AuthError, NetworkError
 
-BASE = "http://dash.test"
+BASE = "https://dash.test"
 
 
 @respx.mock

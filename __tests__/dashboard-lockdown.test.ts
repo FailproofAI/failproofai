@@ -11,24 +11,38 @@ import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { NextRequest } from "next/server";
 import { proxy } from "@/proxy";
 import {
+  DASHBOARD_TOKEN_COOKIE,
   DEFAULT_DASHBOARD_HOST,
+  dashboardToken,
+  ensureDashboardToken,
   hostnameFromHostHeader,
   hostnameFromOrigin,
   isLoopbackHostname,
   resolveDashboardHost,
+  sameDashboardToken,
+  withDashboardToken,
 } from "@/lib/dashboard-host";
 
 const ORIGINAL = process.env.FAILPROOFAI_DASHBOARD_HOST;
+const ORIGINAL_TOKEN = process.env.FAILPROOFAI_DASHBOARD_TOKEN;
+
+/** This launch's access token in the tests that bind off loopback. */
+const TOKEN = "a".repeat(64);
+/** The cookie the browser carries once it has presented TOKEN. */
+const TOKEN_COOKIE = `${DASHBOARD_TOKEN_COOKIE}=${TOKEN}`;
 
 beforeEach(() => {
   // The launcher exports this; default the tests to the shipped posture.
   process.env.FAILPROOFAI_DASHBOARD_HOST = "127.0.0.1";
+  delete process.env.FAILPROOFAI_DASHBOARD_TOKEN;
   vi.spyOn(console, "warn").mockImplementation(() => {});
 });
 
 afterEach(() => {
   if (ORIGINAL === undefined) delete process.env.FAILPROOFAI_DASHBOARD_HOST;
   else process.env.FAILPROOFAI_DASHBOARD_HOST = ORIGINAL;
+  if (ORIGINAL_TOKEN === undefined) delete process.env.FAILPROOFAI_DASHBOARD_TOKEN;
+  else process.env.FAILPROOFAI_DASHBOARD_TOKEN = ORIGINAL_TOKEN;
   vi.restoreAllMocks();
 });
 
@@ -83,9 +97,12 @@ describe("host pinning — the DNS-rebinding defence", () => {
   it("stops pinning Host when the operator deliberately bound a routable address", async () => {
     // Opting into --host 0.0.0.0 is accepting reachability; we cannot know which
     // Host such an operator intends to answer to, so the pin would only break
-    // the setup they asked for.
+    // the setup they asked for. The access token stands in for it (see below).
     process.env.FAILPROOFAI_DASHBOARD_HOST = "0.0.0.0";
-    const res = await proxy(req("http://192.168.1.5:8020/policies", { host: "192.168.1.5:8020" }));
+    process.env.FAILPROOFAI_DASHBOARD_TOKEN = TOKEN;
+    const res = await proxy(
+      req("http://192.168.1.5:8020/policies", { host: "192.168.1.5:8020", extra: { cookie: TOKEN_COOKIE } }),
+    );
     expect(res.status).not.toBe(403);
   });
 });
@@ -180,13 +197,17 @@ describe("origin checking — the ordinary drive-by defence", () => {
   // other non-browser client. Any host on the segment could reach every
   // mutating route.
   describe("on a deliberately non-loopback bind", () => {
+    // Every request here carries the access token, so what is exercised is the
+    // Origin rule behind it, not the token gate in front.
+    const withToken = { cookie: TOKEN_COOKIE };
     beforeEach(() => {
       process.env.FAILPROOFAI_DASHBOARD_HOST = "0.0.0.0";
+      process.env.FAILPROOFAI_DASHBOARD_TOKEN = TOKEN;
     });
 
     it("REFUSES an origin-less POST — it is no longer necessarily local", async () => {
       const res = await proxy(
-        req("http://192.168.1.5:8020/api/audit/run", { method: "POST", host: "192.168.1.5:8020" }),
+        req("http://192.168.1.5:8020/api/audit/run", { method: "POST", host: "192.168.1.5:8020", extra: withToken }),
       );
       expect(res.status).toBe(403);
     });
@@ -198,6 +219,7 @@ describe("origin checking — the ordinary drive-by defence", () => {
         req("http://192.168.1.5:8020/api/auth/login-verify", {
           method: "POST",
           host: "192.168.1.5:8020",
+          extra: withToken,
         }),
       );
       expect(res.status).toBe(403);
@@ -205,7 +227,7 @@ describe("origin checking — the ordinary drive-by defence", () => {
 
     it("REFUSES an origin-less hook uninstall", async () => {
       const res = await proxy(
-        req("http://192.168.1.5:8020/policies", { method: "POST", host: "192.168.1.5:8020" }),
+        req("http://192.168.1.5:8020/policies", { method: "POST", host: "192.168.1.5:8020", extra: withToken }),
       );
       expect(res.status).toBe(403);
     });
@@ -218,15 +240,115 @@ describe("origin checking — the ordinary drive-by defence", () => {
           method: "POST",
           host: "192.168.1.5:8020",
           origin: "http://192.168.1.5:8020",
+          extra: withToken,
         }),
       );
       expect(res.status).not.toBe(403);
     });
 
-    it("still allows origin-less READS — only mutating methods are gated", async () => {
-      const res = await proxy(req("http://192.168.1.5:8020/policies", { host: "192.168.1.5:8020" }));
+    it("still allows origin-less READS that carry the token — only mutating methods are origin-checked", async () => {
+      const res = await proxy(
+        req("http://192.168.1.5:8020/policies", { host: "192.168.1.5:8020", extra: withToken }),
+      );
       expect(res.status).not.toBe(403);
     });
+  });
+});
+
+// FailproofAI/agenteye#1799. On a routable bind the Host pin is off and a
+// network peer sets Host and Origin to whatever it likes, so the checks above
+// stopped nothing: `curl -H 'Host: x' -H 'Origin: http://x'` could install a
+// policy pack (which imports its code), and GETs were not checked at all. Each
+// case here is that peer, and the browser that was given the printed address.
+describe("access token — the network-peer defence on a non-loopback bind", () => {
+  const box = "192.168.1.5:8020";
+  beforeEach(() => {
+    process.env.FAILPROOFAI_DASHBOARD_HOST = "0.0.0.0";
+    process.env.FAILPROOFAI_DASHBOARD_TOKEN = TOKEN;
+  });
+
+  it("REFUSES a forged same-origin POST, which could install a pack and run its code", async () => {
+    const res = await proxy(
+      req(`http://${box}/policies`, { method: "POST", host: box, origin: `http://${box}` }),
+    );
+    expect(res.status).toBe(403);
+  });
+
+  it("REFUSES a GET for a transcript download", async () => {
+    const res = await proxy(req(`http://${box}/api/download/proj/sess`, { host: box }));
+    expect(res.status).toBe(403);
+  });
+
+  it("REFUSES a forged loopback Host too: the bind, not the Host, decides", async () => {
+    const res = await proxy(
+      req("http://localhost:8020/policies", { method: "POST", host: "localhost:8020", origin: "http://localhost:8020" }),
+    );
+    expect(res.status).toBe(403);
+  });
+
+  it("REFUSES a wrong token, in the cookie or the address", async () => {
+    const wrong = "b".repeat(64);
+    for (const request of [
+      req(`http://${box}/policies`, { host: box, extra: { cookie: `${DASHBOARD_TOKEN_COOKIE}=${wrong}` } }),
+      req(`http://${box}/policies?token=${wrong}`, { host: box }),
+      req(`http://${box}/policies?token=${TOKEN.slice(1)}`, { host: box }),
+    ]) {
+      expect((await proxy(request)).status).toBe(403);
+    }
+  });
+
+  it("trades the printed address's token for an HttpOnly cookie and drops it from the address", async () => {
+    const res = await proxy(req(`http://${box}/audit?p=demo&token=${TOKEN}`, { host: box }));
+    expect(res.status).toBe(303);
+    expect(res.headers.get("location")).toBe(`http://${box}/audit?p=demo`);
+    expect(res.headers.get("cache-control")).toBe("no-store");
+    const cookie = res.headers.get("set-cookie") ?? "";
+    expect(cookie).toContain(`${DASHBOARD_TOKEN_COOKIE}=${TOKEN}`);
+    expect(cookie).toMatch(/HttpOnly/i);
+    expect(cookie).toMatch(/SameSite=lax/i);
+    expect(cookie).toMatch(/Path=\//i);
+  });
+
+  it("admits the browser's reads and same-origin writes once it holds the cookie", async () => {
+    const read = await proxy(req(`http://${box}/policies`, { host: box, extra: { cookie: TOKEN_COOKIE } }));
+    expect(read.status).not.toBe(403);
+    const write = await proxy(
+      req(`http://${box}/policies`, {
+        method: "POST",
+        host: box,
+        origin: `http://${box}`,
+        extra: { cookie: TOKEN_COOKIE },
+      }),
+    );
+    expect(write.status).not.toBe(403);
+  });
+
+  it("does not accept the address's token on a write: only a GET or HEAD trades it", async () => {
+    const res = await proxy(
+      req(`http://${box}/policies?token=${TOKEN}`, { method: "POST", host: box, origin: `http://${box}` }),
+    );
+    expect(res.status).toBe(403);
+  });
+
+  it("refuses everything when the server was started without a usable token", async () => {
+    for (const configured of [undefined, "", "short-token"]) {
+      if (configured === undefined) delete process.env.FAILPROOFAI_DASHBOARD_TOKEN;
+      else process.env.FAILPROOFAI_DASHBOARD_TOKEN = configured;
+      const res = await proxy(
+        req(`http://${box}/policies?token=${configured ?? ""}`, {
+          host: box,
+          extra: { cookie: `${DASHBOARD_TOKEN_COOKIE}=${configured ?? ""}` },
+        }),
+      );
+      expect(res.status, String(configured)).toBe(403);
+    }
+  });
+
+  it("asks nothing of a loopback bind, which has no network peers", async () => {
+    process.env.FAILPROOFAI_DASHBOARD_HOST = "127.0.0.1";
+    delete process.env.FAILPROOFAI_DASHBOARD_TOKEN;
+    const res = await proxy(req("http://localhost:8020/policies"));
+    expect(res.status).not.toBe(403);
   });
 });
 
@@ -279,5 +401,42 @@ describe("dashboard-host helpers", () => {
     expect(hostnameFromOrigin("null")).toBeNull();
     expect(hostnameFromOrigin("")).toBeNull();
     expect(hostnameFromOrigin("not a url")).toBeNull();
+  });
+
+  it("makes an access token only for a routable bind, once per launch", () => {
+    expect(ensureDashboardToken("127.0.0.1")).toBeUndefined();
+    expect(process.env.FAILPROOFAI_DASHBOARD_TOKEN).toBeUndefined();
+
+    const first = ensureDashboardToken("0.0.0.0");
+    expect(first).toMatch(/^[0-9a-f]{64}$/);
+    expect(process.env.FAILPROOFAI_DASHBOARD_TOKEN).toBe(first);
+    expect(dashboardToken()).toBe(first);
+    // `failproofai audit` makes it before launch() does; both must agree.
+    expect(ensureDashboardToken("10.0.0.5")).toBe(first);
+
+    delete process.env.FAILPROOFAI_DASHBOARD_TOKEN;
+    expect(ensureDashboardToken("0.0.0.0")).not.toBe(first);
+  });
+
+  it("keeps an operator's own token only when it is long enough to be one", () => {
+    process.env.FAILPROOFAI_DASHBOARD_TOKEN = "x".repeat(40);
+    expect(ensureDashboardToken("0.0.0.0")).toBe("x".repeat(40));
+    process.env.FAILPROOFAI_DASHBOARD_TOKEN = "hunter2";
+    expect(dashboardToken()).toBeNull();
+    expect(ensureDashboardToken("0.0.0.0")).toMatch(/^[0-9a-f]{64}$/);
+  });
+
+  it("adds the token to an address only when there is one", () => {
+    expect(withDashboardToken("http://127.0.0.1:8020", undefined)).toBe("http://127.0.0.1:8020");
+    expect(withDashboardToken("http://127.0.0.1:8020", TOKEN)).toBe(`http://127.0.0.1:8020/?token=${TOKEN}`);
+    expect(withDashboardToken("http://localhost:8020/audit", TOKEN)).toBe(`http://localhost:8020/audit?token=${TOKEN}`);
+  });
+
+  it("compares tokens exactly", () => {
+    expect(sameDashboardToken(TOKEN, TOKEN)).toBe(true);
+    expect(sameDashboardToken(`${TOKEN}a`, TOKEN)).toBe(false);
+    expect(sameDashboardToken(TOKEN.slice(1), TOKEN)).toBe(false);
+    expect(sameDashboardToken(`b${TOKEN.slice(1)}`, TOKEN)).toBe(false);
+    expect(sameDashboardToken("", TOKEN)).toBe(false);
   });
 });

@@ -1376,4 +1376,53 @@ mod tests {
             b"{\"type\":\"unknown\"}\n"
         );
     }
+
+    /// `FAILPROOFAI_INGEST_URL` (or a hand-edited credentials file) could name
+    /// any `http://` host, and every batch then crossed the network in clear
+    /// with the key in its `Authorization` header (FailproofAI/agenteye#1799).
+    #[test]
+    fn plain_http_to_another_host_is_refused_before_any_request() {
+        for url in [
+            "http://10.0.0.5:8080/v1/events",
+            "http://ingest.example/v1/events",
+            "http://localhost.example.com/v1/events",
+            "http://[2001:db8::1]/v1/events",
+            "http://0.0.0.0:8080/v1/events",
+        ] {
+            let refused = Uploader::new(
+                url.into(),
+                "secret-ingest-key".into(),
+                PathBuf::from("/nonexistent"),
+            );
+            let reason = refused
+                .err()
+                .unwrap_or_else(|| panic!("{url} was accepted"));
+            assert!(reason.contains("plain http"), "{url}: {reason}");
+            assert!(!reason.contains("secret-ingest-key"), "{reason}");
+        }
+        for url in ["ftp://ingest.example/v1/events", "not a url"] {
+            assert!(
+                Uploader::new(url.into(), "k".into(), PathBuf::from("/nonexistent")).is_err(),
+                "{url} was accepted"
+            );
+        }
+    }
+
+    #[test]
+    fn https_and_loopback_http_are_accepted() {
+        for url in [
+            "https://app.befailproof.ai/v1/events",
+            "https://10.0.0.5:8443/v1/events",
+            "http://localhost:8080/v1/events",
+            "http://LOCALHOST:8080/v1/events",
+            "http://127.0.0.1:8080/v1/events",
+            "http://127.0.0.2:8080/v1/events",
+            "http://[::1]:8080/v1/events",
+        ] {
+            assert!(
+                Uploader::new(url.into(), "k".into(), PathBuf::from("/nonexistent")).is_ok(),
+                "{url} was refused"
+            );
+        }
+    }
 }

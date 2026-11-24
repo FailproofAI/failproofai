@@ -38,6 +38,7 @@ const READY = ["▲ Next.js 16.3.6", "- Local:         http://127.0.0.1:8020", "
 const ENV_KEYS = [
   "FAILPROOFAI_PACKAGE_ROOT",
   "FAILPROOFAI_DASHBOARD_HOST",
+  "FAILPROOFAI_DASHBOARD_TOKEN",
   "FAILPROOFAI_LAUNCH_CWD",
   "FORCE_COLOR",
   "NO_COLOR",
@@ -224,10 +225,24 @@ describe("launch('start')", () => {
     child.stdout.write(`${READY.join("\n")}\n`);
     await drain();
     const screen = strip(printed());
-    expect(screen).toContain("  url        http://127.0.0.1:8020  ● live");
+    // The address carries this launch's access token, which proxy.ts requires
+    // on every request to a routable bind (FailproofAI/agenteye#1799), and it
+    // is the token the server was handed.
+    const token = process.env.FAILPROOFAI_DASHBOARD_TOKEN ?? "";
+    expect(token).toMatch(/^[0-9a-f]{64}$/);
+    expect(screen).toContain(`  url        http://127.0.0.1:8020/?token=${token}  ● live`);
+    expect(h.spawn.mock.calls[0][2].env.FAILPROOFAI_DASHBOARD_TOKEN).toBe(token);
     expect(screen.split("\n").filter((l) => l.startsWith("▲"))).toEqual([
       expect.stringContaining("bound to 0.0.0.0"),
     ]);
+  });
+
+  it("makes no access token for a loopback bind, and prints the plain address", async () => {
+    launch("start");
+    child.stdout.write(`${READY.join("\n")}\n`);
+    await drain();
+    expect(process.env.FAILPROOFAI_DASHBOARD_TOKEN).toBeUndefined();
+    expect(strip(printed())).toContain("  url        http://127.0.0.1:8020  ● live");
   });
 
   it("says the port is taken and exits with the server's code when it dies before listening", async () => {

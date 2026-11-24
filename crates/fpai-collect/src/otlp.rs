@@ -998,4 +998,30 @@ mod tests {
         assert!(!settings.otlp.enabled);
         assert_eq!(settings.otlp.port, 4318);
     }
+
+    /// The relay forwards with the ingest key to the ingest origin, so it
+    /// refuses the plain-http URLs the uploader does (FailproofAI/agenteye#1799).
+    #[test]
+    fn a_plain_http_ingest_url_to_another_host_starts_no_relay() {
+        let home = temp();
+        let ingest = |url: &str| Ingest {
+            url: url.into(),
+            key: "secret-ingest-key".into(),
+        };
+        let refused = Relay::new(&home, &ingest("http://10.0.0.5:8080/v1/events"));
+        let reason = refused.err().expect("plain http to another host").0;
+        assert!(reason.contains("plain http"), "{reason}");
+        assert!(!reason.contains("secret-ingest-key"), "{reason}");
+        assert!(
+            tasks(
+                home.clone(),
+                ingest("http://ingest.example"),
+                &OtlpSettings::default()
+            )
+            .is_empty()
+        );
+        assert!(Relay::new(&home, &ingest("http://127.0.0.1:9/v1/events")).is_ok());
+        assert!(Relay::new(&home, &ingest("https://ingest.example/v1/events")).is_ok());
+        fs::remove_dir_all(home).unwrap();
+    }
 }

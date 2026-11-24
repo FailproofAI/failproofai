@@ -9,9 +9,14 @@ vi.mock("@/lib/telemetry", () => ({
 
 import {
   AuthApiError,
+  INSECURE_API_URL,
   decodeJwt,
+  fetchMe,
+  getApiBase,
+  refreshAccessToken,
   requestLoginCode,
   sendInvites,
+  verifyLoginCode,
 } from "@/lib/auth/api-server-client";
 
 describe("api-server-client fetchWithTimeout telemetry", () => {
@@ -223,5 +228,86 @@ describe("decodeJwt", () => {
   it("rejects an empty payload segment", () => {
     const header = Buffer.from(JSON.stringify({ alg: "none" })).toString("base64url");
     expect(decodeJwt(`${header}..sig`)).toBeNull();
+  });
+});
+
+// FailproofAI/agenteye#1799: FAILPROOF_API_URL was taken as given, so an http://
+// value for another machine sent the emailed code, the token pair it buys, and
+// every refresh/access token over the wire in clear.
+describe("api-server base URL", () => {
+  const originalFetch = globalThis.fetch;
+  const saved = {
+    preferred: process.env.FAILPROOF_API_URL,
+    legacy: process.env.FAILPROOFAI_API_URL,
+  };
+  const restore = (key: "FAILPROOF_API_URL" | "FAILPROOFAI_API_URL", value: string | undefined) => {
+    if (value === undefined) delete process.env[key];
+    else process.env[key] = value;
+  };
+
+  beforeEach(() => {
+    delete process.env.FAILPROOF_API_URL;
+    delete process.env.FAILPROOFAI_API_URL;
+  });
+  afterEach(() => {
+    globalThis.fetch = originalFetch;
+    restore("FAILPROOF_API_URL", saved.preferred);
+    restore("FAILPROOFAI_API_URL", saved.legacy);
+    trackEventMock.mockClear();
+  });
+
+  it("defaults to the hosted https api-server", () => {
+    expect(getApiBase()).toBe("https://api.befailproof.ai");
+  });
+
+  it.each([
+    "https://api.example.com",
+    "https://10.0.0.5:8443/",
+    "http://localhost:8080",
+    "http://127.0.0.1:8080",
+    "http://127.0.0.2:8080",
+    "http://[::1]:8080",
+  ])("accepts %s", (url) => {
+    process.env.FAILPROOF_API_URL = url;
+    expect(getApiBase()).toBe(url.replace(/\/+$/, ""));
+  });
+
+  it.each([
+    ["FAILPROOF_API_URL", "http://api.example.com"],
+    ["FAILPROOF_API_URL", "http://10.0.0.5:8080"],
+    ["FAILPROOF_API_URL", "http://localhost.example.com"],
+    ["FAILPROOF_API_URL", "ftp://api.example.com"],
+    ["FAILPROOF_API_URL", "not a url"],
+    ["FAILPROOFAI_API_URL", "http://api.example.com"],
+  ] as const)("refuses %s=%s before anything is sent", async (key, url) => {
+    process.env[key] = url;
+    const fetchMock = vi.fn(async () => new Response("{}", { status: 200 }));
+    globalThis.fetch = fetchMock as unknown as typeof fetch;
+
+    expect(() => getApiBase()).toThrow(AuthApiError);
+    for (const call of [
+      () => requestLoginCode("a@b.co"),
+      () => verifyLoginCode("a@b.co", "123456"),
+      () => refreshAccessToken("refresh-secret"),
+      () => fetchMe("access-secret"),
+    ]) {
+      const err = await call().then(() => null, (e: unknown) => e);
+      expect(err).toBeInstanceOf(AuthApiError);
+      expect((err as AuthApiError).code).toBe(INSECURE_API_URL);
+    }
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("names the origin it refused, never the path or credentials in the URL", () => {
+    process.env.FAILPROOF_API_URL = "http://user:pw@api.example.com:8080/base";
+    let message = "";
+    try {
+      getApiBase();
+    } catch (err) {
+      message = (err as Error).message;
+    }
+    expect(message).toContain("http://api.example.com:8080");
+    expect(message).toContain("plain http");
+    expect(message).not.toContain("pw");
   });
 });

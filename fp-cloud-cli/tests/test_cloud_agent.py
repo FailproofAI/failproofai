@@ -10,7 +10,7 @@ from rich.console import Console
 from fp_cli import output
 from fp_cli.app import app
 
-BASE = "http://dash.test"
+BASE = "https://dash.test"
 RESULT = {"columns": [{"name": "total", "type": "UInt64"}], "rows": [[42]]}
 
 

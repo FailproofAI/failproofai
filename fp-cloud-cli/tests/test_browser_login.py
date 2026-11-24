@@ -26,7 +26,7 @@ from fp_cli.app import app
 from fp_cli.commands import auth_cmds
 from fp_cli.errors import ApiError, AuthError, NetworkError
 
-BASE = "http://dash.test"
+BASE = "https://dash.test"
 LINK = f"{BASE}/cli/authorize?r=abc"
 STARTED = {
     "verification_url": LINK,

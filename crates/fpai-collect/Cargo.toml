@@ -33,7 +33,7 @@ reqwest = { version = "0.12", default-features = false, features = ["rustls-tls"
 # inotify on Linux, FSEvents on macOS. Only ever a latency optimisation — the
 # sweeper is what guarantees delivery, so a watcher that fails to register
 # degrades to interval-only rather than losing anything.
-notify = "8"
+notify = "9"
 # Epoch-millis to RFC3339 with microseconds. Hand-rolling civil date maths is
 # a silent-failure risk — a leap-year slip would put every event on the wrong
 # day with nothing to notice it — and this pulls no C code onto any of the
@@ -50,7 +50,7 @@ notify = "8"
 # the file-tailer converters can leave it out. AgentEye's server imports Claude
 # Code / Codex transcripts with these converters, and its sqlx links a different
 # libsqlite3-sys — two crates linking `sqlite3` cannot share one build.
-rusqlite = { version = "0.42", features = ["bundled"], optional = true }
+rusqlite = { version = "0.43", features = ["bundled"], optional = true }
 # OpenClaw 2026.9.6+ stores a large transcript event zstd-compressed in
 # `event_zstd` and leaves `event_json` NULL. A pure-Rust decoder, for the same
 # reason rustls is chosen above: no C toolchain on the four cross-compiled legs.

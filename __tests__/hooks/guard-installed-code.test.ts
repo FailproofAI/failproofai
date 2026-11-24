@@ -234,6 +234,7 @@ describe("block-failproofai-commands — failproofai's installed code", () => {
       ["removing pnpm's global store entry", "rm -rf /home/u/.local/share/pnpm/global/5/.pnpm/failproofai@1.0.15"],
       ["removing the daemon package from pnpm's store", "rm -rf node_modules/.pnpm/@failproofai+failproofaid-linux-x64@1.0.15"],
       ["a glob onto pnpm's store entry", "rm -rf node_modules/.pnpm/fail*"],
+      ["a dotted glob onto pnpm's store entry", "rm -rf ./node_modules/.pnpm/fail*"],
     ])("denies %s", async (_label, command) => {
       expect(await bash(command)).toBe("deny");
     });
@@ -248,6 +249,7 @@ describe("block-failproofai-commands — failproofai's installed code", () => {
       ["a clean reinstall", "rm -rf node_modules && npm ci"],
       ["clearing every dependency", "rm -rf node_modules/*"],
       ["clearing pnpm's whole store", "rm -rf node_modules/.pnpm/*"],
+      ["clearing pnpm's whole store, dotted", "rm -rf ./node_modules/.pnpm/*"],
       ["a test run inside a directory of that name under bin/", "vitest run --root /home/u/bin/failproofai/web"],
       ["clearing a build cache", "rm -rf node_modules/.cache"],
       ["removing a checkout of the repo", "rm -rf /home/u/src/failproofai"],

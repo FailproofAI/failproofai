@@ -58,7 +58,7 @@ dependencies = [
     "click>=8.1",
     "rich>=13",
     "pygments>=2.13",
-    "posthog>=3.5,<8",
+    "posthog>=3.5,<9",
 ]
 
 # The distribution is `fp-cloud-cli`; the command is `fp`; the import package is

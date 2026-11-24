@@ -31,7 +31,7 @@
  */
 import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync } from "node:fs";
 import { createHash } from "node:crypto";
-import { join, resolve } from "node:path";
+import { basename, join, resolve } from "node:path";
 import { writeJsonAtomically } from "../../lib/atomic-write";
 import { getAllHookActivityEntries } from "./hook-activity-store";
 import { sessionPauseDir } from "./fp-home";
@@ -244,31 +244,42 @@ export function clearPause(sessionId: string): boolean {
 }
 
 /**
- * Remove every pause file, whatever it holds. Returns how many pauses were
- * ACTIVE, which is what a person ending them is told.
+ * Remove every pause file, whatever it holds.
  *
  * Every file, not every active pause: a file dated in the future is not honoured
  * yet, so it is not listed, and clearing only the listed ones left it to turn
  * live later — out of sight of the `--resume --all` meant to end them all.
+ *
+ * `cleared` counts the ACTIVE pauses whose file is really gone, which is what a
+ * person ending them is told; `incomplete` says something stayed behind — a file
+ * that would not go, or a directory that could not be read. Reporting the active
+ * count instead said "Resumed" over a file a read-only directory had kept, and
+ * the hook went on reading it as paused (found in review, PR #1050).
  */
-export function clearAllPauses(now = Date.now()): number {
-  const active = listActivePauses(now).length;
+export function clearAllPauses(now = Date.now()): { cleared: number; incomplete: boolean } {
   const dir = pauseStateDir();
-  let names: string[] = [];
+  const activeFiles = new Set(listActivePauses(now).map((pause) => basename(pauseFilePath(pause.sessionId))));
+  let names: string[];
   try {
     names = readdirSync(dir);
-  } catch {
-    return active;
+  } catch (err) {
+    // No directory means nothing was ever paused; any other failure means the
+    // pauses in it are still there, still read by the hook by name.
+    return { cleared: 0, incomplete: (err as NodeJS.ErrnoException).code !== "ENOENT" };
   }
+  let cleared = 0;
+  let incomplete = false;
   for (const name of names) {
     if (!name.endsWith(".json")) continue;
     try {
       rmSync(join(dir, name));
+      if (activeFiles.has(name)) cleared++;
     } catch {
       // One file that will not go must not stop the rest.
+      incomplete = true;
     }
   }
-  return active;
+  return { cleared, incomplete };
 }
 
 /** Every pause that has not yet expired, newest first. Expired files are ignored. */

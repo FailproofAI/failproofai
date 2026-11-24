@@ -544,8 +544,10 @@ function failproofaiFileKind(path: unknown): "state" | "code" | null {
  * expanded where it stands, and a `..` after it steps out of what it points at.
  * `path.resolve` and Node's `realpathSync` both collapse `..` as TEXT first, so
  * a write to `<link-to-pkg/dist>/../dist/cli.mjs` resolved to a harmless path
- * while `open(2)` wrote the CLI. From the first component that does not exist
- * nothing below can be a link, so the rest is the tail of a file being created.
+ * while `open(2)` wrote the CLI. A component that does not exist is walked as
+ * the plain directory a write tool's `mkdir -p` would make of it — NOT taken as
+ * the end of the walk: `missing/../alias.mjs` steps straight back out, and
+ * `alias.mjs` can be a link into the package (found in review, PR #1050).
  * A relative path is taken from the session's directory, not this process's —
  * the daemon's worker runs somewhere else entirely — and `~` from home.
  *
@@ -572,11 +574,11 @@ function resolveWriteTarget(path: unknown, cwd: unknown): string {
         continue;
       }
       const next = `${resolved}/${part}`;
-      let isLink: boolean;
+      let isLink = false;
       try {
         isLink = lstatSync(next).isSymbolicLink();
       } catch {
-        return join(next, ...pending);
+        // Missing or unreadable: a plain directory once created, so walk on.
       }
       if (!isLink) {
         resolved = next;

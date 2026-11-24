@@ -169,6 +169,15 @@ describe("block-failproofai-commands — failproofai's installed code", () => {
         expect((await write(`${root}/elsewhere/../elsewhere/notes.md`)).decision).toBe("allow");
       });
 
+      // A directory that does not exist yet is not where the walk ends: a write
+      // tool that runs `mkdir -p` on the parent first creates it, `..` steps back
+      // out, and `tool.mjs` is the link into the package (found in review).
+      it("walks through a directory that does not exist yet", async () => {
+        expect((await write(`${root}/elsewhere/missing/../tool.mjs`)).decision).toBe("deny");
+        expect((await write(`${root}/elsewhere/a/b/../../tool.mjs`)).decision).toBe("deny");
+        expect((await write(`${root}/elsewhere/missing/../notes.md`)).decision).toBe("allow");
+      });
+
       it("still allows an ordinary file next to the links", async () => {
         expect((await write(join(root, "elsewhere", "notes.md"))).decision).toBe("allow");
       });

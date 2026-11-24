@@ -15,6 +15,7 @@ import {
   clearAllPauses,
   clearPause,
   parsePauseDuration,
+  pauseStateDir,
   readActivePause,
   resolveSessionForCwd,
   writePause,
@@ -114,14 +115,26 @@ export function runPauseCommand(opts: PauseCommandOptions): PauseCommandResult {
   if (opts.action === "resume") {
     const kit = kitFor(true);
     if (opts.all) {
-      const cleared = clearAllPauses(now);
+      const { cleared, incomplete } = clearAllPauses(now);
+      const resumed = (k: typeof kit) => k.ok(`Resumed enforcement for ${cleared} session${cleared === 1 ? "" : "s"}.`);
+      if (incomplete) {
+        // A pause file that stayed behind is still read by the hook, so this is
+        // a failure even if some pauses did end: saying "Resumed" over it would
+        // leave someone believing enforcement is back on when it is not.
+        const failKit = kitFor(false);
+        return {
+          exitCode: 1,
+          lines: [
+            ...(cleared > 0 ? [resumed(failKit)] : []),
+            failKit.fail(`Could not remove every pause file from ${pauseStateDir()}, so enforcement may still be paused.`),
+            `${INDENT}Check that directory's permissions, then run this again.`,
+          ],
+          affected: cleared,
+        };
+      }
       return {
         exitCode: 0,
-        lines: [
-          cleared === 0
-            ? "Nothing was paused."
-            : kit.ok(`Resumed enforcement for ${cleared} session${cleared === 1 ? "" : "s"}.`),
-        ],
+        lines: [cleared === 0 ? "Nothing was paused." : resumed(kit)],
         affected: cleared,
       };
     }

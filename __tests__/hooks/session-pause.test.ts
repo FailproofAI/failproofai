@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
-import { mkdtempSync, rmSync, writeFileSync, mkdirSync, readdirSync } from "node:fs";
+import { chmodSync, mkdtempSync, rmSync, writeFileSync, mkdirSync, readdirSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { resolve } from "node:path";
 
@@ -272,9 +272,43 @@ describe("pause state", () => {
     it("is removed by clearAllPauses, which counts only the active ones", () => {
       forge({ pausedAt: now + 3_600_000, firstPausedAt: now + 3_600_000, expiresAt: now + 9 * 3_600_000 });
       writePause({ sessionId: "sess-live", durationMs: 600_000, now });
-      expect(clearAllPauses(now)).toBe(1);
+      expect(clearAllPauses(now)).toEqual({ cleared: 1, incomplete: false });
       expect(readdirSync(pauseStateDir())).toEqual([]);
       expect(readActivePause("sess-f", now + 2 * 3_600_000)).toBeNull();
+    });
+  });
+});
+
+// A pause file that stays behind is still read by the hook, so it must never be
+// counted as cleared (found in review). Root ignores directory modes, so these
+// only mean something for an ordinary user, which is what CI runs as.
+describe.skipIf(process.getuid?.() === 0)("clearAllPauses when a file will not go", () => {
+  const now = Date.UTC(2026, 10, 24);
+  const withMode = (mode: number, body: () => void) => {
+    chmodSync(pauseStateDir(), mode);
+    try {
+      body();
+    } finally {
+      chmodSync(pauseStateDir(), 0o700);
+    }
+  };
+
+  it("does not count a pause it could not remove, and says so", () => {
+    writePause({ sessionId: "sess-ro", durationMs: 600_000, now });
+    withMode(0o500, () => {
+      expect(clearAllPauses(now)).toEqual({ cleared: 0, incomplete: true });
+    });
+    expect(readActivePause("sess-ro", now)).not.toBeNull();
+  });
+
+  // Without read permission the directory cannot be listed, but the hook opens
+  // each pause by name and still finds it — so "nothing listed" is not "nothing
+  // paused".
+  it("reports a directory it cannot list instead of calling it empty", () => {
+    writePause({ sessionId: "sess-nolist", durationMs: 600_000, now });
+    withMode(0o300, () => {
+      expect(clearAllPauses(now)).toEqual({ cleared: 0, incomplete: true });
+      expect(readActivePause("sess-nolist", now)).not.toBeNull();
     });
   });
 });

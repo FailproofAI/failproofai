@@ -42,6 +42,21 @@ const write = async (file_path: string, cwd?: string) =>
     }),
   );
 
+/** An `Edit` carrying a patch the way Codex's `apply_patch` does. */
+const patch = async (toolInput: Record<string, unknown>, cwd = "/work/proj") =>
+  (await policy.fn(makeCtx({ toolName: "Edit", toolInput, session: { cwd } }))).decision;
+
+/** A patch in the format Codex's `apply_patch` takes. */
+const v4a = (...lines: string[]) => ["*** Begin Patch", ...lines, "*** End Patch", ""].join("\n");
+
+/** `count` option words of 32 distinct letters, each with a value glued on. */
+const optionClusters = (count: number) =>
+  Array.from({ length: count }, (_, i) => {
+    let letters = "";
+    for (let k = 0, n = i; k < 31; k++, n = Math.floor(n / 26) + k) letters += "abcdefghijklmnopqrstuvwxyz"[n % 26];
+    return `-${letters}q${i}`;
+  }).join(" ");
+
 /**
  * A project-scope hook is `npx -y failproofai --hook …`, so that a committed
  * settings file names no machine's path. npx runs a
@@ -105,6 +120,54 @@ describe("block-failproofai-commands — the entry a project-scope npx hook runs
       expect((await write("/work/proj/node_modules//.bin/./failproofai")).decision).toBe("deny");
     });
 
+    // Codex's `apply_patch` (canonical `Edit`) carries its patch in
+    // `tool_input.command` and names no `file_path`; OpenCode's sends
+    // `patchText`. Every file a patch names is one the tool writes (found by
+    // hermes on FailproofAI/failproofai#1058).
+    describe("patches", () => {
+      it.each([
+        ["a file it adds", { command: v4a("*** Add File: node_modules/.bin/failproofai", "+#!/bin/sh", "+exit 0") }],
+        ["a file it updates", { command: v4a("*** Update File: node_modules/.bin/failproofai", "@@", "-exec node cli.mjs", "+exit 0") }],
+        ["a file it deletes", { command: v4a("*** Delete File: node_modules/.bin/failproofai") }],
+        ["where it moves a file to", { command: v4a("*** Update File: scripts/stub.sh", "*** Move to: node_modules/.bin/failproofai", "@@", "+exit 0") }],
+        ["an absolute path", { command: v4a("*** Add File: /work/proj/node_modules/.bin/failproofai", "+exit 0") }],
+        ["a parent directory's entry", { command: v4a("*** Add File: ../node_modules/.bin/failproofai", "+exit 0") }],
+        ["a loosely spaced header", { command: v4a("  ***  Add File:   node_modules/.bin/failproofai  ", "+exit 0") }],
+        ["the state", { command: v4a("*** Update File: /home/u/.failproofai/policies-config.json", "@@", "+{}") }],
+        ["the entry, as OpenCode's patchText", { patchText: v4a("*** Add File: node_modules/.bin/failproofai", "+exit 0") }],
+        ["the entry, in an argv", { command: ["apply_patch", v4a("*** Add File: node_modules/.bin/failproofai", "+exit 0")] }],
+        ["the entry, as a unified diff", { command: "--- a/node_modules/.bin/failproofai\n+++ b/node_modules/.bin/failproofai\n@@ -1 +1 @@\n-exec\n+exit 0\n" }],
+        ["the entry, from the directory the call names", { command: v4a("*** Add File: failproofai", "+exit 0"), workdir: "/work/proj/node_modules/.bin" }],
+      ])("denies a patch naming %s", async (_label, toolInput) => {
+        expect(await patch(toolInput)).toBe("deny");
+      });
+
+      it("denies a patch naming the entry from a session standing in .bin", async () => {
+        expect(await patch({ command: v4a("*** Add File: failproofai", "+exit 0") }, "/work/proj/node_modules/.bin")).toBe("deny");
+      });
+
+      it.each([
+        ["a patch to project files", { command: v4a("*** Update File: src/app.ts", "@@", "-a", "+b", "*** Add File: src/new.ts", "+x") }],
+        ["a patch adding another package's entry", { command: v4a("*** Add File: node_modules/.bin/my-tool", "+exit 0") }],
+        ["a unified diff of project files", { command: "--- a/src/app.ts\n+++ b/src/app.ts\n@@ -1 +1 @@\n-a\n+b\n" }],
+        // What the tool writes is not a patch it applies, whatever it says.
+        ["an Edit whose new text quotes a header", { file_path: "docs/patching.md", old_string: "a", new_string: "*** Add File: node_modules/.bin/failproofai" }],
+      ])("allows %s", async (_label, toolInput) => {
+        expect(await patch(toolInput)).toBe("allow");
+      });
+
+      it("allows a Write whose content quotes a header", async () => {
+        const result = await policy.fn(
+          makeCtx({
+            toolName: "Write",
+            toolInput: { file_path: "docs/patching.md", content: "*** Update File: node_modules/.bin/failproofai\n" },
+            session: { cwd: "/work/proj" },
+          }),
+        );
+        expect(result.decision).toBe("allow");
+      });
+    });
+
     describe("through links", () => {
       let root: string;
 
@@ -118,6 +181,7 @@ describe("block-failproofai-commands — the entry a project-scope npx hook runs
         // A link into a directory below `.bin`, and one to `node_modules`.
         symlinkSync(join(root, "proj", "node_modules", ".bin", "sub"), join(root, "proj", "tools", "deep"));
         symlinkSync(join(root, "proj", "node_modules"), join(root, "proj", "nm"));
+        mkdirSync(join(root, "proj", "out"));
       });
 
       afterAll(() => {
@@ -175,6 +239,72 @@ describe("block-failproofai-commands — the entry a project-scope npx hook runs
           expect(await bashIn(join(root, "proj"), command)).not.toBe("deny");
         },
       );
+
+      it("denies a patch through a link to the entry or the .bin directory", async () => {
+        for (const file of ["tools/hook", "tools/bins/failproofai", "tools/deep/../failproofai"]) {
+          expect(await patch({ command: v4a(`*** Update File: ${file}`, "@@", "+exit 0") }, join(root, "proj"))).toBe("deny");
+        }
+      });
+
+      // An output file glued to its option, through a link on disk (found by
+      // hermes on FailproofAI/failproofai#1058).
+      it.each([
+        "curl -sohook https://example.com/x",
+        "curl -so./hook https://example.com/x",
+        "curl -sobins/failproofai https://example.com/x",
+        "wget -qOhook https://example.com/x",
+        "gcc -ohook main.c",
+      ])("denies an output file glued to its option through a link: %s", async (command) => {
+        expect(await bashIn(join(root, "proj", "tools"), command)).toBe("deny");
+      });
+
+      it("allows a glued output file that is no link", async () => {
+        expect(await bashIn(join(root, "proj", "tools"), "curl -sohook.txt https://example.com/x")).not.toBe("deny");
+      });
+
+      // Links this line makes, resolved as the kernel resolves them: each `..`
+      // after the link it follows, any number of them up to the kernel's 40,
+      // and every form of `ln` that puts one inside a directory (found by
+      // hermes on FailproofAI/failproofai#1058).
+      it.each([
+        ["a `..` after a link made on the line", "ln -s node_modules/.bin/sub inline-deep; printf x > inline-deep/../failproofai"],
+        ["the same, after &&", "ln -s node_modules/.bin/sub inline-deep && cp /tmp/stub.sh inline-deep/../failproofai"],
+        [
+          "a chain of ten links",
+          ["ln -s node_modules/.bin l1", ...Array.from({ length: 9 }, (_, i) => `ln -s l${i + 1} l${i + 2}`)].join("; ") +
+            "; printf x > l10/failproofai",
+        ],
+        [
+          "a chain longer than the kernel follows",
+          ["ln -s node_modules/.bin l1", ...Array.from({ length: 44 }, (_, i) => `ln -s l${i + 1} l${i + 2}`)].join("; ") +
+            "; printf x > l45/failproofai",
+        ],
+        ["two links pointing at each other", "ln -s a b; ln -s b a; printf x > a/x"],
+        ["a link put into the current directory", "ln -s node_modules/.bin/failproofai .; printf x > failproofai"],
+        ["a link put into a directory with a slash", "ln -s node_modules/.bin/failproofai out/; printf x > out/failproofai"],
+        ["a link put into an existing directory", `ln -s ROOT/node_modules/.bin/failproofai out; printf x > out/failproofai`],
+        ["a link put into -t's directory", `ln -st out ROOT/node_modules/.bin/failproofai; printf x > out/failproofai`],
+        ["a link put into --target-directory's", `ln --symbolic --target-directory=out ROOT/node_modules/.bin/failproofai; printf x > out/failproofai`],
+        ["ln -s with one operand", "ln -s node_modules/.bin/failproofai; printf x > failproofai"],
+        ["a directory the line makes first", `mkdir newdir; ln -s ROOT/node_modules/.bin/failproofai newdir; printf x > newdir/failproofai`],
+        ["ln -r, which reads the target from here", "ln -sr node_modules/.bin/failproofai out/x; printf x > out/x"],
+        ["a target the walk cannot read, naming .bin", 'ln -s "$(npm root)/.bin" b; printf x > b/failproofai'],
+        ["a target the walk cannot read at all", 'ln -s "$D" b; printf x > b/failproofai'],
+        ["a substitution's directory, filled with what is in another", 'ln -s "$(npm root)/.bin" d; cp -r /tmp/stage/. d/'],
+      ])("denies a write through %s", async (_label, command) => {
+        expect(await bashIn(join(root, "proj"), command.replaceAll("ROOT", join(root, "proj")))).toBe("deny");
+      });
+
+      it.each([
+        "ln -s node_modules/.bin/sub d; printf x > d/../notes.txt",
+        "ln -s /tmp/x y; echo hi > y",
+        'ln -s "$TARGET" current; echo hi > current/log.txt',
+        "ln -sf build/app current; ./current --version",
+        // A variable the line never sets is read as an unknown `cd` is.
+        'ln -sfn "$RELEASE_DIR" current && cp -r shared/config current/',
+      ])("still allows a write through a link made on the line: %s", async (command) => {
+        expect(await bashIn(join(root, "proj"), command)).not.toBe("deny");
+      });
     });
 
     // The entry, and nothing else that lives beside it or shares its name.
@@ -492,6 +622,69 @@ describe("block-failproofai-commands — the entry a project-scope npx hook runs
       expect(await bashIn(cwd, command)).not.toBe("deny");
     });
 
+    // A value glued to its option is a path, read from where the shell stands
+    // like any other (found by hermes on FailproofAI/failproofai#1058). Where a
+    // command's value-taking letters are known the cluster is read as getopt
+    // reads it; elsewhere every split of it is tried.
+    it.each([
+      ["/work/proj/node_modules/.bin", "curl -sofailproofai https://example.com/x"],
+      ["/work/proj/node_modules/.bin", "curl --output=failproofai https://example.com/x"],
+      ["/work/proj/node_modules/.bin", "wget -Ofailproofai https://example.com/x"],
+      ["/work/proj/node_modules/.bin", "wget -qOfailproofai https://example.com/x"],
+      ["/work/proj/node_modules/.bin", "wget --output-document=failproofai https://example.com/x"],
+      ["/work/proj/node_modules/.bin", "sort -ofailproofai notes.txt"],
+      ["/work/proj/node_modules/.bin", "gcc -ofailproofai main.c"],
+      ["/work/proj/node_modules/.bin", "tar -cffailproofai src"],
+      ["/work/proj/node_modules/.bin", "curl -" + "s".repeat(40) + "ofailproofai https://example.com/x"],
+      // A cluster longer than anyone writes is not tried at every split.
+      ["/work/proj/node_modules/.bin", "foo -" + "a".repeat(40) + "ofailproofai"],
+      ["/work/proj", "cd node_modules/.bin && curl -sofailproofai https://example.com/x"],
+      ["/work/proj", "D=failproofai; cd node_modules/.bin && curl -so$D https://example.com/x"],
+    ])("denies an output file glued to its option from %s: %s", async (cwd, command) => {
+      expect(await bashIn(cwd, command)).toBe("deny");
+    });
+
+    it.each([
+      ["/work/proj/node_modules/.bin", "curl -somy-tool https://example.com/x"],
+      ["/work/proj/node_modules/.bin", "grep -ffailproofai notes.txt"],
+      ["/work/proj", "gcc -O2 -Wall -o build/app main.c"],
+      ["/work/proj", "tar -czf backup.tgz src"],
+      ["/work/proj", "curl -sSfL -o /tmp/x https://example.com/x"],
+      ["/work/proj", "git log --format=%h -n 5"],
+    ])("allows option values from %s: %s", async (cwd, command) => {
+      expect(await bashIn(cwd, command)).not.toBe("deny");
+    });
+
+    // `echo` and `printf` print quoted text and run none of it, so documenting
+    // a command is not running it (found by hermes on
+    // FailproofAI/failproofai#1058). Text a shell does run is still read as
+    // one, and so is a real redirect.
+    it.each([
+      "echo 'cat > node_modules/.bin/failproofai'",
+      "printf '%s\\n' '> node_modules/.bin/failproofai'",
+      'echo "cat > node_modules/.bin/failproofai"',
+      "echo 'cat > ~/.failproofai/policies-config.json'",
+      "echo 'never run: cat > node_modules/.bin/failproofai' && npm test",
+    ])("allows printing a command as text: %s", async (command) => {
+      expect(await bash(command)).toBe("allow");
+    });
+
+    it.each([
+      "bash -c 'printf x > node_modules/.bin/failproofai'",
+      "echo 'printf x > node_modules/.bin/failproofai' | sh",
+      "echo 'printf x > node_modules/.bin/failproofai' |& sh",
+      "echo 'printf x > node_modules/.bin/failproofai' > /tmp/s.sh && sh /tmp/s.sh",
+      "printf -v c 'printf x > node_modules/.bin/failproofai'; eval \"$c\"",
+      "(echo 'printf x > node_modules/.bin/failproofai') | sh",
+      "{ echo 'printf x > node_modules/.bin/failproofai'; } | sh",
+      "xargs -I{} sh -c {} <<'EOF'\necho 'printf x > node_modules/.bin/failproofai'\nEOF",
+      "/tmp/bin/echo 'printf x > node_modules/.bin/failproofai'",
+      "echo 'exit 0' > node_modules/.bin/failproofai",
+      'echo x >node_modules/.bin/fail"proof"ai',
+    ])("denies quoted text something runs, or a real redirect: %s", async (command) => {
+      expect(await bash(command)).toBe("deny");
+    });
+
     it.each([
       ["running another package's binary", "./node_modules/.bin/vitest run"],
       ["running a binary through node", "node node_modules/.bin/eslint src"],
@@ -626,6 +819,27 @@ describe("block-failproofai-commands — the entry a project-scope npx hook runs
     ])("judges %s in bounded time", async (_label, command) => {
       const started = performance.now();
       await bash(command);
+      expect(performance.now() - started).toBeLessThan(3000);
+    });
+
+    // From a directory on disk, where a glued value may be a link: one per
+    // letter of a long line's option words was a second of path walks.
+    it.each([
+      ["128 KB of distinct option clusters, each with a value glued on", "foo " + optionClusters(3_700)],
+      ["curl with 128 KB of glued output files", "curl " + optionClusters(3_700).replaceAll(" -", " -so")],
+      ["a chain of 2,000 links made on the line", Array.from({ length: 2000 }, (_, i) => `ln -s l${i} l${i + 1}`).join("; ") + "; printf x > l2000/x"],
+      ["1,000 links put into a directory, each written through", Array.from({ length: 1000 }, (_, i) => `ln -s /tmp/t${i} out/; printf x > out/t${i}`).join("; ")],
+      ["128 KB of echo with quoted redirects", Array.from({ length: 6_000 }, (_, i) => `echo 'a > b${i}'`).join("; ")],
+    ])("judges %s from a directory on disk in bounded time", async (_label, command) => {
+      const started = performance.now();
+      await bashIn(tmpdir(), command);
+      expect(performance.now() - started).toBeLessThan(3000);
+    });
+
+    it("judges a patch naming 7,000 files in bounded time", async () => {
+      const files = Array.from({ length: 7_000 }, (_, i) => `*** Add File: src/f${i}.ts\n+x`);
+      const started = performance.now();
+      expect(await patch({ command: v4a(...files) }, tmpdir())).toBe("allow");
       expect(performance.now() - started).toBeLessThan(3000);
     });
   });

@@ -2,7 +2,7 @@
  * Built-in security policies for Claude Code hooks.
  */
 import { resolve, join } from "node:path";
-import { lstatSync, readlinkSync, statSync } from "node:fs";
+import { lstatSync, readdirSync, readlinkSync, statSync } from "node:fs";
 import { readFile, writeFile } from "node:fs/promises";
 import { execSync, execFileSync } from "node:child_process";
 import { homedir } from "node:os";
@@ -1855,7 +1855,7 @@ function writesViaOutputFlag(head: string, args: string[], namesState: (text: st
   for (let i = 0; i < args.length; i++) {
     const arg = args[i];
     const long = flags.find((f) => f.startsWith("--") && arg.startsWith(`${f}=`));
-    if (long && namesState(arg)) return true;
+    if (long && (namesState(arg) || namesState(arg.slice(long.length + 1)))) return true;
     const bundled = /^-[A-Za-z]*[oD]$/.test(arg) && flags.includes(`-${arg[arg.length - 1]}`);
     if ((flags.includes(arg) || bundled) && namesState(args[i + 1] ?? "")) return true;
     // Or the value glued on, after the option alone or at the end of a
@@ -1874,6 +1874,41 @@ const WGET_VALUE_OPTIONS = "eoaiBtOTwQPlARDIXU";
 
 /** curl's short options that take a value (`curl --help all`, curl 8). */
 const CURL_VALUE_OPTIONS = "AbcCdDEeFHKmoPQrTtuUwxXyYz";
+
+/** Short options that take a value, for the commands whose list is known. */
+const SHORT_VALUE_OPTIONS: Record<string, string> = { curl: CURL_VALUE_OPTIONS, wget: WGET_VALUE_OPTIONS };
+
+/** More letters than a short-option cluster has when written to be read. */
+const MAX_OPTION_CLUSTER = 32;
+
+/**
+ * The values an option word may carry glued on, each a path the command may
+ * write: `--output=<file>`, and the rest of a short-option cluster,
+ * `curl -so<file>`. Where a command's value-taking letters are known the
+ * cluster is read as getopt reads it, flags up to the first letter that takes
+ * a value; elsewhere any letter may take one (`gcc -o<file>`, `tar -cf<file>`),
+ * so the rest of the word after each letter is a candidate. `null` for a
+ * cluster longer than `MAX_OPTION_CLUSTER`, which is read as reaching the
+ * state rather than tried at every split.
+ */
+function gluedOptionValues(head: string, word: string): string[] | null {
+  if (word.startsWith("--")) {
+    const eq = word.indexOf("=");
+    return eq > 2 && eq < word.length - 1 ? [word.slice(eq + 1)] : [];
+  }
+  if (!/^-[A-Za-z]/.test(word)) return [];
+  const known = SHORT_VALUE_OPTIONS[head];
+  const values: string[] = [];
+  for (let c = 1; c < word.length - 1 && /[A-Za-z]/.test(word[c]); c++) {
+    if (known !== undefined) {
+      if (known.includes(word[c])) return [word.slice(c + 1)];
+      continue;
+    }
+    if (c > MAX_OPTION_CLUSTER) return null;
+    values.push(word.slice(c + 1));
+  }
+  return values;
+}
 
 /**
  * The files a download names after its URL rather than on the line, as
@@ -2112,23 +2147,83 @@ function destroysFailproofaiState(command: string, depth = 0, startDir?: string)
   // Where else the shell may stand: not where it certainly is.
   const possible = (list: Where[]): Where[] => fold(list.filter((where) => !sameWhere(where, at)), MAX_ALTERNATE_DIRS);
   // Symlinks this line makes (`ln -s <target> <link>`), which no `lstat` sees
-  // yet, followed the way the kernel does: the first component that is one is
-  // replaced by where it points, and the result is walked again.
+  // yet: keyed by where the link really is, holding its target as written.
   const links = new Map<string, string>();
-  const followLinks = (path: string): string => {
-    let linked = path;
-    for (let hops = 0; hops < 8 && links.size > 0; hops++) {
-      let next: string | undefined;
-      for (let i = linked.indexOf("/", 1); next === undefined; i = linked.indexOf("/", i + 1)) {
-        const prefix = i === -1 ? linked : linked.slice(0, i);
-        const target = links.get(prefix);
-        if (target !== undefined) next = target + linked.slice(prefix.length);
-        if (i === -1) break;
+  // Where an absolute path really is, as the kernel resolves it: one component
+  // at a time from the root, each link (this line's or one on disk) replaced
+  // by its target where it is met, and each `..` taken from the directory
+  // reached so far. So `inline/../failproofai` through a link to
+  // `node_modules/.bin/sub` is `.bin/failproofai`, which collapsing `..` as
+  // text first read as `./failproofai` (found by hermes on
+  // FailproofAI/failproofai#1058). Past 40 links (the kernel's MAXSYMLINKS)
+  // the write fails, but where it was headed is unknown, so that is `ELOOP`
+  // and read as landing on the state. Through a link whose target is a
+  // substitution or a variable the walk cannot read, `{ via, lost }` is that
+  // target as written and what remains of the path after it.
+  const ELOOP = Symbol("ELOOP");
+  type Lost = { via: string; lost: string };
+  type RealPath = string | typeof ELOOP | Lost;
+  type Walk = { reached: string; hops: number } | typeof ELOOP | Lost;
+  // The kernel's walk from `reached` ("" is the root) with `hops` links
+  // already followed, over the components still `pending`.
+  const walkFrom = (reached: string, hops: number, pending: string[]): Walk => {
+    while (pending.length > 0) {
+      const part = pending.shift()!;
+      if (part === "" || part === ".") continue;
+      if (part === "..") {
+        reached = reached.slice(0, reached.lastIndexOf("/"));
+        continue;
       }
-      if (next === undefined) break;
-      linked = shellPath(undefined, next);
+      const next = `${reached}/${part}`;
+      let target = links.get(next);
+      const made = target !== undefined;
+      if (!made) {
+        try {
+          if (lstatSync(next).isSymbolicLink()) target = readlinkSync(next);
+        } catch {
+          // Missing or unreadable: a plain name once created, so walk on.
+        }
+      }
+      if (target === undefined) {
+        reached = next;
+        continue;
+      }
+      if (made && /[$`]/.test(target)) return { via: target, lost: pending.filter((p) => p !== "").join("/") };
+      if (++hops > 40) return ELOOP;
+      if (target.startsWith("/")) reached = "";
+      pending.unshift(...target.split("/"));
     }
-    return linked;
+    return { reached, hops };
+  };
+  // Each directory is walked once: every word read from the same place shares
+  // it, and the option values glued into a long command line are many words.
+  const directoryWalks = new Map<string, Walk>();
+  const realPaths = new Map<string, RealPath>();
+  const realPath = (raw: string): RealPath => {
+    // Longer than PATH_MAX, no write can open it, and walking it on disk one
+    // component at a time cost a second for a 128 KB word of `a/a/a/…`.
+    if (raw.length > PATH_MAX_BYTES) return shellPath(undefined, raw);
+    let real = realPaths.get(raw);
+    if (real !== undefined) return real;
+    const cut = raw.lastIndexOf("/");
+    const name = raw.slice(cut + 1);
+    let walked: Walk;
+    if (cut > 0 && name !== "" && name !== "." && name !== "..") {
+      const directory = raw.slice(0, cut);
+      let parent = directoryWalks.get(directory);
+      if (parent === undefined) directoryWalks.set(directory, (parent = walkFrom("", 0, directory.split("/"))));
+      walked =
+        parent === ELOOP
+          ? ELOOP
+          : "reached" in parent
+            ? walkFrom(parent.reached, parent.hops, [name])
+            : { via: parent.via, lost: parent.lost === "" ? name : `${parent.lost}/${name}` };
+    } else {
+      walked = walkFrom("", 0, raw.split("/"));
+    }
+    real = walked === ELOOP || !("reached" in walked) ? walked : walked.reached || "/";
+    realPaths.set(raw, real);
+    return real;
   };
 
   // A relative word read from `base`, and `//`, `.` and `..` resolved in any.
@@ -2183,9 +2278,9 @@ function destroysFailproofaiState(command: string, depth = 0, startDir?: string)
   const resolvesOntoState = (text: string): boolean =>
     resolvesFrom(at, text) || alts.some((base) => resolvesFrom(base, text));
   // A written path as the absolute path it spells from `base`: `raw` as the
-  // kernel walks it, each `..` taken after any link before it; `plain` as
-  // text; `linked` with the symlinks this line made applied.
-  const absoluteFrom = (base: Where, written: string): { raw: string; plain: string; linked: string } | undefined => {
+  // kernel walks it, each `..` taken after any link before it, and `plain` as
+  // text.
+  const absoluteFrom = (base: Where, written: string): { raw: string; plain: string } | undefined => {
     if (written === "" || written.startsWith("-") || written.includes("$") || GLOB_METACHAR_RE.test(written)) {
       return undefined;
     }
@@ -2197,41 +2292,79 @@ function destroysFailproofaiState(command: string, depth = 0, startDir?: string)
           ? `${base.full}/${written}`
           : undefined;
     if (raw === undefined) return undefined;
-    const plain = shellPath(undefined, raw);
-    return { raw, plain, linked: followLinks(plain) };
+    return { raw, plain: shellPath(undefined, raw) };
   };
-  const realPaths = new Map<string, string>();
-  const realPath = (path: string): string => {
-    // Longer than PATH_MAX, no write can open it, and walking it on disk one
-    // component at a time cost a second for a 128 KB word of `a/a/a/…`.
-    if (path.length > PATH_MAX_BYTES) return shellPath(undefined, path);
-    let real = realPaths.get(path);
-    if (real === undefined) realPaths.set(path, (real = resolveWriteTarget(path, undefined) || shellPath(undefined, path)));
-    return real;
-  };
-  // Where a written path really is, from each place the shell may stand: on
-  // disk as the kernel resolves it, and with this line's own links applied.
-  const realPathsOf = (written: string): Array<{ plain: string; real: string }> => {
-    const out: Array<{ plain: string; real: string }> = [];
+  // Where a written path really is, from each place the shell may stand: as
+  // the kernel resolves it, through links on disk and those this line makes.
+  const realPathsOf = (written: string): Array<{ plain: string; real: RealPath }> => {
+    const out: Array<{ plain: string; real: RealPath }> = [];
     for (const base of [at, ...alts]) {
       const path = absoluteFrom(base, written);
-      if (path === undefined) continue;
-      out.push({ plain: path.plain, real: realPath(path.raw) });
-      if (path.linked !== path.plain) out.push({ plain: path.plain, real: realPath(path.linked) });
+      if (path !== undefined) out.push({ plain: path.plain, real: realPath(path.raw) });
     }
     return out;
   };
+  // Through a link whose target the walk cannot read, the target as written
+  // and what remains after it, and that remainder alone the way a word is read
+  // once the walk has lost the shell's directory: as if from an installed
+  // location. `ln -s "$(npm root)/.bin" b; printf x > b/failproofai`.
+  const lostNamesState = ({ via, lost }: { via: string; lost: string }): boolean =>
+    namesState(lost === "" ? via : `${via}/${lost}`) ||
+    (lost !== "" && AS_IF_INSTALLED.some((dir) => namesState(dir + lost))) ||
+    couldBeEntryName(lost.slice(lost.lastIndexOf("/") + 1));
   // Whether a written directory really is npm's bin directory, through links.
+  // Through one the walk cannot read, it is when the target ends in `.bin`, or
+  // is a substitution (`$(npm root)/.bin` arrives cut short as `$(npm`); a
+  // variable the line never sets is read as an unknown `cd` is, which is not
+  // taken for npm's bin (`ln -sfn "$RELEASE" current && cp -r config current/`).
   const isBinDir = (written: string): boolean =>
-    realPathsOf(written.replace(/[\\/]+$/, "") || written).some(({ real }) => NPM_BIN_DIRECTORY_RE.test(real));
+    realPathsOf(written.replace(/[\\/]+$/, "") || written).some(({ real }) => {
+      if (real === ELOOP) return true;
+      if (typeof real === "string") return NPM_BIN_DIRECTORY_RE.test(real);
+      const reached = real.lost === "" ? real.via : `${real.via}/${real.lost}`;
+      return /(?:^|[\\/])\.bin[\\/]*$/i.test(reached) || (real.lost === "" && /\$\(|`/.test(real.via));
+    });
   // Whether a path really lands on what `namesState` protects once symlinks
   // are followed — those on disk, as the file tools already follow them, and
   // those this line makes: `printf x > bins/failproofai` where `bins` links to
   // `node_modules/.bin`. Only a link counts, so a backup that merely carries a
   // protected name somewhere else (`/tmp/backup/.failproofai`) does not.
   const landsOnState = (written: string): boolean =>
-    realPathsOf(written).some(({ plain, real }) => real !== plain && namesState(real));
+    realPathsOf(written).some(({ plain, real }) =>
+      real === ELOOP ? true : typeof real !== "string" ? lostNamesState(real) : real !== plain && namesState(real),
+    );
   const namesHere = (text: string): boolean => namesState(text) || resolvesOntoState(text) || landsOnState(text);
+  // `namesHere` for a value glued to an option, of which a long command line
+  // has one per letter of its option words. Every protected name spells
+  // `failproof`, so a value that spells none, climbs nowhere and expands to
+  // nothing can only reach one through a link: one this line made, or one on
+  // disk under a first component that exists, which each directory's listing,
+  // read once, answers.
+  const listings = new Map<string, Set<string> | null>();
+  const existsIn = (directory: string, name: string): boolean => {
+    let names = listings.get(directory);
+    if (names === undefined) {
+      try {
+        names = new Set(readdirSync(directory));
+      } catch {
+        names = null;
+      }
+      listings.set(directory, names);
+    }
+    return names === null ? lstatSync(`${directory}/${name}`, { throwIfNoEntry: false }) !== undefined : names.has(name);
+  };
+  const gluedValueNamesHere = (value: string): boolean => {
+    if (/failproof|\.\.|[$~]|[*?[{]|[@+!]\(/i.test(value) || links.size > 0 || value.startsWith("/")) {
+      return namesHere(value);
+    }
+    const relative = value.replace(/^(?:\.\/+)+/, "");
+    const first = relative.slice(0, (relative.indexOf("/") + 1 || relative.length + 1) - 1);
+    return (
+      first !== "" &&
+      [at, ...alts].some((base) => !base.lost && base.full?.startsWith("/") === true && existsIn(base.full, first)) &&
+      landsOnState(value)
+    );
+  };
   // What the line has assigned by the point the walk reaches, so a word built
   // from it is judged as the path it spells: `B=~/node_modules/.bin; ln -s
   // /tmp/stage $B`. In a loop a later assignment can come first, so there the
@@ -2373,25 +2506,126 @@ function destroysFailproofaiState(command: string, depth = 0, startDir?: string)
       startFull.startsWith("/") && to.full === startFull,
     );
   };
-  // `ln -s <target> <link>`: where the link points, so a later write through
-  // it on the same line lands where it would.
-  const recordLink = (args: string[]): void => {
-    if (!args.some((a) => /^-[A-Za-z]*s/.test(a) || a === "--symbolic")) return;
-    if (args.some((a) => /^-[A-Za-z]*t/.test(a) || a.startsWith("--target"))) return;
-    const operands = args.filter((a) => !a.startsWith("-"));
-    if (operands.length !== 2) return;
-    const [target, linkWord] = operands;
-    for (const base of [at, ...alts]) {
-      const link = absoluteFrom(base, linkWord.replace(/[\\/]+$/, ""));
-      if (link === undefined) continue;
-      const linkPath = /[\\/]$/.test(linkWord) ? `${link.plain}/${target.slice(target.lastIndexOf("/") + 1)}` : link.plain;
-      const resolved = target.startsWith("/")
-        ? shellPath(undefined, target)
-        : target === "~" || target.startsWith("~/")
-          ? shellPath(undefined, homedir() + target.slice(1))
-          : shellPath(linkPath.slice(0, linkPath.lastIndexOf("/")) || "/", target);
-      links.set(linkPath, resolved);
+  // `ln -s <target>… <link or directory>`, in every form GNU ln takes: `-t DIR`
+  // in any spelling, a last operand that is a directory (`.`, `dir/`, one on
+  // disk, or a link to one unless `-n`), several targets into one directory,
+  // and `-r`, which reads each target from where the shell stands rather than
+  // from the link. `ln -s node_modules/.bin/failproofai .` made `./failproofai`
+  // a link to the entry while the walk recorded the directory itself. Each link
+  // is keyed by where it really is, its parent resolved through every link
+  // before it, so a later write through it on the same line lands where it would.
+  const LN_OPTIONS = INTO_DIRECTORY_OPTIONS.get("ln")!;
+  const baseNameOf = (word: string): string => {
+    const trimmed = word.replace(/[\\/]+$/, "");
+    return trimmed.slice(trimmed.lastIndexOf("/") + 1);
+  };
+  // Where a link written as `word` from `base` goes: its parent resolved, its
+  // own name not followed, as `symlink()` creates it.
+  const linkPlace = (base: Where, word: string): string | undefined => {
+    const path = absoluteFrom(base, word.replace(/[\\/]+$/, "") || word);
+    if (path === undefined) return undefined;
+    const cut = path.raw.replace(/\/+$/, "").lastIndexOf("/");
+    const parent = realPath(path.raw.slice(0, cut) || "/");
+    const name = path.raw.replace(/\/+$/, "").slice(cut + 1);
+    if (typeof parent !== "string" || name === "" || name === "." || name === "..") return undefined;
+    return `${parent === "/" ? "" : parent}/${name}`;
+  };
+  // Whether `word` is a directory for `ln` to put links into: on disk, or a
+  // link this line made to one, followed unless `-n`. `undefined` when it does
+  // not exist yet, which a `mkdir` earlier on the line may change.
+  const linksInto = (base: Where, word: string, noDereference: boolean): boolean | undefined => {
+    if (/[\\/]$/.test(word) || word === "." || word === ".." || /[\\/]\.\.?$/.test(word)) return true;
+    const place = linkPlace(base, word);
+    if (place === undefined) return false;
+    if (links.has(place)) {
+      if (noDereference) return false;
+      const real = realPath(place);
+      if (typeof real !== "string") return true;
+      try {
+        return statSync(real).isDirectory();
+      } catch {
+        return undefined;
+      }
     }
+    try {
+      return (noDereference ? lstatSync(place) : statSync(place)).isDirectory();
+    } catch {
+      return undefined;
+    }
+  };
+  const recordLink = (args: string[]): void => {
+    let symbolic = false;
+    let fromShell = false;
+    let noDereference = false;
+    let ontoItself = false;
+    let directory: string | undefined;
+    const operands: string[] = [];
+    for (let i = 0; i < args.length; i++) {
+      const arg = args[i];
+      if (arg === "--") {
+        operands.push(...args.slice(i + 1));
+        break;
+      }
+      if (arg.startsWith("--")) {
+        const eq = arg.indexOf("=");
+        const option = longOptionOf(LN_OPTIONS, arg.slice(2, eq === -1 ? undefined : eq));
+        if (option?.full === "target-directory") directory = eq === -1 ? args[++i] : arg.slice(eq + 1);
+        else if (option?.value) i += eq === -1 ? 1 : 0;
+        else if (option?.full === "symbolic") symbolic = true;
+        else if (option?.full === "relative") fromShell = true;
+        else if (option?.full === "no-dereference") noDereference = true;
+        else if (option?.full === "no-target-directory") ontoItself = true;
+        continue;
+      }
+      if (arg.startsWith("-") && arg.length > 1) {
+        for (let c = 1; c < arg.length; c++) {
+          const flag = arg[c];
+          if (LN_OPTIONS.short.includes(flag)) {
+            // The rest of the cluster is the value, or else the next word is.
+            const value = c + 1 < arg.length ? arg.slice(c + 1) : args[++i];
+            if (flag === "t") directory = value;
+            break;
+          }
+          if (flag === "s") symbolic = true;
+          else if (flag === "r") fromShell = true;
+          else if (flag === "n") noDereference = true;
+          else if (flag === "T") ontoItself = true;
+        }
+        continue;
+      }
+      operands.push(arg);
+    }
+    if (!symbolic || operands.length === 0) return;
+    for (const base of [at, ...alts]) {
+      const placed: Array<[string | undefined, string]> = [];
+      if (directory !== undefined) {
+        for (const target of operands) placed.push([linkPlace(base, `${directory}/${baseNameOf(target)}`), target]);
+      } else if (operands.length === 1) {
+        placed.push([linkPlace(base, baseNameOf(operands[0])), operands[0]]);
+      } else {
+        const last = operands[operands.length - 1];
+        const targets = operands.slice(0, -1);
+        const into = targets.length > 1 ? true : ontoItself ? false : linksInto(base, last, noDereference);
+        // Into the directory, or the operand itself; both when it does not
+        // exist yet, since the line may have made it.
+        if (into !== false) for (const target of targets) placed.push([linkPlace(base, `${last.replace(/[\\/]+$/, "")}/${baseNameOf(target)}`), target]);
+        if (into !== true) placed.push([linkPlace(base, last), targets[0]]);
+      }
+      for (const [place, written] of placed) {
+        if (place === undefined || written === undefined) continue;
+        let target = written === "~" || written.startsWith("~/") ? homedir() + written.slice(1) : written;
+        // `-r` reads the target from where the shell stands.
+        if (fromShell && relativeWord(target) && !/[$`]/.test(target)) {
+          const fromHere = absoluteFrom(base, target);
+          if (fromHere === undefined) continue;
+          target = fromHere.raw;
+        }
+        links.set(place, target);
+      }
+    }
+    // Every path resolved so far may now run through one of these.
+    realPaths.clear();
+    directoryWalks.clear();
   };
 
   // A loop header hands its word list to the body, and the body is a separate
@@ -2479,6 +2713,17 @@ function destroysFailproofaiState(command: string, depth = 0, startDir?: string)
             (word, k) =>
               k > 0 &&
               (resolvesOntoState(word) || landsOnState(word) || (expanded[k] !== word && namesHere(expanded[k]))),
+          ) ||
+          // A value glued to its option is a path too, read from where the
+          // shell stands and through links: `cd node_modules/.bin && curl
+          // -sofailproofai <url>`, and `curl -sohook <url>` with `hook` a link
+          // to the entry (found by hermes on FailproofAI/failproofai#1058).
+          lists.some((list) =>
+            list.some((word, k) => {
+              if (k === 0 || !word.startsWith("-")) return false;
+              const values = gluedOptionValues(head, word);
+              return values === null || values.some(gluedValueNamesHere);
+            }),
           )) &&
         lists.some((list) => simpleCommandDestroys(list, namesHere))
       ) {
@@ -3645,6 +3890,121 @@ function blockWorkOnMain(ctx: PolicyContext): PolicyResult {
 }
 
 /**
+ * A patch's file headers: every file it adds, updates or deletes, and where
+ * `*** Move to:` renames one, in the format Codex's `apply_patch` takes
+ * (lenient about spacing, as its parser is); and the `---` / `+++` paths of a
+ * unified diff.
+ */
+const PATCH_FILE_RE = /^[ \t]*\*\*\*[ \t]*(?:(?:Add|Update|Delete)[ \t]+File|Move[ \t]+to)[ \t]*:[ \t]*(.*?)[ \t]*\r?$/gim;
+const UNIFIED_DIFF_FILE_RE = /^(?:---|\+\+\+)[ \t]+(.*?)(?:\t.*)?\r?$/gm;
+
+/** Input keys that hold what a file tool writes, never a patch to apply. */
+const FILE_CONTENT_KEYS = new Set(["content", "old_string", "new_string", "new_source", "file_text", "old_str", "new_str"]);
+
+/**
+ * The files an edit tool's patch writes, when the tool carries a patch instead
+ * of a path. Codex's `apply_patch` (canonical `Edit`) delivers its patch as
+ * `tool_input.command`, with no `file_path` at all, so the path check below
+ * had nothing to read and a native patch could plant `node_modules/.bin/failproofai`
+ * (found by hermes on FailproofAI/failproofai#1058). OpenCode's sends `patchText`.
+ * Read from every input that is not a file's content, as text or a list of it.
+ */
+function patchTargets(input: Record<string, unknown> | undefined): string[] {
+  const targets = new Set<string>();
+  for (const [key, value] of Object.entries(input ?? {})) {
+    if (FILE_CONTENT_KEYS.has(key)) continue;
+    const texts = typeof value === "string" ? [value] : Array.isArray(value) ? value.filter((v): v is string => typeof v === "string") : [];
+    for (const text of texts) {
+      for (const [, path] of text.matchAll(PATCH_FILE_RE)) if (path) targets.add(path);
+      for (const [, written] of text.matchAll(UNIFIED_DIFF_FILE_RE)) {
+        const path = written.replace(/^"(.*)"$/, "$1");
+        if (!path || path === "/dev/null") continue;
+        targets.add(path);
+        // `a/` and `b/` are git's prefixes, not directories, unless they are.
+        if (/^[ab]\//.test(path)) targets.add(path.slice(2));
+      }
+    }
+  }
+  return [...targets];
+}
+
+/** The builtins that print their arguments and run none of them. */
+const PRINT_COMMANDS = new Set(["echo", "printf"]);
+
+/**
+ * `command` with each `>` and `<` blanked where it is quoted text that `echo`
+ * or `printf` only prints: `echo 'cat > node_modules/.bin/failproofai'`
+ * documents a command rather than running one (found by hermes on
+ * FailproofAI/failproofai#1058). The walk reads redirects from the text,
+ * quotes and all, because a quoted program handed to `bash -c` or piped into
+ * `sh` really does redirect, and the unescaped pass drops the quotes, so both
+ * read that `>` as a redirect. Blanked only where nothing on the line can run
+ * the text: a pipeline that is one `echo` or `printf` (not `printf -v`, which
+ * stores it), with no redirect of its own, on a line with no subshell, group,
+ * substitution, `$'…'` or heredoc. Otherwise `command` comes back unchanged.
+ */
+function blankPrintedRedirects(command: string): string {
+  if (!/['"]/.test(command) || !/[<>]/.test(command)) return command;
+  const quotedAt = new Uint8Array(command.length);
+  const pieces: Array<{ start: number; end: number; piped: boolean }> = [];
+  let quote: string | null = null;
+  let start = 0;
+  let pipedIn = false;
+  for (let i = 0; i < command.length; i++) {
+    const ch = command[i];
+    if (quote === "'") {
+      if (ch === "'") quote = null;
+      else quotedAt[i] = 1;
+      continue;
+    }
+    if (quote === '"') {
+      if (ch === '"') {
+        quote = null;
+        continue;
+      }
+      if (ch === "`" || (ch === "$" && command[i + 1] === "(")) return command;
+      quotedAt[i] = 1;
+      if (ch === "\\" && i + 1 < command.length) quotedAt[++i] = 1;
+      continue;
+    }
+    if (ch === "\\") {
+      i++;
+      continue;
+    }
+    if (ch === "'" || ch === '"') {
+      if (command[i - 1] === "$") return command;
+      quote = ch;
+      continue;
+    }
+    if ("`(){}".includes(ch) || (ch === "<" && command[i + 1] === "<")) return command;
+    if ("|;&\n\r".includes(ch)) {
+      let j = i;
+      while (j < command.length && "|;&\n\r".includes(command[j])) j++;
+      const pipe = command.slice(i, j) === "|" || command.slice(i, j) === "|&";
+      pieces.push({ start, end: i, piped: pipedIn || pipe });
+      pipedIn = pipe;
+      start = j;
+      i = j - 1;
+    }
+  }
+  // An unterminated quote is a line the shell refuses: left as it is.
+  if (quote !== null) return command;
+  pieces.push({ start, end: command.length, piped: pipedIn });
+  const out = command.split("");
+  for (const { start: from, end: to, piped } of pieces) {
+    if (piped) continue;
+    const words = shellWords(command.slice(from, to));
+    if (words.length === 0 || !PRINT_COMMANDS.has(words[0].raw)) continue;
+    if (words[0].raw === "printf" && words.some(({ raw }) => /^-[A-Za-z]*v/.test(raw))) continue;
+    let redirected = false;
+    for (let k = from; k < to && !redirected; k++) redirected = (command[k] === ">" || command[k] === "<") && !quotedAt[k];
+    if (redirected) continue;
+    for (let k = from; k < to; k++) if (quotedAt[k] && (command[k] === ">" || command[k] === "<")) out[k] = "_";
+  }
+  return out.join("");
+}
+
+/**
  * The one policy that cannot be turned off — see `alwaysOn` on its definition.
  *
  * Merged from the former `block-self-pause` and `block-failproofai-commands`,
@@ -3672,22 +4032,32 @@ function blockFailproofaiCommands(ctx: PolicyContext): PolicyResult {
   // fail-closed never fires. Reading is not offered by these tools' write half,
   // so naming the state at all is the whole test.
   if (ctx.toolName === "Write" || ctx.toolName === "Edit" || ctx.toolName === "NotebookEdit") {
-    const path = getFilePath(ctx) || ((ctx.toolInput?.notebook_path as string) ?? "");
-    // The path as given AND the file it lands on. The bin entry a user-scope
-    // hook runs is usually a symlink into the package, so writing through it
-    // changes the hook's code without the package's path ever being named.
-    const kind = failproofaiFileKind(path) ?? failproofaiFileKind(resolveWriteTarget(path, ctx.session?.cwd));
-    if (kind === "code") {
-      return deny(
-        "Writing to failproofai's installed code would switch enforcement off. " +
-          "If a policy is blocking legitimate work, say so and let the operator decide.",
-      );
-    }
-    if (kind === "state") {
-      return deny(
-        "Writing to failproofai's own state would switch enforcement off. " +
-          "If a policy is blocking legitimate work, say so and let the operator decide.",
-      );
+    // The path the tool names, and every file a patch it carries names.
+    const paths = [getFilePath(ctx) || ((ctx.toolInput?.notebook_path as string) ?? ""), ...patchTargets(ctx.toolInput)];
+    // A patch's relative paths are read from the session's directory, and
+    // from the one the call names when it names one.
+    const toolCwd = ctx.toolInput?.workdir ?? ctx.toolInput?.cwd;
+    const cwds = [ctx.session?.cwd, ...(typeof toolCwd === "string" && toolCwd !== "" ? [toolCwd] : [])];
+    for (const path of paths) {
+      // The path as given AND the file it lands on. The bin entry a user-scope
+      // hook runs is usually a symlink into the package, so writing through it
+      // changes the hook's code without the package's path ever being named.
+      const kind =
+        failproofaiFileKind(path) ??
+        cwds.map((cwd) => failproofaiFileKind(resolveWriteTarget(path, cwd))).find((found) => found !== null) ??
+        null;
+      if (kind === "code") {
+        return deny(
+          "Writing to failproofai's installed code would switch enforcement off. " +
+            "If a policy is blocking legitimate work, say so and let the operator decide.",
+        );
+      }
+      if (kind === "state") {
+        return deny(
+          "Writing to failproofai's own state would switch enforcement off. " +
+            "If a policy is blocking legitimate work, say so and let the operator decide.",
+        );
+      }
     }
     return allow();
   }
@@ -3722,9 +4092,14 @@ function blockFailproofaiCommands(ctx: PolicyContext): PolicyResult {
   const shellCwd = typeof toolCwd === "string" && toolCwd !== "" ? toolCwd : ctx.session?.cwd;
   // The walk must not throw: a policy that throws is skipped by the evaluator,
   // and for this one that is an allow. So a throw is a deny, said as one.
+  // Quoted text an `echo` or `printf` only prints is read as text, in both
+  // passes (see `blankPrintedRedirects`).
+  const walked = blankPrintedRedirects(cmd);
   let destroys: boolean;
   try {
-    destroys = destroysFailproofaiState(cmd, 0, shellCwd) || destroysFailproofaiState(unescaped, 0, shellCwd);
+    destroys =
+      destroysFailproofaiState(walked, 0, shellCwd) ||
+      destroysFailproofaiState(walked === cmd ? unescaped : stripShellQuoting(walked), 0, shellCwd);
   } catch (err) {
     return deny(
       "failproofai could not read this command to check it against its own files, so it is refused. " +

@@ -121,6 +121,18 @@ export const CodexPayloads = {
         tool_input: { command },
       };
     },
+    // Codex's native file edit, as it reaches the hook: `apply_patch`, with the
+    // patch in `tool_input.command` and no `file_path` at all.
+    applyPatch(patch: string, cwd: string): Record<string, unknown> {
+      return {
+        session_id: CODEX_SESSION_ID,
+        transcript_path: TRANSCRIPT_PATH,
+        cwd,
+        hook_event_name: "pre_tool_use",
+        tool_name: "apply_patch",
+        tool_input: { command: patch },
+      };
+    },
     write(filePath: string, content: string, cwd: string): Record<string, unknown> {
       // Codex aliases Edit/Write → apply_patch in matchers, so policies that
       // filter on toolNames: ["Write"] continue to fire for Codex.

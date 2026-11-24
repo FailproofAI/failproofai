@@ -11,14 +11,15 @@
  *
  * Now each bump commit goes to a `version-bump/...` branch through
  * scripts/push-version-bump.sh, pushed with the job's own token (which the
- * ruleset rejects on `main`), and a person opens and approves the pull request.
+ * ruleset rejects on `main`). The script opens the pull request itself (or links
+ * it when GitHub refuses), and a person approves it.
  * This file runs that script against a real git remote and pins the workflows to
  * it, so neither a bypass credential nor a direct push to `main` can come back
  * unnoticed.
  */
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { execFileSync, spawnSync } from "node:child_process";
-import { existsSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { parse } from "yaml";
@@ -136,6 +137,93 @@ describe("scripts/push-version-bump.sh, against a real remote", () => {
     expect(result.status).not.toBe(0);
     expect(result.stderr).toContain("GITHUB_TOKEN is required");
   });
+
+  describe("opening the pull request", () => {
+    // A stand-in `gh` that records every call and answers `pr list` / `pr create`
+    // the way the real one does, steered by FAKE_GH_EXISTING and FAKE_GH_CREATE.
+    let fakeGh: string;
+    let ghLog: string;
+
+    beforeEach(() => {
+      fakeGh = join(dir, "gh");
+      ghLog = join(dir, "gh.log");
+      writeFileSync(
+        fakeGh,
+        [
+          "#!/usr/bin/env bash",
+          'printf "%s\\n" "$*" >> "$FAKE_GH_LOG"',
+          'case "$1 $2" in',
+          '  "pr list") printf "%s\\n" "${FAKE_GH_EXISTING:-}" ;;',
+          '  "pr create")',
+          '    if [ "${FAKE_GH_CREATE:-ok}" = ok ]; then',
+          '      echo "https://github.com/FailproofAI/failproofai/pull/4242"',
+          "    else",
+          '      echo "pull request create failed: GraphQL: GitHub Actions is not permitted to create or approve pull requests (createPullRequest)" >&2',
+          "      exit 1",
+          "    fi ;;",
+          "esac",
+          "",
+        ].join("\n"),
+      );
+      chmodSync(fakeGh, 0o755);
+    });
+
+    const ghCalls = () => (existsSync(ghLog) ? readFileSync(ghLog, "utf8").trim().split("\n") : []);
+
+    it("opens it against main with the bump's title and body", () => {
+      const result = run(["version-bump/x", "chore: bump version to 1.0.1-beta.0", "Opens 1.0.1-beta.0"], {
+        GH_BIN: fakeGh,
+        FAKE_GH_LOG: ghLog,
+      });
+
+      expect(result.status, result.stderr).toBe(0);
+      expect(result.stdout).toContain("Opened https://github.com/FailproofAI/failproofai/pull/4242");
+      expect(ghCalls()).toContain(
+        "pr create --repo FailproofAI/failproofai --base main --head version-bump/x " +
+          "--title chore: bump version to 1.0.1-beta.0 --body Opens 1.0.1-beta.0",
+      );
+      expect(readFileSync(summary, "utf8")).toContain("https://github.com/FailproofAI/failproofai/pull/4242");
+    });
+
+    it("does not open a second pull request on a re-run", () => {
+      const existing = "https://github.com/FailproofAI/failproofai/pull/4000";
+      const result = run(["version-bump/x", "chore: bump"], {
+        GH_BIN: fakeGh,
+        FAKE_GH_LOG: ghLog,
+        FAKE_GH_EXISTING: existing,
+      });
+
+      expect(result.status, result.stderr).toBe(0);
+      expect(result.stdout).toContain(`Already open: ${existing}`);
+      expect(ghCalls().some((call) => call.startsWith("pr create"))).toBe(false);
+    });
+
+    it("falls back to the link when Actions may not open pull requests, without failing the release", () => {
+      const result = run(["version-bump/x", "chore: bump"], {
+        GH_BIN: fakeGh,
+        FAKE_GH_LOG: ghLog,
+        FAKE_GH_CREATE: "denied",
+      });
+
+      expect(result.status, result.stderr).toBe(0);
+      expect(result.stdout).toContain("::warning title=Pull request not opened::");
+      expect(result.stdout).toContain('Turn on "Allow GitHub Actions to create and approve pull requests"');
+      expect(result.stdout).toContain("compare/main...version-bump/x?quick_pull=1");
+      // The branch is pushed either way.
+      expect(remoteRef("refs/heads/version-bump/x")).toBe(git(work, "rev-parse", "HEAD"));
+    });
+
+    it("never calls gh while pushing to a test remote unless told to", () => {
+      // The real `gh` on a developer machine is signed in to the real repository.
+      const result = run(["version-bump/x", "chore: bump"], {
+        PATH: `${dir}:${process.env.PATH}`,
+        FAKE_GH_LOG: ghLog,
+      });
+
+      expect(result.status, result.stderr).toBe(0);
+      expect(ghCalls()).toEqual([]);
+    });
+  });
 });
 
 /** Every workflow that bumps a version after publishing, and where its bump lives. */
@@ -174,9 +262,10 @@ describe.each(BUMPS)("$file", ({ file, job, step }) => {
     expect(pusher?.env?.GITHUB_TOKEN).toBe("${{ github.token }}");
   });
 
-  it("can push the bump branch, and leaves no token on disk for later steps", () => {
+  it("can push the bump branch and open its pull request, and leaves no token on disk", () => {
     const workflow = parse(readFileSync(resolve(WORKFLOWS, file), "utf8"));
     expect(workflow.jobs[job].permissions?.contents).toBe("write");
+    expect(workflow.jobs[job].permissions?.["pull-requests"]).toBe("write");
     const checkout = (workflow.jobs[job].steps as Step[]).find((s) =>
       String(s.uses ?? "").startsWith("actions/checkout"),
     );

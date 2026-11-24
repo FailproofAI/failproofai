@@ -1384,11 +1384,13 @@ asserts agree.
 **Through a reviewed pull request; nothing in CI pushes to `main`.** Each release workflow
 (`publish.yml`, `publish-failproofai-ts-sdk.yml` and both PyPI workflows) ends by committing
 the next version and handing it to `scripts/push-version-bump.sh`. That script pushes the
-commit to a `version-bump/<package>-<version>` branch with the job's own token, and prints a
-link to a pre-filled pull request in the log and the job summary. Someone opens it, and it
-needs one approval like any other change. Until it merges, `main` still carries the version
-that was just released, so the next release from `main` is refused as already published.
-Merge the bump first.
+commit to a `version-bump/<package>-<version>` branch with the job's own token and opens the
+pull request for it. If GitHub refuses to open one, it prints a link to a pre-filled pull
+request instead, as a warning, and the release still succeeds. The pull request needs one
+approval like any other change. Until it merges, `main` still carries the version that was
+just released, so the next release from `main` is refused as already published. Merge the
+bump first. A pull request opened by the job's token starts no workflow runs (GitHub drops
+events that token causes), so the bump's checks run on `main` once it merges.
 
 Why not a direct push:
 - `failproofai-rules` rejects the job's `GITHUB_TOKEN` on `main` (GH013), and that token
@@ -1398,10 +1400,13 @@ Why not a direct push:
   that asked for its secret. When it was removed, every release broke at its **first**
   step, because `publish.yml` minted its token before the npm publish. Now nothing before a
   publish needs a write credential.
-- **Keep "Allow GitHub Actions to create and approve pull requests" off.** It is one switch
-  for both actions. With it on, a workflow can approve a pull request, and that approval
-  counts as the required review. That is why the workflows link a pull request instead of
-  opening one.
+- **Opening the pull request needs "Allow GitHub Actions to create and approve pull
+  requests"** (Settings > Actions > General). It is one switch for both actions: with it on,
+  a workflow on any branch can also *approve* a pull request, and that approval counts as
+  the required review. So turn it on only together with a review requirement a workflow
+  cannot meet: require code owner review (a `CODEOWNERS` file plus the ruleset's "Require
+  review from Code Owners"), or required reviewers from a team in `failproofai-rules`. With
+  the switch off, every bump still pushes its branch and prints the link.
 
 Submodule pointers work the same way. No workflow pushes gitlink bumps into another
 repository any more, and `bump-platform-submodule.yml` is gone. Dependabot's

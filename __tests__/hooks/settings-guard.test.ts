@@ -954,6 +954,28 @@ describe("block-failproofai-commands — review round six", () => {
     });
   });
 
+  describe("a redirect after a copy's destination (reported by the #1795 session)", () => {
+    it.each([
+      `cp /dev/null ~/.claude/settings.json 2>/dev/null`,
+      `cp /tmp/x ~/.claude/settings.json > /tmp/log`,
+      `cp /tmp/x ~/.claude/settings.json < /dev/null`,
+      `cp /tmp/x ~/.claude/settings.json 2>&1`,
+      `install -m 644 /tmp/x ~/.claude/settings.json 2>/dev/null`,
+    ])("denies %s", async (command) => {
+      expect(await bash(command)).toBe(true);
+    });
+
+    it("reads a glob over the home directory spelled out (the #1795 session's other case)", async () => {
+      expect(await bash(`rm -rf ${h6}/.clau*`)).toBe(true);
+    });
+
+    it("closes it for the state too, and leaves a copy out of the settings alone", async () => {
+      expect((await run("Bash", { command: "cp /dev/null ~/.failproofai/policies-config.json 2>/dev/null" })).decision).toBe("deny");
+      expect(await bashDecision("cp ~/.claude/settings.json /tmp/backup.json 2>/dev/null")).toBe("allow");
+      expect(await bashDecision("cp /tmp/a /tmp/b 2>/dev/null")).toBe("allow");
+    });
+  });
+
   describe("where the shell stands (CodeRabbit)", () => {
     it("lets a cd before a | move nothing", async () => {
       expect(await bashDecision(`cd ~/.claude | cat; cp /tmp/example.json settings.json`)).toBe("allow");

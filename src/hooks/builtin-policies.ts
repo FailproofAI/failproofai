@@ -1325,7 +1325,19 @@ function commandWords(simpleCommand: string): string[] {
     if (!skippable) break;
     i++;
   }
-  return tokens.slice(i);
+  // From the command word on, a redirect is no argument either: `cp /dev/null
+  // ~/.claude/settings.json 2>/dev/null` copies onto the settings file, and a
+  // copy's destination is its LAST word. The redirect is judged on its own,
+  // by REDIRECT_TARGET_RE; `<(…)` and `>(…)` are arguments and stay.
+  const words: string[] = [];
+  for (let k = i; k < tokens.length; k++) {
+    if (k > i && /^\d*(?:>{1,2}\|?|<{1,3})(?!\()/.test(tokens[k])) {
+      if (/^\d*(?:>{1,2}\|?|<{1,3})$/.test(tokens[k])) k++;
+      continue;
+    }
+    words.push(tokens[k]);
+  }
+  return words;
 }
 
 /**

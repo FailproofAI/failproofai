@@ -16,6 +16,7 @@ import { tmpdir } from "os";
 import { resolve, dirname, relative, join } from "path";
 import { pathToFileURL } from "url";
 import { createHash } from "crypto";
+import { Script } from "node:vm";
 import { shimsDir } from "./fp-home";
 import { hookLogWarn } from "./hook-logger";
 
@@ -85,6 +86,19 @@ const LOCAL_IMPORT_RE = /(?:import\s+(?:[\s\S]*?\s+from\s+)?|export\s+(?:[\s\S]*
 
 /** Regex to find local relative require specifiers (CJS). */
 const LOCAL_REQUIRE_RE = /require\s*\(\s*(['"])(\.\.?\/[^'"]+)\1\s*\)/g;
+
+/** Parse without executing; CommonJS copies need native require/module/exports. */
+function isCommonJs(filePath: string, code: string): boolean {
+  if (filePath.endsWith(".cjs")) return true;
+  if (filePath.endsWith(".mjs")) return false;
+  try {
+    new Script(`(function (exports, require, module, __filename, __dirname) {\n${code.replace(/^#![^\n]*/, "")}\n})`);
+    return true;
+  } catch {
+    // Static imports, exports and top-level await need an ESM copy.
+    return false;
+  }
+}
 
 export async function fileExists(path: string): Promise<boolean> {
   try {
@@ -259,6 +273,36 @@ export async function rewriteFileTree(
   const queue: string[] = [entryPath];
   const visited = new Set<string>();
   const tmpFiles: string[] = [];
+  const sourceCode = new Map<string, string>();
+  const temporaryPaths = new Map<string, string>();
+
+  async function readSource(filePath: string): Promise<string> {
+    const cached = sourceCode.get(filePath);
+    if (cached !== undefined) return cached;
+    // Verify the same raw bytes used to choose the module format and rewrite
+    // imports. Dependencies can be inspected before their turn in the queue.
+    const buf = await readFile(filePath);
+    if (entrySha256 && filePath === entryPath) {
+      const actual = createHash("sha256").update(buf).digest("hex");
+      if (actual !== entrySha256) {
+        throw new Error(
+          `cloud-managed policy failed integrity re-verification at load: expected ${entrySha256}, got ${actual}`,
+        );
+      }
+    }
+    const code = buf.toString("utf-8");
+    sourceCode.set(filePath, code);
+    return code;
+  }
+
+  async function temporaryPath(filePath: string): Promise<string> {
+    const cached = temporaryPaths.get(filePath);
+    if (cached) return cached;
+    const extension = isCommonJs(filePath, await readSource(filePath)) ? ".cjs" : "";
+    const path = filePath + tmpSuffix + extension;
+    temporaryPaths.set(filePath, path);
+    return path;
+  }
 
   let esmShimUrl: string | null = null;
   if (distIndex && distUrl) {
@@ -272,22 +316,7 @@ export async function rewriteFileTree(
     if (visited.has(filePath)) continue;
     visited.add(filePath);
 
-    let code: string;
-    if (entrySha256 && filePath === entryPath) {
-      // Read the raw bytes, verify the pin against THEM, then decode and rewrite
-      // that same in-memory content — filePath is never read again, so the bytes
-      // imported below are exactly the bytes verified here.
-      const buf = await readFile(filePath);
-      const actual = createHash("sha256").update(buf).digest("hex");
-      if (actual !== entrySha256) {
-        throw new Error(
-          `cloud-managed policy failed integrity re-verification at load: expected ${entrySha256}, got ${actual}`,
-        );
-      }
-      code = buf.toString("utf-8");
-    } else {
-      code = await readFile(filePath, "utf-8");
-    }
+    let code = await readSource(filePath);
 
     // Rewrite 'failproofai' or legacy 'claudeye' imports to the ESM shim (or direct CJS for require)
     if (esmShimUrl) {
@@ -317,7 +346,7 @@ export async function rewriteFileTree(
         if (!visited.has(resolved) && !queue.includes(resolved)) {
           queue.push(resolved);
         }
-        let relPath = relative(dir, resolved + tmpSuffix).split("\\").join("/");
+        let relPath = relative(dir, await temporaryPath(resolved)).split("\\").join("/");
         if (!relPath.startsWith(".")) relPath = "./" + relPath;
         rewrites.set(specifier, relPath);
       }
@@ -332,7 +361,7 @@ export async function rewriteFileTree(
       code = code.replace(new RegExp(`"${escaped}"`, "g"), `"${replacement}"`);
     }
 
-    const tmpPath = filePath + tmpSuffix;
+    const tmpPath = await temporaryPath(filePath);
     await writeFile(tmpPath, code, "utf-8");
     tmpFiles.push(tmpPath);
   }

@@ -6,6 +6,10 @@
 
 - npm releases publish through trusted publishing (OIDC) instead of the `NPM_TOKEN` secret: `publish.yml` for `failproofai`, the four `@failproofai/failproofaid-*` platform packages and the typo aliases, and `publish-failproofai-ts-sdk.yml` for `@failproofai/sdk`. Each publishing job upgrades to npm 11 (Node 22 bundles npm 10, which cannot do the OIDC exchange), checks before anything publishes that npm is new enough and an OIDC token is available, and runs in a GitHub Environment (`npm-failproofai`, `npm-failproofai-ts-sdk`) that the npmjs.com trusted-publisher entries name. The `npm whoami` checks are gone, since they cannot check trusted publishing, and the platform-package publisher's retry after a rejected provenance statement now passes `--provenance=false`, because trusted publishing would otherwise sign it again. Each package needs its trusted-publisher entry on npmjs.com before the next release; the setup is documented at the top of both workflows (#1046)
 
+### Fixes
+
+- An agent can no longer switch its own enforcement off by editing its CLI's settings: the always-on guard (`block-failproofai-commands`) refused writes to `~/.failproofai` only, so `"disableAllHooks": true` in any Claude Code settings layer, or failproofai's entries taken out of any agent's hooks file, stopped every policy, the guard included. It now refuses agent writes to every integration's settings and hook files (Claude Code, Codex `hooks.json` and `config.toml`, Copilot, Cursor, OpenCode, Pi, Antigravity, Goose, Factory, Devin, Hermes, OpenClaw): Write, Edit, MultiEdit, NotebookEdit and `apply_patch` edits, checked after symlinks, and shell writes through the same walk that protects `~/.failproofai`. That walk now also catches `yq -i`, `awk -i inplace`, `sed`'s `e` and `W` commands, file-moving `git` subcommands and interpreters' inline programs, for the state as well. Reading those files stays allowed, and `failproofai config --status` now reports a `disableAllHooks` that is switching failproofai's Claude Code hooks off (FailproofAI/agenteye#1794)
+
 ## 1.0.16-beta.0 — 2026-11-23
 
 ### Fixes

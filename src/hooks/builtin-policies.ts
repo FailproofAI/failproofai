@@ -16,6 +16,13 @@ import { POLICY_CATALOG } from "./policy-catalog";
 import { allow, deny, instruct } from "./policy-helpers";
 import { normalizePolicyName, registerPolicy } from "./policy-registry";
 import { hookLogWarn } from "./hook-logger";
+import {
+  agentSettingsGlobCandidates,
+  agentSettingsGlobDecoys,
+  agentSettingsWriteTarget,
+  isAgentSettingsPath,
+  shellTextNamesAgentSettings,
+} from "./agent-settings-guard";
 
 /**
  * Whether `resolved` lives under an agent CLI's home directory
@@ -48,43 +55,16 @@ function isAgentInternalPath(resolved: string): boolean {
 }
 
 /**
- * Whether `resolved` is a settings/hooks file for an agent CLI:
- *   • Claude Code:  `.claude/settings.json`, `.claude/settings.local.json`, etc.
- *   • Codex:        `.codex/hooks.json`
- *   • Copilot CLI:  `.copilot/hooks/*.json`, `.github/hooks/*.json`
- *   • Cursor Agent: `.cursor/hooks.json`
- *   • OpenCode:     `.opencode/opencode.{json,jsonc}`,
- *                   `.opencode/plugins/*.{mjs,js,ts}`,
- *                   `~/.config/opencode/{opencode.json,opencode.jsonc,config.json}`,
- *                   `~/.config/opencode/plugins/*.{mjs,js,ts}`
- *   • Pi:           `.pi/settings.json` (project) and `.pi/agent/settings.json`
- *                   (user); also the Pi-managed extension dir
- *                   `.pi/extensions/` / `.pi/agent/extensions/`.
- *   • Antigravity CLI (agy): reuses `~/.gemini/` — `~/.gemini/settings.json`
- *                   and the customization-root hook config
- *                   `~/.gemini/config/hooks.json`.
+ * Whether `resolved` is a settings or hook-config file for an agent CLI — any
+ * of the eleven integrations, listed with the reason each one counts in
+ * `agent-settings-guard.ts`.
+ *
  * These must NEVER be edited by the agent itself — that would let it disable
- * its own protections.
+ * its own protections. `block-failproofai-commands` refuses writes to them
+ * (always on); `block-read-outside-cwd` refuses reads (opt-in).
  */
 function isAgentSettingsFile(resolved: string): boolean {
-  if (/[\\/]\.claude[\\/]settings(?:\.[^/\\]+)?\.json$/.test(resolved)) return true;
-  if (/[\\/]\.codex[\\/]hooks\.json$/.test(resolved)) return true;
-  if (/[\\/]\.copilot[\\/]hooks[\\/][^/\\]+\.json$/.test(resolved)) return true;
-  if (/[\\/]\.github[\\/]hooks[\\/][^/\\]+\.json$/.test(resolved)) return true;
-  if (/[\\/]\.cursor[\\/]hooks\.json$/.test(resolved)) return true;
-  // OpenCode: project config + plugins, user config + plugins, legacy config.
-  if (/[\\/]\.opencode[\\/]opencode\.jsonc?$/.test(resolved)) return true;
-  if (/[\\/]\.opencode[\\/]plugins[\\/][^/\\]+\.(?:mjs|js|ts)$/.test(resolved)) return true;
-  if (/[\\/]\.config[\\/]opencode[\\/]opencode\.jsonc?$/.test(resolved)) return true;
-  if (/[\\/]\.config[\\/]opencode[\\/]config\.json$/.test(resolved)) return true;
-  if (/[\\/]\.config[\\/]opencode[\\/]plugins[\\/][^/\\]+\.(?:mjs|js|ts)$/.test(resolved)) return true;
-  // Pi: settings + extensions dirs (project and user-scope variants).
-  if (/[\\/]\.pi[\\/](?:agent[\\/])?settings\.json$/.test(resolved)) return true;
-  if (/[\\/]\.pi[\\/](?:agent[\\/])?extensions[\\/]/.test(resolved)) return true;
-  // Antigravity (agy) reuses ~/.gemini/: settings.json + the customization-root hooks.json.
-  if (/[\\/]\.gemini[\\/]settings\.json$/.test(resolved)) return true;
-  if (/[\\/]\.gemini[\\/]config[\\/]hooks\.json$/.test(resolved)) return true;
-  return false;
+  return isAgentSettingsPath(resolved);
 }
 
 // Back-compat aliases — kept for any caller that imports the old names.
@@ -617,9 +597,16 @@ const SAFE_EXEC_COMMANDS = new Set([
  * `git` is otherwise treated as carrying a path as PROSE — `git commit -m
  * "document ~/.failproofai layout"` must not deny — but `git clean -xdff
  * .failproofai` deletes the directory as thoroughly as `rm -rf` does.
+ *
+ * The second row moves or rewrites files too: `git mv .claude/settings.json x`
+ * takes an agent's hooks away, `git -C ~/.claude pull` replaces them with
+ * whatever the remote holds, and `git config -f <file>` writes INI into any file
+ * it is pointed at. Like the first row, these only count when the command
+ * already names a protected path.
  */
 const GIT_DESTRUCTIVE_SUBCOMMANDS = new Set([
   "clean", "rm", "restore", "checkout", "reset", "stash",
+  "mv", "pull", "merge", "switch", "rebase", "cherry-pick", "revert", "am", "apply", "config",
 ]);
 
 /**
@@ -722,7 +709,8 @@ const GLOB_DECOYS = [
 ];
 
 /**
- * True when this token is a glob that could expand onto failproofai's state.
+ * True when this token is a glob that could expand onto the target — failproofai's
+ * state, or an agent's settings files (see `ProtectedPathTarget`).
  *
  * The floor used to be a literal `fail` in the token, and that is exactly what
  * a glob is for: `rm -rf ~/.f*ailproofai` spells the same directory without the
@@ -738,15 +726,15 @@ const GLOB_DECOYS = [
  * allowed because they sweep the decoys too; `rm -rf /tmp/test-failures*` stays
  * allowed because it reaches no candidate at all.
  */
-function globCouldNameState(raw: string): boolean {
+function globCouldNameTarget(raw: string, target: ProtectedPathTarget): boolean {
   // Both readings of a trailing `)`: part of the pattern, and the close of a
   // subshell that wrapped it. Trying both is safe in the way widening always is
   // here — the decoy test still has to pass.
   const stripped = raw.replace(/^[()]+|[()]+$/g, "");
-  return globWordCouldNameState(raw) || (stripped !== raw && globWordCouldNameState(stripped));
+  return globWordCouldNameTarget(raw, target) || (stripped !== raw && globWordCouldNameTarget(stripped, target));
 }
 
-function globWordCouldNameState(token: string): boolean {
+function globWordCouldNameTarget(token: string, target: ProtectedPathTarget): boolean {
   if (!GLOB_METACHAR_RE.test(token)) return false;
   // Braces FIRST, because that is the order the shell works in: brace expansion
   // rewrites the word into several words, and only then is each one matched
@@ -755,7 +743,7 @@ function globWordCouldNameState(token: string): boolean {
   // shell turns into `~/.fa*ilproofai` and then into `~/.failproofai` — read as
   // naming nothing at all.
   for (const word of expandBraces(token)) {
-    if (wordNamesState(word)) return true;
+    if (wordNamesTarget(word, target)) return true;
   }
   return false;
 }
@@ -877,8 +865,8 @@ function firstBraceGroup(word: string): { start: number; end: number; alternativ
  * `~/.{failproofai,other}` carries no `.failproofai` as written, and the word it
  * expands to needs no glob compilation to be recognised.
  */
-function wordNamesState(word: string): boolean {
-  if (FAILPROOFAI_STATE_PATH_RE.test(word)) return true;
+function wordNamesTarget(word: string, target: ProtectedPathTarget): boolean {
+  if (target.namesLiteral(word)) return true;
   // Every path PREFIX, not just the whole word. The candidates are the state
   // directory itself, so `~/.f*ailproofai/policies-config.json` — a glob in a
   // segment that is not the last one — compiled to a pattern that could never
@@ -886,7 +874,7 @@ function wordNamesState(word: string): boolean {
   // the state is naming the state.
   const segments = word.split("/");
   for (let end = 1; end <= segments.length; end++) {
-    if (globPrefixNamesState(segments.slice(0, end).join("/"))) return true;
+    if (globPrefixNamesTarget(segments.slice(0, end).join("/"), target)) return true;
   }
   return false;
 }
@@ -1031,7 +1019,7 @@ function bracketExpressionAt(token: string, start: number): { source: string; en
  * One `/`-delimited prefix of a brace-expanded word, compiled and tried against
  * the candidates. Braces are already gone by here; an unmatched one is literal.
  */
-function globPrefixNamesState(token: string): boolean {
+function globPrefixNamesTarget(token: string, target: ProtectedPathTarget): boolean {
   if (!GLOB_METACHAR_RE.test(token)) return false;
   const pattern = "^" + compileGlobPattern(token);
   let re: RegExp;
@@ -1040,8 +1028,8 @@ function globPrefixNamesState(token: string): boolean {
   } catch {
     return false;
   }
-  if (!STATE_GLOB_CANDIDATES.some((candidate) => re.test(candidate))) return false;
-  return !GLOB_DECOYS.some((decoy) => re.test(decoy));
+  if (!target.globCandidates.some((candidate) => re.test(candidate))) return false;
+  return !target.globDecoys.some((decoy) => re.test(decoy));
 }
 
 /**
@@ -1105,7 +1093,7 @@ function bareToken(token: string): string {
  * arrived here decapitated — an unterminated group that expands to nothing and
  * compiles to a pattern matching nothing. A closing character that really did
  * belong to a shell group leaves a word still carrying the literal path, which
- * the literal check reads, and `globCouldNameState` tries the stripped form too.
+ * the literal check reads, and `globCouldNameTarget` tries the stripped form too.
  */
 function unquotedToken(token: string): string {
   return token.replace(/^['"]+|['"]+$/g, "");
@@ -1149,10 +1137,14 @@ function commandWords(simpleCommand: string): string[] {
 /**
  * True when this one simple command would destroy whatever it is pointed at.
  *
- * Reached only for a command that already names failproofai's state, so the
+ * Reached only for a command that already names the protected target, so the
  * question is narrow: is this a read, or is it everything else.
  */
-function simpleCommandDestroys(words: string[], namesState: (text: string) => boolean): boolean {
+function simpleCommandDestroys(
+  words: string[],
+  namesState: (text: string) => boolean,
+  target: ProtectedPathTarget,
+): boolean {
   if (words.length === 0) return false;
   const head = commandBasename(words[0]);
   const args = words.slice(1);
@@ -1179,20 +1171,38 @@ function simpleCommandDestroys(words: string[], namesState: (text: string) => bo
   // state without `-i` anywhere on the line.
   if (head === "sed") {
     if (args.some((a) => a.startsWith("-i") || a.startsWith("--in-place"))) return true;
+    // `e` runs a shell command, as a command (`1e cp …`) or as the flag on `s`
+    // (`s/x/y/e`), so a sed that reads nothing at all can still write anything.
+    if (args.some((a) => /(?:^|[;{}/0-9$,!])[gpIiMm0-9]*e[gpIiMm0-9]*(?:$|[;}])/.test(a))) return true;
     // The filename may ride in the same token (`'s/a/b/w<path>'`) or in the
     // next one, because a quoted script containing a space is two tokens by the
     // time it gets here. `s/a/b/w` and a bare `w` both end in a `w` that
     // follows a delimiter, which is what separates them from a word like `raw`.
+    // `W` writes too, and an address (`1w`, `$W`) can stand in front of either.
     return args.some(
-      (a, i) => /(?:^|[;}/\s])w$/.test(a) && namesState(args[i + 1] ?? ""),
-    ) || args.some((a) => /(?:^|[;}/\s])w\s*\S*\.failproofai/.test(a));
+      (a, i) => /(?:^|[;}/\s0-9$])[wW]$/.test(a) && namesState(args[i + 1] ?? ""),
+    ) || args.some((a) =>
+      [...a.matchAll(/(?:^|[;}/\s0-9$])[wW]\s*(\S+)/g)].some(([, file]) => namesState(file)),
+    );
+  }
+
+  // `yq -i` rewrites the file it reads, and reads JSON as readily as YAML.
+  if (head === "yq") {
+    if (args.some((a) => /^-[A-Za-z]*i/.test(a) || /^--in-?place/.test(a))) return true;
   }
 
   // `awk` can run a shell (`system("rm -rf …")`) or pipe into one, so its
   // program has to be read for those two, not just for the `>` the redirect
   // scan already catches.
   if (head === "awk" || head === "gawk" || head === "mawk") {
-    return args.some((a) => /system\s*\(|\|\s*["']|\|&/.test(a));
+    // gawk's `inplace` extension rewrites every input file, loaded by flag
+    // (`-i inplace`, `--include=inplace`) or from the program (`@include`).
+    const inplace = args.some(
+      (a, i) =>
+        ((a === "-i" || a === "--include" || a === "@include") && /^inplace/.test(args[i + 1] ?? "")) ||
+        /^(?:-iinplace|--include=inplace)/.test(a),
+    );
+    return inplace || args.some((a) => /system\s*\(|\|\s*["']|\|&/.test(a));
   }
 
   // Copying the state OUT is a backup. Copying anything ONTO it — classically
@@ -1235,6 +1245,7 @@ function simpleCommandDestroys(words: string[], namesState: (text: string) => bo
   if (writesViaOutputFlag(head, args, namesState)) return true;
 
   if (STATE_READ_COMMANDS.has(head) || STATE_MENTION_COMMANDS.has(head)) return false;
+  if (target.harmlessCommands?.has(head)) return false;
   return true;
 }
 
@@ -1260,7 +1271,87 @@ function writesViaOutputFlag(head: string, args: string[], namesState: (text: st
 }
 
 /**
- * True when `command` would delete, move or overwrite failproofai's own state.
+ * What the shell walk below protects, so one walk serves two targets.
+ *
+ * It was written for failproofai's own state. An agent's settings and hook
+ * files need exactly the same reading of a command — which end of a copy the
+ * path sits on, whether `sed` has `-i`, where a variable or a `cd` carries the
+ * path — so the walk takes its target as a parameter instead of existing twice.
+ */
+interface ProtectedPathTarget {
+  /** Whether a word, a value or a whole pipeline names the target as written. */
+  namesLiteral(text: string): boolean;
+  /** Paths a glob has to be able to reach to count as aimed at the target. */
+  globCandidates: readonly string[];
+  /** Ordinary paths a glob aimed at the target must miss. */
+  globDecoys: readonly string[];
+  /** Heads that cannot write or remove the target, beyond the shared read and mention lists. */
+  harmlessCommands?: ReadonlySet<string>;
+}
+
+/** failproofai's own state. Names, not copies, so widening any of them widens the walk. */
+const FAILPROOFAI_STATE_TARGET: ProtectedPathTarget = {
+  namesLiteral: (text) => FAILPROOFAI_STATE_PATH_RE.test(text),
+  globCandidates: STATE_GLOB_CANDIDATES,
+  globDecoys: GLOB_DECOYS,
+};
+
+/**
+ * `mkdir` and `touch` create, and neither can overwrite or remove a settings
+ * file — while an agent making `.claude/commands/` is ordinary work.
+ */
+const AGENT_SETTINGS_HARMLESS_COMMANDS: ReadonlySet<string> = new Set(["mkdir", "touch"]);
+
+/**
+ * Agents' settings and hook files (agent-settings-guard.ts), for a session in
+ * `cwd`: a relative word is resolved against it, the way the shell will.
+ */
+function agentSettingsShellTarget(cwd: string | undefined): ProtectedPathTarget {
+  return {
+    namesLiteral: (text) => shellTextNamesAgentSettings(text, cwd),
+    globCandidates: agentSettingsGlobCandidates(cwd),
+    globDecoys: [...GLOB_DECOYS, ...agentSettingsGlobDecoys()],
+    harmlessCommands: AGENT_SETTINGS_HARMLESS_COMMANDS,
+  };
+}
+
+/** Interpreters that take a program inline or on stdin. Never readers. */
+const INLINE_INTERPRETERS = "python[0-9.]*|pypy[0-9.]*|node|nodejs|bun|deno|perl|ruby|php|lua|osascript|pwsh|powershell";
+
+/**
+ * A program handed to an interpreter on its command line: `python3 -c "…"`,
+ * `node -e '…'`, `perl -pe '…'`, `deno eval "…"`.
+ *
+ * The program is not shell, but the walk splits it like shell — on every `;` —
+ * so `python3 -c "import json; p='<path>'; json.dump(d, open(p,'w'))"` left the
+ * path in a piece that reads as a bare assignment with no command in front of
+ * it, and the interpreter's own piece named nothing. So the whole program is
+ * judged as one: an interpreter is never on the read list, and naming the
+ * target anywhere in its program is enough.
+ */
+const INLINE_PROGRAM_RE = new RegExp(
+  String.raw`(?:^|[\s;&|(\x60])(?:[^\s;&|()\x60]*/)?(?:${INLINE_INTERPRETERS})(?:\s+[^\s;&|]+)*?\s+(?:-[A-Za-z]*[ceErp]|--eval|--print|--command|-Command|eval)\s+("(?:[^"\\]|\\.)*"|'[^']*')`,
+  "g",
+);
+
+/**
+ * A heredoc fed to one of those interpreters, and its body: `python3 - <<'EOF'`.
+ * A shell's own heredoc is left to the walk, which already reads each line of
+ * it as a command.
+ */
+const INTERPRETER_HEREDOC_RE = new RegExp(
+  String.raw`(?:^|[\s;&|(\x60])(?:[^\s;&|()\x60]*/)?(?:${INLINE_INTERPRETERS})\b[^\n]*?<<-?\s*(['"]?)([A-Za-z_][A-Za-z0-9_]*)\1[^\n]*\n([\s\S]*?)(?:\n[ \t]*\2[ \t]*(?:\n|$)|$)`,
+  "g",
+);
+
+/** True when `command` would delete, move or overwrite failproofai's own state. */
+function destroysFailproofaiState(command: string): boolean {
+  return destroysProtectedPath(command, FAILPROOFAI_STATE_TARGET);
+}
+
+/**
+ * True when `command` would delete, move or overwrite the target — written for
+ * failproofai's own state, which is what the examples below are about.
  *
  * Deleting the state IS disabling enforcement, and it never names the binary:
  * `rm ~/.failproofai/policies/packs/installed.json` switches off every pack
@@ -1282,7 +1373,7 @@ function writesViaOutputFlag(head: string, args: string[], namesState: (text: st
  * `cat ~/.failproofai/config.json && rm /tmp/scratch` has to stay allowed, and
  * does, because nothing in the second command reaches the state.
  */
-function destroysFailproofaiState(command: string, depth = 0): boolean {
+function destroysProtectedPath(command: string, target: ProtectedPathTarget, depth = 0): boolean {
   // A substitution runs its body as a command of its own, so it is judged as
   // one — `echo $(rm -rf ~/.failproofai)` otherwise presents `echo` as the head
   // and walks straight through. Bounded, because a body can contain another.
@@ -1293,7 +1384,7 @@ function destroysFailproofaiState(command: string, depth = 0): boolean {
   if (depth === 0) {
     const bodies = substitutionBodies(command);
     for (let i = 0; i < bodies.length && i < 64; i++) {
-      if (destroysFailproofaiState(bodies[i], 1)) return true;
+      if (destroysProtectedPath(bodies[i], target, 1)) return true;
       bodies.push(...substitutionBodies(bodies[i]));
     }
   }
@@ -1313,7 +1404,7 @@ function destroysFailproofaiState(command: string, depth = 0): boolean {
     const before = stateVars.size;
     for (const [name, value] of assignments) {
       const holdsState =
-        FAILPROOFAI_STATE_PATH_RE.test(value) ||
+        target.namesLiteral(value) ||
         [...value.matchAll(VAR_REFERENCE_RE)].some(([, ref]) => stateVars.has(ref));
       if (holdsState) stateVars.add(name);
     }
@@ -1321,15 +1412,23 @@ function destroysFailproofaiState(command: string, depth = 0): boolean {
   }
 
   const namesState = (text: string): boolean => {
-    if (FAILPROOFAI_STATE_PATH_RE.test(text)) return true;
+    if (target.namesLiteral(text)) return true;
     for (const [, name] of text.matchAll(VAR_REFERENCE_RE)) {
       if (stateVars.has(name)) return true;
     }
     // Per token, not over the whole text: a glob compiled from a whole command
     // line matches nothing, and it is the individual operand — `~/.failproof*`
     // — that would expand onto the state.
-    return text.split(/\s+/).some((token) => globCouldNameState(unquotedToken(token)));
+    return text.split(/\s+/).some((token) => globCouldNameTarget(unquotedToken(token), target));
   };
+
+  // Programs handed to an interpreter, judged whole (see INLINE_PROGRAM_RE).
+  for (const [, program] of command.matchAll(INLINE_PROGRAM_RE)) {
+    if (namesState(program)) return true;
+  }
+  for (const [, , , body] of command.matchAll(INTERPRETER_HEREDOC_RE)) {
+    if (namesState(body ?? "")) return true;
+  }
 
   let cwdInState = false;
   // How deep in `( … )` the walk is, and how deep it was when the `cd` fired.
@@ -1378,7 +1477,7 @@ function destroysFailproofaiState(command: string, depth = 0): boolean {
         // the rest of the line was judged as if it stood in the state directory.
         cwdInState = false;
         cdParenDepth = null;
-      } else if (reachesState && words.length > 0 && simpleCommandDestroys(words, namesState)) {
+      } else if (reachesState && words.length > 0 && simpleCommandDestroys(words, namesState, target)) {
         // Judged BEFORE the closing parenthesis is counted: a `rm -rf ./*)`
         // still runs inside the subshell it closes.
         return true;
@@ -2454,12 +2553,24 @@ function blockFailproofaiCommands(ctx: PolicyContext): PolicyResult {
   // completely as `rm -rf` does — and the machine still reads as fresh, so
   // fail-closed never fires. Reading is not offered by these tools' write half,
   // so naming the state at all is the whole test.
-  if (ctx.toolName === "Write" || ctx.toolName === "Edit" || ctx.toolName === "NotebookEdit") {
+  if (ctx.toolName === "Write" || ctx.toolName === "Edit" || ctx.toolName === "MultiEdit" || ctx.toolName === "NotebookEdit") {
     const path = getFilePath(ctx) || ((ctx.toolInput?.notebook_path as string) ?? "");
     if (FAILPROOFAI_STATE_PATH_RE.test(path)) {
       return deny(
         "Writing to failproofai's own state would switch enforcement off. " +
           "If a policy is blocking legitimate work, say so and let the operator decide.",
+      );
+    }
+    // The agent CLI's own settings and hook files are how it calls failproofai
+    // at all. `"disableAllHooks": true` in any Claude Code settings layer, or a
+    // hooks file with our entries taken out, switches off every policy — this
+    // one included — and Claude Code's file watcher applies it before the next
+    // tool call. Checked after symlinks, and through apply_patch's patch text.
+    const settingsFile = agentSettingsWriteTarget(ctx.toolInput, ctx.session?.cwd);
+    if (settingsFile) {
+      return deny(
+        `${settingsFile} is an agent settings or hook file, and editing it could switch failproofai's hooks off. ` +
+          "If this change is needed, say so and let the user make it.",
       );
     }
     return allow();
@@ -2494,6 +2605,16 @@ function blockFailproofaiCommands(ctx: PolicyContext): PolicyResult {
     return deny(
       "Deleting, moving or overwriting failproofai's own state would switch enforcement off. " +
         "If a policy is blocking legitimate work, say so and let the operator decide.",
+    );
+  }
+  // The same walk, aimed at the agents' settings and hook files: `jq
+  // '.disableAllHooks=true' ~/.claude/settings.json > t && mv t
+  // ~/.claude/settings.json` switches the hooks off without naming failproofai.
+  const settingsTarget = agentSettingsShellTarget(ctx.session?.cwd);
+  if (destroysProtectedPath(cmd, settingsTarget) || destroysProtectedPath(unescaped, settingsTarget)) {
+    return deny(
+      "Writing, moving or deleting an agent's settings or hook files could switch failproofai's hooks off. " +
+        "If this change is needed, say so and let the user make it.",
     );
   }
   return allow();

@@ -1,0 +1,428 @@
+// @vitest-environment node
+import { describe, it, expect, vi, beforeAll, afterAll } from "vitest";
+import { mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { BUILTIN_POLICIES } from "../../src/hooks/builtin-policies";
+import { POLICY_CATALOG } from "../../src/hooks/policy-catalog";
+import type { PolicyContext } from "../../src/hooks/policy-types";
+import {
+  agentPatchTargetPaths,
+  agentToolWritePaths,
+  isAgentConfigDirPath,
+  isAgentSettingsPath,
+} from "../../src/hooks/agent-settings-guard";
+
+// Same mocks as state-guard.test.ts: no policy under test may spawn anything.
+// The filesystem IS read here — the guard follows symlinks — but only under
+// a throwaway HOME and work directory created below.
+vi.mock("node:fs/promises", () => ({
+  readFile: vi.fn(),
+  writeFile: vi.fn(),
+  stat: vi.fn().mockResolvedValue({ size: 0 }),
+  open: vi.fn(),
+}));
+
+vi.mock("node:child_process", () => ({
+  execSync: vi.fn(),
+  execFileSync: vi.fn(),
+}));
+
+const policy = BUILTIN_POLICIES.find((p) => p.name === "block-failproofai-commands")!;
+const PROJ = "/work/proj";
+
+let root: string;
+let home: string;
+let savedHome: string | undefined;
+
+beforeAll(() => {
+  // os.homedir() reads HOME on every call on POSIX, so the guard's `~` and its
+  // home-directory symlink check both land in this directory, never the real one.
+  root = mkdtempSync(join(tmpdir(), "fpai-settings-guard-"));
+  home = join(root, "home");
+  mkdirSync(home, { recursive: true });
+  savedHome = process.env.HOME;
+  process.env.HOME = home;
+});
+
+afterAll(() => {
+  if (savedHome === undefined) delete process.env.HOME;
+  else process.env.HOME = savedHome;
+  rmSync(root, { recursive: true, force: true });
+});
+
+function run(toolName: string, toolInput: Record<string, unknown>, cwd: string = PROJ) {
+  const ctx: PolicyContext = { eventType: "PreToolUse", payload: {}, toolName, toolInput, session: { cwd } };
+  return policy.fn(ctx);
+}
+
+const decision = async (toolName: string, toolInput: Record<string, unknown>, cwd?: string) =>
+  (await run(toolName, toolInput, cwd)).decision;
+
+/** Denied, and for the settings reason rather than the state or CLI reason next to it. */
+const deniedAsSettings = async (toolName: string, toolInput: Record<string, unknown>, cwd?: string) => {
+  const result = await run(toolName, toolInput, cwd);
+  return result.decision === "deny" && /settings or hook file/.test(result.reason ?? "");
+};
+
+const write = (filePath: string, cwd?: string) => deniedAsSettings("Write", { file_path: filePath, content: "{}" }, cwd);
+const bash = (command: string, cwd?: string) => deniedAsSettings("Bash", { command }, cwd);
+const bashDecision = (command: string, cwd?: string) => decision("Bash", { command }, cwd);
+
+/**
+ * #1794: the always-on guard refused writes to `~/.failproofai` only. An agent
+ * could set `"disableAllHooks": true` in any Claude Code settings layer, or take
+ * failproofai's entries out of any CLI's hook file, and from then on no policy
+ * ran — this guard included — with nothing anywhere saying so.
+ */
+describe("block-failproofai-commands — agent settings and hook files", () => {
+  describe("the reported edits", () => {
+    it("denies setting disableAllHooks through Edit on the user settings", async () => {
+      expect(
+        await deniedAsSettings("Edit", {
+          file_path: `${home}/.claude/settings.json`,
+          old_string: "{",
+          new_string: '{"disableAllHooks": true,',
+        }),
+      ).toBe(true);
+    });
+
+    it("denies writing a project's local settings, which overrides the user's", async () => {
+      expect(
+        await deniedAsSettings("Write", {
+          file_path: `${PROJ}/.claude/settings.local.json`,
+          content: '{"disableAllHooks":true}',
+        }),
+      ).toBe(true);
+    });
+
+    it("denies the jq-then-mv rewrite from the shell", async () => {
+      expect(await bash(`jq '.disableAllHooks=true' ~/.claude/settings.json > t && mv t ~/.claude/settings.json`)).toBe(true);
+    });
+
+    it("denies emptying another CLI's hooks file", async () => {
+      expect(await write(`${home}/.codex/hooks.json`)).toBe(true);
+    });
+  });
+
+  describe("every integration's files", () => {
+    // What `failproofai policies --install` writes for each CLI, plus the files
+    // that can switch those hooks off without touching them (Codex's trust
+    // hashes in config.toml, Goose's plugin registration).
+    const homeFiles = [
+      ".claude/settings.json",
+      ".claude/settings.local.json",
+      ".codex/hooks.json",
+      ".codex/config.toml",
+      ".copilot/hooks/failproofai.json",
+      ".cursor/hooks.json",
+      ".config/opencode/opencode.json",
+      ".config/opencode/plugins/failproofai.mjs",
+      ".pi/agent/settings.json",
+      ".pi/agent/extensions/failproofai/index.ts",
+      ".gemini/settings.json",
+      ".gemini/config/hooks.json",
+      ".agents/plugins/failproofai/hooks/hooks.json",
+      ".config/goose/config.yaml",
+      ".factory/hooks.json",
+      ".config/devin/config.json",
+      ".hermes/config.yaml",
+      ".hermes/profiles/work/config.yaml",
+      ".hermes-work/config.yaml",
+      ".hermes/plugins/failproofai/__init__.py",
+      ".openclaw/openclaw.json",
+      ".openclaw-work/openclaw.json",
+    ];
+    it.each(homeFiles)("denies writing ~/%s", async (file) => {
+      expect(await write(`${home}/${file}`)).toBe(true);
+    });
+
+    const projectFiles = [
+      ".claude/settings.json",
+      ".codex/hooks.json",
+      ".github/hooks/failproofai.json",
+      ".cursor/hooks.json",
+      ".opencode/opencode.json",
+      ".opencode/plugins/failproofai.mjs",
+      ".pi/settings.json",
+      ".agents/hooks.json",
+      ".agents/plugins/failproofai/hooks/hooks.json",
+      ".factory/hooks.json",
+      ".devin/config.json",
+    ];
+    it.each(projectFiles)("denies writing <project>/%s", async (file) => {
+      expect(await write(`${PROJ}/${file}`)).toBe(true);
+    });
+  });
+
+  describe("the tools that reach them", () => {
+    it("is invoked for MultiEdit, and denies it", async () => {
+      const entry = POLICY_CATALOG.find((p) => p.name === "block-failproofai-commands")!;
+      expect(entry.match.toolNames).toEqual(expect.arrayContaining(["Bash", "Write", "Edit", "MultiEdit", "NotebookEdit"]));
+      expect(
+        await deniedAsSettings("MultiEdit", {
+          file_path: `${home}/.claude/settings.json`,
+          edits: [{ old_string: "{", new_string: '{"disableAllHooks": true,' }],
+        }),
+      ).toBe(true);
+    });
+
+    it("reads the paths an apply_patch edit carries inside its patch", async () => {
+      // Codex, Copilot and OpenCode canonicalize apply_patch to Edit with no
+      // file_path at all, so a guard reading only file_path saw nothing.
+      const update = "*** Begin Patch\n*** Update File: .claude/settings.json\n@@\n-{\n+{\"disableAllHooks\": true,\n*** End Patch\n";
+      expect(await deniedAsSettings("Edit", { command: ["apply_patch", update] })).toBe(true);
+      expect(await deniedAsSettings("Edit", { input: `*** Begin Patch\n*** Add File: ${home}/.codex/hooks.json\n+{}\n*** End Patch` })).toBe(true);
+      expect(await deniedAsSettings("Edit", { patchText: "*** Begin Patch\n*** Delete File: .cursor/hooks.json\n*** End Patch" })).toBe(true);
+      expect(await deniedAsSettings("Edit", { input: "*** Begin Patch\n*** Update File: notes.md\n*** Move to: .github/hooks/failproofai.json\n*** End Patch" })).toBe(true);
+      expect(await deniedAsSettings("Edit", { patch: "--- a/.cursor/hooks.json\n+++ b/.cursor/hooks.json\n@@ -1 +1 @@\n-x\n+y\n" })).toBe(true);
+    });
+
+    it("allows an apply_patch edit of ordinary files, and a Write whose content is a diff", async () => {
+      expect(await decision("Edit", { command: ["apply_patch", "*** Begin Patch\n*** Update File: src/index.ts\n@@\n-a\n+b\n*** End Patch\n"] })).toBe("allow");
+      // The content of a Write is content: its file_path is what it writes.
+      expect(
+        await decision("Write", { file_path: `${PROJ}/docs/fix.md`, content: "+++ b/.claude/settings.json\n*** Update File: .claude/settings.json" }),
+      ).toBe("allow");
+    });
+  });
+
+  describe("paths as the tool would open them", () => {
+    it("resolves a relative path against the session's cwd", async () => {
+      expect(await write(".claude/settings.json")).toBe(true);
+      expect(await write("../other/.claude/settings.local.json")).toBe(true);
+      expect(await write("settings.json", `${home}/.claude`)).toBe(true);
+    });
+
+    it("expands ~", async () => {
+      expect(await write("~/.claude/settings.json")).toBe(true);
+    });
+
+    it("ignores case, as macOS's default filesystem does", async () => {
+      expect(await write(`${home}/.Claude/Settings.json`)).toBe(true);
+      expect(await write(`${home}/.CODEX/HOOKS.JSON`)).toBe(true);
+    });
+  });
+
+  describe("symlinks", () => {
+    let work: string;
+    beforeAll(() => {
+      work = join(root, "work");
+      mkdirSync(join(work, "real", ".claude"), { recursive: true });
+      mkdirSync(join(work, "proj"), { recursive: true });
+      writeFileSync(join(work, "real", ".claude", "settings.json"), "{}");
+      symlinkSync(join(work, "real", ".claude", "settings.json"), join(work, "proj", "cfg.json"));
+      symlinkSync(join(work, "real", ".claude"), join(work, "proj", "link"));
+      // The dotfiles layout: the real file names no agent directory at all.
+      mkdirSync(join(home, "dotfiles", "claude"), { recursive: true });
+      mkdirSync(join(home, ".claude"), { recursive: true });
+      writeFileSync(join(home, "dotfiles", "claude", "settings.json"), "{}");
+      writeFileSync(join(home, "dotfiles", "zshrc"), "");
+      symlinkSync(join(home, "dotfiles", "claude", "settings.json"), join(home, ".claude", "settings.json"));
+    });
+
+    it("denies a write through a link to a settings file", async () => {
+      expect(await write(join(work, "proj", "cfg.json"), join(work, "proj"))).toBe(true);
+    });
+
+    it("denies creating a settings file through a linked directory", async () => {
+      expect(await write(join(work, "proj", "link", "settings.local.json"), join(work, "proj"))).toBe(true);
+    });
+
+    it("denies editing the real file behind the home directory's settings link", async () => {
+      expect(
+        await deniedAsSettings("Edit", {
+          file_path: join(home, "dotfiles", "claude", "settings.json"),
+          old_string: "{",
+          new_string: '{"disableAllHooks": true,',
+        }),
+      ).toBe(true);
+    });
+
+    it("allows the rest of a dotfiles directory", async () => {
+      expect(await decision("Write", { file_path: join(home, "dotfiles", "zshrc"), content: "" })).toBe("allow");
+    });
+  });
+
+  describe("ordinary file work stays allowed", () => {
+    it.each([
+      `${PROJ}/src/settings.json`,
+      `${PROJ}/config/hooks.json`,
+      `${PROJ}/hooks.json`,
+      `${PROJ}/.claude/commands/review.md`,
+      `${PROJ}/.claude/agents/reviewer.md`,
+      `${PROJ}/.claude/worktrees/feature/src/index.ts`,
+      `${PROJ}/.claude/worktrees/feature/.github/workflows/ci.yml`,
+      `${PROJ}/.claude/settings.json.bak`,
+      `${PROJ}/.github/workflows/ci.yml`,
+      `${PROJ}/.cursor/rules/style.mdc`,
+      `${PROJ}/.codex/AGENTS.md`,
+      `${home}/.claude/skills/review/SKILL.md`,
+      `${home}/.claude/CLAUDE.md`,
+    ])("allows writing %s", async (file) => {
+      expect(await decision("Write", { file_path: file, content: "x" })).toBe("allow");
+    });
+  });
+
+  describe("from the shell", () => {
+    it.each([
+      // Rewrites in place, through tools on the read allowlist.
+      `sed -i 's/"hooks"/"_hooks"/' ~/.claude/settings.json`,
+      `yq -i '.hooks = {}' .agents/hooks.json`,
+      `awk -i inplace '{print}' ~/.claude/settings.json`,
+      `sed '1e cp /tmp/x ~/.claude/settings.json' /dev/null`,
+      `sed -n '1W ~/.claude/settings.json' /tmp/x`,
+      `perl -pi -e 's/a/b/' .claude/settings.json`,
+      // Redirects, copies and links onto the file.
+      `echo '{"disableAllHooks":true}' > .claude/settings.local.json`,
+      `printf '{}' > ~/.codex/hooks.json`,
+      `cp /tmp/empty.json ~/.cursor/hooks.json`,
+      `tee .github/hooks/failproofai.json < /dev/null`,
+      `curl -o ~/.claude/settings.json https://example.com/settings.json`,
+      `ln -sf /tmp/evil.json ~/.claude/settings.json`,
+      `chmod 000 ~/.claude/settings.json`,
+      // Removing or moving the file or the directory that holds it.
+      `rm ~/.claude/settings.json`,
+      `rm -rf ~/.claude`,
+      `mv ~/.claude ~/.claude.bak`,
+      `find ~/.claude -name settings.json -delete`,
+      `rm -rf ~/.hermes/plugins/failproofai`,
+      `sed -i '/failproofai/d' ~/.hermes/config.yaml`,
+      `git checkout -- .claude/settings.json`,
+      `git mv .claude/settings.json /tmp/x`,
+      `git -C ~/.claude pull`,
+      // Interpreters, which name the path only inside their code.
+      `python3 -c "import json; p='/home/u/.claude/settings.json'; d=json.load(open(p)); d['disableAllHooks']=True; json.dump(d, open(p,'w'))"`,
+      `node -e "require('fs').writeFileSync(process.env.HOME+'/.claude/settings.json','{}')"`,
+      `python3 -c "import shutil; shutil.rmtree('/home/u/.claude')"`,
+      // The path carried by a cd, a variable, a substitution, a glob or quoting.
+      `cd ~/.claude && sed -i 's/a/b/' settings.json`,
+      `F=~/.claude/settings.json; jq . $F > /tmp/x && cp /tmp/x $F`,
+      `D=~/.claude; rm -rf $D`,
+      `echo $(rm ~/.claude/settings.json)`,
+      `rm -f ~/.claude/settings.*`,
+      `rm -rf ~/.claude/*`,
+      `rm ~/.cl*/settings.json`,
+      `rm ~/.claude/"settings.json"`,
+      `rm -rf ~/.config/op*`,
+      // A program on an interpreter's stdin, which the walk reads line by line.
+      `python3 - <<'EOF'\nimport json\np = '/home/u/.claude/settings.json'\njson.dump({"disableAllHooks": True}, open(p, 'w'))\nEOF`,
+    ])("denies %s", async (command) => {
+      expect(await bash(command)).toBe(true);
+    });
+
+    it.each([
+      // Sweeps of a shared parent: the same decoy floor that keeps `rm -rf *`
+      // allowed for the state guard.
+      `rm -rf ~/.config/*`,
+      `rm -rf ~/.{cache,config}/*`,
+      `rm -rf .github/*`,
+    ])("allows the sweep %s", async (command) => {
+      expect(await bashDecision(command)).toBe("allow");
+    });
+
+    it("resolves relative words against a cwd an earlier call left inside ~/.claude", async () => {
+      const inClaude = `${home}/.claude`;
+      expect(await bash(`sed -i 's/x/y/' settings.json`, inClaude)).toBe(true);
+      expect(await bash(`rm *.json`, inClaude)).toBe(true);
+      expect(await bash(`rm -rf .`, inClaude)).toBe(true);
+      // The rest of that directory is ordinary files.
+      expect(await bashDecision(`rm -rf skills/old`, inClaude)).toBe("allow");
+      expect(await bashDecision(`sed -i 's/a/b/' commands/review.md`, inClaude)).toBe("allow");
+    });
+
+    it.each([
+      `cat ~/.claude/settings.json`,
+      `jq '.hooks' ~/.claude/settings.json`,
+      `cat ~/.claude/settings.json | jq '.disableAllHooks=true'`,
+      `sed -n '1,20p' ~/.claude/settings.json`,
+      `sed 's/a/b/' ~/.claude/settings.json`,
+      `cp ~/.claude/settings.json /tmp/settings.backup.json`,
+      `diff ~/.claude/settings.json /tmp/x.json`,
+      `grep -n failproofai ~/.codex/hooks.json`,
+      `ls -la ~/.claude`,
+      `git add .claude/settings.json && git commit -m "Add project hooks"`,
+      `git diff .claude/settings.json`,
+      `git log -p -- .claude/settings.json`,
+      `mkdir -p .claude/commands`,
+      `mkdir -p .claude`,
+      `touch .claude/settings.local.json`,
+      `rm -rf .claude/worktrees/old`,
+      `rm -rf ~/.claude/projects/-home-u-old`,
+      `git worktree remove .claude/worktrees/feature`,
+      `cd .claude/worktrees/feature && git status`,
+      `rm -rf node_modules dist`,
+      `rm -rf *`,
+      `rm */*.json`,
+      `rm -rf ~/.*`,
+      `echo "edit ~/.claude/settings.json yourself"`,
+      `gh pr create --title x --body "Blocks edits to ~/.claude/settings.json"`,
+      `code ~/.claude/settings.json`,
+      `bun test __tests__/hooks/settings-guard.test.ts`,
+    ])("allows %s", async (command) => {
+      expect(await bashDecision(command)).toBe("allow");
+    });
+  });
+
+  describe("the state guard beside it is unchanged", () => {
+    it("still denies the state for the state's own reason", async () => {
+      const result = await run("Bash", { command: "rm -rf ~/.failproofai" });
+      expect(result.decision).toBe("deny");
+      expect(result.reason).toMatch(/failproofai's own state/);
+      expect(await decision("Write", { file_path: `${home}/.failproofai/policies-config.json`, content: "{}" })).toBe("deny");
+    });
+
+    it("still allows reading the state", async () => {
+      expect(await bashDecision("cat ~/.failproofai/policies-config.json")).toBe("allow");
+    });
+
+    // The walk is shared, so the writers it learned for settings files reach
+    // the state too. Each of these was allowed before.
+    it.each([
+      `yq -i '.enabledPolicies = []' ~/.failproofai/policies-config.json`,
+      `awk -i inplace '{print}' ~/.failproofai/policies-config.json`,
+      `sed '1e rm -rf ~/.failproofai' /dev/null`,
+      `python3 -c "import os; p='/home/u/.failproofai/policies/packs/installed.json'; os.remove(p)"`,
+      `git mv ~/.failproofai/policies-config.json /tmp/x`,
+    ])("now denies %s", async (command) => {
+      const result = await run("Bash", { command });
+      expect(result.decision).toBe("deny");
+      expect(result.reason).toMatch(/failproofai's own state/);
+    });
+  });
+});
+
+describe("agent-settings-guard helpers", () => {
+  it("matches settings files anchored at the end, and config directories exactly", () => {
+    expect(isAgentSettingsPath("/h/.claude/settings.json")).toBe(true);
+    expect(isAgentSettingsPath(".claude/settings.local.json")).toBe(true);
+    expect(isAgentSettingsPath("/h/.claude/settings.json.bak")).toBe(false);
+    expect(isAgentSettingsPath("/h/my.claude/settings.json")).toBe(false);
+    expect(isAgentSettingsPath("/h/.claude/projects/x/settings.json")).toBe(false);
+    expect(isAgentConfigDirPath("/h/.claude")).toBe(true);
+    expect(isAgentConfigDirPath("/h/.claude/")).toBe(true);
+    expect(isAgentConfigDirPath("/h/.claude/skills")).toBe(false);
+    expect(isAgentConfigDirPath("/h/.github")).toBe(false);
+    expect(isAgentConfigDirPath("/h/.github/hooks")).toBe(true);
+  });
+
+  it("reads file paths before patch text, and patch text only without them", () => {
+    expect(agentToolWritePaths({ file_path: "/a", content: "*** Update File: /b" })).toEqual(["/a"]);
+    expect(agentToolWritePaths({ notebook_path: "/n.ipynb" })).toEqual(["/n.ipynb"]);
+    expect(agentToolWritePaths({ command: ["apply_patch", "*** Begin Patch\n*** Update File: x/y.ts\n*** End Patch"] })).toEqual(["x/y.ts"]);
+    expect(agentToolWritePaths(undefined)).toEqual([]);
+  });
+
+  it("finds every file a patch touches", () => {
+    expect(
+      agentPatchTargetPaths(
+        "*** Begin Patch\n*** Add File: a.ts\n*** Update File: b.ts\n*** Move to: c.ts\n*** Delete File: d.ts\n*** End Patch",
+      ),
+    ).toEqual(["a.ts", "b.ts", "c.ts", "d.ts"]);
+    expect(agentPatchTargetPaths("--- a/x.json\n+++ b/x.json\n--- /dev/null\n+++ b/new.json\n")).toEqual([
+      "x.json",
+      "x.json",
+      "new.json",
+    ]);
+  });
+});

@@ -232,7 +232,7 @@ export const POLICY_CATALOG: PolicyCatalogEntry[] = [
     name: "block-failproofai-commands",
     displayTitle: "Tried to disable, pause or modify failproofai itself",
     impact: "An agent that can pause or remove enforcement can switch off every other policy.",
-    description: "Block failproofai CLI commands, self-pause and uninstallation",
+    description: "Block failproofai CLI commands, self-pause, uninstallation, and agent edits to hook settings",
     // PermissionRequest is carried over from the merged-in `block-self-pause`.
     // It is a real enforcement point on Copilot and Devin, and dropping it would
     // have left this guard blind on both.
@@ -240,10 +240,12 @@ export const POLICY_CATALOG: PolicyCatalogEntry[] = [
     // through this guard unguarded: the agent never needs a shell to overwrite
     // `~/.failproofai/policies-config.json` with `{"enabledPolicies":[]}` — it
     // just writes the file. Every CLI canonicalizes its own file tool's path
-    // key to `file_path`, so one branch covers all of them.
+    // key to `file_path`, so one branch covers all of them. MultiEdit is the
+    // same write through Claude Code's other edit tool, and these tools are
+    // also how an agent would set `"disableAllHooks": true` in its settings.
     match: {
       events: ["PreToolUse", "PermissionRequest"],
-      toolNames: ["Bash", "Write", "Edit", "NotebookEdit"],
+      toolNames: ["Bash", "Write", "Edit", "MultiEdit", "NotebookEdit"],
     },
     defaultEnabled: true,
     alwaysOn: true,

@@ -92,7 +92,7 @@ This quickstart gets one machine reporting sessions, runs an audit, and deploys 
 
     Read any pack before taking it with `failproofai policies show <owner>/<repo>`, and see [policy packs](/policies/packs) for taking only part of one.
 
-    Until this runs, the only thing enforcing is `block-failproofai-commands` — the always-on guard that stops an agent switching Failproof AI off. `failproofai policies` lists what is on.
+    Until this runs, the only thing enforcing is `block-failproofai-commands` — the always-on guard that stops an agent switching Failproof AI off, whether through its CLI, its files, or the agent's own hook settings. `failproofai policies` lists what is on.
   </Step>
   <Step title="Prevent the failure">
     Follow [Prevent your first failure with a policy](/start/first-policy). Start in observe mode, inspect matches, then enforce the reviewed version.

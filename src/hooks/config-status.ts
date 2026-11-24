@@ -24,6 +24,7 @@
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { readCloudCredentials } from "./cloud-enrollment";
+import { claudeHooksSwitchedOffBy, claudeSettingsLayersByPrecedence } from "./claude-hooks-switch";
 import { CODEX_UNTRUSTED_NOTICE, codexHookTrust, type CodexHookTrust } from "./codex-system-hooks";
 import { describeMachine } from "./cloud-enrollment-cli";
 import { cloudBaseFor } from "./cloud-connection";
@@ -43,14 +44,14 @@ import { spoolBacklog } from "./flush-cli";
 import { isAgentTraced, readConfig, readCredentials, readVersionFile } from "./fp-config";
 import { collectorHealthFile, customPoliciesDir } from "./fp-home";
 import { configuredCustomPolicyPaths, findProjectConfigDir, readMergedHooksConfig } from "./hooks-config";
-import { detectInstalledClis, listInstallableIds } from "./integrations";
+import { claudeCode, detectInstalledClis, listInstallableIds } from "./integrations";
 import { notEnforcingReason, type NotEnforcingReason } from "./manager";
 import { hasInstalledRegexPacks, readInstalledPacks } from "./pack-manifest";
 import { CORE_SOURCE } from "./pack-store";
 import { formatDuration, listActivePauses } from "./session-pause";
 import { pauseClockTime, type PauseClock } from "./session-pause-cli";
 import { optsFor, screenKit, type ScreenKitOpts, type TTYOut } from "./tui";
-import type { IntegrationType } from "./types";
+import { HOOK_SCOPES, type IntegrationType } from "./types";
 
 /**
  * A health record older than this was left by a daemon that stopped writing it.
@@ -152,6 +153,12 @@ export interface StatusFacts {
    * hooks nobody has trusted, so hooks being installed is not enough.
    */
   codex?: CodexHookTrust;
+  /**
+   * Present when failproofai's Claude Code hooks are installed and a settings
+   * file's `"disableAllHooks": true` is in effect, so Claude Code runs none of
+   * them — the always-on guard included. `path` is the file that decides.
+   */
+  claudeHooksOff?: { path: string };
 }
 
 /** Seams for everything that would otherwise reach a service manager, PATH or the network. */
@@ -163,6 +170,8 @@ export interface StatusDeps {
   detectInstalled?: () => IntegrationType[];
   notEnforcing?: (cwd?: string) => NotEnforcingReason | null;
   codexTrust?: () => CodexHookTrust;
+  /** The Claude Code settings file switching failproofai's hooks off, or null. */
+  claudeHooksOff?: (cwd: string) => string | null;
 }
 
 /**
@@ -377,6 +386,7 @@ export async function gatherStatusFacts(deps: StatusDeps = {}): Promise<StatusFa
     policies: summarizePolicySources(cwd),
     notEnforcing,
     codex: readCodexTrust(deps),
+    ...claudeHooksOffFact(deps, cwd),
   };
 }
 
@@ -385,6 +395,33 @@ function readCodexTrust(deps: StatusDeps): CodexHookTrust {
     return (deps.codexTrust ?? codexHookTrust)();
   } catch {
     return { kind: "none" };
+  }
+}
+
+/**
+ * Which Claude Code settings file, if any, switches failproofai's hooks off.
+ *
+ * Asked only when failproofai's Claude hooks are installed at some scope: the
+ * key matters to this screen only because it silences them. Never throws.
+ */
+export function claudeHooksSwitchedOff(cwd: string): string | null {
+  const installed = HOOK_SCOPES.some((scope) => claudeCode.hooksInstalledInSettings(scope, cwd));
+  if (!installed) return null;
+  return claudeHooksSwitchedOffBy(
+    claudeSettingsLayersByPrecedence({
+      user: claudeCode.getSettingsPath("user", cwd),
+      project: claudeCode.getSettingsPath("project", cwd),
+      local: claudeCode.getSettingsPath("local", cwd),
+    }),
+  );
+}
+
+function claudeHooksOffFact(deps: StatusDeps, cwd: string): Pick<StatusFacts, "claudeHooksOff"> {
+  try {
+    const path = (deps.claudeHooksOff ?? claudeHooksSwitchedOff)(cwd);
+    return path ? { claudeHooksOff: { path } } : {};
+  } catch {
+    return {};
   }
 }
 
@@ -426,6 +463,15 @@ export function pickStatusAttention(facts: StatusFacts): StatusAttention | null 
       severity: "fail",
       text: "The cloud is refusing this machine's key, so nothing reaches the dashboard.",
       fix: "failproofai config",
+    };
+  }
+  // Ahead of "not enforcing": this one is silent from inside the session, and
+  // it is what an agent switching its own enforcement off leaves behind.
+  if (facts.claudeHooksOff) {
+    return {
+      severity: "fail",
+      text: "Claude Code is running none of failproofai's hooks: disableAllHooks is true.",
+      detail: `Remove "disableAllHooks" from ${facts.claudeHooksOff.path}.`,
     };
   }
   if (facts.notEnforcing) {
@@ -617,6 +663,9 @@ export function renderStatusScreen(facts: StatusFacts, opts: ScreenKitOpts & { c
     ],
     ["policies", policiesValue()],
     ...(codexValue() ? [["codex", codexValue()!] as [string, string]] : []),
+    ...(facts.claudeHooksOff
+      ? [["claude", `${kit.off} Not enforcing: disableAllHooks in ${facts.claudeHooksOff.path}`] as [string, string]]
+      : []),
   ];
 
   const sections: Array<[string, Array<[string, string]>]> = [

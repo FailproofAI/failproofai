@@ -1469,6 +1469,7 @@ function simpleCommandDestroys(
   rawSimple: string,
   cwdInTarget = false,
   cwds: ReadonlyArray<string | undefined> = [undefined],
+  valuesOfWord: (word: string) => string[] | null = () => null,
 ): boolean {
   if (words.length === 0) return false;
   const head = commandBasename(words[0]);
@@ -1560,6 +1561,16 @@ function simpleCommandDestroys(
     // reaches it through: `cp -l ~/.claude/settings.json /tmp/x; echo … > /tmp/x`.
     const links = args.some((a) => /^-(?!-)[A-Za-z]*[ls]/.test(a) || a === "--link" || a === "--symbolic-link");
     if (head === "cp" && links && args.some((a) => !a.startsWith("-") && namesState(a))) return true;
+    // `--parents` keeps each source's own path under the directory:
+    // `cp --parents .claude/settings.json ~` writes ~/.claude/settings.json.
+    const parents = head === "cp" && args.some((a) => a.length >= 4 && "--parents".startsWith(a));
+    const landing = (dir: string, source: string): string => {
+      const plain = stripShellQuoting(source);
+      if (parents) return `${dir}/${plain.replace(/^(?:\.\/)+/, "").replace(/^\/+/, "")}`;
+      const name = plain.replace(/\/+$/, "").split("/").pop() ?? "";
+      const contents = name === "" || name === "." || name === ".." || (head === "rsync" && plain.endsWith("/"));
+      return contents ? dir : `${dir}/${name}`;
+    };
     const target = copyTargetDirectory(head, args);
     if (target) {
       // Every other operand is a source, and lands in the directory under its
@@ -1567,10 +1578,7 @@ function simpleCommandDestroys(
       // `cp -t ~/.claude /tmp/notes.md` and `cp -t /tmp/bak ~/.claude/settings.json` do not.
       const sources = args.filter((a, i) => !a.startsWith("-") && !target.values.has(i));
       const dir = stripShellQuoting(target.dir).replace(/\/+$/, "");
-      return sources.some((source) => {
-        const name = stripShellQuoting(source).replace(/\/+$/, "").split("/").pop() ?? "";
-        return namesState(name === "" || name === "." || name === ".." ? dir : `${dir}/${name}`);
-      });
+      return sources.some((source) => namesState(landing(dir, source)));
     }
     const operands = args.filter((a) => !a.startsWith("-"));
     const destination = operands[operands.length - 1];
@@ -1581,13 +1589,12 @@ function simpleCommandDestroys(
     // (`dir/.`, rsync's `dir/`) land in the directory itself.
     const sources = operands.slice(0, -1);
     const noTarget = args.some((a) => a === "--no-target-directory" || /^-(?!-)[A-Za-z]*T/.test(a));
-    if (!noTarget && sources.length > 0 && cwds.some((cwd) => existingDirectory(destination, cwd))) {
-      const dir = stripShellQuoting(destination).replace(/\/+$/, "");
-      return sources.some((source) => {
-        const plain = stripShellQuoting(source);
-        const name = plain.replace(/\/+$/, "").split("/").pop() ?? "";
-        const contents = name === "" || name === "." || name === ".." || (head === "rsync" && plain.endsWith("/"));
-        return namesState(contents ? dir : `${dir}/${name}`);
+    // A destination that is just `$D` reads as the directories D is given.
+    const dirs = valuesOfWord(destination) ?? [destination];
+    if (!noTarget && sources.length > 0 && dirs.every((dir) => cwds.some((cwd) => existingDirectory(dir, cwd)))) {
+      return dirs.some((dir) => {
+        const plainDir = stripShellQuoting(dir).replace(/\/+$/, "");
+        return sources.some((source) => namesState(landing(plainDir, source)));
       });
     }
     return namesState(destination);
@@ -2166,7 +2173,7 @@ function lexShell(text: string, substitutionBody = false): ShellLex {
   let lastNamed: Map<string, number> | undefined;
   // Later words an expansion builds (`bash /tmp/exam$X`), as patterns over the
   // names they could make; past the cap, every name counts as used.
-  let wildNames: Array<{ at: number; re: RegExp }> = [];
+  let wildNames: Array<{ at: number; atoms: GlobAtom[] }> = [];
   let wildOverflowAt = -1;
   const runsTextFrom = (pos: number): boolean => {
     if (nextRunsText === -1) return false;
@@ -2181,18 +2188,30 @@ function lexShell(text: string, substitutionBody = false): ShellLex {
       lastNamed = new Map();
       // Words as the shell hands them over, quotes undone: `bash
       // /tmp/exam'ple.md'` runs /tmp/example.md.
+      // A word built by an expansion, a glob or braces names whatever it can
+      // expand to: `bash /tmp/exa*`, `bash /tmp/{example,x}.md`, `bash
+      // /tmp/exam$X`. Each is a glob over names (an expansion is a `*`),
+      // matched by the same no-backtracking walk as every other glob here.
       for (const { word, at } of decodedWordsAt(text)) {
-        const base = word.slice(word.lastIndexOf("/") + 1);
-        if (EXPANSION_IN_WORD_RE.test(base)) {
-          if (wildNames.length < 256) wildNames.push({ at, re: expansionNameRe(base) });
-          else wildOverflowAt = Math.max(wildOverflowAt, at);
+        const forms = word.includes("{") ? expandBraces(word) : [word];
+        if (forms.length > 64) {
+          wildOverflowAt = Math.max(wildOverflowAt, at);
           continue;
         }
-        lastNamed.set(base, at);
+        for (const form of forms) {
+          const base = form.slice(form.lastIndexOf("/") + 1);
+          if (!EXPANSION_IN_WORD_RE.test(base) && !GLOB_METACHAR_RE.test(base)) {
+            lastNamed.set(base, at);
+            continue;
+          }
+          const atoms = globAtoms(base.replace(EXPANSIONS_IN_NAME_RE, "*"));
+          if (atoms !== null && wildNames.length < 256) wildNames.push({ at, atoms });
+          else wildOverflowAt = Math.max(wildOverflowAt, at);
+        }
       }
     }
     if ((lastNamed.get(name) ?? -1) >= pos || wildOverflowAt >= pos) return true;
-    return wildNames.some((wild) => wild.at >= pos && wild.re.test(name));
+    return wildNames.some((wild) => wild.at >= pos && globSegmentMatches(wild.atoms, name));
   };
   /** Read every pending heredoc's body, starting at `at`; return where lexing resumes. */
   const consumeBodies = (at: number): number => {
@@ -2830,7 +2849,8 @@ function gitReachesTarget(
   if (repositories.length === 0) return false;
   if (repositories.some((repository) => names(repository))) return true;
   return gitWords.some((word) => {
-    const value = word.includes("=") ? word.slice(word.indexOf("=") + 1) : word;
+    // `--output=<path>`, a value glued to a short option (`-o<path>`), or the word itself.
+    const value = word.includes("=") ? word.slice(word.indexOf("=") + 1) : /^-[A-Za-z]./.test(word) && !word.startsWith("--") ? word.slice(2) : word;
     return isRelativeShellWord(value) && repositories.some((repository) => names(`${repository}/${value}`));
   });
 }
@@ -2977,6 +2997,19 @@ function destroysProtectedPath(command: string, target: ProtectedPathTarget, dep
     ...lexed.readable.matchAll(/(?:^|[\s;&|(])(?:export\s+)?([A-Za-z_][A-Za-z0-9_]*)=("[^"]*"|'[^']*'|[^\s;&|)]+)/g),
   ].map(([, name, value]) => [name, value.replace(/^["']|["']$/g, "")] as const);
   const stateVars = new Set<string>();
+  const assignedValues = new Map<string, string[]>();
+  for (const [name, value] of assignments) {
+    const list = assignedValues.get(name) ?? [];
+    if (list.length < 64) list.push(value);
+    assignedValues.set(name, list);
+  }
+  // A word that is just `$NAME` for a variable given only plain values: those
+  // values; null for anything else.
+  const valuesOfWord = (word: string): string[] | null => {
+    const ref = /^\$(?:\{([A-Za-z_][A-Za-z0-9_]*)\}|([A-Za-z_][A-Za-z0-9_]*))$/.exec(stripShellQuoting(word));
+    const values = ref ? assignedValues.get(ref[1] ?? ref[2]) : undefined;
+    return values && values.length > 0 && values.every((value) => !/[$`]/.test(value)) ? values : null;
+  };
   for (let pass = 0; pass < assignments.length + 1; pass++) {
     const before = stateVars.size;
     for (const [name, value] of assignments) {
@@ -3023,6 +3056,23 @@ function destroysProtectedPath(command: string, target: ProtectedPathTarget, dep
     if (target.namesLiteral(text)) return true;
     for (const [, name] of text.matchAll(VAR_REFERENCE_RE)) {
       if (stateVars.has(name)) return true;
+      // Its value judged from where the shell stands where it is used:
+      // `cd sub; D=cfg.json; cp x "$D"` writes through sub/cfg.json.
+      const values = assignedValues.get(name);
+      if (
+        values &&
+        values.some(
+          (value) =>
+            !/[$`]/.test(value) &&
+            walkCwds.some(
+              (cwd) =>
+                (target.namesThroughLinks?.(value, cwd) ?? false) ||
+                (cwd !== undefined && isRelativeShellWord(value) && target.namesLiteral(resolve(cwd, value))),
+            ),
+        )
+      ) {
+        return true;
+      }
     }
     // Per token, not over the whole text: a glob compiled from a whole command
     // line matches nothing, and it is the individual operand — `~/.failproof*`
@@ -3251,7 +3301,7 @@ function destroysProtectedPath(command: string, target: ProtectedPathTarget, dep
         if (quoteAwareCommandWords(simple).viaXargs && !SAFE_EXEC_COMMANDS.has(head)) return true;
         // Judged BEFORE the closing parenthesis is counted: a `rm -rf ./*)`
         // still runs inside the subshell it closes.
-        if (simpleCommandDestroys(words, namesHere, target, simple, cwdInState, walkCwds)) return true;
+        if (simpleCommandDestroys(words, namesHere, target, simple, cwdInState, walkCwds, valuesOfWord)) return true;
       }
       parenDepth -= (splitSimple.match(/\)/g) ?? []).length;
       while (cwdScopes.length > 0 && parenDepth < cwdScopes[cwdScopes.length - 1].depth) {
@@ -4541,11 +4591,8 @@ function decodedWordsAt(text: string): Array<{ word: string; at: number }> {
   return out;
 }
 
-/** A name built by an expansion as a pattern over the names it could make: `exam$X` → `^exam.*$`. */
-function expansionNameRe(base: string): RegExp {
-  const parts = base.split(/\$\{[^}]*\}?|\$\([^)]*\)?|\$[A-Za-z_][A-Za-z0-9_]*|\$.?|`[^`]*`?/);
-  return new RegExp(`^${parts.map((part) => part.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).join(".*")}$`, "s");
-}
+/** The expansions inside a name, each read as a `*`: `exam$X`, `a${X}b`, `$(f)`, a backtick. */
+const EXPANSIONS_IN_NAME_RE = /\$\{[^}]*\}?|\$\([^)]*\)?|\$[A-Za-z_][A-Za-z0-9_]*|\$.?|`[^`]*`?/g;
 
 /** A word an agent CLI's hooks-off command is made of. */
 const HOOKS_OFF_WORD_RE = /(?:^|[^A-Za-z0-9_-])(?:codex|features?|disable|(?:codex_)?hooks|pi|remove|uninstall|rm|delete|failproofai|pi-extension|hermes|openclaw|plugins?)(?![A-Za-z0-9_-])/i;

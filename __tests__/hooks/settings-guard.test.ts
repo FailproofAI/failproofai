@@ -1107,6 +1107,10 @@ describe("block-failproofai-commands — review round seven", () => {
     mkdirSync(join(p7, "archive"), { recursive: true });
     symlinkSync(join(h7, ".claude", "x"), join(p7, "archive", "link"));
     symlinkSync(settings(), join(p7, "cfg.json"));
+    mkdirSync(join(p7, "sub"), { recursive: true });
+    symlinkSync(settings(), join(p7, "sub", "cfg.json"));
+    mkdirSync(join(p7, "external", "archive"), { recursive: true });
+    symlinkSync(join(h7, ".claude", "x"), join(p7, "external", "archive", "link"));
     outerHome = process.env.HOME;
     outerPackageRoot = process.env.FAILPROOFAI_PACKAGE_ROOT;
     process.env.HOME = h7;
@@ -1290,6 +1294,39 @@ describe("block-failproofai-commands — review round seven", () => {
     expect(await bash(`cp /tmp/settings.json ~/.claude`, p7)).toBe(true);
     expect(await bash(`cp -rT /tmp/evil ~/.claude`, p7)).toBe(true);
     expect(await bash(`cp -r /tmp/evil/. ~/.claude`, p7)).toBe(true);
+  });
+
+  // hermes round 6.
+  it("keeps --parents' own path under the directory it copies into", async () => {
+    expect(await bash(`cp --parents .claude/settings.json ~`, p7)).toBe(true);
+    expect(await bash(`cp --parents -t ~ .claude/settings.json`, p7)).toBe(true);
+    expect(await bashDecision(`cp --parents src/a.ts /tmp/backup`, p7)).toBe("allow");
+  });
+
+  it("stays linear on a name built from many expansions that does not match", async () => {
+    const command = `cat > /tmp/${"a".repeat(100)}.md <<'EOF'\nhello\nEOF\nbash /tmp/${"a\${X}".repeat(8)}z.md\n`;
+    const started = performance.now();
+    await bashDecision(command, p7);
+    expect(performance.now() - started).toBeLessThan(3000);
+  }, 60_000);
+
+  it("finds a stored script run later under a glob or brace name", async () => {
+    const store = `cat > /tmp/example.md <<'EOF'\ncp /tmp/evil ${settings()}\nEOF\n`;
+    expect(await bash(`${store}bash /tmp/exa*\n`, p7)).toBe(true);
+    expect(await bash(`${store}bash /tmp/{example,x}.md\n`, p7)).toBe(true);
+  });
+
+  it("judges a variable's link from where the shell stands when it is used", async () => {
+    expect(await bash(`cd sub; D=cfg.json; cp /tmp/evil.json "$D"`, p7)).toBe(true);
+  });
+
+  it("reads a copy destination held in a variable as the directories it holds", async () => {
+    expect(await bashDecision(`D=~/.claude; cp README.md "$D"`, p7)).toBe("allow");
+    expect(await bash(`D=~/.claude; cp /tmp/settings.json "$D"`, p7)).toBe(true);
+  });
+
+  it("joins a value glued to git's -o to the -C repository", async () => {
+    expect(await bash(`git -C external archive -oarchive/link/../settings.json HEAD`, p7)).toBe(true);
   });
 
   it("reads an empty heredoc delimiter the way bash does", async () => {

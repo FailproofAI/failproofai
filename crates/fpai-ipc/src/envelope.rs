@@ -8,11 +8,28 @@
 
 use serde::{Deserialize, Serialize};
 
-/// Bumped whenever a wire-incompatible change is made to either message
-/// enum below. A daemon-configured client fails closed on a mismatch and uses
-/// the distinct failure category only to explain how to repair the skew.
-/// There is no protocol negotiation.
+/// Bumped whenever a change is made to either message enum below.
 pub const PROTOCOL_VERSION: u32 = 2;
+
+/// The oldest version the daemon still answers, and the oldest a client will
+/// fall back to when an older daemon answers it.
+///
+/// A long-lived host (a Hermes or OpenClaw gateway) keeps the plugin it loaded
+/// at start, so after an upgrade it speaks the previous version until it is
+/// restarted. Refusing it denied every tool call that host made. Each version
+/// only ADDS optional fields, so an older request is answered by dropping
+/// nothing and inferring nothing: the fields it predates stay absent, and the
+/// reply carries the version the client sent.
+///
+/// Raise this only when an older request can no longer be answered safely.
+pub const MIN_PROTOCOL_VERSION: u32 = 1;
+
+/// The first version that carries `agentSettingsPath`.
+pub const AGENT_SETTINGS_PATH_SINCE: u32 = 2;
+
+pub fn is_supported_protocol_version(version: u32) -> bool {
+    (MIN_PROTOCOL_VERSION..=PROTOCOL_VERSION).contains(&version)
+}
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(tag = "type", rename_all = "camelCase")]
@@ -106,7 +123,67 @@ impl ClientMessage {
     }
 }
 
+impl ClientMessage {
+    /// Drops fields the request's own version predates. A v1 client never
+    /// sends `agentSettingsPath`, so one that does is not a v1 client, and its
+    /// profile is treated as unknown rather than trusted.
+    pub fn without_fields_newer_than_its_version(self) -> Self {
+        let keep_settings = self.protocol_version() >= AGENT_SETTINGS_PATH_SINCE;
+        match self {
+            ClientMessage::Hook {
+                protocol_version,
+                hook_event,
+                cli,
+                stdin,
+                cwd,
+                agent_settings_path,
+            } => ClientMessage::Hook {
+                protocol_version,
+                hook_event,
+                cli,
+                stdin,
+                cwd,
+                agent_settings_path: agent_settings_path.filter(|_| keep_settings),
+            },
+            ClientMessage::PolicyEvaluation {
+                protocol_version,
+                integration,
+                event,
+                payload,
+                cwd,
+                agent_settings_path,
+            } => ClientMessage::PolicyEvaluation {
+                protocol_version,
+                integration,
+                event,
+                payload,
+                cwd,
+                agent_settings_path: agent_settings_path.filter(|_| keep_settings),
+            },
+            ping @ ClientMessage::Ping { .. } => ping,
+        }
+    }
+}
+
 impl ServerMessage {
+    /// Stamps the reply with the version the client spoke, so a client that
+    /// checks for its own version accepts an answer from a newer daemon.
+    pub fn with_protocol_version(mut self, version: u32) -> Self {
+        match &mut self {
+            ServerMessage::Pong { protocol_version }
+            | ServerMessage::HookResult {
+                protocol_version, ..
+            }
+            | ServerMessage::PolicyResult {
+                protocol_version, ..
+            }
+            | ServerMessage::Error {
+                protocol_version, ..
+            } => *protocol_version = version,
+        }
+        self
+    }
+
     pub fn protocol_version(&self) -> u32 {
         match self {
             ServerMessage::Pong { protocol_version } => *protocol_version,

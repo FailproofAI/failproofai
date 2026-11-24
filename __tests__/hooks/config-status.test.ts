@@ -67,6 +67,7 @@ function facts(over: Partial<StatusFacts> = {}): StatusFacts {
     cloud: {
       kind: "file",
       host: "be.failproof.ai",
+      url: "https://be.failproof.ai",
       org: "chetanraghuvanshi85",
       machine: "chetan-pc (dde01f39)",
       pullsPolicies: true,
@@ -295,6 +296,25 @@ describe("config --status — delivery", () => {
     );
   });
 
+  it("counts batches an outage parked as queued, since the daemon retries them", () => {
+    const parked = { ...facts().delivery!.refused, retrying: 2 };
+    expect(deliveryRow({ refused: parked })).toBe("● Healthy, last event 12s ago, 2 batches queued");
+  });
+
+  it("calls a long outage stuck even when the spool keeps moving into failed/", () => {
+    // Every spool batch is young (just written, then parked), but the parked
+    // ones are 2h old and nothing has been accepted since.
+    const parked = { ...facts().delivery!.refused, total: 40, retrying: 40, oldestAgeMs: 2 * 3_600_000 };
+    const down = { ...health, lastOkAt: NOW - 2 * 3_600_000 };
+    expect(deliveryRow({ queued: 3, oldestQueuedMs: 10_000, refused: parked, health: down })).toBe(
+      "▲ 43 batches queued, oldest 2h, last delivered 2h ago",
+    );
+    // The same backlog while uploads succeed is draining, not stuck.
+    expect(deliveryRow({ queued: 3, oldestQueuedMs: 10_000, refused: parked })).toBe(
+      "● Healthy, last event 12s ago, 43 batches queued",
+    );
+  });
+
   it("puts refused batches in the row, with their status and age", () => {
     const refused = { total: 26, rejected: 26, credentialRejected: 26, resending: 0, byStatus: { 401: 26 }, oldestAgeMs: 134 * 60_000 };
     expect(deliveryRow({ refused })).toBe("▲ 26 batches refused (401), oldest 2h14m");
@@ -359,7 +379,21 @@ describe("config --status — ENFORCEMENT", () => {
 
   it("names the pack that is installed with everything off, and an empty machine as empty", () => {
     expect(policiesRow({ packOn: 0, firstPack: undefined })).toBe("0 on from FailproofAI/policies@06b802b1c2d3");
-    expect(policiesRow({ packOn: 0, firstPack: undefined, packsInstalled: 0, anyPack: undefined })).toBe("None installed");
+    const empty = { ...facts().policies, packOn: 0, firstPack: undefined, packsInstalled: 0, anyPack: undefined };
+    expect(rowValue(renderStatusScreen(facts({ cloud: { kind: "none" }, policies: empty }), PLAIN), "policies"))
+      .toBe("None installed");
+  });
+
+  it("says an empty machine that pulls from Cloud has nothing deployed, not nothing installed", () => {
+    // Its policies are deployed on the dashboard; "installed" sent cloud users
+    // to install packs locally.
+    expect(policiesRow({ packOn: 0, firstPack: undefined, packsInstalled: 0, anyPack: undefined }))
+      .toBe("None deployed from Cloud");
+    const reportingOnly = facts({
+      cloud: { kind: "file", host: "be.failproof.ai", pullsPolicies: false, sendsEvents: true },
+      policies: { ...facts().policies, packOn: 0, firstPack: undefined, packsInstalled: 0, anyPack: undefined },
+    });
+    expect(rowValue(renderStatusScreen(reportingOnly, PLAIN), "policies")).toBe("None installed");
   });
 
   it("has no per-day counts and no per-agent rows: one row per fact about the machine", () => {
@@ -419,7 +453,8 @@ describe("config --status — the attention line", () => {
     expect(pickStatusAttention(f)).toEqual({
       severity: "caution",
       text: "Policies are not enforcing yet.",
-      fix: "failproofai policies add",
+      // A machine that pulls policies from Cloud deploys them there.
+      fix: "https://be.failproof.ai",
     });
 
     f.notEnforcing = null;
@@ -447,12 +482,19 @@ describe("config --status — the attention line", () => {
   });
 
   it("fixes 'not enforcing' with the command for its cause", () => {
-    const fixFor = (reason: StatusFacts["notEnforcing"], packsInstalled = 1) =>
-      pickStatusAttention(facts({ notEnforcing: reason, policies: { ...facts().policies, packsInstalled } }))?.fix;
+    const fixFor = (reason: StatusFacts["notEnforcing"], packsInstalled = 1, cloud: StatusFacts["cloud"] = { kind: "none" }) =>
+      pickStatusAttention(facts({ cloud, notEnforcing: reason, policies: { ...facts().policies, packsInstalled } }))?.fix;
     expect(fixFor("no-hooks")).toBe("failproofai config");
     expect(fixFor("observe-only")).toBe("failproofai policies");
     expect(fixFor("no-policies", 1)).toBe("failproofai policies add");
     expect(fixFor("no-policies", 0)).toBe("failproofai policies add FailproofAI/policies");
+    // Policies for a machine that pulls from Cloud are deployed there.
+    expect(fixFor("no-policies", 0, facts().cloud)).toBe("https://be.failproof.ai");
+    // The dashboard as configured, path and scheme kept.
+    const tenant = { ...facts().cloud, url: "http://cloud.internal:8080/tenant" } as StatusFacts["cloud"];
+    expect(fixFor("no-policies", 0, tenant)).toBe("http://cloud.internal:8080/tenant");
+    // Connected through FAILPROOFAI_CLOUD_URL: pulls from Cloud just the same.
+    expect(fixFor("no-policies", 0, { kind: "env", url: "https://staging.example/org" })).toBe("https://staging.example/org");
   });
 
   it("never calls a machine with a refused pack 'not enforcing': it is denying", () => {
@@ -592,6 +634,8 @@ describe("gatherStatusFacts", () => {
     expect(f.cloud).toEqual({
       kind: "file",
       host: "be.failproof.ai",
+      // As configured: the attention fix links here, path and scheme intact.
+      url: "https://be.failproof.ai",
       org: "FailproofAI (failproofai)",
       machine: "chetan-pc (dde01f39)",
       pullsPolicies: true,

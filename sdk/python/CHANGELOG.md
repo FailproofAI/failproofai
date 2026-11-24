@@ -11,6 +11,14 @@ see `scripts/changelog-section.py`.
 
 ## 0.0.1b7 — 2026-10-16
 
+### Dependencies
+
+- **The CrewAI extra no longer brings ChromaDB.** crewai 1.15.44 made `chromadb` an
+  optional extra of its own, and the dev/test lockfile moved to it, dropping
+  chromadb 1.5.9 and the four advisories against it that had no fixed version
+  (they were allow-listed until 2026-11-20). `failproofai-sdk[crewai]` still accepts
+  `crewai>=1.13,<2`; nothing about the SDK itself changes.
+
 ### Requires Python 3.11 or newer
 
 - **Python 3.10 is no longer supported.** It reached end of life in October 2026,

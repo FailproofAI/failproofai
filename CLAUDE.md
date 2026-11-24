@@ -262,7 +262,12 @@ only a marked copy or a link into a FailproofAI `hermes-plugin/`, refuses anythi
 else with the same name, and uses the `yaml` package's comment-preserving
 `Document` API for config changes. `failproofai update` migrates profiles already
 using FailproofAI (legacy shell hooks or a copy) to the link, gated on the daemon
-answering `policyEvaluation`; legacy shell hooks never run for Hermes cron jobs.
+answering `policyEvaluation`; legacy shell hooks never run for Hermes cron jobs. It then
+restarts each running gateway (Hermes and OpenClaw) through the host's own drain-aware
+restart (`hermes gateway restart`, `openclaw gateway restart --safe`) so it loads the
+updated plugin — a gateway keeps the plugin it imported at start. Only a service-managed
+gateway is touched: without a service, `hermes gateway restart` runs the new gateway in the
+caller's foreground (`src/hooks/gateway-restart.ts`; `update --no-restart` opts out).
 
 Settings file paths:
 
@@ -909,13 +914,15 @@ in-process fallback on that path: a second policy engine reachable by breaking t
 is not a guarantee, and a machine where stopping one service silently disables every
 guardrail is not a guarded machine.
 
-The mismatch case denies with a message naming the version and `failproofai update`,
-because the remedy differs from "the daemon is down" and that difference is the whole
-value of telling them apart. The accepted cost: both sides hardcode `PROTOCOL_VERSION`,
-so the first time it is bumped a machine whose CLI updated via npm before its daemon did
-denies until `failproofai update` runs. `publish.yml` ships both from one commit and
-`daemonVersionSkew()` hints on every CLI command, so the window is bounded and announces
-itself.
+A version mismatch outside the supported range denies with a message naming the version
+and `failproofai update`, because the remedy differs from "the daemon is down". Inside the
+range it does not deny: the daemon answers every version from `MIN_PROTOCOL_VERSION` to
+`PROTOCOL_VERSION` in the client's own version, and a client facing an older daemon asks
+again in the daemon's version (crates/PROTOCOL.md). This was strict until 1.0.15: a Hermes
+gateway still holding the v1 plugin it loaded before an upgrade was refused by the v2
+daemon, and every Slack/Telegram tool call denied until the gateway was restarted. A
+request older than a field is read without it — a v1 request is evaluated with its profile
+unknown — so compatibility never widens what a scoped deployment applies to.
 
 **In-process evaluation still exists**, reachable only when `daemonConfigured` is false —
 which means the machine is not yet set up. No hooks are installed then either, so

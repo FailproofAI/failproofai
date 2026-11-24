@@ -61,7 +61,7 @@ import {
   settingsPathsFor,
 } from "./integrations";
 import { INTEGRATION_TYPES, type IntegrationType, type HookScope } from "./types";
-import { enforcingPolicyCount, installHooks, notEnforcingReason } from "./manager";
+import { cloudDashboardUrl, enforcingPolicyCount, installHooks, notEnforcingReason } from "./manager";
 import { installAgentSkill } from "./agent-skill";
 import {
   CODEX_UNTRUSTED_NOTICE,
@@ -1613,6 +1613,7 @@ export async function runConfigureWizard(
       agents: selected.length,
       connected: cloudAfter,
       codexTrust,
+      cloudDashboard: cloudAfter ? cloudDashboardUrl() : undefined,
     }),
   );
 
@@ -1840,7 +1841,16 @@ function failClosedPacks(): Array<{ id: string | null }> {
  */
 export function doneLines(
   kit: ReturnType<typeof screenKit>,
-  state: { elapsedMs: number; done: string[]; cwd: string; agents: number; connected: boolean; codexTrust?: CodexHookTrust },
+  state: {
+    elapsedMs: number;
+    done: string[];
+    cwd: string;
+    agents: number;
+    connected: boolean;
+    codexTrust?: CodexHookTrust;
+    /** Set when this machine pulls its policies from Cloud: point there, not at packs. */
+    cloudDashboard?: string;
+  },
 ): string[] {
   const lines = [kit.head("Done", `in ${(state.elapsedMs / 1000).toFixed(1)}s`), ...state.done];
   // Codex with untrusted hooks runs none of them: it is not an agent anything
@@ -1851,7 +1861,10 @@ export function doneLines(
   if (notEnforcingReason(state.cwd)) {
     lines.push(
       kit.caution("Policies are not enforcing yet."),
-      `  Turn on ours:  ${kit.cmd(`failproofai policies add ${CORE_SOURCE}`)}`,
+      // The same line the policies screen's empty state uses for such a machine.
+      state.cloudDashboard
+        ? `  Deploy from Cloud:  ${kit.cmd(state.cloudDashboard)}`
+        : `  Turn on ours:  ${kit.cmd(`failproofai policies add ${CORE_SOURCE}`)}`,
     );
   } else {
     const { count, custom } = enforcingPolicyCount(state.cwd);

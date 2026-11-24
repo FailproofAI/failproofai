@@ -194,17 +194,22 @@ impl Lane {
         // impossible, but this is reached from the hook path and a panic here
         // would deny a tool call over a telemetry event.
         let mut ring = self.ring.lock().unwrap_or_else(|e| e.into_inner());
+        let mut warn = false;
         if ring.len() >= RING_CAPACITY {
             // Oldest out, not newest refused: the interesting events in an
             // overflow are the recent ones, and the head is what a failing send
             // is stuck on.
             ring.pop_front();
             self.dropped.fetch_add(1, Ordering::Relaxed);
-            if !self.warned_dropped.swap(true, Ordering::Relaxed) {
-                eprintln!("[failproofaid] telemetry buffer is full; dropping the oldest events");
-            }
+            warn = !self.warned_dropped.swap(true, Ordering::Relaxed);
         }
         ring.push_back(event);
+        drop(ring);
+        // After the lock: the log now also writes a file, and a stalled write
+        // must neither hold up this hook call's push nor the drain behind it.
+        if warn {
+            tracing::warn!("telemetry buffer is full; dropping the oldest events");
+        }
     }
 
     /// Take everything currently buffered. The lock is released before the
@@ -754,15 +759,13 @@ pub fn spawn(shutdown: Arc<AtomicBool>) -> Option<JoinHandle<()>> {
                 }))
                 .is_err()
                 {
-                    eprintln!("[failproofaid] telemetry lane panicked; continuing next tick");
+                    tracing::warn!("telemetry lane panicked; continuing next tick");
                 }
                 wait_until_shutdown(&shutdown, interval);
             }
         })
         .inspect_err(|err| {
-            eprintln!(
-                "[failproofaid] could not start the telemetry lane: {err}; this run reports nothing"
-            );
+            tracing::warn!("could not start the telemetry lane: {err}; this run reports nothing");
         })
         .ok()
 }
@@ -883,7 +886,7 @@ fn send_pending(
         // One line, at the point the events are actually lost, rather than one
         // per failed attempt: a machine with no route to PostHog would otherwise
         // print a line a minute forever.
-        eprintln!("[failproofaid] telemetry could not be delivered; dropping this batch");
+        tracing::warn!("telemetry could not be delivered; dropping this batch");
         return;
     }
     lane.requeue(batch);

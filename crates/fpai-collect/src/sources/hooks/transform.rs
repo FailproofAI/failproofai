@@ -34,8 +34,16 @@ use serde_json::{Map, Value, json};
 /// enumerating all of them turns each addition into unrelated breakage.
 #[derive(Debug, Clone, Default, Deserialize)]
 pub struct HookRow {
-    /// Epoch milliseconds.
+    /// Epoch milliseconds: when the row was written, the END of evaluation.
     pub timestamp: i64,
+    /// Epoch milliseconds the hook arrived. Written since 1.0.15; older rows
+    /// have none, and keep the exact events they always produced (the server
+    /// dedups on content, so a re-read must not change them).
+    #[serde(rename = "startedAt", default, deserialize_with = "lenient")]
+    pub started_at: Option<i64>,
+    /// The agent's own id for the tool call this hook governed.
+    #[serde(rename = "toolCallId", default, deserialize_with = "lenient")]
+    pub tool_call_id: Option<String>,
     #[serde(rename = "eventType")]
     pub event_type: Option<String>,
     /// Which agent CLI fired the hook.
@@ -824,11 +832,19 @@ fn base(
     kind: &str,
     index: u32,
 ) -> Option<Map<String, Value>> {
+    base_at(row, row.timestamp, session_id, environment, kind, index)
+}
+
+fn base_at(
+    row: &HookRow,
+    at_ms: i64,
+    session_id: &str,
+    environment: &str,
+    kind: &str,
+    index: u32,
+) -> Option<Map<String, Value>> {
     let mut m = Map::new();
-    m.insert(
-        "timestamp".into(),
-        json!(to_rfc3339_micros(row.timestamp, index)?),
-    );
+    m.insert("timestamp".into(), json!(to_rfc3339_micros(at_ms, index)?));
     m.insert("session_id".into(), json!(session_id));
     m.insert("agent_id".into(), json!(agent_id(row)));
     m.insert("type".into(), json!(kind));
@@ -850,7 +866,17 @@ pub fn to_events(row: &HookRow, offset: u64, environment: &str) -> Vec<Value> {
     let event_name = row.event_type.as_deref().unwrap_or("Hook");
     let hook_id = format!("{session_id}:{}:{offset}", row.timestamp);
 
-    let Some(mut start) = base(row, session_id, environment, "hook_triggered", 0) else {
+    // The start leg is stamped when the hook ARRIVED, where the row says: the
+    // row's own timestamp is the end of evaluation, which put a hook start
+    // after the tool call it gated whenever evaluation took longer than the
+    // agent's own logging. Never after the end, whatever a row claims.
+    let started = row
+        .started_at
+        .filter(|at| *at <= row.timestamp)
+        .unwrap_or(row.timestamp);
+    let Some(mut start) = base_at(row, started, session_id, environment, "hook_triggered", 0)
+        .or_else(|| base(row, session_id, environment, "hook_triggered", 0))
+    else {
         return Vec::new();
     };
     start.insert("hook_name".into(), json!(event_name));
@@ -879,6 +905,13 @@ pub fn to_events(row: &HookRow, offset: u64, environment: &str) -> Vec<Value> {
     let Some(mut end) = base(row, session_id, environment, "hook_completed", 1) else {
         return Vec::new();
     };
+    // The same field, at the same place, as the transcript sources' tool
+    // events: the server stores it in its own column, so a hook joins the
+    // tool call it governed instead of only sorting beside it.
+    if let Some(id) = row.tool_call_id.as_deref().filter(|id| !id.is_empty()) {
+        start.insert("tool_call_id".into(), json!(id));
+        end.insert("tool_call_id".into(), json!(id));
+    }
     end.insert("hook_name".into(), json!(event_name));
     end.insert("hook_id".into(), json!(hook_id));
     end.insert("outcome".into(), json!(row.decision_str()));
@@ -947,8 +980,21 @@ pub struct AllowBucket {
     pub agent_id: String,
     pub event_name: String,
     pub tool_name: Option<String>,
-    /// Truncated to the minute; also the bucket's emitted timestamp.
+    /// Truncated to the minute: the bucket's KEY (and its `hook_id`).
     pub minute_ms: i64,
+    /// When the bucket's first hook arrived (its `startedAt`, else its end):
+    /// the emitted timestamp. Stamping the minute instead put every roll-up
+    /// before the tool calls it covered. `i64::MAX` until a row is added.
+    pub first_ms: i64,
+    /// Every row so far recorded `startedAt` (written by a CLI that knows it).
+    /// Only then is the bucket stamped at `first_ms`: a bucket holding a row
+    /// from before keeps the minute stamp it always had, so re-reading old
+    /// rows (a backfill, a lost cursor) produces the bytes already shipped
+    /// and the server's dedup still collapses them.
+    pub all_started: bool,
+    /// The agent's tool-call ids the bucket covers, in arrival order, at most
+    /// [`MAX_BUCKET_TOOL_CALL_IDS`], so Cloud can join a roll-up to its calls.
+    pub tool_call_ids: Vec<String>,
     pub count: u64,
     pub total_duration_ms: f64,
     pub max_duration_ms: f64,
@@ -986,9 +1032,24 @@ pub fn bucket_key(row: &HookRow) -> Option<BucketKey> {
     ))
 }
 
+/// Bound on `AllowBucket::tool_call_ids`: a busy minute stays one small event.
+pub const MAX_BUCKET_TOOL_CALL_IDS: usize = 64;
+
 impl AllowBucket {
     pub fn add(&mut self, row: &HookRow) {
         self.count += 1;
+        self.all_started &= row.started_at.is_some();
+        let arrived = row
+            .started_at
+            .filter(|at| *at <= row.timestamp)
+            .unwrap_or(row.timestamp);
+        self.first_ms = self.first_ms.min(arrived);
+        if let Some(id) = row.tool_call_id.as_deref().filter(|id| !id.is_empty())
+            && self.tool_call_ids.len() < MAX_BUCKET_TOOL_CALL_IDS
+            && !self.tool_call_ids.iter().any(|known| known == id)
+        {
+            self.tool_call_ids.push(id.to_string());
+        }
         let d = row.duration_ms.unwrap_or(0.0);
         self.total_duration_ms += d;
         if d > self.max_duration_ms {
@@ -1010,10 +1071,12 @@ impl AllowBucket {
     /// report a duration that belongs to no real hook call.
     pub fn to_event(&self, environment: &str) -> Option<Value> {
         let mut m = Map::new();
-        m.insert(
-            "timestamp".into(),
-            json!(to_rfc3339_micros(self.minute_ms, 0)?),
-        );
+        let at = if self.first_ms == i64::MAX || !self.all_started {
+            self.minute_ms
+        } else {
+            self.first_ms
+        };
+        m.insert("timestamp".into(), json!(to_rfc3339_micros(at, 0)?));
         m.insert("session_id".into(), json!(self.session_id));
         m.insert("agent_id".into(), json!(self.agent_id));
         m.insert("type".into(), json!("hook_completed"));
@@ -1082,6 +1145,16 @@ impl AllowBucket {
         );
         if let Some(t) = &self.tool_name {
             m.insert("tool_name".into(), json!(t));
+        }
+        if !self.tool_call_ids.is_empty() {
+            m.insert("tool_call_ids".into(), json!(self.tool_call_ids));
+        }
+        // A bucket of exactly one call IS that call's hook: the same field the
+        // per-row legs carry, so it joins its tool call like they do.
+        if self.count == 1
+            && let [only] = self.tool_call_ids.as_slice()
+        {
+            m.insert("tool_call_id".into(), json!(only));
         }
         // Honest by construction: every row in this bucket was grouped BY this
         // attribution, so it describes all of them.

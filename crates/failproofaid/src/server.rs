@@ -7,7 +7,10 @@
 //! connection-handling thread.
 
 use crate::worker::Worker;
-use fpai_ipc::{ClientMessage, PROTOCOL_VERSION, ServerMessage, peer, read_message, write_message};
+use fpai_ipc::{
+    ClientMessage, MIN_PROTOCOL_VERSION, PROTOCOL_VERSION, ServerMessage,
+    is_supported_protocol_version, peer, read_message, write_message,
+};
 use std::fs;
 use std::io;
 use std::os::unix::fs::PermissionsExt;
@@ -242,11 +245,35 @@ impl Server {
                 Err(err) if err.kind() == io::ErrorKind::WouldBlock => {
                     std::thread::sleep(std::time::Duration::from_millis(20));
                 }
+                // Out of file descriptors, an aborted handshake, a signal:
+                // the listener is fine and the next accept can succeed.
+                // Returning here exited the daemon, and until the service
+                // manager restarted it every hook on the machine was denied.
+                Err(err) if is_transient_accept_error(&err) => {
+                    log_connection_error(&io::Error::other(format!(
+                        "accept failed, retrying: {err}"
+                    )));
+                    std::thread::sleep(std::time::Duration::from_millis(100));
+                }
                 Err(err) => return Err(err),
             }
         }
         Ok(())
     }
+}
+
+/// An `accept()` failure that says nothing about the listener itself.
+fn is_transient_accept_error(err: &io::Error) -> bool {
+    matches!(
+        err.kind(),
+        io::ErrorKind::Interrupted
+            | io::ErrorKind::ConnectionAborted
+            | io::ErrorKind::ConnectionReset
+            | io::ErrorKind::OutOfMemory
+    ) || matches!(
+        err.raw_os_error(),
+        Some(libc::EMFILE | libc::ENFILE | libc::ENOBUFS | libc::ENOMEM)
+    )
 }
 
 impl Drop for Server {
@@ -256,7 +283,7 @@ impl Drop for Server {
 }
 
 fn log_connection_error(err: &io::Error) {
-    eprintln!("[failproofaid] connection error: {err}");
+    tracing::warn!("connection error: {err}");
 }
 
 /// Handles exactly one request on `stream`: verify the peer is the same OS
@@ -301,10 +328,36 @@ pub fn handle_connection(stream: UnixStream, worker: &Worker) -> io::Result<()> 
     // write below gets a fresh budget for the same reason — a peer that has
     // waited through a slow evaluation must not then be denied its answer
     // because the read half used the clock up.
+    let started = std::time::Instant::now();
     let response = dispatch(request, worker);
+    let took = started.elapsed();
     let mut io = Deadline::new(&stream, CONNECTION_IO_TIMEOUT);
-    write_message(&mut io, &response)
-        .map_err(|e| io::Error::other(format!("failed to write response: {e}")))
+    write_message(&mut io, &response).map_err(|e| {
+        if peer_hung_up(&e) {
+            // The client stopped waiting and its own fail-closed path already
+            // answered the call. On macOS this surfaced only as "Invalid
+            // argument (os error 22)": setsockopt on a socket the peer closed
+            // is EINVAL there. How long the evaluation took is the useful part.
+            io::Error::other(format!(
+                "the client had closed the connection when its verdict was written \
+                 (evaluation took {} ms)",
+                took.as_millis()
+            ))
+        } else {
+            io::Error::other(format!("failed to write response: {e}"))
+        }
+    })
+}
+
+/// Whether a write failed because the peer had already gone.
+fn peer_hung_up(err: &fpai_ipc::FramingError) -> bool {
+    let fpai_ipc::FramingError::Io(io) = err else {
+        return false;
+    };
+    matches!(
+        io.kind(),
+        io::ErrorKind::BrokenPipe | io::ErrorKind::ConnectionReset | io::ErrorKind::NotConnected
+    ) || io.raw_os_error() == Some(libc::EINVAL)
 }
 
 fn record_agent_sighting(integration: &str, settings_path: Option<&str>) {
@@ -321,7 +374,7 @@ fn record_agent_sighting(integration: &str, settings_path: Option<&str>) {
         integration,
         std::path::Path::new(settings_path),
     ) {
-        eprintln!("[failproofaid] could not record an agent hook sighting: {err}");
+        tracing::warn!("could not record an agent hook sighting: {err}");
     }
 }
 
@@ -332,16 +385,88 @@ fn worker_agent_settings_path(settings_path: Option<&str>) -> Option<&str> {
 }
 
 fn dispatch(request: ClientMessage, worker: &Worker) -> ServerMessage {
-    if request.protocol_version() != PROTOCOL_VERSION {
+    let version = request.protocol_version();
+    if !is_supported_protocol_version(version) {
         return ServerMessage::Error {
             protocol_version: PROTOCOL_VERSION,
             message: format!(
-                "protocol version mismatch: daemon speaks {PROTOCOL_VERSION}, client sent {}",
-                request.protocol_version()
+                "protocol version mismatch: daemon speaks {MIN_PROTOCOL_VERSION}-{PROTOCOL_VERSION}, client sent {version}"
             ),
         };
     }
+    if version < fpai_ipc::envelope::AGENT_SETTINGS_PATH_SINCE
+        && !matches!(request, ClientMessage::Ping { .. })
+        && let Ok(dir) = crate::paths::cloud_managed_policy_dir()
+        && let Some(message) = legacy_scope_refusal(&dir)
+    {
+        return ServerMessage::Error {
+            protocol_version: version,
+            message,
+        };
+    }
+    let response = evaluate(request.without_fields_newer_than_its_version(), worker)
+        .with_protocol_version(version);
+    // Checked again after: a deployment that became targeted while the worker
+    // evaluated (Cloud maintenance runs beside it) may have been applied with
+    // no agent, so the answer is withheld for the same reason as above.
+    if version < fpai_ipc::envelope::AGENT_SETTINGS_PATH_SINCE
+        && let Ok(dir) = crate::paths::cloud_managed_policy_dir()
+        && let Some(message) = legacy_scope_refusal(&dir)
+    {
+        return ServerMessage::Error {
+            protocol_version: version,
+            message,
+        };
+    }
+    response
+}
 
+/// Why a request too old to name its agent cannot be answered here, if it
+/// cannot.
+///
+/// A v1 request carries no `agentSettingsPath`, so it is evaluated with its
+/// agent unknown, and a Cloud policy targeted at an agent does not apply to an
+/// unknown one. Where the deployment has no targeted policy that changes
+/// nothing, and the stale gateway keeps working. Where it does (schema 3), an
+/// answer could allow what the targeted policy denies, so the request is
+/// refused and the old client's own fail-closed path blocks it, as every v1
+/// request was before compatibility. A deployment that cannot be read is
+/// refused for the same reason.
+fn legacy_scope_refusal(cloud_policy_dir: &Path) -> Option<String> {
+    // Only a manifest that is NOT THERE means no deployment. `read_active`
+    // asks `exists()`, which reads a permission error as absent too.
+    match fs::metadata(cloud_policy_dir.join("active.json")) {
+        Err(err) if err.kind() == io::ErrorKind::NotFound => return None,
+        Err(err) => {
+            return Some(format!(
+                "this client predates agent-targeted Cloud policies and the deployment could \
+                 not be read to rule them out ({err}): restart the agent gateway"
+            ));
+        }
+        Ok(_) => {}
+    }
+    let store = crate::cloud_policies::PolicyStore::new(cloud_policy_dir.to_path_buf());
+    match store.read_active() {
+        Ok(None) => None,
+        Ok(Some(active))
+            if active.schema_version
+                < crate::cloud_policies::SCOPED_DESIRED_STATE_SCHEMA_VERSION =>
+        {
+            None
+        }
+        Ok(Some(_)) => Some(
+            "this client predates agent-targeted Cloud policies, which this machine's \
+             deployment uses: restart the agent gateway to load the current plugin"
+                .to_string(),
+        ),
+        Err(err) => Some(format!(
+            "this client predates agent-targeted Cloud policies and the deployment could \
+             not be read to rule them out ({err}): restart the agent gateway"
+        )),
+    }
+}
+
+fn evaluate(request: ClientMessage, worker: &Worker) -> ServerMessage {
     match request {
         ClientMessage::Ping { .. } => ServerMessage::Pong {
             protocol_version: PROTOCOL_VERSION,
@@ -362,12 +487,15 @@ fn dispatch(request: ClientMessage, worker: &Worker) -> ServerMessage {
                 cwd.as_deref(),
                 worker_agent_settings_path(agent_settings_path.as_deref()),
             ) {
-                Ok(outcome) => ServerMessage::HookResult {
-                    protocol_version: PROTOCOL_VERSION,
-                    exit_code: outcome.exit_code,
-                    stdout: outcome.stdout,
-                    stderr: outcome.stderr,
-                },
+                Ok(outcome) => {
+                    crate::hook_watch::note_answered(&cli, &stdin);
+                    ServerMessage::HookResult {
+                        protocol_version: PROTOCOL_VERSION,
+                        exit_code: outcome.exit_code,
+                        stdout: outcome.stdout,
+                        stderr: outcome.stderr,
+                    }
+                }
                 Err(err) => ServerMessage::Error {
                     protocol_version: PROTOCOL_VERSION,
                     message: format!("worker call failed: {err}"),
@@ -406,6 +534,7 @@ fn dispatch(request: ClientMessage, worker: &Worker) -> ServerMessage {
                             "allow" | "deny" | "instruct"
                         ) =>
                     {
+                        crate::hook_watch::note_answered(&integration, &stdin);
                         let policy_names = if evaluation.policy_names.is_empty() {
                             evaluation.policy_name.into_iter().collect()
                         } else {
@@ -656,6 +785,8 @@ mod tests {
         )
         .unwrap();
 
+        let no_deployment = temp_socket_path("no-deployment-real");
+        let _env = CloudPolicyDir::set(&no_deployment);
         let socket_path = temp_socket_path("hook-real-worker");
         let worker_cmd = WorkerCommand::shell(format!("bun {}", worker_script.display()));
         let _guard = start_test_server_with_worker(socket_path.clone(), worker_cmd);
@@ -739,6 +870,48 @@ mod tests {
             other => panic!("expected PolicyResult, got {other:?}"),
         }
 
+        // The request a Hermes plugin loaded before 1.0.12 sends: v1, no
+        // agentSettingsPath. It gets the real verdict, stamped v1 so that
+        // plugin's own version check accepts it.
+        let mut stream = UnixStream::connect(&socket_path).unwrap();
+        stream
+            .set_read_timeout(Some(Duration::from_secs(15)))
+            .unwrap();
+        write_message(
+            &mut stream,
+            &ClientMessage::PolicyEvaluation {
+                protocol_version: 1,
+                integration: "hermes".to_string(),
+                event: "pre_tool_call".to_string(),
+                payload: serde_json::json!({
+                    "cwd": project_dir.to_string_lossy(),
+                    "tool_name": "terminal",
+                    "tool_input": { "command": "sudo rm -rf /" }
+                }),
+                cwd: Some(project_dir.to_string_lossy().to_string()),
+                agent_settings_path: None,
+            },
+        )
+        .unwrap();
+        let response: ServerMessage = read_message(&mut stream).unwrap();
+        match response {
+            ServerMessage::PolicyResult {
+                protocol_version,
+                decision,
+                policy_names,
+                ..
+            } => {
+                assert_eq!(protocol_version, 1);
+                assert_eq!(decision, "deny");
+                assert!(
+                    policy_names
+                        .iter()
+                        .any(|name| name.ends_with("/block-sudo"))
+                );
+            }
+            other => panic!("expected a v1 PolicyResult, got {other:?}"),
+        }
+
         std::fs::remove_dir_all(&project_dir).ok();
     }
 
@@ -774,10 +947,104 @@ mod tests {
         }
     }
 
+    /// Points the daemon's Cloud policy directory at `dir` for one test. v1
+    /// requests read it (see `legacy_scope_refusal`), and the developer's real
+    /// one must not decide a test.
+    struct CloudPolicyDir {
+        _lock: std::sync::MutexGuard<'static, ()>,
+        previous: Option<std::ffi::OsString>,
+    }
+
+    impl CloudPolicyDir {
+        fn set(dir: &Path) -> Self {
+            let lock = crate::test_env::lock_env();
+            let previous = std::env::var_os(crate::paths::CLOUD_POLICY_DIR_ENV);
+            // SAFETY: serialised by the env lock held for this value's life.
+            unsafe { std::env::set_var(crate::paths::CLOUD_POLICY_DIR_ENV, dir) };
+            CloudPolicyDir {
+                _lock: lock,
+                previous,
+            }
+        }
+    }
+
+    impl Drop for CloudPolicyDir {
+        fn drop(&mut self) {
+            // SAFETY: as above.
+            unsafe {
+                match &self.previous {
+                    Some(v) => std::env::set_var(crate::paths::CLOUD_POLICY_DIR_ENV, v),
+                    None => std::env::remove_var(crate::paths::CLOUD_POLICY_DIR_ENV),
+                }
+            }
+        }
+    }
+
     #[test]
-    fn old_hook_protocol_cannot_evaluate_a_scoped_agent() {
-        let socket_path = temp_socket_path("old-scoped-hook");
+    fn an_old_client_is_refused_when_the_deployment_targets_agents() {
+        let dir = temp_socket_path("scoped-deployment");
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(
+            dir.join("active.json"),
+            format!(
+                r#"{{"schemaVersion":{},"deployment":4,"policies":[]}}"#,
+                crate::cloud_policies::SCOPED_DESIRED_STATE_SCHEMA_VERSION
+            ),
+        )
+        .unwrap();
+        let _env = CloudPolicyDir::set(&dir);
+        let worker = Worker::new(temp_socket_path("scoped-worker"), broken_worker_cmd());
+        let request = |protocol_version| ClientMessage::PolicyEvaluation {
+            protocol_version,
+            integration: "hermes".into(),
+            event: "pre_tool_call".into(),
+            payload: serde_json::json!({}),
+            cwd: None,
+            agent_settings_path: None,
+        };
+        match dispatch(request(1), &worker) {
+            ServerMessage::Error {
+                protocol_version,
+                message,
+            } => {
+                assert_eq!(protocol_version, 1, "stamped so the old client reads it");
+                assert!(message.contains("agent-targeted"), "{message}");
+            }
+            other => panic!("a v1 request was evaluated: {other:?}"),
+        }
+        // A current client names its agent: evaluated (here, by a broken worker).
+        match dispatch(request(PROTOCOL_VERSION), &worker) {
+            ServerMessage::Error { message, .. } => assert!(!message.contains("agent-targeted")),
+            other => panic!("unexpected {other:?}"),
+        }
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    #[test]
+    fn previous_protocol_is_answered_in_its_own_version() {
+        // A gateway that loaded the previous plugin before an upgrade keeps
+        // speaking v1 until it restarts. It must get an answer it accepts,
+        // not a mismatch that its fail-closed path turns into a deny.
+        let no_deployment = temp_socket_path("no-deployment");
+        let _env = CloudPolicyDir::set(&no_deployment);
+        let socket_path = temp_socket_path("old-protocol");
         let _guard = start_test_server(socket_path.clone());
+
+        let mut stream = UnixStream::connect(&socket_path).unwrap();
+        write_message(
+            &mut stream,
+            &ClientMessage::Ping {
+                protocol_version: 1,
+            },
+        )
+        .unwrap();
+        let response: ServerMessage = read_message(&mut stream).unwrap();
+        assert_eq!(
+            response,
+            ServerMessage::Pong {
+                protocol_version: 1
+            }
+        );
 
         let mut stream = UnixStream::connect(&socket_path).unwrap();
         write_message(
@@ -788,21 +1055,115 @@ mod tests {
                 cli: "claude".into(),
                 stdin: "{}".into(),
                 cwd: None,
-                agent_settings_path: Some("/home/agent/claude/settings.json".into()),
+                agent_settings_path: None,
             },
         )
         .unwrap();
         let response: ServerMessage = read_message(&mut stream).unwrap();
+        // The broken test worker cannot evaluate; what matters is that the
+        // request reached it instead of stopping at the version gate.
         match response {
             ServerMessage::Error {
                 protocol_version,
                 message,
             } => {
-                assert_eq!(protocol_version, PROTOCOL_VERSION);
-                assert!(message.contains("protocol version mismatch"));
+                assert_eq!(protocol_version, 1);
+                assert!(!message.contains("protocol version mismatch"), "{message}");
             }
-            other => panic!("old protocol was evaluated: {other:?}"),
+            other => panic!("expected the worker's error, got {other:?}"),
         }
+    }
+
+    #[test]
+    fn old_protocol_never_evaluates_a_scoped_agent() {
+        // v1 predates agentSettingsPath. A v1 request carrying one is not a
+        // real v1 client, and must be evaluated as profile-unknown, never for
+        // the profile it names.
+        let scoped = |protocol_version| ClientMessage::PolicyEvaluation {
+            protocol_version,
+            integration: "hermes".into(),
+            event: "pre_tool_call".into(),
+            payload: serde_json::json!({}),
+            cwd: None,
+            agent_settings_path: Some("/home/agent/.hermes/config.yaml".into()),
+        };
+        match scoped(1).without_fields_newer_than_its_version() {
+            ClientMessage::PolicyEvaluation {
+                agent_settings_path,
+                ..
+            } => assert_eq!(agent_settings_path, None),
+            other => panic!("unexpected {other:?}"),
+        }
+        assert_eq!(
+            scoped(PROTOCOL_VERSION).without_fields_newer_than_its_version(),
+            scoped(PROTOCOL_VERSION)
+        );
+    }
+
+    #[test]
+    fn an_old_client_is_refused_only_where_agent_targeted_policies_could_apply() {
+        let dir = temp_socket_path("legacy-scope");
+        std::fs::create_dir_all(&dir).unwrap();
+        let write = |schema: u32| {
+            std::fs::write(
+                dir.join("active.json"),
+                format!(r#"{{"schemaVersion":{schema},"deployment":4,"policies":[]}}"#),
+            )
+            .unwrap()
+        };
+        // No deployment, or one without targets: the stale gateway keeps working.
+        assert_eq!(legacy_scope_refusal(&dir), None);
+        write(2);
+        assert_eq!(legacy_scope_refusal(&dir), None);
+        // Targeted: an unknown agent would skip a policy aimed at it.
+        write(crate::cloud_policies::SCOPED_DESIRED_STATE_SCHEMA_VERSION);
+        assert!(legacy_scope_refusal(&dir).is_some());
+        // Unreadable: cannot rule targets out.
+        std::fs::write(dir.join("active.json"), "{").unwrap();
+        assert!(legacy_scope_refusal(&dir).is_some());
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    #[test]
+    fn a_client_that_stopped_waiting_is_logged_as_such() {
+        let (mut client, server) = UnixStream::pair().unwrap();
+        write_message(
+            &mut client,
+            &ClientMessage::Ping {
+                protocol_version: PROTOCOL_VERSION,
+            },
+        )
+        .unwrap();
+        drop(client);
+        let worker = Worker::new(temp_socket_path("hung-up"), broken_worker_cmd());
+        let err = handle_connection(server, &worker).expect_err("the peer is gone");
+        assert!(
+            err.to_string()
+                .contains("had closed the connection when its verdict was written"),
+            "got: {err}"
+        );
+    }
+
+    #[test]
+    fn running_out_of_descriptors_does_not_end_the_accept_loop() {
+        assert!(is_transient_accept_error(&io::Error::from_raw_os_error(24)));
+        assert!(is_transient_accept_error(&io::Error::from_raw_os_error(23)));
+        assert!(is_transient_accept_error(&io::Error::from(
+            io::ErrorKind::ConnectionAborted
+        )));
+        // A listener that is genuinely broken still ends it.
+        assert!(!is_transient_accept_error(&io::Error::from_raw_os_error(9)));
+        assert!(!is_transient_accept_error(&io::Error::from(
+            io::ErrorKind::InvalidInput
+        )));
+    }
+
+    #[test]
+    fn versions_outside_the_supported_range_are_refused() {
+        assert!(is_supported_protocol_version(MIN_PROTOCOL_VERSION));
+        assert!(is_supported_protocol_version(PROTOCOL_VERSION));
+        assert!(!is_supported_protocol_version(0));
+        assert!(!is_supported_protocol_version(PROTOCOL_VERSION + 1));
     }
 
     #[test]

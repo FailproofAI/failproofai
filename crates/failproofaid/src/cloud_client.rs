@@ -404,7 +404,7 @@ fn record_daemon_errors(store: &PolicyStore, errors: Vec<PolicyErrorEntry>) {
         return;
     }
     if let Err(err) = store.write_daemon_policy_errors(&errors) {
-        eprintln!("[failproofaid] could not record the cloud policy error state: {err}");
+        tracing::warn!("could not record the cloud policy error state: {err}");
     }
 }
 
@@ -770,6 +770,7 @@ impl CloudClient {
             return Err("FAILPROOFAI_MACHINE_ID cannot be empty".to_string());
         }
         let client = Client::builder()
+            .user_agent(concat!("failproofaid/", env!("CARGO_PKG_VERSION")))
             .connect_timeout(Duration::from_secs(5))
             .timeout(Duration::from_secs(15))
             .build()
@@ -856,6 +857,13 @@ impl CloudClient {
         if let Some(errors) = policy_errors {
             url.query_pairs_mut().append_pair("policyErrors", errors);
         }
+        // What this machine runs, on the one call every enrolled machine makes
+        // every poll interval: the cloud had the version only as an ingest
+        // header it logged, so "which machines are behind" had no answer.
+        // Additive for the same reason as above.
+        for (key, value) in machine_facts() {
+            url.query_pairs_mut().append_pair(key, &value);
+        }
         self.client
             .get(url)
             .bearer_auth(&self.token)
@@ -870,39 +878,74 @@ impl CloudClient {
             .json::<serde_json::Value>()
             .map_err(|err| PollFailure::payload(format!("invalid desired-state response: {err}")))
             .and_then(|raw| {
-                // THE VERSION IS CHECKED BEFORE THE FIELDS, which is the whole
-                // point of having one. `SUPPORTED_SCHEMA_VERSIONS` accepts 1 as
-                // well, and its comment says that is "for files on DISK, never for
-                // a server" — but nothing enforced the second half, so this path
-                // took a v1 response.
-                //
-                // Decoding straight into `DesiredState` would also reject a v1
-                // payload, since that type has no aliases for the old spelling —
-                // but on the WRONG grounds: serde reports "missing field
-                // `deployment`", which sends an operator hunting a malformed
-                // payload instead of a stale server. Reading the version off an
-                // untyped value first means the error names both halves and says
-                // which to upgrade.
-                let version = raw.get("schemaVersion").and_then(serde_json::Value::as_u64);
-                match version {
-                    Some(v) if v == u64::from(DESIRED_STATE_SCHEMA_VERSION)
-                        || v == u64::from(SCOPED_DESIRED_STATE_SCHEMA_VERSION) => {}
-                    Some(v) => {
-                        return Err(PollFailure::payload(format!(
-                            "server sent desired-state schemaVersion {v} but this daemon \
-                             speaks {DESIRED_STATE_SCHEMA_VERSION} or {SCOPED_DESIRED_STATE_SCHEMA_VERSION} — upgrade whichever half is behind"
-                        )));
-                    }
-                    None => {
-                        return Err(PollFailure::payload(
-                            "desired-state response has no schemaVersion field".to_string(),
-                        ));
-                    }
+                // Applied only once the whole response is known good: a response
+                // this daemon refuses (an unknown schemaVersion, a payload that
+                // does not decode) must not turn troubleshooting back on or start
+                // an upload, so the last valid answer keeps standing.
+                let (desired, consent) = decode_desired_state(raw)?;
+                // The org's troubleshooting switch: `machineLogs: false` means
+                // send no daemon log (logship.rs). Absent, from a Cloud with it
+                // on or one that predates the key, means send.
+                crate::logship::set_cloud_allows(consent.machine_logs != Some(false));
+                // An operator asked for this machine's logs (logship.rs).
+                if let Some(id) = consent.log_request {
+                    crate::logship::note_request(&id);
                 }
-                serde_json::from_value::<DesiredState>(raw).map_err(|err| {
-                    PollFailure::payload(format!("invalid desired-state response: {err}"))
-                })
+                Ok(desired)
             })
+    }
+
+    /// One `machine-logs` upload (logship.rs). Never logs above debug: a
+    /// failure here must not become the next thing it uploads.
+    fn post_machine_logs(&self, body: &serde_json::Value) -> crate::logship::PostOutcome {
+        use crate::logship::PostOutcome;
+        let Ok(url) = self.base_url.join("enforcement/v1/machine-logs") else {
+            return PostOutcome::Refused;
+        };
+        match self
+            .client
+            .post(url)
+            .bearer_auth(&self.token)
+            .json(body)
+            .send()
+        {
+            Ok(response) => {
+                let status = response.status();
+                match status.as_u16() {
+                    200..=299 => PostOutcome::Stored,
+                    404 => PostOutcome::Gone,
+                    429 => PostOutcome::RetryAfter(Duration::from_secs(
+                        response
+                            .headers()
+                            .get(reqwest::header::RETRY_AFTER)
+                            .and_then(|v| v.to_str().ok())
+                            .and_then(|v| v.trim().parse::<u64>().ok())
+                            .unwrap_or(3600),
+                    )),
+                    400..=499 => {
+                        tracing::debug!("machine log upload refused: {status}");
+                        PostOutcome::Refused
+                    }
+                    _ => PostOutcome::Failed,
+                }
+            }
+            Err(err) => {
+                tracing::debug!(
+                    "machine log upload failed: {}",
+                    fpai_collect::error_chain(&err)
+                );
+                PostOutcome::Failed
+            }
+        }
+    }
+
+    /// Upload whatever logship has queued, one body per tick.
+    fn ship_logs(&self) {
+        let scrub =
+            crate::logship::Scrub::new(std::env::var("HOME").ok(), Some(self.token.clone()));
+        crate::logship::ship(&self.machine_id, &scrub, &|body| {
+            self.post_machine_logs(body)
+        });
     }
 
     /// The roster is a full snapshot, independent of policy reconciliation.
@@ -1073,6 +1116,11 @@ pub fn spawn_maintenance(
     idle_interval: Duration,
 ) -> JoinHandle<()> {
     std::thread::spawn(move || {
+        // Outside the supervised body on purpose: a restart after a panic must
+        // remember the identity it last saw. Forgetting it made an org switch
+        // during the backoff read as a first identity (whose deployment 0 the
+        // rollback floor then refused) and a removed credential read as never
+        // enrolled (so nothing was deactivated).
         let mut last_state: Option<bool> = None;
         // `None` until the first successful resolution; then the identity seen
         // last (itself `None` when not enrolled).
@@ -1080,91 +1128,94 @@ pub fn spawn_maintenance(
         // Set when the identity changed and the new one has not yet completed a
         // reconcile. See below.
         let mut floor_reset_pending = false;
-        while !shutdown.load(Ordering::Relaxed) {
-            if let (Ok(path), Some(home)) = (agent_roster::roster_path(), std::env::var_os("HOME"))
-                && let Err(err) = agent_roster::refresh(&path, Path::new(&home))
-            {
-                eprintln!("[failproofaid] could not refresh agent inventory: {err}");
-            }
-            let cloud = CloudClient::from_env_or_file();
-            // A resolution ERROR is not a change of identity: broken
-            // credentials keep the last known-good deployment (see above), so
-            // they must neither reset the floor nor deactivate anything.
-            // `maintenance_tick` logs the error itself.
-            let identity = cloud
-                .as_ref()
-                .ok()
-                .map(|client| client.as_ref().map(CloudClient::identity));
-
-            // The rollback floor belongs to ONE cloud identity. The server
-            // numbers deployments per (org, machine), so after an org switch, a
-            // re-registration or a fresh enrolment the new identity legitimately
-            // answers with a lower deployment — often 0. Carrying the old floor
-            // across refused it ("deployment rollback from N to 0") until the
-            // daemon restarted, and the previous org's policies kept enforcing.
-            if let Some(identity) = identity
-                && last_identity.as_ref() != Some(&identity)
-            {
-                let first = last_identity.is_none();
-                if !first {
-                    store.reset_high_water();
-                    floor_reset_pending = identity.is_some();
-                    eprintln!(
-                        "[failproofaid] cloud identity changed; the cloud-policy deployment floor starts again"
-                    );
+        crate::supervised("cloud policy sync", &shutdown, || {
+            while !shutdown.load(Ordering::Relaxed) {
+                if let (Ok(path), Some(home)) =
+                    (agent_roster::roster_path(), std::env::var_os("HOME"))
+                    && let Err(err) = agent_roster::refresh(&path, Path::new(&home))
+                {
+                    tracing::warn!("could not refresh agent inventory: {err}");
                 }
-                // Enrolled → not enrolled (`--disconnect`, credentials removed):
-                // stop enforcing the departed org's policies. Removing only
-                // `active.json`, as the CLI does, is undone by the repair below,
-                // which rebuilds it from `desired-state.json`.
-                if !first && identity.is_none() {
-                    match store.deactivate() {
-                        Ok(true) => eprintln!(
-                            "[failproofaid] cloud enrolment removed; cloud-managed policies deactivated"
-                        ),
-                        Ok(false) => {}
-                        Err(err) => eprintln!(
-                            "[failproofaid] could not deactivate cloud-managed policies: {err}"
-                        ),
+                let cloud = CloudClient::from_env_or_file();
+                // A resolution ERROR is not a change of identity: broken
+                // credentials keep the last known-good deployment (see above), so
+                // they must neither reset the floor nor deactivate anything.
+                // `maintenance_tick` logs the error itself.
+                let identity = cloud
+                    .as_ref()
+                    .ok()
+                    .map(|client| client.as_ref().map(CloudClient::identity));
+
+                // The rollback floor belongs to ONE cloud identity. The server
+                // numbers deployments per (org, machine), so after an org switch, a
+                // re-registration or a fresh enrolment the new identity legitimately
+                // answers with a lower deployment — often 0. Carrying the old floor
+                // across refused it ("deployment rollback from N to 0") until the
+                // daemon restarted, and the previous org's policies kept enforcing.
+                if let Some(identity) = identity
+                    && last_identity.as_ref() != Some(&identity)
+                {
+                    let first = last_identity.is_none();
+                    if !first {
+                        store.reset_high_water();
+                        floor_reset_pending = identity.is_some();
+                        tracing::info!(
+                            "cloud identity changed; the cloud-policy deployment floor starts again"
+                        );
                     }
+                    // Enrolled → not enrolled (`--disconnect`, credentials removed):
+                    // stop enforcing the departed org's policies. Removing only
+                    // `active.json`, as the CLI does, is undone by the repair below,
+                    // which rebuilds it from `desired-state.json`.
+                    if !first && identity.is_none() {
+                        match store.deactivate() {
+                            Ok(true) => tracing::info!(
+                                "cloud enrolment removed; cloud-managed policies deactivated"
+                            ),
+                            Ok(false) => {}
+                            Err(err) => {
+                                tracing::warn!("could not deactivate cloud-managed policies: {err}")
+                            }
+                        }
+                    }
+                    last_identity = Some(identity);
                 }
-                last_identity = Some(identity);
-            }
 
-            // Log only on transition, so a disconnected machine does not print
-            // a line every 30 seconds forever.
-            let enrolled = matches!(cloud, Ok(Some(_)));
-            if last_state != Some(enrolled) {
-                eprintln!(
-                    "[failproofaid] cloud-managed policy polling {}",
-                    if enrolled { "enabled" } else { "disabled" }
+                // Log only on transition, so a disconnected machine does not print
+                // a line every 30 seconds forever.
+                let enrolled = matches!(cloud, Ok(Some(_)));
+                if last_state != Some(enrolled) {
+                    tracing::info!(
+                        "cloud-managed policy polling {}",
+                        if enrolled { "enabled" } else { "disabled" }
+                    );
+                    last_state = Some(enrolled);
+                }
+
+                // Re-reset until the new identity's first reconcile lands. If that
+                // poll fails, the repair re-applies the PREVIOUS identity's
+                // `desired-state.json` through `reconcile`, which raises the floor
+                // straight back to the old number. Replay protection resumes from
+                // the new identity's first success.
+                if maintenance_tick(
+                    &store,
+                    cloud,
+                    floor_reset_pending,
+                    &enrolment_withdrawn,
+                    &oss_cleanup_applies,
+                ) {
+                    floor_reset_pending = false;
+                }
+                wait_until_shutdown(
+                    &shutdown,
+                    if enrolled {
+                        poll_interval
+                    } else {
+                        idle_interval
+                    },
                 );
-                last_state = Some(enrolled);
             }
-
-            // Re-reset until the new identity's first reconcile lands. If that
-            // poll fails, the repair re-applies the PREVIOUS identity's
-            // `desired-state.json` through `reconcile`, which raises the floor
-            // straight back to the old number. Replay protection resumes from
-            // the new identity's first success.
-            if maintenance_tick(
-                &store,
-                cloud,
-                floor_reset_pending,
-                &enrolment_withdrawn,
-                &oss_cleanup_applies,
-            ) {
-                floor_reset_pending = false;
-            }
-            wait_until_shutdown(
-                &shutdown,
-                if enrolled {
-                    poll_interval
-                } else {
-                    idle_interval
-                },
-            );
-        }
+        })
     })
 }
 
@@ -1209,11 +1260,12 @@ fn maintenance_tick(
             let reconciled = poll_once_guarded(store, &cloud, withdrawn);
             if !withdrawn() {
                 repair(store, withdrawn);
+                cloud.ship_logs();
             }
             reconciled
         }
         Err(err) => {
-            eprintln!("[failproofaid] cloud enrolment error: {err}");
+            tracing::warn!("cloud enrolment error: {err}");
             repair(store, &|| false);
             false
         }
@@ -1221,12 +1273,12 @@ fn maintenance_tick(
             if back_on_oss() {
                 match store.clear_deployment() {
                     Ok(0) => {}
-                    Ok(removed) => eprintln!(
-                        "[failproofaid] this machine is disconnected from FailproofAI Cloud; \
+                    Ok(removed) => tracing::warn!(
+                        "this machine is disconnected from FailproofAI Cloud; \
                          removed {removed} leftover cloud policy file(s)"
                     ),
-                    Err(err) => eprintln!(
-                        "[failproofaid] could not remove the cloud policy files of a disconnected machine: {err}"
+                    Err(err) => tracing::warn!(
+                        "could not remove the cloud policy files of a disconnected machine: {err}"
                     ),
                 }
             }
@@ -1237,7 +1289,7 @@ fn maintenance_tick(
 
 fn repair(store: &PolicyStore, withdrawn: &dyn Fn() -> bool) {
     if let Err(err) = store.repair_active_from_cache_unless(withdrawn) {
-        eprintln!("[failproofaid] cloud policy integrity error: {err}");
+        tracing::warn!("cloud policy integrity error: {err}");
     }
 }
 
@@ -1256,19 +1308,73 @@ fn report_and_reclaim(cloud: &CloudClient, path: &Path, home: &Path, roster: &Ag
         }
         Ok(_) => return,
         Err(err) => {
-            eprintln!("[failproofaid] {err}");
+            tracing::info!("{err}");
             return;
         }
     };
     match agent_roster::reclaim(path, home, &reclaimable) {
         Ok(next) if next.generation != roster.generation => {
             if let Err(err) = cloud.report_agent_roster(&next, false) {
-                eprintln!("[failproofaid] {err}");
+                tracing::info!("{err}");
             }
         }
         Ok(_) => agent_roster::capacity_stalled(path, roster.generation),
-        Err(err) => eprintln!("[failproofaid] could not reclaim agent roster capacity: {err}"),
+        Err(err) => tracing::warn!("could not reclaim agent roster capacity: {err}"),
     }
+}
+
+/// The log-shipping fields of a desired-state response (logship.rs).
+#[derive(Debug, Default, PartialEq, Eq)]
+struct LogConsent {
+    machine_logs: Option<bool>,
+    log_request: Option<String>,
+}
+
+/// Validates a desired-state response and decodes it. The log-shipping fields
+/// come back only with a response that was accepted, so a refused one has
+/// nothing to apply.
+fn decode_desired_state(raw: serde_json::Value) -> Result<(DesiredState, LogConsent), PollFailure> {
+    // THE VERSION IS CHECKED BEFORE THE FIELDS, which is the whole
+    // point of having one. `SUPPORTED_SCHEMA_VERSIONS` accepts 1 as
+    // well, and its comment says that is "for files on DISK, never for
+    // a server" — but nothing enforced the second half, so this path
+    // took a v1 response.
+    //
+    // Decoding straight into `DesiredState` would also reject a v1
+    // payload, since that type has no aliases for the old spelling —
+    // but on the WRONG grounds: serde reports "missing field
+    // `deployment`", which sends an operator hunting a malformed
+    // payload instead of a stale server. Reading the version off an
+    // untyped value first means the error names both halves and says
+    // which to upgrade.
+    let version = raw.get("schemaVersion").and_then(serde_json::Value::as_u64);
+    match version {
+        Some(v)
+            if v == u64::from(DESIRED_STATE_SCHEMA_VERSION)
+                || v == u64::from(SCOPED_DESIRED_STATE_SCHEMA_VERSION) => {}
+        Some(v) => {
+            return Err(PollFailure::payload(format!(
+                "server sent desired-state schemaVersion {v} but this daemon \
+                 speaks {DESIRED_STATE_SCHEMA_VERSION} or {SCOPED_DESIRED_STATE_SCHEMA_VERSION} — upgrade whichever half is behind"
+            )));
+        }
+        None => {
+            return Err(PollFailure::payload(
+                "desired-state response has no schemaVersion field".to_string(),
+            ));
+        }
+    }
+    let consent = LogConsent {
+        machine_logs: raw.get("machineLogs").and_then(serde_json::Value::as_bool),
+        log_request: raw
+            .get("logRequest")
+            .and_then(|r| r.get("id"))
+            .and_then(serde_json::Value::as_str)
+            .map(str::to_owned),
+    };
+    let desired = serde_json::from_value::<DesiredState>(raw)
+        .map_err(|err| PollFailure::payload(format!("invalid desired-state response: {err}")))?;
+    Ok((desired, consent))
 }
 
 /// One poll and its reconcile. `withdrawn` is asked right before anything is
@@ -1292,7 +1398,7 @@ fn poll_once_guarded(
     let active = match store.read_active() {
         Ok(active) => Some(active),
         Err(err) => {
-            eprintln!("[failproofaid] could not read the active deployment to report it: {err}");
+            tracing::warn!("could not read the active deployment to report it: {err}");
             None
         }
     };
@@ -1325,9 +1431,11 @@ fn poll_once_guarded(
             ) {
                 Ok(outcome) => {
                     if outcome.activated || outcome.downloaded > 0 || outcome.repaired > 0 {
-                        eprintln!(
-                            "[failproofaid] cloud policy deployment {} active (downloaded {}, repaired {})",
-                            outcome.deployment, outcome.downloaded, outcome.repaired
+                        tracing::info!(
+                            "cloud policy deployment {} active (downloaded {}, repaired {})",
+                            outcome.deployment,
+                            outcome.downloaded,
+                            outcome.repaired
                         );
                     }
                     record_daemon_errors(store, Vec::new());
@@ -1337,14 +1445,14 @@ fn poll_once_guarded(
                     // Nothing was written, and nothing is recorded either: an
                     // error state would describe a deployment this machine no
                     // longer has.
-                    eprintln!(
-                        "[failproofaid] this machine was disconnected while a poll was in flight; \
+                    tracing::warn!(
+                        "this machine was disconnected while a poll was in flight; \
                          its result was discarded"
                     );
                     false
                 }
                 Err(err) => {
-                    eprintln!("[failproofaid] cloud policy reconcile error: {err}");
+                    tracing::warn!("cloud policy reconcile error: {err}");
                     if !transient_fetch_failure(&err) && !withdrawn() {
                         record_daemon_errors(
                             store,
@@ -1360,10 +1468,7 @@ fn poll_once_guarded(
             }
         }
         Err(failure) => {
-            eprintln!(
-                "[failproofaid] cloud policy poll error: {}",
-                failure.message
-            );
+            tracing::warn!("cloud policy poll error: {}", failure.message);
             // A payload this daemon refused is reported; a transport failure is
             // not, and leaves the recorded state as it was.
             if failure.reportable && !withdrawn() {
@@ -1397,6 +1502,36 @@ fn wait_until_shutdown(shutdown: &AtomicBool, interval: Duration) {
     }
 }
 
+/// A file of at most 4 KiB, as text: the VERSION file is a few dozen bytes,
+/// and this runs on every poll, so a file that grew is not read whole.
+fn read_small(path: &Path) -> Option<String> {
+    use std::io::Read;
+    let mut text = String::new();
+    std::fs::File::open(path)
+        .ok()?
+        .take(4096)
+        .read_to_string(&mut text)
+        .ok()?;
+    Some(text)
+}
+
+/// `daemonVersion`, `cliVersion` (when the home's VERSION file names one), `os`
+/// and `arch`, for the desired-state poll.
+fn machine_facts() -> Vec<(&'static str, String)> {
+    let mut facts = vec![("daemonVersion", env!("CARGO_PKG_VERSION").to_string())];
+    let cli = crate::paths::failproofai_home()
+        .ok()
+        .and_then(|home| read_small(&crate::paths::version_file_path(&home)))
+        .and_then(|text| serde_json::from_str::<serde_json::Value>(&text).ok())
+        .and_then(|doc| doc.get("cli")?.as_str().map(str::to_string))
+        .filter(|v| !v.is_empty() && v.len() <= 64);
+    if let Some(cli) = cli {
+        facts.push(("cliVersion", cli));
+    }
+    facts.push(("os", std::env::consts::OS.to_string()));
+    facts.push(("arch", std::env::consts::ARCH.to_string()));
+    facts
+}
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1566,6 +1701,78 @@ mod tests {
     /// half, so this path took a v1 response. The disk half is now handled by a
     /// dedicated legacy type in `cloud_policies.rs`, which is what lets this end be
     /// strict without costing an upgraded machine its persisted state.
+    /// One request in, one canned status out; returns the request head.
+    fn answer_once(
+        status_line: &'static str,
+        extra: &'static str,
+    ) -> (String, std::thread::JoinHandle<String>) {
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let address = listener.local_addr().unwrap();
+        let server = std::thread::spawn(move || {
+            let (mut stream, _) = listener.accept().unwrap();
+            let mut request = Vec::new();
+            let mut chunk = [0u8; 4096];
+            // Head, then the body its Content-Length names.
+            loop {
+                let n = stream.read(&mut chunk).unwrap();
+                request.extend_from_slice(&chunk[..n]);
+                let text = String::from_utf8_lossy(&request).to_string();
+                if let Some(head_end) = text.find("\r\n\r\n") {
+                    let len = text[..head_end]
+                        .lines()
+                        .find_map(|l| {
+                            l.to_ascii_lowercase()
+                                .strip_prefix("content-length:")
+                                .map(|v| v.trim().parse::<usize>().unwrap_or(0))
+                        })
+                        .unwrap_or(0);
+                    if request.len() >= head_end + 4 + len || n == 0 {
+                        break;
+                    }
+                }
+                if n == 0 {
+                    break;
+                }
+            }
+            let response = format!("HTTP/1.1 {status_line}\r\n{extra}Content-Length: 0\r\n\r\n");
+            stream.write_all(response.as_bytes()).unwrap();
+            String::from_utf8_lossy(&request).to_string()
+        });
+        (format!("http://{address}"), server)
+    }
+
+    #[test]
+    fn machine_log_uploads_map_the_server_answer() {
+        use crate::logship::PostOutcome;
+        let body = serde_json::json!({"machineId": "machine", "kind": "errors", "entries": []});
+        for (status, extra, want) in [
+            ("202 Accepted", "", PostOutcome::Stored),
+            ("404 Not Found", "", PostOutcome::Gone),
+            (
+                "429 Too Many Requests",
+                "Retry-After: 120\r\n",
+                PostOutcome::RetryAfter(Duration::from_secs(120)),
+            ),
+            ("413 Payload Too Large", "", PostOutcome::Refused),
+            ("503 Service Unavailable", "", PostOutcome::Failed),
+        ] {
+            let (url, server) = answer_once(status, extra);
+            let client = CloudClient::new(&url, "token-abcdefgh".into(), "machine".into()).unwrap();
+            assert_eq!(client.post_machine_logs(&body), want, "{status}");
+            let request = server.join().unwrap();
+            assert!(
+                request.starts_with("POST /enforcement/v1/machine-logs "),
+                "{request}"
+            );
+            assert!(
+                request
+                    .to_ascii_lowercase()
+                    .contains("authorization: bearer token-abcdefgh")
+            );
+            assert!(request.contains(r#""kind":"errors""#));
+        }
+    }
+
     #[test]
     fn refuses_a_desired_state_response_at_an_older_schema_version() {
         let listener = TcpListener::bind("127.0.0.1:0").unwrap();
@@ -1601,6 +1808,53 @@ mod tests {
         server.join().unwrap();
     }
 
+    fn decode(body: &str) -> Result<(DesiredState, LogConsent), String> {
+        decode_desired_state(serde_json::from_str(body).unwrap()).map_err(|f| {
+            assert!(f.reportable, "a refused payload is the server's to see");
+            f.message
+        })
+    }
+
+    /// A response the daemon refuses carries no consent to apply: the refusal
+    /// used to land AFTER `machineLogs` and `logRequest` were applied, so an
+    /// unknown schemaVersion with no `machineLogs` read as "on", removed
+    /// `uploads-off`, and started an upload.
+    #[test]
+    fn a_refused_desired_state_response_yields_no_troubleshooting_consent() {
+        let err = decode(r#"{"schemaVersion":999,"logRequest":{"id":"req-999"}}"#)
+            .expect_err("schema 999 must be refused");
+        assert!(err.contains("schemaVersion 999"), "got: {err}");
+
+        let err = decode(r#"{"schemaVersion":2,"machineLogs":true,"logRequest":{"id":"req-bad"}}"#)
+            .expect_err("a payload missing `deployment` must be refused");
+        assert!(err.contains("invalid desired-state response"), "got: {err}");
+
+        let err = decode(r#"{"machineLogs":true,"logRequest":{"id":"req-none"}}"#)
+            .expect_err("a response with no schemaVersion must be refused");
+        assert!(err.contains("no schemaVersion"), "got: {err}");
+    }
+
+    /// The other half: an accepted response still carries both fields.
+    #[test]
+    fn an_accepted_desired_state_response_carries_troubleshooting_consent() {
+        let (desired, consent) = decode(
+            r#"{"schemaVersion":2,"deployment":7,"policies":[],"machineLogs":false,"logRequest":{"id":"req-ok"}}"#,
+        )
+        .expect("a valid response is accepted");
+        assert_eq!(desired.deployment, 7);
+        assert_eq!(
+            consent,
+            LogConsent {
+                machine_logs: Some(false),
+                log_request: Some("req-ok".to_string()),
+            }
+        );
+
+        let (_, consent) = decode(r#"{"schemaVersion":2,"deployment":7,"policies":[]}"#)
+            .expect("a valid response is accepted");
+        assert_eq!(consent, LogConsent::default(), "absent keys stay absent");
+    }
+
     /// The machine's own answer has to reach the wire, and "cannot say" has to
     /// stay distinguishable from "deployment 0" once it gets there.
     #[test]
@@ -1612,9 +1866,22 @@ mod tests {
             let sink = captured.clone();
             let server = std::thread::spawn(move || {
                 let (mut stream, _) = listener.accept().unwrap();
-                let mut request = [0_u8; 4096];
-                let read = stream.read(&mut request).unwrap();
-                *sink.lock().unwrap() = String::from_utf8_lossy(&request[..read]).to_string();
+                stream
+                    .set_read_timeout(Some(Duration::from_secs(5)))
+                    .unwrap();
+                // Through the end of the headers, not one read: a read that
+                // returned after the request line made the User-Agent
+                // assertion below fail on a client that sent it.
+                let mut request = Vec::new();
+                let mut chunk = [0_u8; 4096];
+                while !request.windows(4).any(|w| w == b"\r\n\r\n") && request.len() < 65_536 {
+                    let read = stream.read(&mut chunk).unwrap();
+                    if read == 0 {
+                        break;
+                    }
+                    request.extend_from_slice(&chunk[..read]);
+                }
+                *sink.lock().unwrap() = String::from_utf8_lossy(&request).to_string();
                 let body = br#"{"schemaVersion":2,"deployment":7,"policies":[]}"#;
                 write!(
                     stream,
@@ -1638,6 +1905,23 @@ mod tests {
             assert!(
                 request.contains("machineId=machine-1"),
                 "the existing parameter must survive: {request}"
+            );
+            // What the machine runs rides on every poll, so the cloud can say
+            // which machines are behind.
+            assert!(
+                request.contains(&format!("daemonVersion={}", env!("CARGO_PKG_VERSION"))),
+                "{request}"
+            );
+            assert!(
+                request.contains(&format!("os={}", std::env::consts::OS)),
+                "{request}"
+            );
+            assert!(
+                request.to_ascii_lowercase().contains(&format!(
+                    "user-agent: failproofaid/{}",
+                    env!("CARGO_PKG_VERSION")
+                )),
+                "{request}"
             );
             if expected {
                 assert!(

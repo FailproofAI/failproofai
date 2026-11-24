@@ -10,7 +10,7 @@
 //! since that one crosses a real compatibility boundary against whatever
 //! `failproofai` CLI version happens to be installed).
 
-use fpai_ipc::framing::{read_message, write_message};
+use fpai_ipc::framing::{FramingError, read_message, write_message};
 use serde::Deserialize;
 use serde_json::json;
 use std::io;
@@ -76,6 +76,21 @@ pub struct PolicyEvaluation {
 /// in parallel by default, so multiple tests setting
 /// `FAILPROOFAI_WORKER_CMD` to different values would race. Tests instead
 /// construct a `WorkerCommand` directly via `shell`/`node`.
+/// What an early exit status means when it has one obvious cause. 127 is the
+/// shell's "command not found": the runtime or package saved in the service
+/// definition is gone, typically after a Node upgrade, and only rewriting the
+/// definition brings the worker back.
+fn early_exit_hint(code: Option<i32>) -> &'static str {
+    match code {
+        Some(127) => {
+            "; a command it runs was not found: if this is the installed service, the Node.js \
+             or failproofai path saved at install may be gone (run `failproofai update`); \
+             otherwise check FAILPROOFAI_WORKER_CMD"
+        }
+        _ => "",
+    }
+}
+
 pub enum WorkerCommand {
     Shell(String),
     Node { script: PathBuf },
@@ -187,7 +202,7 @@ fn spawn_forwarder(
 fn forward_worker_output(label: &'static str, pipe: impl io::Read) {
     use std::io::BufRead;
     for line in io::BufReader::new(pipe).lines().map_while(Result::ok) {
-        eprintln!("[failproofaid] worker {label}: {line}");
+        tracing::info!("worker {label}: {line}");
     }
 }
 
@@ -230,6 +245,8 @@ pub struct Worker {
     /// Set once shutdown begins, so no thread can spawn a worker after the
     /// process has decided to stop. See [`Worker::shutdown`].
     stopping: AtomicBool,
+    /// How long one request may wait on the worker before it counts as wedged.
+    request_timeout: Duration,
 }
 
 impl Worker {
@@ -239,6 +256,7 @@ impl Worker {
             cmd,
             child: Mutex::new(None),
             stopping: AtomicBool::new(false),
+            request_timeout: Duration::from_secs(30),
         }
     }
 
@@ -310,6 +328,12 @@ impl Worker {
             None => true,
         };
         if needs_spawn {
+            // The child we tracked may be gone while its group lives on: the
+            // `sh -c` wrapper dead, the `node` it forked still running (and,
+            // after a stuck policy, still spinning). Reap the group first.
+            if let Some(mut old) = guard.take() {
+                kill_process_group(&mut old);
+            }
             let reason = if previous_child { "restart" } else { "initial" };
             let began = Instant::now();
             let _ = std::fs::remove_file(&self.socket_path);
@@ -333,7 +357,8 @@ impl Worker {
                 if let Ok(Some(status)) = child.try_wait() {
                     report_spawn(reason, "exited_early", began);
                     return Err(WorkerError::Io(io::Error::other(format!(
-                        "worker process exited before creating its socket (status: {status})"
+                        "worker process exited before creating its socket (status: {status}){}",
+                        early_exit_hint(status.code())
                     ))));
                 }
                 if Instant::now() >= deadline {
@@ -365,7 +390,7 @@ impl Worker {
     /// next real request anyway.
     pub fn warm(&self) {
         if let Err(err) = self.ensure_started() {
-            eprintln!("[failproofaid] worker warm-up failed (will retry on first request): {err}");
+            tracing::warn!("worker warm-up failed (will retry on first request): {err}");
         }
     }
 
@@ -387,7 +412,7 @@ impl Worker {
 
         let mut stream = UnixStream::connect(&self.socket_path).map_err(WorkerError::Io)?;
         stream
-            .set_read_timeout(Some(Duration::from_secs(30)))
+            .set_read_timeout(Some(self.request_timeout))
             .map_err(WorkerError::Io)?;
         // Symmetric with the read timeout, and not optional. `write_message`
         // does a blocking `write_all`: if the worker's single-threaded event
@@ -399,7 +424,7 @@ impl Worker {
         // stops answering entirely — the opposite of the fail-fast behaviour
         // the rest of this file is built around.
         stream
-            .set_write_timeout(Some(Duration::from_secs(30)))
+            .set_write_timeout(Some(self.request_timeout))
             .map_err(WorkerError::Io)?;
 
         let request = json!({
@@ -410,10 +435,10 @@ impl Worker {
             "cwd": cwd,
             "agentSettingsPath": agent_settings_path,
         });
-        write_message(&mut stream, &request).map_err(|e| WorkerError::Io(io::Error::other(e)))?;
+        write_message(&mut stream, &request).map_err(|e| self.after_io_failure(e))?;
 
         let response: serde_json::Value =
-            read_message(&mut stream).map_err(|e| WorkerError::Io(io::Error::other(e)))?;
+            read_message(&mut stream).map_err(|e| self.after_io_failure(e))?;
 
         match response.get("type").and_then(|t| t.as_str()) {
             Some("hookResult") => {
@@ -457,6 +482,32 @@ impl Worker {
             }
             _ => Err(WorkerError::BadResponse(response.to_string())),
         }
+    }
+}
+
+impl Worker {
+    /// A worker that let a request time out is wedged (a policy stuck in a
+    /// loop blocks its single event loop): its own 10 s per-policy limit could
+    /// not fire. Left in place it timed out every later request too, so every
+    /// tool call on the machine waited 30 s and was then denied, for good.
+    /// Kill its group so the next request starts a fresh worker. This request
+    /// still fails (and the caller fails closed).
+    fn after_io_failure(&self, err: FramingError) -> WorkerError {
+        let timed_out = matches!(
+            &err,
+            FramingError::Io(e) if matches!(e.kind(), io::ErrorKind::WouldBlock | io::ErrorKind::TimedOut)
+        );
+        if timed_out {
+            tracing::warn!(
+                "worker did not answer within {}s; restarting it",
+                self.request_timeout.as_secs()
+            );
+            let mut guard = self.child.lock().unwrap_or_else(|e| e.into_inner());
+            if let Some(mut child) = guard.take() {
+                kill_process_group(&mut child);
+            }
+        }
+        WorkerError::Io(io::Error::other(err))
     }
 }
 
@@ -504,6 +555,140 @@ mod tests {
     /// as "a worker is listening". Before the readiness probe became a real
     /// `connect()`, this returned `Ok(())` immediately and every later
     /// request hit `ECONNREFUSED` on a dead socket.
+    /// A Node upgrade deletes the runtime the service names; the shell then
+    /// exits 127 and the error says what fixes it instead of only the status.
+    #[test]
+    fn a_worker_command_that_is_gone_names_the_fix() {
+        let socket_path = temp_socket_path("gone");
+        let worker = Worker::new(
+            socket_path.clone(),
+            WorkerCommand::shell("'/nonexistent/fpai-test/node' '/nonexistent/worker.mjs'"),
+        );
+        let err = worker
+            .call("PreToolUse", "claude", "{}", None, None)
+            .expect_err("a missing runtime cannot start a worker");
+        assert!(err.to_string().contains("failproofai update"), "got: {err}");
+        std::fs::remove_file(&socket_path).ok();
+    }
+
+    /// A fake worker that binds the socket, takes requests and never answers:
+    /// a policy stuck in a loop, from the daemon's side. It writes its pid.
+    fn wedged_worker_script(pid_file: &Path) -> String {
+        format!(
+            "import os, socket, time\n\
+             s = socket.socket(socket.AF_UNIX)\n\
+             s.bind(os.environ['FAILPROOFAI_WORKER_SOCKET'])\n\
+             s.listen(8)\n\
+             open('{}', 'w').write(str(os.getpid()))\n\
+             held = []\n\
+             while True:\n    c, _ = s.accept()\n    held.append(c)\n",
+            pid_file.display()
+        )
+    }
+
+    fn alive(pid: i32) -> bool {
+        // Signal 0 checks existence; a zombie still counts, so reap-or-gone is
+        // what the kill must achieve within the wait below.
+        let exists = unsafe { libc::kill(pid, 0) == 0 };
+        exists
+            && !std::fs::read_to_string(format!("/proc/{pid}/stat"))
+                .map(|s| s.contains(") Z "))
+                .unwrap_or(true)
+    }
+
+    fn read_pid(path: &Path) -> i32 {
+        for _ in 0..100 {
+            if let Ok(s) = std::fs::read_to_string(path)
+                && let Ok(pid) = s.trim().parse()
+            {
+                return pid;
+            }
+            std::thread::sleep(Duration::from_millis(50));
+        }
+        panic!("the fake worker never wrote its pid");
+    }
+
+    /// The regression, found driving a real machine: a Cloud policy stuck in a
+    /// loop wedged the worker, and every later tool call on the machine waited
+    /// out the read timeout and was denied, until someone restarted the daemon.
+    #[test]
+    fn a_worker_that_times_out_is_replaced_for_the_next_request() {
+        let socket_path = temp_socket_path("wedged");
+        let pid_file = temp_socket_path("wedged-pid");
+        let script = temp_socket_path("wedged-py");
+        std::fs::write(&script, wedged_worker_script(&pid_file)).unwrap();
+        let mut worker = Worker::new(
+            socket_path.clone(),
+            WorkerCommand::shell(format!("python3 {}", script.display())),
+        );
+        worker.request_timeout = Duration::from_millis(500);
+
+        worker
+            .call("PreToolUse", "claude", "{}", None, None)
+            .expect_err("a worker that never answers fails this request");
+        let first = read_pid(&pid_file);
+        std::fs::remove_file(&pid_file).ok();
+        let deadline = Instant::now() + Duration::from_secs(5);
+        while alive(first) && Instant::now() < deadline {
+            std::thread::sleep(Duration::from_millis(50));
+        }
+        assert!(
+            !alive(first),
+            "the wedged worker must be killed, not left holding every request"
+        );
+
+        // The next request gets a fresh worker rather than the wedged one.
+        worker.call("PreToolUse", "claude", "{}", None, None).ok();
+        let second = read_pid(&pid_file);
+        assert_ne!(first, second, "a new worker serves the next request");
+
+        drop(worker);
+        for p in [&pid_file, &script] {
+            std::fs::remove_file(p).ok();
+        }
+    }
+
+    /// The worker runs under `sh -c`. With the shell gone but its `node` child
+    /// alive (still spinning), a respawn left that child running, orphaned.
+    #[test]
+    fn a_respawn_reaps_what_the_dead_worker_left_in_its_group() {
+        let socket_path = temp_socket_path("orphan");
+        let pid_file = temp_socket_path("orphan-pid");
+        let script = temp_socket_path("orphan-py");
+        std::fs::write(&script, wedged_worker_script(&pid_file)).unwrap();
+        // `& wait` keeps the shell as the tracked child and python as its child.
+        let worker = Worker::new(
+            socket_path.clone(),
+            WorkerCommand::shell(format!("python3 {} & wait", script.display())),
+        );
+        worker.ensure_started().expect("the fake worker starts");
+        let grandchild = read_pid(&pid_file);
+        std::fs::remove_file(&pid_file).ok();
+        {
+            // Kill only the shell, as a stray `kill <pid>` would.
+            let mut guard = worker.child.lock().unwrap();
+            let child = guard.as_mut().unwrap();
+            child.kill().unwrap();
+            child.wait().unwrap();
+        }
+        assert!(alive(grandchild), "premise: the shell's child outlives it");
+
+        worker.ensure_started().expect("a new worker starts");
+        let deadline = Instant::now() + Duration::from_secs(5);
+        while alive(grandchild) && Instant::now() < deadline {
+            std::thread::sleep(Duration::from_millis(50));
+        }
+        assert!(
+            !alive(grandchild),
+            "the old group's leftover must be reaped on respawn"
+        );
+
+        drop(worker);
+        for p in [&pid_file, &script] {
+            std::fs::remove_file(p).ok();
+        }
+    }
+
     #[test]
     fn a_stale_socket_file_is_not_mistaken_for_a_live_worker() {
         let socket_path = temp_socket_path("stale");

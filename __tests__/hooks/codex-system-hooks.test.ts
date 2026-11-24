@@ -19,6 +19,7 @@ import {
   rmSync,
   statSync,
   symlinkSync,
+  utimesSync,
   writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
@@ -506,6 +507,7 @@ describe("refreshCodexSystemHooks (failproofai update)", () => {
   });
 
   it("keeps the same events, arguments and timeouts", () => {
+    if (ME === 0) return; // root owns every file here, so this account's files are root's alone
     const cli = script(join(dir, "home", "failproofai"), "true");
     writeOlderBlock(cli);
     refreshCodexSystemHooks({ path: path() });
@@ -516,6 +518,7 @@ describe("refreshCodexSystemHooks (failproofai update)", () => {
   });
 
   it("takes out a block from before the runner rather than replace a file failproofai did not write", () => {
+    if (ME === 0) return; // root owns every file here, so this account's files are root's alone
     const cli = script(join(dir, "home", "failproofai"), "true");
     writeOlderBlock(cli);
     script(runner(), "echo mine");
@@ -590,6 +593,10 @@ describe("refreshCodexSystemHooks (failproofai update)", () => {
     ]);
     expect(codexRefreshLines({ status: "others", path: path(), reason: "x" })).toEqual([
       `▲ Codex: failproofai's hooks in ${path()} need updating by an account that set them up, or by root: x.`,
+      "  If you set them up, run `failproofai config`; otherwise tell whoever administers this machine.",
+    ]);
+    expect(codexRefreshLines({ status: "rewritten", path: path(), runner: runner(), migrated: false, dropped: [] })).toEqual([
+      `✓ Codex: rewrote failproofai's hook runner, ${runner()}, which had changed since it was written.`,
     ]);
     expect(codexRefreshLines({ status: "removed", path: path(), reason: "x" })[0]).toMatch(/^▲ Codex: took/);
     expect(codexRefreshLines({ status: "needs-root", path: path(), reason: "x" })).toEqual([
@@ -786,6 +793,7 @@ describe("the lines the runner keeps", () => {
   });
 
   it("refuses an account's line that runs another account's install", () => {
+    if (ME === 0) return; // root owns every file here, so this account's files are root's alone
     // This test's file, put forward as uid 4242's own failproofai.
     expect(install({ uid: 4242, trustedUids: [0] })).toMatchObject({
       ok: false,
@@ -795,12 +803,28 @@ describe("the lines the runner keeps", () => {
     expect(existsSync(path())).toBe(false);
   });
 
-  it("accepts an install its own group can write, as a umask of 002 leaves it, but not one everyone can", () => {
+  it("accepts an install its own private group can write, as a umask of 002 leaves it, but no other group, nor everyone", () => {
+    if (ME === 0) return; // root's line takes no group at all
     const home = dirname(myCli());
+    const gid = statSync(home).gid;
+    const own = { users: [{ name: "me", uid: ME, gid }], groups: [{ name: "me", gid, members: [] }] };
     chmodSync(home, 0o775);
-    expect(install()).toMatchObject({ ok: true });
+    expect(install({ accounts: own })).toMatchObject({ ok: true });
+    // The same group, shared: another account's primary group, a listed member, or a name not the account's.
+    for (const shared of [
+      { users: [...own.users, { name: "other", uid: ME + 1, gid }], groups: own.groups },
+      { users: own.users, groups: [{ name: "me", gid, members: ["other"] }] },
+      { users: own.users, groups: [{ name: "staff", gid, members: [] }] },
+    ]) {
+      expect(install({ accounts: shared })).toMatchObject({
+        ok: false,
+        reason: "unsafe",
+        detail: `${home} can be written by accounts other than its owner`,
+      });
+      expect(install({ accounts: own })).toMatchObject({ ok: true });
+    }
     chmodSync(home, 0o777);
-    expect(install()).toMatchObject({
+    expect(install({ accounts: own })).toMatchObject({
       ok: false,
       reason: "unsafe",
       detail: `${home} can be written by accounts other than its owner`,
@@ -834,11 +858,44 @@ describe("the lines the runner keeps", () => {
     expect(accounts()?.map((a) => a.uid)).toEqual([4242]);
   });
 
-  it("tidies away a runner no block runs, on update", () => {
+  it("tidies away a runner no block runs, on update, once no install can be about to add its block", () => {
     install();
     writeFileSync(path(), mergeCodexManagedBlock(readFileSync(path(), "utf8"), null));
+    // Just written: an install may be between writing the runner and the block.
+    expect(refreshCodexSystemHooks({ path: path() })).toEqual({ status: "absent" });
+    expect(existsSync(runner())).toBe(true);
+    const old = new Date(Date.now() - 11 * 60 * 1000);
+    utimesSync(runner(), old, old);
     expect(refreshCodexSystemHooks({ path: path() })).toEqual({ status: "absent" });
     expect(existsSync(runner())).toBe(false);
+  });
+
+  it("writes the runner again when it was edited by hand or lost its mode", () => {
+    expect(install()).toMatchObject({ ok: true });
+    const written = readFileSync(runner(), "utf8");
+    writeFileSync(runner(), written.replace("esac\n", "esac\nexit 0\n"));
+    expect(refreshCodexSystemHooks({ path: path() })).toEqual({
+      status: "rewritten",
+      path: path(),
+      runner: runner(),
+      migrated: false,
+      dropped: [],
+    });
+    expect(readFileSync(runner(), "utf8")).toBe(written);
+    chmodSync(runner(), 0o644);
+    expect(refreshCodexSystemHooks({ path: path() })).toMatchObject({ status: "rewritten", dropped: [] });
+    expect(statSync(runner()).mode & 0o777).toBe(0o755);
+    expect(refreshCodexSystemHooks({ path: path() })).toEqual({ status: "current", path: path() });
+  });
+
+  it("reads a block whose lines an editor turned into CRLF", () => {
+    expect(install({ uid: 4242 })).toMatchObject({ ok: true });
+    writeFileSync(path(), readFileSync(path(), "utf8").replace(/\n/g, "\r\n"));
+    const text = readFileSync(path(), "utf8");
+    expect(parseCodexManagedBlock(text)).toHaveLength(codex.eventTypes.length);
+    // Still the runner's block: only the account it lists runs failproofai.
+    expect(codexSystemHooksPresent({ path: path(), uid: 4242 })).toBe(true);
+    expect(codexSystemHooksPresent({ path: path(), uid: 4243 })).toBe(false);
   });
 
   it("drains an event larger than a pipe holds for an account it does not run, rather than leave Codex writing", () => {
@@ -875,6 +932,7 @@ describe("a block in the earlier format", () => {
   });
 
   it("asks no one for root, and fails no update, when it is not this account's", () => {
+    if (ME === 0) return; // root owns every file here, so this account's files are root's alone
     writeOlderBlock(myCli()); // this test's install, seen from uid 4242
     const before = readFileSync(path(), "utf8");
     let asked = 0;

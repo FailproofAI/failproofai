@@ -434,32 +434,77 @@ function resolveChain(path: string): Chain | { error: string; code?: string } {
  * owned by a trusted uid. A directory others can write is allowed only with
  * the sticky bit (`/tmp`), where no one renames or removes an entry another
  * account owns; the final file must be writable by its owner alone.
- * `groupWritable` lets a directory or file be writable by its group (an
- * account's own install, which a umask of 002 leaves that way). `dir` expects
- * a directory at the end; `link` accepts a symbolic link as the last name
- * (`/bin/sh`), whose target is checked the same way.
+ * `groupOk` lets a directory or file be writable by its group when that
+ * group passes it (an account's own private group, which a umask of 002
+ * leaves writing its install). `dir` expects a directory at the end; `link`
+ * accepts a symbolic link as the last name (`/bin/sh`), whose target is
+ * checked the same way.
  */
 export function untrustedPathReason(
   path: string,
   trusted: ReadonlySet<number>,
-  opts: { dir?: boolean; link?: boolean; groupWritable?: boolean } = {},
+  opts: { dir?: boolean; link?: boolean; groupOk?: (gid: number) => boolean } = {},
 ): string | null {
   const chain = resolveChain(path);
   if ("error" in chain) return chain.error;
   const { seen, last } = chain;
-  const others = opts.groupWritable ? 0o002 : 0o022;
   if (!opts.link && chain.finalLink) return `${resolve(path)} is a symbolic link`;
+  const othersWrite = (st: Stats): boolean =>
+    (st.mode & 0o002) !== 0 || ((st.mode & 0o020) !== 0 && !(opts.groupOk?.(st.gid) ?? false));
   for (const { name, st } of seen) {
     if (!trusted.has(st.uid)) return `${name} is owned by uid ${st.uid}`;
-    if (st.isDirectory() && (st.mode & others) !== 0 && (st.mode & 0o1000) === 0) {
+    if (st.isDirectory() && othersWrite(st) && (st.mode & 0o1000) === 0) {
       return `${name} can be written by accounts other than its owner`;
     }
   }
   const end = seen[seen.length - 1].st;
   if (opts.dir) return end.isDirectory() ? null : `${last} is not a directory`;
   if (!end.isFile()) return `${last} is not a regular file`;
-  if ((end.mode & others) !== 0) return `${last} can be written by accounts other than its owner`;
+  if (othersWrite(end)) return `${last} can be written by accounts other than its owner`;
   return null;
+}
+
+/** Accounts and groups, as /etc/passwd and /etc/group list them. */
+export interface CodexAccountsDb {
+  users: Array<{ name: string; uid: number; gid: number }>;
+  groups: Array<{ name: string; gid: number; members: string[] }>;
+}
+
+function readAccountsDb(deps: CodexSystemDeps): CodexAccountsDb {
+  if (deps.accounts) return deps.accounts;
+  const rows = (file: string): string[][] => {
+    try {
+      return readFileSync(file, "utf8")
+        .split("\n")
+        .filter((line) => line !== "" && !line.startsWith("#"))
+        .map((line) => line.split(":"));
+    } catch {
+      return [];
+    }
+  };
+  return {
+    users: rows("/etc/passwd")
+      .filter((f) => f.length >= 4)
+      .map((f) => ({ name: f[0], uid: Number(f[2]), gid: Number(f[3]) })),
+    groups: rows("/etc/group")
+      .filter((f) => f.length >= 3)
+      .map((f) => ({ name: f[0], gid: Number(f[2]), members: (f[3] ?? "").split(",").filter(Boolean) })),
+  };
+}
+
+/**
+ * Whether `gid` is `uid`'s own private group, which a umask of 002 makes safe
+ * to leave writing its files: its primary group, named after it, no other
+ * account's primary group, and listing no other member. Only what /etc/passwd
+ * and /etc/group say counts, so a group they cannot vouch for is not private.
+ */
+function isPrivateGroup(uid: number, gid: number, db: CodexAccountsDb): boolean {
+  const user = db.users.find((u) => u.uid === uid);
+  if (!user || user.gid !== gid) return false;
+  const group = db.groups.find((g) => g.gid === gid);
+  if (!group || group.name !== user.name) return false;
+  if (db.users.some((u) => u.gid === gid && u.uid !== uid)) return false;
+  return group.members.every((member) => member === user.name);
 }
 
 /** The uids that own anything resolving `path` goes through, root's left out; or why it does not resolve. */
@@ -517,9 +562,9 @@ function runnerProblem(
  * Why the runner must not keep `account`'s line: what the line runs can be
  * changed by an account other than that one or root. Root's line names its
  * interpreter, and everything it runs must be root's alone, group included;
- * another account's own install may be writable by its group.
+ * another account's own install may be writable by its private group.
  */
-function accountProblem(account: CodexRunnerAccount, trusted: ReadonlySet<number>): string | null {
+function accountProblem(account: CodexRunnerAccount, trusted: ReadonlySet<number>, db: CodexAccountsDb): string | null {
   if (!usableCliPath(account.cli)) return `${JSON.stringify(account.cli)} cannot go into the hook runner`;
   // Another account's install under a home this process cannot enter (0750)
   // is kept as it is: only what can be seen to fail is taken out.
@@ -534,9 +579,10 @@ function accountProblem(account: CodexRunnerAccount, trusted: ReadonlySet<number
     );
   }
   const own = new Set([...trusted, account.uid]);
+  const groupOk = (gid: number): boolean => isPrivateGroup(account.uid, gid, db);
   return (
-    (account.interpreter ? untrustedPathReason(account.interpreter, own, { link: true, groupWritable: true }) : null) ??
-    untrustedPathReason(account.cli, own, { link: true, groupWritable: true })
+    (account.interpreter ? untrustedPathReason(account.interpreter, own, { link: true, groupOk }) : null) ??
+    untrustedPathReason(account.cli, own, { link: true, groupOk })
   );
 }
 
@@ -562,6 +608,8 @@ export interface CodexSystemDeps {
   interpreter?: string;
   /** Write as this process (true) or through `sudo -n` (false). Default: whichever the files allow. */
   direct?: boolean;
+  /** /etc/passwd and /etc/group, read. Default the files. */
+  accounts?: CodexAccountsDb;
 }
 
 function resolvedPath(deps: CodexSystemDeps): string | null {
@@ -636,7 +684,7 @@ function writeSystemFile(path: string, contents: string, mode: string, direct: b
     chmodSync(path, parseInt(mode, 8));
     return;
   }
-  runPrivileged("install", ["-d", "-m", "0755", dirname(path)]);
+  if (!existsSync(dirname(path))) runPrivileged("install", ["-d", "-m", "0755", dirname(path)]);
   writePrivilegedFile(path, contents, mode);
 }
 
@@ -645,8 +693,13 @@ function removeSystemFile(path: string, direct: boolean): void {
   else runPrivileged("rm", ["-f", path]);
 }
 
-/** Makes `dir` exist, each directory made here 0755 from the moment it is made. */
+/**
+ * Makes `dir` exist, each directory made here 0755 from the moment it is made.
+ * One that is already there keeps its mode: the ownership check judges it as
+ * it is, rather than after root has quietly tightened it.
+ */
 function ensureSystemDir(dir: string, direct: boolean): void {
+  if (existsSync(dir)) return;
   if (!direct) {
     runPrivileged("install", ["-d", "-m", "0755", dir]);
     return;
@@ -669,9 +722,11 @@ function commandProgram(command: string): string | null {
 
 /** The hooks in a block of ours, read back as {@link renderCodexManagedBlock} wrote them, or null. */
 export function parseCodexManagedBlock(block: string): CodexSystemHookEntry[] | null {
-  const tables = block.match(/^\[\[hooks\.[A-Za-z]+\.hooks\]\]$/gm) ?? [];
+  // Line endings an editor may have changed; the bytes themselves are left as they are.
+  const text = block.replace(/\r\n/g, "\n");
+  const tables = text.match(/^\[\[hooks\.[A-Za-z]+\.hooks\]\]$/gm) ?? [];
   const entries: CodexSystemHookEntry[] = [];
-  for (const m of block.matchAll(/^\[\[hooks\.([A-Za-z]+)\.hooks\]\]\ntype = "command"\ncommand = (".*")\ntimeout = (\d+)$/gm)) {
+  for (const m of text.matchAll(/^\[\[hooks\.([A-Za-z]+)\.hooks\]\]\ntype = "command"\ncommand = (".*")\ntimeout = (\d+)$/gm)) {
     let command: unknown;
     try {
       command = JSON.parse(m[2]);
@@ -711,7 +766,12 @@ type EarlierBlock =
   /** Its program is under a directory this process cannot enter: nothing can be judged from here. */
   | { kind: "unknown"; owners: Set<number> };
 
-function earlierBlock(form: BlockForm, trusted: ReadonlySet<number>, self: { uid: number; name?: string }): EarlierBlock {
+function earlierBlock(
+  form: BlockForm,
+  trusted: ReadonlySet<number>,
+  self: { uid: number; name?: string },
+  db: CodexAccountsDb,
+): EarlierBlock {
   if (form.kind !== "direct" || !form.program || !usableCliPath(form.program)) {
     return { kind: "none", reason: "they could not be read back", owners: new Set() };
   }
@@ -729,7 +789,7 @@ function earlierBlock(form: BlockForm, trusted: ReadonlySet<number>, self: { uid
   if (owners.size > 1) return { kind: "none", reason: `more than one account can change ${program}`, owners };
   const [uid] = owners;
   const account: CodexRunnerAccount = { uid, cli: program, ...(uid === self.uid && self.name ? { name: self.name } : {}) };
-  const problem = accountProblem(account, trusted);
+  const problem = accountProblem(account, trusted, db);
   return problem ? { kind: "none", reason: problem, owners } : { kind: "account", account, owners };
 }
 
@@ -742,18 +802,35 @@ function mergeAccounts(...lists: ReadonlyArray<readonly CodexRunnerAccount[]>): 
 
 type RunnerState =
   | { kind: "absent" }
-  | { kind: "ours"; text: string; accounts: CodexRunnerAccount[]; programs: CodexRunnerPrograms }
+  | {
+      kind: "ours";
+      text: string;
+      accounts: CodexRunnerAccount[];
+      programs: CodexRunnerPrograms;
+      /** Exactly what {@link renderCodexHookRunner} writes for these accounts: nothing added by hand. */
+      canonical: boolean;
+      mode: number;
+    }
   | { kind: "foreign" };
 
 function readRunner(runner: string): RunnerState {
   let text: string;
+  let mode: number;
   try {
     text = readFileSync(runner, "utf8");
+    mode = statSync(runner).mode & 0o7777;
   } catch (err) {
     return (err as NodeJS.ErrnoException).code === "ENOENT" ? { kind: "absent" } : { kind: "foreign" };
   }
   const parsed = parseCodexHookRunner(text);
-  return parsed ? { kind: "ours", text, ...parsed } : { kind: "foreign" };
+  if (!parsed) return { kind: "foreign" };
+  let canonical = false;
+  try {
+    canonical = renderCodexHookRunner(parsed.accounts, parsed.programs) === text;
+  } catch {
+    canonical = false;
+  }
+  return { kind: "ours", text, ...parsed, canonical, mode };
 }
 
 /** The system config, failproofai's block in it, and the hook runner, as they are now. */
@@ -766,6 +843,7 @@ interface SystemState {
   runner: string;
   runnerState: RunnerState;
   trusted: ReadonlySet<number>;
+  accounts: CodexAccountsDb;
 }
 
 function readSystemState(path: string, deps: CodexSystemDeps): SystemState | { error: string } {
@@ -790,6 +868,7 @@ function readSystemState(path: string, deps: CodexSystemDeps): SystemState | { e
     runner,
     runnerState: readRunner(runner),
     trusted: codexTrustedOwners(path, deps),
+    accounts: readAccountsDb(deps),
   };
 }
 
@@ -875,7 +954,7 @@ function applySystemState(
 
   const dropped: CodexDroppedAccount[] = [];
   const kept = want.accounts.filter((account) => {
-    const problem = accountProblem(account, trusted);
+    const problem = accountProblem(account, trusted, state.accounts);
     if (problem) dropped.push({ uid: account.uid, reason: problem });
     return !problem;
   });
@@ -902,7 +981,7 @@ function applySystemState(
     }
     const runnerText = renderCodexHookRunner(kept, programs);
     const next = want.block === null ? current : mergeCodexManagedBlock(current, want.block);
-    const runnerChanged = runnerState.kind !== "ours" || runnerState.text !== runnerText;
+    const runnerChanged = runnerState.kind !== "ours" || runnerState.text !== runnerText || runnerState.mode !== 0o755;
     if (!runnerChanged && next === current) {
       const problem = runnerProblem(runner, programs, trusted, true);
       if (!problem) return { ok: true, changed: false, dropped };
@@ -927,15 +1006,41 @@ function applySystemState(
       // that already holds our block is not that, and an existing backup is kept.
       const mode = state.existed ? fileMode(path) : "0644";
       const backup = codexSystemBackupPath(path);
-      if (state.existed && !span && !existsSync(backup)) writeSystemFile(backup, current, mode, direct);
+      const wroteBackup = state.existed && !span && !existsSync(backup);
+      if (wroteBackup) writeSystemFile(backup, current, mode, direct);
       writeSystemFile(path, next, mode, direct);
-      if (readFileOr(path) !== next) {
-        return unsafe(`${path} does not hold what failproofai wrote`);
+      // Read back both, now the block names the runner: anything else, and
+      // this call's writes are undone (the config as it was, the runner as it
+      // was or gone), so nothing unverified is left for Codex to run.
+      const failed =
+        readFileOr(path) !== next
+          ? `${path} does not hold what failproofai wrote`
+          : readFileOr(runner) !== runnerText
+            ? `${runner} changed while failproofai was writing the block`
+            : null;
+      if (failed) {
+        if (state.existed) writeSystemFile(path, current, mode, direct);
+        else removeSystemFile(path, direct);
+        if (wroteBackup) removeSystemFile(backup, direct);
+        if (runnerState.kind === "ours") writeSystemFile(runner, runnerState.text, "0755", direct, true);
+        else removeSystemFile(runner, direct);
+        return { ok: false, reason: "unsafe", detail: failed };
       }
     }
     return { ok: true, changed: true, dropped };
   } catch (err) {
     return { ok: false, reason: "write-failed", detail: err instanceof Error ? err.message : String(err) };
+  }
+}
+
+/** How old a runner with no block must be before update tidies it away: an install writes the runner first. */
+const STALE_RUNNER_MS = 10 * 60 * 1000;
+
+function statSafe(path: string): Stats | null {
+  try {
+    return statSync(path);
+  } catch {
+    return null;
   }
 }
 
@@ -1044,13 +1149,17 @@ export function installCodexSystemHooks(
     cli: cliPath,
     ...(self.uid === 0 ? { interpreter: deps.interpreter ?? process.execPath } : {}),
   };
-  const earlier = state.form ? earlierAccounts(earlierBlock(state.form, trusted, self)) : [];
+  const earlier = state.form ? earlierAccounts(earlierBlock(state.form, trusted, self, state.accounts)) : [];
   const others = mergeAccounts(earlier, runnerAccounts(state)).filter((a) => a.uid !== self.uid);
-  const problem = accountProblem(mine, trusted);
+  const problem = accountProblem(mine, trusted, state.accounts);
   if (problem) {
     // This account's hooks are not in the system config now: an old line of its own goes too.
     if (runnerAccounts(state).some((a) => a.uid === self.uid)) {
-      applySystemState(state, { accounts: others, block: null, programs, probe: true }, deps);
+      const cleaned = applySystemState(state, { accounts: others, block: null, programs, probe: true }, deps);
+      if (!cleaned.ok && cleaned.reason !== "unsafe") {
+        const stale = `${problem}; this account's earlier line is still in ${runner} (run \`sudo -v\`, then this again)`;
+        return { ok: false, reason: "unsafe", detail: stale, path };
+      }
     }
     return { ok: false, reason: "unsafe", detail: problem, path };
   }
@@ -1060,6 +1169,9 @@ export function installCodexSystemHooks(
     deps,
   );
   if (!applied.ok) return { ok: false, reason: applied.reason, ...(applied.detail ? { detail: applied.detail } : {}), path };
+  // Its own failproofai changed between the check and the write (a package being replaced).
+  const lost = applied.dropped.find((d) => d.uid === self.uid);
+  if (lost) return { ok: false, reason: "unsafe", detail: lost.reason, path };
   return { ok: true, path, changed: applied.changed, dropped: applied.dropped };
 }
 
@@ -1100,7 +1212,7 @@ export function removeCodexSystemHooks(deps: CodexSystemDeps = {}): CodexSystemR
   const self = selfAccount(deps);
   if (!span || !form || !self) return { status: "absent" };
 
-  const earlier = form.kind === "direct" ? earlierBlock(form, state.trusted, self) : null;
+  const earlier = form.kind === "direct" ? earlierBlock(form, state.trusted, self, state.accounts) : null;
   const before = mergeAccounts(earlier ? earlierAccounts(earlier) : [], runnerAccounts(state));
   const programs = codexRunnerProgramsFor(deps);
   // An earlier block runs for every account. It is another account's when that
@@ -1164,9 +1276,14 @@ export function refreshCodexSystemHooks(deps: CodexSystemDeps = {}): CodexSystem
   const self = selfAccount(deps);
   if (!self) return { status: "absent" };
   if (!state || !state.form) {
-    // A runner with no block runs nothing; tidy it away where that needs no one.
+    // A runner with no block runs nothing; tidy it away where that needs no
+    // one, once it is old enough that no install can be about to add its block.
     const runner = resolvedRunner(deps, path);
-    if (readRunner(runner).kind === "ours" && (deps.direct ?? writableDirectly(runner, true))) {
+    if (
+      readRunner(runner).kind === "ours" &&
+      (deps.direct ?? writableDirectly(runner, true)) &&
+      Date.now() - (statSafe(runner)?.mtimeMs ?? Date.now()) > STALE_RUNNER_MS
+    ) {
       try {
         removeSystemFile(runner, true);
       } catch {
@@ -1205,16 +1322,27 @@ export function refreshCodexSystemHooks(deps: CodexSystemDeps = {}): CodexSystem
       return settle(applied, listed, problem, () => ({ status: "removed", path, reason: problem }));
     }
     const accounts = runnerAccounts(state);
-    if (accounts.every((a) => accountProblem(a, state.trusted) === null)) return { status: "current", path };
-    const applied = applySystemState(state, { accounts, block: null, programs: runnerState.kind === "ours" ? runnerState.programs : programs, probe: listed }, deps);
-    const reason = "an account's failproofai can be changed by another account";
+    const linesOk = accounts.every((a) => accountProblem(a, state.trusted, state.accounts) === null);
+    // Edited by hand, or no longer 0755 (an account Codex runs it for could not run it): written again.
+    const runnerOk = runnerState.kind === "ours" && runnerState.canonical && runnerState.mode === 0o755;
+    if (linesOk && runnerOk) return { status: "current", path };
+    const applied = applySystemState(
+      state,
+      { accounts, block: null, programs: runnerState.kind === "ours" ? runnerState.programs : programs, probe: listed },
+      deps,
+    );
+    const reason = runnerOk
+      ? "an account's failproofai can be changed by another account"
+      : `${runner} changed since failproofai wrote it`;
     return settle(applied, listed, reason, (a) =>
-      a.changed ? { status: "rewritten", path, runner, migrated: false, dropped: a.dropped } : { status: "current", path },
+      a.changed
+        ? { status: "rewritten", path, runner, migrated: false, dropped: a.dropped }
+        : { status: "current", path },
     );
   }
 
   // The earlier format: every hook runs one program, for every account.
-  const earlier = earlierBlock(form, state.trusted, self);
+  const earlier = earlierBlock(form, state.trusted, self, state.accounts);
   if (earlier.kind === "root") return { status: "current", path };
   if (earlier.kind === "unknown") {
     return { status: "others", path, reason: "they run a failproofai this account cannot read" };
@@ -1249,7 +1377,9 @@ export function codexRefreshLines(result: CodexSystemRefresh): string[] {
             `✓ Codex: failproofai's hooks in ${result.path} now go through ${result.runner},`,
             "  which runs failproofai only for the accounts that set it up.",
           ]
-        : [];
+        : result.dropped.length === 0
+          ? [`✓ Codex: rewrote failproofai's hook runner, ${result.runner}, which had changed since it was written.`]
+          : [];
       for (const { uid, reason } of result.dropped) {
         lines.push(`▲ Codex: took uid ${uid} out of failproofai's hooks in ${result.path}: ${reason}.`);
       }
@@ -1269,6 +1399,7 @@ export function codexRefreshLines(result: CodexSystemRefresh): string[] {
     case "others":
       return [
         `▲ Codex: failproofai's hooks in ${result.path} need updating by an account that set them up, or by root: ${result.reason}.`,
+        "  If you set them up, run `failproofai config`; otherwise tell whoever administers this machine.",
       ];
     case "failed":
       return [`✕ Codex: could not check failproofai's hooks in ${result.path}: ${result.reason}.`];

@@ -194,6 +194,7 @@ describe("Codex's system config, on every update", () => {
     expect(run.lines).toContain(
       "▲ Codex: failproofai's hooks in /etc/codex/config.toml need updating by an account that set them up, or by root: they predate the hook runner.",
     );
+    expect(run.lines).toContain("  If you set them up, run `failproofai config`; otherwise tell whoever administers this machine.");
   });
 
   it("says nothing when the hooks are current", async () => {

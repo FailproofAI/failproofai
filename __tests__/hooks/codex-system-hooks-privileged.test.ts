@@ -69,9 +69,7 @@ describe("the Codex system hooks, written as root", () => {
     expect(install()).toMatchObject({ ok: true, changed: true });
     expect(root.calls).toEqual([
       { op: "install", args: ["-d", "-m", "0755", dirname(runner())] },
-      { op: "install", args: ["-d", "-m", "0755", dirname(runner())] },
       { op: "write", args: [runner(), "0755"] },
-      { op: "install", args: ["-d", "-m", "0755", dirname(path())] },
       { op: "write", args: [path(), "0644"] },
     ]);
     expect(readFileSync(path(), "utf8")).toContain(CODEX_MANAGED_BEGIN);
@@ -88,6 +86,31 @@ describe("the Codex system hooks, written as root", () => {
     expect(existsSync(path())).toBe(false);
     expect(existsSync(runner())).toBe(false);
     expect(root.calls.at(-1)).toEqual({ op: "rm", args: ["-f", runner()] });
+  });
+
+  it("judges a directory that is already there as it is, never tightening it first", () => {
+    expect(install()).toMatchObject({ ok: true });
+    chmodSync(dirname(runner()), 0o775);
+    root.calls.length = 0;
+    expect(install()).toMatchObject({
+      ok: false,
+      reason: "unsafe",
+      detail: `${dirname(runner())} can be written by accounts other than its owner`,
+    });
+    expect(root.calls.some((c) => c.op === "install")).toBe(false);
+    expect(existsSync(path())).toBe(false);
+  });
+
+  it("undoes its own writes when the config root wrote does not hold what was meant", () => {
+    root.tamper.set(path(), "something else\n");
+    expect(install()).toMatchObject({
+      ok: false,
+      reason: "unsafe",
+      detail: `${path()} does not hold what failproofai wrote`,
+    });
+    // A config this call created, and the runner it wrote, are both gone.
+    expect(existsSync(path())).toBe(false);
+    expect(existsSync(runner())).toBe(false);
   });
 
   it("removes the config it created, then the runner, through root", () => {

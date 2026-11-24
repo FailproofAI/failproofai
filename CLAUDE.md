@@ -49,14 +49,22 @@ or `/usr/bin`. Rules that keep it safe:
   `failproofai update` (`refreshCodexSystemHooks`, a step in `update-run.ts`). A runner
   that fails takes the block out; a line that fails is taken out of the runner.
 - **Each line runs only that account's own install.** An account's line must resolve
-  through files owned by root or that account (its group may write them: a umask of 002).
-  Root's line must be root's alone, group included, and names its interpreter by absolute
-  path, so nothing on it goes through PATH. Another account's line that this process
-  cannot read (a 0750 home) is kept as it is.
+  through files owned by root or that account. Its group may write them only when it is
+  the account's private group, as a umask of 002 leaves an install: its primary group,
+  named after it, nobody else's primary group and no other member in `/etc/passwd` and
+  `/etc/group` (`isPrivateGroup`). Root's line must be root's alone, group included, and
+  names its interpreter by absolute path, so nothing on it goes through PATH. Another
+  account's line that this process cannot read (a 0750 home) is kept as it is.
+- **What root wrote is read back.** The runner and the config are compared with what was
+  meant once the block is in; anything else undoes this call's writes. A runner edited by
+  hand or no longer 0755 is written again on update. A directory that already exists is
+  never re-moded before it is checked.
 - **One block, many accounts.** Install adds this uid and keeps the others. Uninstall
   removes only this uid, and the block and runner once none is left.
   `codexSystemHooksPresent()` / `codexHookTrust()` answer for **this** uid. A runner with
-  no block is stale: its lines are never merged back.
+  no block is stale: its lines are never merged back, and update removes it once it is
+  10 minutes old (an install writes the runner before the block). There is no lock: two
+  accounts installing at the same moment can lose one line.
 - **Earlier blocks.** A block in the format earlier versions wrote is rewritten to run the
   runner for the account that owns the program it ran; one whose program is root's alone
   is left as it is. `update` asks for root (`sudo -n`) only when this account is one the

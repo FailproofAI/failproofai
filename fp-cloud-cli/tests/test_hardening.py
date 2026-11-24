@@ -20,7 +20,7 @@ from fp_cli.commands._write import read_text_arg
 from fp_cli.errors import ApiError
 from fp_cli.models import Page
 
-BASE = "http://dash.test"
+BASE = "https://dash.test"
 
 
 def _ctx() -> ClientContext:

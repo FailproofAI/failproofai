@@ -5,7 +5,7 @@ import respx
 
 from fp_cli.app import app
 
-BASE = "http://dash.test"
+BASE = "https://dash.test"
 CONTRACT = {"agent_id": "agent-1", "body": "# Purpose\nResolve requests", "enabled": True}
 CASES = [
     (["roles", "list"], "GET", "/permission-sets", []),

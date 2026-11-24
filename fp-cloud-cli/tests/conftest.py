@@ -5,7 +5,7 @@ from typer.testing import CliRunner
 
 from fp_cli import config
 
-BASE_URL = "http://dash.test"
+BASE_URL = "https://dash.test"
 
 
 @pytest.fixture(autouse=True)

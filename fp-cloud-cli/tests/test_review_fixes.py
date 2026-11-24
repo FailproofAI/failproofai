@@ -16,7 +16,7 @@ from fp_cli.app import app
 from fp_cli.commands import _write
 from fp_cli.errors import NotFoundError
 
-BASE = "http://dash.test"
+BASE = "https://dash.test"
 
 
 # --- json-aware error contract (envelope on stdout) ------------------------------

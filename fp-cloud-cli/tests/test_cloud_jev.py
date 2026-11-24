@@ -24,7 +24,7 @@ from fp_cli.enforcement import (
 )
 from fp_cli.models import Deployment, Machine, PolicyRef, PolicyVersion
 
-BASE = "http://dash.test"
+BASE = "https://dash.test"
 FIXTURES = Path(__file__).resolve().parents[2] / "__tests__" / "fixtures" / "cloud-jev"
 VALID = json.loads((FIXTURES / "semantic-valid.json").read_text())
 

@@ -26,7 +26,12 @@ import { homedir, userInfo } from "node:os";
 import { dirname, resolve } from "node:path";
 import { execFileSync } from "node:child_process";
 import { hookLogWarn } from "./hook-logger";
-import { downloadFailproofaidBinary, installFromNpmPackage, installedBinaryPath } from "./daemon-download";
+import {
+  downloadFailproofaidBinary,
+  installFromNpmPackage,
+  installedBinaryMismatch,
+  installedBinaryPath,
+} from "./daemon-download";
 import { logsDir } from "./fp-home";
 import { shellQuote, shellQuotedWords } from "./shell-quote";
 import {
@@ -205,12 +210,22 @@ export function resolveFailproofaidBinaryPath(): string | null {
  *   2. The GitHub Release asset for this exact version, checksum-verified.
  *      Covers installs that skipped optional dependencies, older tarballs, and
  *      anyone installing the daemon standalone.
+ *
+ * A copy already installed for this version is reused only while it matches
+ * the digest this build recorded; one that does not is reinstalled through the
+ * channels above, which are held to the same digest. It is the one candidate
+ * with an identity to check: `FAILPROOFAI_DAEMON_BINARY` and a source
+ * checkout's `target/` build are someone's explicit choice, and no recorded
+ * digest describes either.
  */
 export async function ensureFailproofaidBinary(): Promise<{ path?: string; reason?: string }> {
-  const existing = resolveFailproofaidBinaryPath();
-  if (existing) return { path: existing };
-
   const key = platformKey();
+  const existing = resolveFailproofaidBinaryPath();
+  const refused =
+    existing && key && existing === installedBinaryPath() ? installedBinaryMismatch(key) : null;
+  if (existing && !refused) return { path: existing };
+  if (refused) hookLogWarn(`not reusing the installed failproofaid binary: ${refused}`);
+
   if (!key) {
     return { reason: `failproofaid has no prebuilt binary for ${process.platform}/${process.arch}` };
   }
@@ -222,11 +237,10 @@ export async function ensureFailproofaidBinary(): Promise<{ path?: string; reaso
   if (result.path) return { path: result.path };
   // Both channels are worth reporting: "not installed" alone reads as a broken
   // package, and the download error alone hides that npm could have supplied it.
-  return {
-    reason: result.error
-      ? `${result.error} (${fromNpm.error})`
-      : "failproofaid binary could not be installed",
-  };
+  const reason = result.error
+    ? `${result.error} (${fromNpm.error})`
+    : "failproofaid binary could not be installed";
+  return { reason: refused ? `${reason}; the installed copy was not reused: ${refused}` : reason };
 }
 
 /**

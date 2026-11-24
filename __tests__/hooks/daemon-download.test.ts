@@ -27,7 +27,7 @@ import { tmpdir } from "node:os";
 import { resolve } from "node:path";
 import { createHash } from "node:crypto";
 import { gzipSync } from "node:zlib";
-import { version } from "../../package.json";
+import packageJson, { version } from "../../package.json";
 import { binDir } from "../../src/hooks/fp-home";
 
 vi.mock("../../src/hooks/hook-logger", () => ({
@@ -35,17 +35,34 @@ vi.mock("../../src/hooks/hook-logger", () => ({
   hookLogInfo: vi.fn(),
 }));
 
+const sha256 = (bytes: Buffer) => createHash("sha256").update(bytes).digest("hex");
+
 const BINARY = Buffer.from("#!/bin/sh\necho failproofaid " + version + "\n");
 const GZIPPED = gzipSync(BINARY);
-const DIGEST = createHash("sha256").update(GZIPPED).digest("hex");
+const DIGEST = sha256(GZIPPED);
+/** What the publish records for BINARY in a released package's manifest. */
+const BINARY_DIGEST = sha256(BINARY);
+/** A binary the release never built. */
+const TAMPERED = Buffer.from("#!/bin/sh\necho not the daemon this release built\n");
+
+/**
+ * Gives the modules imported after this call the `failproofaidBinaries` map a
+ * published build carries. `scripts/build-daemon-packages.mjs` writes it into
+ * the manifest at publish time, so this repo's own package.json never has it.
+ */
+function recordDigests(digests: Record<string, string>): void {
+  const manifest = { ...packageJson, failproofaidBinaries: digests };
+  vi.doMock("../../package.json", () => ({ ...manifest, default: manifest }));
+}
 
 /** Serves the four assets + SHA256SUMS the release job publishes. */
-function startServer(options: { manifest?: string; assetStatus?: number } = {}): Promise<{
+function startServer(options: { manifest?: string; assetStatus?: number; asset?: Buffer } = {}): Promise<{
   url: string;
   close: () => Promise<void>;
   server: Server;
 }> {
-  const manifest = options.manifest ?? `${DIGEST}  failproofaid-linux-x64.gz\n`;
+  const asset = options.asset ?? GZIPPED;
+  const manifest = options.manifest ?? `${sha256(asset)}  failproofaid-linux-x64.gz\n`;
   const server = createServer((req, res) => {
     if (req.url === `/v${version}/SHA256SUMS`) {
       res.writeHead(200).end(manifest);
@@ -53,7 +70,7 @@ function startServer(options: { manifest?: string; assetStatus?: number } = {}):
       if (options.assetStatus && options.assetStatus !== 200) {
         res.writeHead(options.assetStatus).end("nope");
       } else {
-        res.writeHead(200).end(GZIPPED);
+        res.writeHead(200).end(asset);
       }
     } else {
       res.writeHead(404).end("not found");
@@ -87,6 +104,7 @@ describe("hooks/daemon-download", () => {
   });
 
   afterEach(() => {
+    vi.doUnmock("../../package.json");
     rmSync(home, { recursive: true, force: true });
     if (originalHome !== undefined) process.env.HOME = originalHome;
     else delete process.env.HOME;
@@ -126,6 +144,53 @@ describe("hooks/daemon-download", () => {
       const { installedBinaryPath } = await import("../../src/hooks/daemon-download");
       expect(installedBinaryPath()).toBe(resolve(home, ".failproofai", "bin", `failproofaid-${version}`));
       expect(installedBinaryPath("9.9.9")).toContain("failproofaid-9.9.9");
+    });
+  });
+
+  // Over plain http, SHA256SUMS arrives on the same unauthenticated connection
+  // as the binary, so anyone on the network path rewrites both — and the
+  // result is installed as a boot-persistent service. (#1800)
+  describe("the mirror base URL", () => {
+    it.each([
+      ["no override", undefined],
+      ["an https mirror", "https://mirror.internal/failproofai/"],
+      ["plain http on 127.0.0.1", "http://127.0.0.1:8080"],
+      ["plain http on localhost", "http://localhost:8080/releases"],
+      ["plain http on [::1]", "http://[::1]:8080"],
+    ])("accepts %s", async (_label, url) => {
+      if (url === undefined) delete process.env.FAILPROOFAI_DAEMON_BASE_URL;
+      else process.env.FAILPROOFAI_DAEMON_BASE_URL = url;
+      const { daemonBaseUrlProblem } = await import("../../src/hooks/daemon-download");
+      expect(daemonBaseUrlProblem()).toBeNull();
+    });
+
+    it.each([
+      ["plain http to another host", "http://mirror.internal/failproofai"],
+      ["plain http to a private address", "http://10.0.0.5:8080"],
+      ["a host that only starts with localhost", "http://localhost.attacker.invalid/"],
+      ["another scheme", "ftp://mirror.internal/failproofai"],
+      ["a value that is not a URL", "mirror.internal/failproofai"],
+    ])("refuses %s", async (_label, url) => {
+      process.env.FAILPROOFAI_DAEMON_BASE_URL = url;
+      const { daemonBaseUrlProblem } = await import("../../src/hooks/daemon-download");
+      expect(daemonBaseUrlProblem()).toContain("FAILPROOFAI_DAEMON_BASE_URL");
+    });
+
+    it("refuses a plain-http mirror before fetching anything", async () => {
+      process.env.FAILPROOFAI_DAEMON_BASE_URL = "http://mirror.invalid/failproofai";
+      const fetchSpy = vi.spyOn(globalThis, "fetch").mockRejectedValue(new Error("no network in this test"));
+      try {
+        const { downloadFailproofaidBinary, installedBinaryPath } = await import(
+          "../../src/hooks/daemon-download"
+        );
+        const result = await downloadFailproofaidBinary("linux-x64");
+        expect(result.path).toBeUndefined();
+        expect(result.error).toContain("must be an https:// URL");
+        expect(fetchSpy).not.toHaveBeenCalled();
+        expect(existsSync(installedBinaryPath())).toBe(false);
+      } finally {
+        fetchSpy.mockRestore();
+      }
     });
   });
 
@@ -257,6 +322,227 @@ describe("hooks/daemon-download", () => {
 
       const result = await downloadFailproofaidBinary("linux-x64");
       expect(result.path).toBe(installedBinaryPath());
+    });
+
+    // `fetch` followed redirects by itself, so an https mirror could send the
+    // download on to plain http, where the asset and SHA256SUMS can both be
+    // replaced in transit and still agree. Each hop now meets the rule the
+    // configured mirror does, checked before it is requested. (#1800 review)
+    describe("redirects", () => {
+      type Reply = { status: number; location?: string; body?: Buffer | string };
+
+      function startRoutedServer(route: (url: string, port: number) => Reply): Promise<{
+        url: string;
+        close: () => Promise<void>;
+      }> {
+        const server = createServer((req, res) => {
+          const address = server.address();
+          const port = typeof address === "object" && address ? address.port : 0;
+          const reply = route(req.url ?? "", port);
+          res.writeHead(reply.status, reply.location ? { location: reply.location } : {}).end(reply.body ?? "");
+        });
+        return new Promise((done) => {
+          server.listen(0, "127.0.0.1", () => {
+            const address = server.address();
+            const port = typeof address === "object" && address ? address.port : 0;
+            done({
+              url: `http://127.0.0.1:${port}`,
+              close: () => new Promise<void>((closed) => server.close(() => closed())),
+            });
+          });
+        });
+      }
+
+      const asset = `/v${version}/failproofaid-linux-x64.gz`;
+      const sums = `/v${version}/SHA256SUMS`;
+      const manifest = `${DIGEST}  failproofaid-linux-x64.gz\n`;
+
+      it("follows a redirect that stays on loopback, relative or absolute", async () => {
+        const server = await startRoutedServer((url, port) => {
+          if (url === asset) return { status: 302, location: "/assets/failproofaid-linux-x64.gz" };
+          if (url === sums) return { status: 307, location: `http://127.0.0.1:${port}/assets/SHA256SUMS` };
+          if (url === "/assets/failproofaid-linux-x64.gz") return { status: 200, body: GZIPPED };
+          if (url === "/assets/SHA256SUMS") return { status: 200, body: manifest };
+          return { status: 404 };
+        });
+        process.env.FAILPROOFAI_DAEMON_BASE_URL = server.url;
+        try {
+          const { downloadFailproofaidBinary, installedBinaryPath } = await import(
+            "../../src/hooks/daemon-download"
+          );
+          const result = await downloadFailproofaidBinary("linux-x64");
+          expect(result.error).toBeUndefined();
+          expect(readFileSync(installedBinaryPath())).toEqual(BINARY);
+        } finally {
+          await server.close();
+        }
+      });
+
+      it("refuses a redirect to plain http on another host, without requesting it", async () => {
+        const server = await startRoutedServer((url) => {
+          if (url === asset) return { status: 302, location: "http://mirror.invalid/failproofai-linux-x64.gz" };
+          if (url === sums) return { status: 200, body: manifest };
+          return { status: 404 };
+        });
+        process.env.FAILPROOFAI_DAEMON_BASE_URL = server.url;
+        const fetchSpy = vi.spyOn(globalThis, "fetch");
+        try {
+          const { downloadFailproofaidBinary, installedBinaryPath } = await import(
+            "../../src/hooks/daemon-download"
+          );
+          const result = await downloadFailproofaidBinary("linux-x64");
+
+          expect(result.path).toBeUndefined();
+          expect(result.error).toContain("FAILPROOFAI_DAEMON_BASE_URL");
+          expect(result.error).toContain("http://mirror.invalid");
+          expect(existsSync(installedBinaryPath())).toBe(false);
+          const requested = fetchSpy.mock.calls.map((call) => String(call[0]));
+          expect(requested.some((u) => u.includes("mirror.invalid"))).toBe(false);
+        } finally {
+          fetchSpy.mockRestore();
+          await server.close();
+        }
+      });
+
+      it("lets a redirect move on to an https host", async () => {
+        // Port 1 refuses the connection, so the hop fails fast — but it was
+        // requested, which is the point: https is followed, not refused.
+        const server = await startRoutedServer((url) => {
+          if (url === asset) return { status: 302, location: "https://127.0.0.1:1/failproofaid-linux-x64.gz" };
+          if (url === sums) return { status: 200, body: manifest };
+          return { status: 404 };
+        });
+        process.env.FAILPROOFAI_DAEMON_BASE_URL = server.url;
+        const fetchSpy = vi.spyOn(globalThis, "fetch");
+        try {
+          const { downloadFailproofaidBinary } = await import("../../src/hooks/daemon-download");
+          const result = await downloadFailproofaidBinary("linux-x64");
+
+          expect(result.path).toBeUndefined();
+          expect(result.error).not.toContain("FAILPROOFAI_DAEMON_BASE_URL");
+          const requested = fetchSpy.mock.calls.map((call) => String(call[0]));
+          expect(requested).toContain("https://127.0.0.1:1/failproofaid-linux-x64.gz");
+        } finally {
+          fetchSpy.mockRestore();
+          await server.close();
+        }
+      });
+
+      it("gives up on a redirect loop", async () => {
+        const server = await startRoutedServer((url) => {
+          if (url === asset) return { status: 302, location: asset };
+          if (url === sums) return { status: 200, body: manifest };
+          return { status: 404 };
+        });
+        process.env.FAILPROOFAI_DAEMON_BASE_URL = server.url;
+        try {
+          const { downloadFailproofaidBinary, installedBinaryPath } = await import(
+            "../../src/hooks/daemon-download"
+          );
+          const result = await downloadFailproofaidBinary("linux-x64");
+          expect(result.error).toContain("redirected more than 10 times");
+          expect(existsSync(installedBinaryPath())).toBe(false);
+        } finally {
+          await server.close();
+        }
+      });
+    });
+
+    // SHA256SUMS is published in the same release as the asset, so whoever can
+    // replace one can replace both. A published build carries each binary's
+    // digest in its own manifest, out of that reach. (#1675, #1800)
+    describe("against the digest this build recorded", () => {
+      it("installs a download that matches it", async () => {
+        recordDigests({ "linux-x64": BINARY_DIGEST });
+        const server = await startServer();
+        process.env.FAILPROOFAI_DAEMON_BASE_URL = server.url;
+        try {
+          const { downloadFailproofaidBinary, installedBinaryPath } = await import(
+            "../../src/hooks/daemon-download"
+          );
+          const result = await downloadFailproofaidBinary("linux-x64");
+          expect(result.error).toBeUndefined();
+          expect(result.path).toBe(installedBinaryPath());
+          expect(readFileSync(result.path!)).toEqual(BINARY);
+        } finally {
+          await server.close();
+        }
+      });
+
+      it("refuses a replaced asset even when the release's SHA256SUMS was rewritten to match", async () => {
+        recordDigests({ "linux-x64": BINARY_DIGEST });
+        // Asset and manifest agree with each other: what editing the release produces.
+        const server = await startServer({ asset: gzipSync(TAMPERED) });
+        process.env.FAILPROOFAI_DAEMON_BASE_URL = server.url;
+        try {
+          const { downloadFailproofaidBinary, installedBinaryPath, daemonBinaryDir } = await import(
+            "../../src/hooks/daemon-download"
+          );
+          const result = await downloadFailproofaidBinary("linux-x64");
+
+          expect(result.path).toBeUndefined();
+          expect(result.error).toContain("refusing to install");
+          expect(result.error).toContain(BINARY_DIGEST);
+          expect(existsSync(installedBinaryPath())).toBe(false);
+          expect(existsSync(daemonBinaryDir()) ? readdirSync(daemonBinaryDir()) : []).toEqual([]);
+        } finally {
+          await server.close();
+        }
+      });
+
+      it("does not reuse an installed copy that no longer matches: it downloads and replaces it", async () => {
+        recordDigests({ "linux-x64": BINARY_DIGEST });
+        const server = await startServer();
+        process.env.FAILPROOFAI_DAEMON_BASE_URL = server.url;
+        try {
+          const { downloadFailproofaidBinary, installedBinaryPath } = await import(
+            "../../src/hooks/daemon-download"
+          );
+          mkdirSync(binDir(home), { recursive: true });
+          writeFileSync(installedBinaryPath(), TAMPERED);
+
+          const result = await downloadFailproofaidBinary("linux-x64");
+          expect(result.error).toBeUndefined();
+          expect(result.path).toBe(installedBinaryPath());
+          expect(readFileSync(installedBinaryPath())).toEqual(BINARY);
+        } finally {
+          await server.close();
+        }
+      });
+
+      it("reuses an installed copy that matches, without a fetch", async () => {
+        recordDigests({ "linux-x64": BINARY_DIGEST });
+        process.env.FAILPROOFAI_DAEMON_BASE_URL = "http://127.0.0.1:1/never";
+        const fetchSpy = vi.spyOn(globalThis, "fetch");
+        try {
+          const { downloadFailproofaidBinary, installedBinaryPath } = await import(
+            "../../src/hooks/daemon-download"
+          );
+          mkdirSync(binDir(home), { recursive: true });
+          writeFileSync(installedBinaryPath(), BINARY);
+
+          await expect(downloadFailproofaidBinary("linux-x64")).resolves.toEqual({
+            path: installedBinaryPath(),
+          });
+          expect(fetchSpy).not.toHaveBeenCalled();
+        } finally {
+          fetchSpy.mockRestore();
+        }
+      });
+
+      it("never hands back a copy that does not match, even when it cannot replace it", async () => {
+        recordDigests({ "linux-x64": BINARY_DIGEST });
+        process.env.FAILPROOFAI_NO_DOWNLOAD = "1";
+        const { downloadFailproofaidBinary, installedBinaryPath } = await import(
+          "../../src/hooks/daemon-download"
+        );
+        mkdirSync(binDir(home), { recursive: true });
+        writeFileSync(installedBinaryPath(), TAMPERED);
+
+        const result = await downloadFailproofaidBinary("linux-x64");
+        expect(result.path).toBeUndefined();
+        expect(result.error).toContain("downloads are disabled");
+      });
     });
   });
 
@@ -426,6 +712,51 @@ describe("hooks/daemon-download", () => {
       } finally {
         await server.close();
       }
+    });
+
+    // The install path reused whatever sat at ~/.failproofai/bin/failproofaid-<version>
+    // and staged it as the root-installed service binary, unread. (#1800)
+    describe("an installed copy that no longer matches the recorded digest", () => {
+      const hostKey = `${process.platform}-${process.arch}`;
+
+      it("is reinstalled from a verified channel instead of reused", async () => {
+        recordDigests({ [hostKey]: BINARY_DIGEST });
+        installPlatformPackage(hostKey);
+        const { ensureFailproofaidBinary } = await import("../../src/hooks/daemon-service");
+        const { installedBinaryPath } = await import("../../src/hooks/daemon-download");
+        mkdirSync(binDir(home), { recursive: true });
+        writeFileSync(installedBinaryPath(), TAMPERED);
+
+        const result = await ensureFailproofaidBinary();
+        expect(result.reason).toBeUndefined();
+        expect(result.path).toBe(installedBinaryPath());
+        expect(readFileSync(installedBinaryPath())).toEqual(BINARY);
+      });
+
+      it("is refused, with the reason, when no channel can replace it", async () => {
+        recordDigests({ [hostKey]: BINARY_DIGEST });
+        process.env.FAILPROOFAI_NO_DOWNLOAD = "1";
+        const { ensureFailproofaidBinary } = await import("../../src/hooks/daemon-service");
+        const { installedBinaryPath } = await import("../../src/hooks/daemon-download");
+        mkdirSync(binDir(home), { recursive: true });
+        writeFileSync(installedBinaryPath(), TAMPERED);
+
+        const result = await ensureFailproofaidBinary();
+        expect(result.path).toBeUndefined();
+        expect(result.reason).toContain("the installed copy was not reused");
+        expect(result.reason).toContain(BINARY_DIGEST);
+      });
+
+      it("is still reused as before on a build that recorded no digest", async () => {
+        // Every dev build and unpublished commit: nothing to compare against.
+        process.env.FAILPROOFAI_NO_DOWNLOAD = "1";
+        const { ensureFailproofaidBinary } = await import("../../src/hooks/daemon-service");
+        const { installedBinaryPath } = await import("../../src/hooks/daemon-download");
+        mkdirSync(binDir(home), { recursive: true });
+        writeFileSync(installedBinaryPath(), TAMPERED);
+
+        await expect(ensureFailproofaidBinary()).resolves.toEqual({ path: installedBinaryPath() });
+      });
     });
 
     it("works on an air-gapped machine, where the download channel is switched off", async () => {

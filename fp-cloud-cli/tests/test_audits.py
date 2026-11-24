@@ -11,7 +11,7 @@ import respx
 from fp_cli import analytics
 from fp_cli.app import app
 
-BASE = "http://dash.test"
+BASE = "https://dash.test"
 
 _FULL_AUDIT = {
     "id": "au1",

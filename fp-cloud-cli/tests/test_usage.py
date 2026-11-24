@@ -7,7 +7,7 @@ import respx
 
 from fp_cli.app import app
 
-BASE = "http://dash.test"
+BASE = "https://dash.test"
 
 USAGE = {
     "org_id": "00000000-0000-0000-0000-000000000001",

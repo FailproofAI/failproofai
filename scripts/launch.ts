@@ -9,7 +9,7 @@ import { fileURLToPath } from "node:url";
 import { parseScriptArgs } from "./parse-script-args";
 import { diagnoseShadow } from "./install-diagnosis.mjs";
 import { colorsEnabled, screenKit } from "../src/hooks/tui";
-import { isLoopbackHostname, resolveDashboardHost } from "../lib/dashboard-host";
+import { ensureDashboardToken, isLoopbackHostname, resolveDashboardHost, withDashboardToken } from "../lib/dashboard-host";
 import { dashboardBrowseUrl, exposedBindWarning, launchFailureLines, launchScreenLines } from "./launch-screen";
 import { gatherLaunchFacts } from "./launch-facts";
 import { dashboardProbeHost, probeDashboardPort, watchDashboardStart } from "./launch-ready";
@@ -44,6 +44,10 @@ export function launch(mode: "dev" | "start", options: LaunchOptions = {}): void
   // should be answering to — the layer that stops DNS rebinding, which a
   // loopback bind alone does not.
   process.env.FAILPROOFAI_DASHBOARD_HOST = bindHost;
+  // A routable bind also needs this launch's access token on every request
+  // (proxy.ts). Set in this process's environment before the server starts, so
+  // the server inherits it; the address printed below carries it.
+  const token = ensureDashboardToken(bindHost);
 
   // A routable bind is allowed, and said out loud. The launch screen carries
   // that warning as its attention line; audit's hand-off has no screen, so it
@@ -69,7 +73,7 @@ export function launch(mode: "dev" | "start", options: LaunchOptions = {}): void
 
   const printScreen = (live: boolean): void => {
     const lines = launchScreenLines(
-      { url: dashboardBrowseUrl(bindHost, port), live, exposed, ...gatherLaunchFacts(launchCwd) },
+      { url: withDashboardToken(dashboardBrowseUrl(bindHost, port), token), live, exposed, ...gatherLaunchFacts(launchCwd) },
       {
         color: colorsEnabled(process.stdout),
         // Some pseudo-terminals report 0 columns; that is "unknown", not narrow.

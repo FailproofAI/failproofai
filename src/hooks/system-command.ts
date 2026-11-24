@@ -56,12 +56,14 @@ const PASSED_THROUGH = ["TERM", "LANG", "LC_ALL", "LC_CTYPE", "LC_MESSAGES", "SS
  * shell variables, no `SUDO_ASKPASS` or `SUDO_PROMPT`.
  */
 export function privilegedEnv(): NodeJS.ProcessEnv {
-  const env: NodeJS.ProcessEnv = { PATH: SYSTEM_PATH };
+  const env: Record<string, string> = { PATH: SYSTEM_PATH };
   for (const key of PASSED_THROUGH) {
     const value = process.env[key];
     if (value) env[key] = value;
   }
-  return env;
+  // Cast rather than padded: this project's ambient types (Next.js) declare
+  // NODE_ENV required on every ProcessEnv, and a privileged command needs none.
+  return env as NodeJS.ProcessEnv;
 }
 
 /** `sudo` as printed for someone to run: its absolute path, or the bare name where there is none. */

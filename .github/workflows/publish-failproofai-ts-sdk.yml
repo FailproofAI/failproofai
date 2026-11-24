@@ -63,8 +63,8 @@ name: Publish @failproofai/sdk to npm
 #
 # The bump reaches `main` through review. `main` is protected by the org ruleset,
 # which nothing in CI can get past, so `bump` pushes its commit to a
-# `version-bump/` branch with the job's own token and links the pull request to
-# open (scripts/push-version-bump.sh). No App, no secret.
+# `version-bump/` branch with the job's own token and opens the pull request for
+# it (scripts/push-version-bump.sh). No App, no secret.
 
 on:
   workflow_dispatch:
@@ -405,6 +405,10 @@ jobs:
       # To push the bump BRANCH. The ruleset on `main` rejects this token, so a
       # branch is the most it can reach there.
       contents: write
+      # To open the bump's pull request. GitHub also requires the repository
+      # setting "Allow GitHub Actions to create and approve pull requests";
+      # without it, the script prints a link instead.
+      pull-requests: write
     steps:
       - uses: actions/checkout@v7.0.1
         with:

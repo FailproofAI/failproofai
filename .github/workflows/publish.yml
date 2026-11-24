@@ -518,6 +518,8 @@ jobs:
     environment: npm-failproofai
     permissions:
       contents: write
+      # For the version bump at the end, which opens its own pull request.
+      pull-requests: write
       # Trusted publishing: each `npm publish` below exchanges this job's OIDC
       # token for a short-lived token scoped to that one package, and signs the
       # package's provenance with it. The permission is job-wide — any step can
@@ -782,7 +784,7 @@ jobs:
       # version line to whatever that branch happens to carry.
       #
       # It lands through review: the commit goes to a `version-bump/` branch and
-      # scripts/push-version-bump.sh links the pull request to open (see that
+      # scripts/push-version-bump.sh opens the pull request for it (see that
       # script for why nothing in CI can push to main).
       - name: Bump version for next development cycle
         if: >-

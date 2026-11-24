@@ -474,11 +474,17 @@ const GIT_COMMIT_MERGE_RE = /git\s+(commit|merge|rebase|cherry-pick)\b/;
  * tampered client never asks it. The state pattern below needs a `.` the
  * package path does not have (FailproofAI/agenteye#1796).
  *
+ * Project-scope hooks are portable instead: `npx -y failproofai --hook …`, so
+ * the committed file names no machine's path. npx runs a
+ * `node_modules/.bin/failproofai` it finds in the project, or in ANY directory
+ * above it, before the global install or its own cache, without checking what
+ * the file is. So one Write of `exit 0` to that path turned every later hook in
+ * that tree into an allow, and kept doing it in every later session
+ * (FailproofAI/agenteye#1795). That entry is matched below too.
+ *
  * A checkout of this repository matches none of the shapes below — no
  * `node_modules` above it, and its entry is `bin/failproofai.mjs` — so the guard
  * does not stand in front of working on failproofai itself.
- * `node_modules/.bin/failproofai`, the stub `npx` prefers, is not matched here
- * either (FailproofAI/agenteye#1795).
  *
  * Case-insensitive because macOS volumes are by default: every casing of these
  * paths opens the real file. `(?:\.?[\\/])*` absorbs the `//` and `/./` a path
@@ -501,6 +507,15 @@ const FAILPROOFAI_CODE_PATH_RE = new RegExp(
     // the variables nvm and pnpm export for those directories. A FILE, so a
     // directory of that name (`~/bin/failproofai/src/…`) is not it.
     String.raw`(?:[\\/](?:bin|pnpm)|\$\{?(?:NVM_BIN|PNPM_HOME)\}?)[\\/](?:\.?[\\/])*failproofai(?:\.cmd|\.ps1)?(?![\w.@\\/-])`,
+    // The entry `npx -y failproofai` runs first: `.bin/failproofai` in a
+    // `node_modules` of the project or of any directory above it (and in the
+    // npx cache). With the shims npm (`.cmd`, `.ps1`) and bun (`.exe`, `.bunx`)
+    // write beside it on Windows. Not anchored on `node_modules`, so the
+    // relative `.bin/failproofai` a command run from inside `node_modules`
+    // names is the same file. A FILE, like the entry above: the rest of
+    // `node_modules/.bin` (every other package's binary, run by path all the
+    // time) stays out of it.
+    String.raw`\.bin[\\/](?:\.?[\\/])*failproofai(?:\.(?:cmd|ps1|exe|bunx))?(?![\w.@\\/-])`,
   ].join("|"),
   "i",
 );
@@ -678,6 +693,17 @@ const LOOP_HEADER_RE = /(?:^|[\s(])(?:while|until|for|select)\s/;
 const COPY_COMMANDS = new Set(["cp", "rsync", "install"]);
 
 /**
+ * Commands that put a file into a directory under the file's OWN name.
+ *
+ * `cp /tmp/stage/failproofai node_modules/.bin/` writes
+ * `node_modules/.bin/failproofai`, and that path appears nowhere on the line:
+ * the source names a scratch file and the destination names a directory that
+ * holds every package's binary. So the name a source would land under is
+ * judged as well as the operands as written (FailproofAI/agenteye#1795).
+ */
+const INTO_DIRECTORY_COMMANDS = new Set(["cp", "mv", "ln", "install", "rsync"]);
+
+/**
  * Commands that write EVERY path operand they are given.
  *
  * `tee` was an unknown head, so it denied wherever it appeared — including
@@ -843,6 +869,10 @@ const STATE_GLOB_CANDIDATES = [
   "/opt/homebrew/bin/failproofai",
   "~/.bun/bin/failproofai",
   "~/.volta/bin/failproofai",
+  // The entry a project-scope `npx -y failproofai` runs (FailproofAI/agenteye#1795).
+  "node_modules/.bin/failproofai",
+  "./node_modules/.bin/failproofai",
+  ".bin/failproofai",
 ];
 
 /**
@@ -865,6 +895,9 @@ const GLOB_DECOYS = [
   "node_modules/react", "node_modules/.bin", "./node_modules/react", "node_modules/.pnpm/react@18.0.0",
   "/usr/local/lib/node_modules/npm", "/usr/lib/node_modules/npm", "/opt/homebrew/lib/node_modules/npm",
   "/usr/local/bin/node", "/opt/homebrew/bin/node", "~/.bun/bin/bun", "~/.volta/bin/node",
+  // Other packages' entries beside it, so `rm -rf node_modules/.bin/*` is the
+  // sweep it is rather than an aim at failproofai's.
+  "node_modules/.bin/tsc", "./node_modules/.bin/tsc", ".bin/tsc",
 ];
 
 /**
@@ -1293,6 +1326,50 @@ function commandWords(simpleCommand: string): string[] {
 }
 
 /**
+ * True when a copy, move or link would leave one of its sources at a protected
+ * path inside the directory it writes into (see `INTO_DIRECTORY_COMMANDS`).
+ *
+ * The directory is `-t` / `--target-directory`'s value, or else the last
+ * operand. Whether that operand really is a directory is not checked: when it
+ * is a file, `<file>/<name>` is a path nothing writes, and it can only match
+ * when a source is itself named like a protected file and the operand like the
+ * directory that holds it. A source that is ALREADY a protected path is left to
+ * the destination check it always had: `cp -r ~/.failproofai /tmp/backup/`
+ * lands at `/tmp/backup/.failproofai`, a name the state pattern matches, and is
+ * a backup, not a write onto anything. `rsync src/` copies what is IN `src`,
+ * whose names are not on the line, so a source with a trailing separator is
+ * judged by nothing here, as a whole directory moved over a parent never was.
+ */
+function landsInDirectoryAs(words: string[], namesState: (text: string) => boolean): boolean {
+  if (words.length === 0 || !INTO_DIRECTORY_COMMANDS.has(commandBasename(words[0]))) return false;
+  const args = words.slice(1);
+  const operands: string[] = [];
+  let directory: string | undefined;
+  for (let i = 0; i < args.length; i++) {
+    const arg = args[i];
+    if (arg === "--") {
+      operands.push(...args.slice(i + 1));
+      break;
+    }
+    if (arg === "-t" || arg === "--target-directory") {
+      directory = args[++i];
+    } else if (arg.startsWith("--target-directory=")) {
+      directory = arg.slice("--target-directory=".length);
+    } else if (!arg.startsWith("-")) {
+      operands.push(arg);
+    }
+  }
+  const sources = directory === undefined ? operands.slice(0, -1) : operands;
+  const into = (directory ?? operands[operands.length - 1] ?? "").replace(/[\\/]+$/, "");
+  if (into === "") return false;
+  return sources.some((source) => {
+    if (/[\\/]$/.test(source) || namesState(source)) return false;
+    const name = source.slice(Math.max(source.lastIndexOf("/"), source.lastIndexOf("\\")) + 1);
+    return name !== "" && name !== "." && name !== ".." && namesState(`${into}/${name}`);
+  });
+}
+
+/**
  * True when this one simple command would destroy whatever it is pointed at.
  *
  * Reached only for a command that already names failproofai's state, so the
@@ -1524,6 +1601,10 @@ function destroysFailproofaiState(command: string, depth = 0): boolean {
         // the rest of the line was judged as if it stood in the state directory.
         cwdInState = false;
         cdParenDepth = null;
+      } else if (landsInDirectoryAs(words, namesState)) {
+        // Before the `reachesState` gate, because the point is that nothing on
+        // the line names the path: the source's name and the directory do.
+        return true;
       } else if (reachesState && words.length > 0 && simpleCommandDestroys(words, namesState)) {
         // Judged BEFORE the closing parenthesis is counted: a `rm -rf ./*)`
         // still runs inside the subshell it closes.

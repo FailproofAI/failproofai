@@ -22,6 +22,8 @@ failproofai policies
 
 Not every harness supports local scope; the CLI rejects a scope the selected harness cannot represent.
 
+Project-scope hooks run `npx -y failproofai`, so the committed file names no machine's path. npx runs a `failproofai` the project itself provides before the installed one: `node_modules/.bin/failproofai` in the project or any directory above it, or a `failproofai` entry in the project's `package.json` `bin`, and it applies the project's `.npmrc`. `block-failproofai-commands` refuses an agent's writes to `node_modules/.bin/failproofai`, but it does not read `package.json` or `.npmrc` edits. User-scope hooks, which `failproofai config` installs, run the installed CLI by its absolute path, so nothing in a repository changes what they run: where an agent must not be able to change its own enforcement from inside a repository, keep its user-scope hooks installed.
+
 Which pack policies are on is **not** scoped. The switch is recorded with the installed pack, so `failproofai policies add <name>` turns a policy on for the whole machine, whatever `--scope` says.
 
 | Scope | Policy configuration file |

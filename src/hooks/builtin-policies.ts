@@ -1405,25 +1405,18 @@ function commandBasename(token: string): string {
   return bare.slice(bare.lastIndexOf("/") + 1);
 }
 
-/**
- * Walk off everything a shell resolves before it settles on the command word,
- * and return the tokens from the command word on. Mirrors the walk in
- * `classifySelfInvocation` — the same prefixes hide a deleter that hid the
- * binary, and `xargs -0 rm -f` is the one that matters most here.
- */
-function commandWords(simpleCommand: string): string[] {
-  return commandWordLists(simpleCommand).words;
-}
-
 /** A redirect operator, with an optional fd (`2>`, `{fd}>`), and the same alone. */
 const REDIRECT_OPERATOR_RE = /^(?:\d*|\{[A-Za-z_]\w*\})(?:>{1,2}\|?|<{1,3})/;
 const LONE_REDIRECT_OPERATOR_RE = /^(?:\d*|\{[A-Za-z_]\w*\})(?:>{1,2}\|?|<{1,3})$/;
 
 /**
- * `commandWords`, and the same words with redirects and a comment taken out
- * after the command word.
+ * Walk off everything a shell resolves before it settles on the command word,
+ * and return the tokens from the command word on (`words`). Mirrors the walk in
+ * `classifySelfInvocation` — the same prefixes hide a deleter that hid the
+ * binary, and `xargs -0 rm -f` is the one that matters most here.
  *
- * The copy checks take the LAST operand for the destination, so a redirect or
+ * `trimmed` is the same words with redirects and a comment taken out after the
+ * command word. The copy checks take the LAST operand for the destination, so a redirect or
  * comment after it became the destination they judged:
  * `cp /dev/null ~/.failproofai/policies-config.json 2>/dev/null` and
  * `… node_modules/.bin/failproofai # keep` both walked through. But a token is
@@ -1488,12 +1481,15 @@ function commandWordLists(simpleCommand: string): { words: string[]; trimmed: st
  * backup; `cp /tmp/bin/failproofai node_modules/.bin/` is not, however its
  * source is spelled. A source ending in a separator copies what is IN it, whose
  * names are not on the line, so it is judged only through the bin-directory
- * check. `inShell` resolves a relative word against a `cd` the walk followed.
+ * check. `inShell` resolves a relative word against a `cd` the walk followed;
+ * `lost` says the walk could not follow one, so a relative destination may be
+ * npm's bin directory and the entry's own name there is refused.
  */
 function landsInDirectoryAs(
   words: string[],
   namesState: (text: string) => boolean,
   inShell: (word: string) => string = (word) => word,
+  lost = false,
 ): boolean {
   if (words.length === 0) return false;
   const head = commandBasename(words[0]);
@@ -1555,6 +1551,8 @@ function landsInDirectoryAs(
   if (written === undefined || sources.length === 0) return false;
   const destination = inShell(written);
   if (directory === undefined && namesState(destination)) return true;
+  const baseName = (path: string) => path.slice(Math.max(path.lastIndexOf("/"), path.lastIndexOf("\\")) + 1);
+  if (lost && directory === undefined && relativeWord(written) && couldBeEntryName(baseName(written))) return true;
 
   const into = destination.replace(/(?:[\\/]+\.?)+$/, "");
   // A directory becomes npm's bin directory when it is moved, linked or copied
@@ -1569,8 +1567,9 @@ function landsInDirectoryAs(
   if (into === "" || ontoItself) return false;
   return sources.some((source) => {
     if (/[\\/]$/.test(source)) return false;
-    const name = source.slice(Math.max(source.lastIndexOf("/"), source.lastIndexOf("\\")) + 1);
+    const name = baseName(source);
     if (name === "" || name === "." || name === "..") return false;
+    if (lost && relativeWord(into) && couldBeEntryName(name)) return true;
     const landing = `${into}/${name}`;
     // A directory named `.bin` landing in a `node_modules` is the same swap.
     if (NPM_BIN_DIRECTORY_RE.test(landing) && (head === "mv" || head === "ln" || recursive)) return true;
@@ -1793,42 +1792,52 @@ function destroysFailproofaiState(command: string, depth = 0, startDir?: string)
   // with `.` and `..` resolved, because the patterns match the tail of a path
   // and an unbounded path made every later word slower to judge.
   let shellDir = startDir ? shellPath(undefined, startDir) : undefined;
-  let previousDir: string | undefined;
-  const dirStack: Array<string | undefined> = [];
-  const shellDirScopes: Array<{ depth: number; dir: string | undefined }> = [];
-  const isRelative = (word: string) => word !== "" && !/^(?:[~/\\$]|[A-Za-z]:)/.test(word);
+  // A `cd` the walk could not follow (`cd "$(npm root)/.bin"`, `cd $ELSEWHERE`)
+  // may have put the shell in npm's bin directory, so until the next one it can
+  // follow, a relative word is also judged as if it stood in an installed
+  // location (`AS_IF_INSTALLED`).
+  let lostTrack = false;
+  type Where = { dir: string | undefined; lost: boolean };
+  let previous: Where | null = null;
+  const dirStack: Where[] = [];
+  const shellDirScopes: Array<{ depth: number; at: Where; previous: Where | null; stack: Where[] }> = [];
   // A relative word read from where the shell stands, and `..` resolved in any.
   const inShell = (word: string): string =>
-    isRelative(word) && shellDir !== undefined ? shellPath(shellDir, word) : word.includes("..") ? shellPath(undefined, word) : word;
+    relativeWord(word) && shellDir !== undefined ? shellPath(shellDir, word) : word.includes("..") ? shellPath(undefined, word) : word;
   const judged = new Map<string, boolean>();
+  const judge = (path: string): boolean => {
+    let verdict = judged.get(path);
+    if (verdict === undefined) judged.set(path, (verdict = namesState(path)));
+    return verdict;
+  };
   const namesHere = (text: string): boolean => {
     if (namesState(text)) return true;
     // Every pattern spells `failproof`, so only a word or a directory that
     // does, or a glob that could, can resolve onto one.
     if (!/failproof/i.test(text) && !/failproof/i.test(shellDir ?? "") && !GLOB_METACHAR_RE.test(text)) return false;
+    if (lostTrack && relativeWord(text)) return AS_IF_INSTALLED.some((dir) => judge(dir + text));
     const resolved = inShell(text);
-    if (resolved === text) return false;
-    let verdict = judged.get(resolved);
-    if (verdict === undefined) judged.set(resolved, (verdict = namesState(resolved)));
-    return verdict;
+    return resolved !== text && judge(resolved);
   };
   // What the line assigns, so a word built from it is judged as the path it
   // spells: `B=~/node_modules/.bin; ln -s /tmp/stage $B`. `$PWD` is where the
-  // shell stands. A variable the line never sets stays a reference.
+  // shell stands, `$HOME` is `~`. A variable the line never sets stays a
+  // reference, and a `cd` into one is a `cd` the walk cannot follow.
   const values = new Map<string, string>(assignments);
   const expand = (word: string): string => {
     let out = word;
     for (let pass = 0; pass < 3 && out.includes("$"); pass++) {
       out = out.replace(VAR_REFERENCE_RE, (reference, name: string) =>
-        name === "PWD" && shellDir !== undefined ? shellDir : values.get(name) ?? reference,
+        name === "PWD" && shellDir !== undefined ? shellDir : values.get(name) ?? (name === "HOME" ? "~" : reference),
       );
     }
     return out;
   };
-  const moveTo = (dir: string | undefined) => {
-    previousDir = shellDir;
-    shellDir = dir;
-    cwdInState = dir !== undefined && namesState(dir);
+  const moveTo = (to: Where) => {
+    previous = { dir: shellDir, lost: lostTrack };
+    shellDir = to.dir;
+    lostTrack = to.lost;
+    cwdInState = !to.lost && to.dir !== undefined && namesState(to.dir);
     cdParenDepth = cwdInState ? parenDepth : null;
   };
 
@@ -1855,8 +1864,9 @@ function destroysFailproofaiState(command: string, depth = 0, startDir?: string)
     }
 
     for (const simple of simpleCommands) {
-      // Parentheses inside quotes open and close nothing.
-      const shellText = simple.replace(/'[^']*'|"(?:[^"\\]|\\.)*"/g, "");
+      // Parentheses inside quotes open and close nothing, and a substitution's
+      // are not a subshell: `cd $(npm root)/.bin` moves this shell.
+      const shellText = withoutSubstitutions(simple.replace(/'[^']*'|"(?:[^"\\]|\\.)*"/g, ""));
       parenDepth += (shellText.match(/\(/g) ?? []).length;
       const lists = Object.values(commandWordLists(simple)).map((list) => list.map(expand));
       const words = lists[0];
@@ -1864,22 +1874,36 @@ function destroysFailproofaiState(command: string, depth = 0, startDir?: string)
       // Track the shell's position before judging: a `cd` INTO the state makes
       // every later relative path a state path, and a `cd` back out ends that.
       if (head === "cd" || head === "pushd" || head === "popd") {
-        if (parenDepth > 0) shellDirScopes.push({ depth: parenDepth, dir: shellDir });
+        if (parenDepth > 0) {
+          shellDirScopes.push({ depth: parenDepth, at: { dir: shellDir, lost: lostTrack }, previous, stack: dirStack.slice() });
+        }
+        const at: Where = { dir: shellDir, lost: lostTrack };
         const operand = words.slice(1).find((w) => !w.startsWith("-") || w === "-");
+        // A `popd`, a bare `pushd` or a `cd -` with nothing to return to fails
+        // and leaves the shell where it was.
         if (head === "popd") {
-          // `popd` returns to wherever the shell was before the `pushd`.
-          moveTo(dirStack.length > 0 ? dirStack.pop() : undefined);
+          const top = dirStack.pop();
+          if (top) moveTo(top);
         } else if (head === "pushd" && operand === undefined) {
           // A bare `pushd` swaps the top two directories.
           const top = dirStack.pop();
-          dirStack.push(shellDir);
-          moveTo(top);
+          if (top) {
+            dirStack.push(at);
+            moveTo(top);
+          }
+        } else if (operand === "-") {
+          if (previous) moveTo(previous);
         } else {
-          if (head === "pushd") dirStack.push(shellDir);
-          // No operand is home, and `cd -` is wherever the shell was before.
-          moveTo(operand === undefined ? "~" : operand === "-" ? previousDir : shellPath(isRelative(operand) ? shellDir : undefined, operand));
+          if (head === "pushd") dirStack.push(at);
+          // No operand is home.
+          const target = operand ?? "~";
+          moveTo(
+            /\$|`/.test(target)
+              ? { dir: undefined, lost: true }
+              : { dir: shellPath(relativeWord(target) && !lostTrack ? shellDir : undefined, target), lost: lostTrack && relativeWord(target) },
+          );
         }
-      } else if (lists.some((list) => landsInDirectoryAs(list, namesState, inShell))) {
+      } else if (lists.some((list) => landsInDirectoryAs(list, namesState, inShell, lostTrack))) {
         // Before the `reachesState` gate, because the point is that nothing on
         // the line names the path: the source's name and the directory do.
         return true;
@@ -1892,13 +1916,17 @@ function destroysFailproofaiState(command: string, depth = 0, startDir?: string)
         // still runs inside the subshell it closes.
         return true;
       }
-      parenDepth -= (shellText.match(/\)/g) ?? []).length;
+      parenDepth = Math.max(0, parenDepth - (shellText.match(/\)/g) ?? []).length);
       if (cdParenDepth !== null && parenDepth < cdParenDepth) {
         cwdInState = false;
         cdParenDepth = null;
       }
       while (shellDirScopes.length > 0 && parenDepth < shellDirScopes[shellDirScopes.length - 1].depth) {
-        shellDir = shellDirScopes.pop()!.dir;
+        const scope = shellDirScopes.pop()!;
+        shellDir = scope.at.dir;
+        lostTrack = scope.at.lost;
+        previous = scope.previous;
+        dirStack.splice(0, dirStack.length, ...scope.stack);
       }
     }
   }
@@ -1907,6 +1935,45 @@ function destroysFailproofaiState(command: string, depth = 0, startDir?: string)
 
 /** How much of the shell's directory the walk keeps; see `shellPath`. */
 const SHELL_DIR_SEGMENTS = 16;
+
+/**
+ * Where a relative word is also read once the walk has lost the shell's
+ * directory: the places an installed failproofai entry or package lives. Only
+ * a word that names one there can match, so an ordinary file is unaffected.
+ */
+const AS_IF_INSTALLED = ["node_modules/.bin/", "node_modules/", "/bin/"];
+
+/**
+ * `text` without its `$(…)` command substitutions, so their parentheses are
+ * not counted as a subshell's. One left open runs to the end of the text.
+ */
+function withoutSubstitutions(text: string): string {
+  let out = "";
+  for (let i = 0; i < text.length; i++) {
+    if (text[i] === "$" && text[i + 1] === "(") {
+      let depth = 0;
+      let j = i + 1;
+      for (; j < text.length; j++) {
+        if (text[j] === "(") depth++;
+        else if (text[j] === ")" && --depth === 0) break;
+      }
+      i = j;
+      continue;
+    }
+    out += text[i];
+  }
+  return out;
+}
+
+/** A word a shell reads from its current directory: not `~`, `/`, `$…` or `C:`. */
+function relativeWord(word: string): boolean {
+  return word !== "" && !/^(?:[~/\\$]|[A-Za-z]:)/.test(word);
+}
+
+/** The entry's own name, a Windows shim of it, or a glob that could be either. */
+function couldBeEntryName(name: string): boolean {
+  return /^failproofai(?:\.(?:cmd|ps1|exe|bunx))?$/i.test(name) || (GLOB_METACHAR_RE.test(name) && globCouldBeEntry(name));
+}
 
 /**
  * `word` read from directory `base` (as given when absolute, or with no base),

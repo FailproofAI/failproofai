@@ -607,6 +607,16 @@ describe("block-failproofai-commands — the entry a project-scope npx hook runs
       ["a 2,000-segment glob", "rm -rf " + Array(2000).fill("*").join("/")],
       // A value that refers to itself grew with every expansion pass.
       ["a self-referring variable", "A=" + "$A".repeat(100) + "; echo $A"],
+      // The envelope's 128 KB field cap. A lookbehind that scanned back over a
+      // run of letters at every position took 16 s at 32 KB, and a long path
+      // walked on disk one component at a time took a second at 128 KB.
+      ["a 128 KB word of letters after a command", "find . -name '*.sqlite' -delete " + "x".repeat(128_000)],
+      ["a 128 KB run of option letters", "echo -" + "a".repeat(128_000)],
+      ["a 128 KB path of one-letter directories", "echo " + "a/".repeat(64_000)],
+      [
+        "thirty paths just under PATH_MAX",
+        "echo " + Array.from({ length: 30 }, (_, i) => `w${i}/` + "a/".repeat(2_040)).join(" "),
+      ],
     ])("judges %s in bounded time", async (_label, command) => {
       const started = performance.now();
       await bash(command);

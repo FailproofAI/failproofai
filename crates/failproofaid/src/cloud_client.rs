@@ -878,52 +878,20 @@ impl CloudClient {
             .json::<serde_json::Value>()
             .map_err(|err| PollFailure::payload(format!("invalid desired-state response: {err}")))
             .and_then(|raw| {
-                // THE VERSION IS CHECKED BEFORE THE FIELDS, which is the whole
-                // point of having one. `SUPPORTED_SCHEMA_VERSIONS` accepts 1 as
-                // well, and its comment says that is "for files on DISK, never for
-                // a server" — but nothing enforced the second half, so this path
-                // took a v1 response.
-                //
-                // Decoding straight into `DesiredState` would also reject a v1
-                // payload, since that type has no aliases for the old spelling —
-                // but on the WRONG grounds: serde reports "missing field
-                // `deployment`", which sends an operator hunting a malformed
-                // payload instead of a stale server. Reading the version off an
-                // untyped value first means the error names both halves and says
-                // which to upgrade.
+                // Applied only once the whole response is known good: a response
+                // this daemon refuses (an unknown schemaVersion, a payload that
+                // does not decode) must not turn troubleshooting back on or start
+                // an upload, so the last valid answer keeps standing.
+                let (desired, consent) = decode_desired_state(raw)?;
                 // The org's troubleshooting switch: `machineLogs: false` means
                 // send no daemon log (logship.rs). Absent, from a Cloud with it
                 // on or one that predates the key, means send.
-                crate::logship::set_cloud_allows(
-                    raw.get("machineLogs").and_then(serde_json::Value::as_bool) != Some(false),
-                );
+                crate::logship::set_cloud_allows(consent.machine_logs != Some(false));
                 // An operator asked for this machine's logs (logship.rs).
-                if let Some(id) = raw
-                    .get("logRequest")
-                    .and_then(|r| r.get("id"))
-                    .and_then(serde_json::Value::as_str)
-                {
-                    crate::logship::note_request(id);
+                if let Some(id) = consent.log_request {
+                    crate::logship::note_request(&id);
                 }
-                let version = raw.get("schemaVersion").and_then(serde_json::Value::as_u64);
-                match version {
-                    Some(v) if v == u64::from(DESIRED_STATE_SCHEMA_VERSION)
-                        || v == u64::from(SCOPED_DESIRED_STATE_SCHEMA_VERSION) => {}
-                    Some(v) => {
-                        return Err(PollFailure::payload(format!(
-                            "server sent desired-state schemaVersion {v} but this daemon \
-                             speaks {DESIRED_STATE_SCHEMA_VERSION} or {SCOPED_DESIRED_STATE_SCHEMA_VERSION} — upgrade whichever half is behind"
-                        )));
-                    }
-                    None => {
-                        return Err(PollFailure::payload(
-                            "desired-state response has no schemaVersion field".to_string(),
-                        ));
-                    }
-                }
-                serde_json::from_value::<DesiredState>(raw).map_err(|err| {
-                    PollFailure::payload(format!("invalid desired-state response: {err}"))
-                })
+                Ok(desired)
             })
     }
 
@@ -1355,6 +1323,60 @@ fn report_and_reclaim(cloud: &CloudClient, path: &Path, home: &Path, roster: &Ag
     }
 }
 
+/// The log-shipping fields of a desired-state response (logship.rs).
+#[derive(Debug, Default, PartialEq, Eq)]
+struct LogConsent {
+    machine_logs: Option<bool>,
+    log_request: Option<String>,
+}
+
+/// Validates a desired-state response and decodes it. The log-shipping fields
+/// come back only with a response that was accepted, so a refused one has
+/// nothing to apply.
+fn decode_desired_state(raw: serde_json::Value) -> Result<(DesiredState, LogConsent), PollFailure> {
+    // THE VERSION IS CHECKED BEFORE THE FIELDS, which is the whole
+    // point of having one. `SUPPORTED_SCHEMA_VERSIONS` accepts 1 as
+    // well, and its comment says that is "for files on DISK, never for
+    // a server" — but nothing enforced the second half, so this path
+    // took a v1 response.
+    //
+    // Decoding straight into `DesiredState` would also reject a v1
+    // payload, since that type has no aliases for the old spelling —
+    // but on the WRONG grounds: serde reports "missing field
+    // `deployment`", which sends an operator hunting a malformed
+    // payload instead of a stale server. Reading the version off an
+    // untyped value first means the error names both halves and says
+    // which to upgrade.
+    let version = raw.get("schemaVersion").and_then(serde_json::Value::as_u64);
+    match version {
+        Some(v)
+            if v == u64::from(DESIRED_STATE_SCHEMA_VERSION)
+                || v == u64::from(SCOPED_DESIRED_STATE_SCHEMA_VERSION) => {}
+        Some(v) => {
+            return Err(PollFailure::payload(format!(
+                "server sent desired-state schemaVersion {v} but this daemon \
+                 speaks {DESIRED_STATE_SCHEMA_VERSION} or {SCOPED_DESIRED_STATE_SCHEMA_VERSION} — upgrade whichever half is behind"
+            )));
+        }
+        None => {
+            return Err(PollFailure::payload(
+                "desired-state response has no schemaVersion field".to_string(),
+            ));
+        }
+    }
+    let consent = LogConsent {
+        machine_logs: raw.get("machineLogs").and_then(serde_json::Value::as_bool),
+        log_request: raw
+            .get("logRequest")
+            .and_then(|r| r.get("id"))
+            .and_then(serde_json::Value::as_str)
+            .map(str::to_owned),
+    };
+    let desired = serde_json::from_value::<DesiredState>(raw)
+        .map_err(|err| PollFailure::payload(format!("invalid desired-state response: {err}")))?;
+    Ok((desired, consent))
+}
+
 /// One poll and its reconcile. `withdrawn` is asked right before anything is
 /// persisted — the reconcile's writes and the daemon's error state — so a
 /// disconnect that lands while the request is in flight is not undone by it.
@@ -1784,6 +1806,53 @@ mod tests {
             "the error must name both versions so the operator knows which half is behind, got: {err}"
         );
         server.join().unwrap();
+    }
+
+    fn decode(body: &str) -> Result<(DesiredState, LogConsent), String> {
+        decode_desired_state(serde_json::from_str(body).unwrap()).map_err(|f| {
+            assert!(f.reportable, "a refused payload is the server's to see");
+            f.message
+        })
+    }
+
+    /// A response the daemon refuses carries no consent to apply: the refusal
+    /// used to land AFTER `machineLogs` and `logRequest` were applied, so an
+    /// unknown schemaVersion with no `machineLogs` read as "on", removed
+    /// `uploads-off`, and started an upload.
+    #[test]
+    fn a_refused_desired_state_response_yields_no_troubleshooting_consent() {
+        let err = decode(r#"{"schemaVersion":999,"logRequest":{"id":"req-999"}}"#)
+            .expect_err("schema 999 must be refused");
+        assert!(err.contains("schemaVersion 999"), "got: {err}");
+
+        let err = decode(r#"{"schemaVersion":2,"machineLogs":true,"logRequest":{"id":"req-bad"}}"#)
+            .expect_err("a payload missing `deployment` must be refused");
+        assert!(err.contains("invalid desired-state response"), "got: {err}");
+
+        let err = decode(r#"{"machineLogs":true,"logRequest":{"id":"req-none"}}"#)
+            .expect_err("a response with no schemaVersion must be refused");
+        assert!(err.contains("no schemaVersion"), "got: {err}");
+    }
+
+    /// The other half: an accepted response still carries both fields.
+    #[test]
+    fn an_accepted_desired_state_response_carries_troubleshooting_consent() {
+        let (desired, consent) = decode(
+            r#"{"schemaVersion":2,"deployment":7,"policies":[],"machineLogs":false,"logRequest":{"id":"req-ok"}}"#,
+        )
+        .expect("a valid response is accepted");
+        assert_eq!(desired.deployment, 7);
+        assert_eq!(
+            consent,
+            LogConsent {
+                machine_logs: Some(false),
+                log_request: Some("req-ok".to_string()),
+            }
+        );
+
+        let (_, consent) = decode(r#"{"schemaVersion":2,"deployment":7,"policies":[]}"#)
+            .expect("a valid response is accepted");
+        assert_eq!(consent, LogConsent::default(), "absent keys stay absent");
     }
 
     /// The machine's own answer has to reach the wire, and "cannot say" has to

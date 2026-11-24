@@ -28,6 +28,7 @@
 - Allow roll-ups (the default `decisions` verbosity) are stamped when their first hook arrived instead of at the top of their minute, which put them before the tool calls they covered, and name the `tool_call_ids` they cover (#1033)
 - Setup's summary on a Cloud-managed machine says "Deploy from Cloud" instead of pointing at installing a pack (#1033)
 - The first `failproofai config` on a new version (a fresh install, or the first after `npm i -g failproofai`) finishes the upgrade the way `failproofai update` does: it migrates Hermes profiles and restarts running, service-managed Hermes and OpenClaw gateways so they load the plugin now on disk. A later setup that plugs in a profile created since restarts that profile's gateway. Setup used to leave a gateway that was already running on the plugin it loaded before, or with none, until someone ran `update` (#1033)
+- A desired-state response the daemon refuses (an unknown `schemaVersion`, or a payload that does not decode) no longer applies its `machineLogs` or `logRequest` first: it used to clear an org's troubleshooting-off and start a log upload on the way to being rejected; the last valid answer now stands (#1033)
 
 ### Dependencies
 

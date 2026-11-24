@@ -834,6 +834,28 @@ describe("the lines the runner keeps", () => {
     expect(existsSync(runner())).toBe(false);
   });
 
+  it("takes out an earlier block that runs this account's install when it refuses that install", () => {
+    if (ME === 0) return; // root's line takes no group at all
+    const cli = myCli();
+    const home = dirname(cli);
+    const gid = statSync(home).gid;
+    // The install's directory is writable by a group other accounts are in.
+    const shared = {
+      users: [{ name: "me", uid: ME, gid }, { name: "other", uid: ME + 1, gid }],
+      groups: [{ name: "me", gid, members: [] }],
+    };
+    chmodSync(home, 0o775);
+    mkdirs(dirname(path()));
+    writeFileSync(path(), renderCodexManagedBlock(codexSystemHookEntries(cli)));
+    expect(install({ accounts: shared })).toMatchObject({
+      ok: false,
+      reason: "unsafe",
+      detail: `${home} can be written by accounts other than its owner`,
+    });
+    expect(existsSync(path())).toBe(false);
+    expect(existsSync(runner())).toBe(false);
+  });
+
   it("keeps another account's line that this account cannot read", () => {
     if (ME === 0) return; // root reads everything
     const locked = join(dir, "locked");

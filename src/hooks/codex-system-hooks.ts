@@ -1149,13 +1149,23 @@ export function installCodexSystemHooks(
     cli: cliPath,
     ...(self.uid === 0 ? { interpreter: deps.interpreter ?? process.execPath } : {}),
   };
-  const earlier = state.form ? earlierAccounts(earlierBlock(state.form, trusted, self, state.accounts)) : [];
-  const others = mergeAccounts(earlier, runnerAccounts(state)).filter((a) => a.uid !== self.uid);
+  const earlierInfo = state.form?.kind === "direct" ? earlierBlock(state.form, trusted, self, state.accounts) : null;
+  const others = mergeAccounts(earlierInfo ? earlierAccounts(earlierInfo) : [], runnerAccounts(state)).filter(
+    (a) => a.uid !== self.uid,
+  );
   const problem = accountProblem(mine, trusted, state.accounts);
   if (problem) {
-    // This account's hooks are not in the system config now: an old line of its own goes too.
-    if (runnerAccounts(state).some((a) => a.uid === self.uid)) {
-      const cleaned = applySystemState(state, { accounts: others, block: null, programs, probe: true }, deps);
+    // This account's hooks are not in the system config now: an old line of
+    // its own goes too, and so does an earlier block that runs this account's
+    // install for every account. Another account's earlier block, or one this
+    // account cannot read, is left to that account.
+    const earlierMine =
+      (earlierInfo?.kind === "account" || earlierInfo?.kind === "none") && earlierInfo.owners.has(self.uid);
+    if (runnerAccounts(state).some((a) => a.uid === self.uid) || earlierMine) {
+      const form = state.form!;
+      const block = form.kind === "direct" && others.length > 0 ? retargetedBlock(form, runner) : null;
+      const keep = form.kind === "direct" && block === null ? [] : others;
+      const cleaned = applySystemState(state, { accounts: keep, block, programs, probe: true }, deps);
       if (!cleaned.ok && cleaned.reason !== "unsafe") {
         const stale = `${problem}; this account's earlier line is still in ${runner} (run \`sudo -v\`, then this again)`;
         return { ok: false, reason: "unsafe", detail: stale, path };

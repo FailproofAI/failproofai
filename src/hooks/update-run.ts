@@ -125,7 +125,7 @@ export async function runUpdateSteps(opts: UpdateStepsOptions): Promise<UpdateSt
       lines.push("", ...codexLines);
       changed = true;
     }
-    codexOk = refreshed.status !== "needs-root" && refreshed.status !== "failed";
+    codexOk = refreshed.status !== "needs-root" && refreshed.status !== "failed" && refreshed.status !== "unsafe-config";
   } catch (err) {
     lines.push("", `✕ Codex: could not check failproofai's hooks: ${err instanceof Error ? err.message : String(err)}`);
     codexOk = false;

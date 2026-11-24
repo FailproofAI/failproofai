@@ -89,13 +89,16 @@ describe("the Codex system hooks, written as root", () => {
   });
 
   it("judges a directory that is already there as it is, never tightening it first", () => {
-    expect(install()).toMatchObject({ ok: true });
-    chmodSync(dirname(runner()), 0o775);
+    // The runner in its own directory, as /opt/failproofai-codex is: the config's stays trusted.
+    const runnerPath = join(dir, "opt", "failproofai-codex", "codex-hook");
+    const withRunner = () => installCodexSystemHooks(cli(), codexSystemHookEntries, { ...deps(), runnerPath });
+    expect(withRunner()).toMatchObject({ ok: true });
+    chmodSync(dirname(runnerPath), 0o775);
     root.calls.length = 0;
-    expect(install()).toMatchObject({
+    expect(withRunner()).toMatchObject({
       ok: false,
       reason: "unsafe",
-      detail: `${dirname(runner())} can be written by accounts other than its owner`,
+      detail: `${dirname(runnerPath)} can be written by accounts other than its owner`,
     });
     expect(root.calls.some((c) => c.op === "install")).toBe(false);
     expect(existsSync(path())).toBe(false);

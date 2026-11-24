@@ -55,7 +55,13 @@ or `/usr/bin`. Rules that keep it safe:
   `/etc/group` (`isPrivateGroup`), and only where `/etc/nsswitch.conf` takes accounts
   and groups from `files`, `compat` (no `+`/`-` entries) or `systemd` alone. With LDAP,
   SSSD, NIS or winbind in it, those files cannot prove a group private, so such an
-  install is refused and that account keeps `hooks.json` (or runs `chmod -R g-w` on it). Root's line must be root's alone, group included, and
+  install is refused and that account keeps `hooks.json` (or runs `chmod -R g-w` on it).
+  An entry with an extended ACL never counts as group-only (`getfacl -s`, else `ls -ld`
+  `+`): on Linux its group bits are the ACL mask, which a named outsider's write sets.
+- **The config itself must be root's.** `configProblem()` walks `/etc/codex/config.toml`
+  (through any link) and its directories the same way. Install refuses an unsafe config
+  and writes nothing to it; update reports it (`unsafe-config`) and never calls it
+  current, because whoever can change it can replace every managed command. Root's line must be root's alone, group included, and
   names its interpreter by absolute path, so nothing on it goes through PATH. Another
   account's line that this process cannot read (a 0750 home) is kept as it is.
 - **What root wrote is read back.** The runner and the config are compared with what was

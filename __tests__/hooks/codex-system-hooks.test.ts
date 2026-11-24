@@ -138,6 +138,12 @@ function mkdirs(path: string): void {
   }
 }
 
+/** A system-config fixture: 0644 whatever the umask, as the config's own trust check needs. */
+function writeConfig(path: string, text: string): void {
+  writeFileSync(path, text);
+  chmodSync(path, 0o644);
+}
+
 /** An executable shell script at `path`, 0755. */
 function script(path: string, body: string): string {
   mkdirs(dirname(path));
@@ -350,7 +356,7 @@ describe("removeCodexSystemHooks", () => {
 
   it("restores the exact original from the backup, even one with no final newline", () => {
     const original = 'model = "o3"'; // no trailing newline
-    writeFileSync(path(), original);
+    writeConfig(path(), original);
     install();
     expect(removeCodexSystemHooks({ path: path() }).status).toBe("removed");
     expect(readFileSync(path(), "utf8")).toBe(original);
@@ -358,7 +364,7 @@ describe("removeCodexSystemHooks", () => {
   });
 
   it("keeps edits made since, and the backup, when the rest of the file changed", () => {
-    writeFileSync(path(), "a = 1\n");
+    writeConfig(path(), "a = 1\n");
     install();
     writeFileSync(path(), `${readFileSync(path(), "utf8")}b = 2\n`);
     expect(removeCodexSystemHooks({ path: path() }).status).toBe("removed");
@@ -405,16 +411,42 @@ describe("what the runner may run before it knows the account", () => {
     expect(existsSync(runner())).toBe(false);
   });
 
-  it("refuses a directory others can write, and takes out the block that was there", () => {
-    expect(install()).toMatchObject({ ok: true });
-    chmodSync(dirname(runner()), 0o775);
+  it("refuses a runner directory others can write, and takes out the block that was there", () => {
+    // In its own directory, as /opt/failproofai-codex is: the config's stays trusted.
+    const runnerPath = join(dir, "opt", "failproofai-codex", "codex-hook");
+    expect(install({ runnerPath })).toMatchObject({ ok: true });
+    chmodSync(dirname(runnerPath), 0o775);
+    expect(install({ runnerPath })).toMatchObject({
+      ok: false,
+      reason: "unsafe",
+      detail: `${dirname(runnerPath)} can be written by accounts other than its owner`,
+    });
+    expect(existsSync(path())).toBe(false);
+    expect(existsSync(runnerPath)).toBe(false);
+  });
+
+  it("refuses a system config another account can change, and writes nothing to it", () => {
+    mkdirs(dirname(path()));
+    writeConfig(path(), "a = 1\n");
+    chmodSync(path(), 0o666);
     expect(install()).toMatchObject({
       ok: false,
       reason: "unsafe",
-      detail: `${dirname(runner())} can be written by accounts other than its owner`,
+      detail: `${path()} can be written by accounts other than its owner`,
     });
-    expect(existsSync(path())).toBe(false);
+    expect(readFileSync(path(), "utf8")).toBe("a = 1\n");
     expect(existsSync(runner())).toBe(false);
+  });
+
+  it("refuses a system config reached through a directory everyone can write", () => {
+    const loose = join(dir, "loose");
+    mkdirs(loose);
+    chmodSync(loose, 0o777);
+    writeConfig(join(loose, "config.toml"), "a = 1\n");
+    mkdirs(dirname(path()));
+    symlinkSync(join(loose, "config.toml"), path());
+    expect(install()).toMatchObject({ ok: false, reason: "unsafe", detail: `${loose} can be written by accounts other than its owner` });
+    expect(readFileSync(path(), "utf8")).toBe("a = 1\n");
   });
 
   it("refuses an `id` or `cat` another account could replace", () => {
@@ -484,7 +516,7 @@ describe("refreshCodexSystemHooks (failproofai update)", () => {
   /** A block in the format earlier versions wrote: every hook runs `cli` itself. */
   const writeOlderBlock = (cli: string, before = "") => {
     mkdirs(dirname(path()));
-    writeFileSync(path(), mergeCodexManagedBlock(before, renderCodexManagedBlock(codexSystemHookEntries(cli))));
+    writeConfig(path(), mergeCodexManagedBlock(before, renderCodexManagedBlock(codexSystemHookEntries(cli))));
   };
 
   it("rewrites a block from before the runner to run it, for the account whose failproofai it ran", () => {
@@ -557,6 +589,21 @@ describe("refreshCodexSystemHooks (failproofai update)", () => {
     }
   });
 
+  it("reports a system config another account can change, never calling it current", () => {
+    expect(installCodexSystemHooks(myCli(), codexSystemHookEntries, { path: path(), codexVersion: CURRENT })).toMatchObject({ ok: true });
+    chmodSync(path(), 0o666);
+    const before = readFileSync(path(), "utf8");
+    expect(refreshCodexSystemHooks({ path: path() })).toEqual({
+      status: "unsafe-config",
+      path: path(),
+      reason: `${path()} can be written by accounts other than its owner`,
+    });
+    // An account the hooks do not run for is told, and its update does not fail.
+    expect(refreshCodexSystemHooks({ path: path(), uid: 4242 })).toMatchObject({ status: "others" });
+    expect(readFileSync(path(), "utf8")).toBe(before);
+    expect(codexRefreshLines({ status: "unsafe-config", path: path(), reason: "x" })[0]).toMatch(/^✕ Codex: /);
+  });
+
   it("takes the block out when the runner stops passing the check", () => {
     expect(installCodexSystemHooks(myCli(), codexSystemHookEntries, { path: path(), codexVersion: CURRENT })).toMatchObject({ ok: true });
     expect(refreshCodexSystemHooks({ path: path() })).toEqual({ status: "current", path: path() });
@@ -615,7 +662,7 @@ describe("installing over a block from before the runner", () => {
     if (ME === 0) return; // root owns every file here, so the block would be the running account's
     const theirs = script(join(dir, "home", "failproofai"), "true");
     mkdirs(dirname(path()));
-    writeFileSync(path(), renderCodexManagedBlock(codexSystemHookEntries(theirs)));
+    writeConfig(path(), renderCodexManagedBlock(codexSystemHookEntries(theirs)));
     // This account is not the one that owns `theirs`.
     expect(
       installCodexSystemHooks(myCli(), codexSystemHookEntries, { path: path(), codexVersion: CURRENT, uid: 4242 }),
@@ -837,6 +884,38 @@ describe("the lines the runner keeps", () => {
     expect(existsSync(runner())).toBe(false);
   });
 
+  it("does not let an extended ACL pass as the private group", () => {
+    if (ME === 0) return; // root's line takes no group at all
+    const home = dirname(myCli());
+    const gid = statSync(home).gid;
+    const own = { users: [{ name: "me", uid: ME, gid }], groups: [{ name: "me", gid, members: [] }], local: true };
+    chmodSync(home, 0o775);
+    expect(install({ accounts: { ...own, hasAcl: () => false } })).toMatchObject({ ok: true });
+    expect(install({ accounts: { ...own, hasAcl: () => true } })).toMatchObject({
+      ok: false,
+      reason: "unsafe",
+      detail: `${home} can be written by accounts other than its owner`,
+    });
+  });
+
+  it("finds a real named-user ACL that grants write, as Linux shows it through the group bits", () => {
+    if (ME === 0 || process.platform !== "linux") return;
+    const setfacl = ["/usr/bin/setfacl", "/bin/setfacl"].find((p) => existsSync(p));
+    if (!setfacl) return; // no acl tools on this machine
+    const home = dirname(myCli());
+    const gid = statSync(home).gid;
+    const own = { users: [{ name: "me", uid: ME, gid }], groups: [{ name: "me", gid, members: [] }], local: true };
+    chmodSync(home, 0o755);
+    spawnSync(setfacl, ["-m", `u:${ME + 1}:rwx`, home]);
+    // The ACL's mask now reads as the group's write bit.
+    expect(statSync(home).mode & 0o020).toBe(0o020);
+    expect(install({ accounts: own })).toMatchObject({
+      ok: false,
+      reason: "unsafe",
+      detail: `${home} can be written by accounts other than its owner`,
+    });
+  });
+
   it("takes out an earlier block that runs this account's install when it refuses that install", () => {
     if (ME === 0) return; // root's line takes no group at all
     const cli = myCli();
@@ -850,7 +929,7 @@ describe("the lines the runner keeps", () => {
     };
     chmodSync(home, 0o775);
     mkdirs(dirname(path()));
-    writeFileSync(path(), renderCodexManagedBlock(codexSystemHookEntries(cli)));
+    writeConfig(path(), renderCodexManagedBlock(codexSystemHookEntries(cli)));
     expect(install({ accounts: shared })).toMatchObject({
       ok: false,
       reason: "unsafe",
@@ -867,7 +946,7 @@ describe("the lines the runner keeps", () => {
     chmodSync(home, 0o775);
     // The program it ran is gone: no account owns it, and it is not another account's to keep.
     mkdirs(dirname(path()));
-    writeFileSync(path(), renderCodexManagedBlock(codexSystemHookEntries(join(dir, "gone", "failproofai"))));
+    writeConfig(path(), renderCodexManagedBlock(codexSystemHookEntries(join(dir, "gone", "failproofai"))));
     const notPrivate = { users: [{ name: "me", uid: ME, gid }], groups: [{ name: "me", gid, members: [] }], local: false };
     expect(install({ accounts: notPrivate })).toMatchObject({ ok: false, reason: "unsafe" });
     expect(existsSync(path())).toBe(false);
@@ -959,7 +1038,7 @@ describe("a block in the earlier format", () => {
   const runner = () => codexHookRunnerPath(path())!;
   const writeOlderBlock = (cli: string) => {
     mkdirs(dirname(path()));
-    writeFileSync(path(), renderCodexManagedBlock(codexSystemHookEntries(cli)));
+    writeConfig(path(), renderCodexManagedBlock(codexSystemHookEntries(cli)));
   };
 
   it("is left as it is when everything it runs is root's alone", () => {

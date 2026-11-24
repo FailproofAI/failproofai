@@ -41,7 +41,7 @@
  * non-interactive `sudo -n` the daemon install uses; `failproofai config`
  * primes it first.
  */
-import { execSync } from "node:child_process";
+import { execFileSync, execSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import {
   accessSync,
@@ -436,32 +436,66 @@ function resolveChain(path: string): Chain | { error: string; code?: string } {
  * account owns; the final file must be writable by its owner alone.
  * `groupOk` lets a directory or file be writable by its group when that
  * group passes it (an account's own private group, which a umask of 002
- * leaves writing its install). `dir` expects a directory at the end; `link`
+ * leaves writing its install), given the group and the entry's path. `dir` expects a directory at the end; `link`
  * accepts a symbolic link as the last name (`/bin/sh`), whose target is
  * checked the same way.
  */
 export function untrustedPathReason(
   path: string,
   trusted: ReadonlySet<number>,
-  opts: { dir?: boolean; link?: boolean; groupOk?: (gid: number) => boolean } = {},
+  opts: { dir?: boolean; link?: boolean; groupOk?: (gid: number, path: string) => boolean } = {},
 ): string | null {
   const chain = resolveChain(path);
   if ("error" in chain) return chain.error;
   const { seen, last } = chain;
   if (!opts.link && chain.finalLink) return `${resolve(path)} is a symbolic link`;
-  const othersWrite = (st: Stats): boolean =>
-    (st.mode & 0o002) !== 0 || ((st.mode & 0o020) !== 0 && !(opts.groupOk?.(st.gid) ?? false));
+  const othersWrite = (st: Stats, name: string): boolean =>
+    (st.mode & 0o002) !== 0 || ((st.mode & 0o020) !== 0 && !(opts.groupOk?.(st.gid, name) ?? false));
   for (const { name, st } of seen) {
     if (!trusted.has(st.uid)) return `${name} is owned by uid ${st.uid}`;
-    if (st.isDirectory() && othersWrite(st) && (st.mode & 0o1000) === 0) {
+    if (st.isDirectory() && othersWrite(st, name) && (st.mode & 0o1000) === 0) {
       return `${name} can be written by accounts other than its owner`;
     }
   }
   const end = seen[seen.length - 1].st;
   if (opts.dir) return end.isDirectory() ? null : `${last} is not a directory`;
   if (!end.isFile()) return `${last} is not a regular file`;
-  if (othersWrite(end)) return `${last} can be written by accounts other than its owner`;
+  if (othersWrite(end, last)) return `${last} can be written by accounts other than its owner`;
   return null;
+}
+
+/**
+ * Whether `path` has an extended ACL (named users or groups). On Linux the
+ * group bits of such an entry are the ACL's mask, so a group-writable mode
+ * may be write access for a named outsider rather than for the group.
+ * Asked of `getfacl -s` (which prints only entries with an extended ACL), or
+ * failing that `ls -ld` (a `+` after the mode), by absolute path; when
+ * neither can say, it is taken to have one.
+ */
+function hasExtendedAcl(path: string): boolean {
+  const run = (program: string, args: string[]): string | null => {
+    for (const dir of RUNNER_PROGRAM_DIRS) {
+      const candidate = `${dir}/${program}`;
+      if (!existsSync(candidate)) continue;
+      try {
+        return execFileSync(candidate, args, {
+          encoding: "utf8",
+          stdio: ["ignore", "pipe", "ignore"],
+          timeout: 5000,
+          // Cast, not padded: the ambient types require NODE_ENV on every ProcessEnv.
+          env: { PATH: RUNNER_PROGRAM_DIRS.join(":"), LC_ALL: "C" } as Record<string, string> as NodeJS.ProcessEnv,
+        });
+      } catch {
+        return null;
+      }
+    }
+    return null;
+  };
+  const acl = run("getfacl", ["-s", "--absolute-names", "--", path]);
+  if (acl !== null) return acl.trim() !== "";
+  const listing = run("ls", ["-ld", "--", path]);
+  if (listing === null) return true;
+  return /^\S{10}\+/.test(listing);
 }
 
 /** Accounts and groups, as /etc/passwd and /etc/group list them. */
@@ -473,6 +507,8 @@ export interface CodexAccountsDb {
    * NIS, winbind) can add an account to a group without appearing in them.
    */
   local: boolean;
+  /** Whether a path has an extended ACL. Default {@link hasExtendedAcl}. */
+  hasAcl?: (path: string) => boolean;
 }
 
 /** NSS sources whose accounts are all in the files, or created by root alone (systemd's userdb). */
@@ -589,6 +625,30 @@ export function codexTrustedOwners(configPath: string, deps: CodexSystemDeps = {
   }
 }
 
+/**
+ * Why an account outside `trusted` could change the system config at `path`:
+ * the file (followed through any link), or the directories above it. Codex
+ * runs whatever hooks it names for every account, so failproofai's hooks in
+ * it are only as safe as it is.
+ */
+function configProblem(path: string, trusted: ReadonlySet<number>): string | null {
+  let dir = dirname(path);
+  while (!existsSync(dir) && dirname(dir) !== dir) dir = dirname(dir);
+  return (
+    untrustedPathReason(dir, trusted, { dir: true }) ??
+    // There, or a link to nothing: either way it is what Codex will read.
+    (existsSync(path) || lstatSafe(path) !== null ? untrustedPathReason(path, trusted, { link: true }) : null)
+  );
+}
+
+function lstatSafe(path: string): Stats | null {
+  try {
+    return lstatSync(path);
+  } catch {
+    return null;
+  }
+}
+
 /** Why the runner at `runner`, with `programs`, could run anything but root's before it knows the account. */
 function runnerProblem(
   runner: string,
@@ -626,7 +686,8 @@ function accountProblem(account: CodexRunnerAccount, trusted: ReadonlySet<number
     );
   }
   const own = new Set([...trusted, account.uid]);
-  const groupOk = (gid: number): boolean => isPrivateGroup(account.uid, gid, db);
+  const groupOk = (gid: number, path: string): boolean =>
+    isPrivateGroup(account.uid, gid, db) && !(db.hasAcl ?? hasExtendedAcl)(path);
   return (
     (account.interpreter ? untrustedPathReason(account.interpreter, own, { link: true, groupOk }) : null) ??
     untrustedPathReason(account.cli, own, { link: true, groupOk })
@@ -723,6 +784,8 @@ function fileMode(path: string): string {
  */
 function writeSystemFile(path: string, contents: string, mode: string, direct: boolean, replaceLink = false): void {
   if (direct) {
+    // Its directories 0755 whatever the umask, as root's `install -d` makes them.
+    ensureSystemDir(dirname(path), true);
     writeConfigFileAtomic(path, contents, {
       backup: false,
       mode: parseInt(mode, 8),
@@ -1190,6 +1253,10 @@ export function installCodexSystemHooks(
   if (entries.length === 0 || entries.some((e) => commandProgram(e.command) !== runner)) {
     return { ok: false, reason: "write-failed", detail: `every Codex system hook must run ${runner}`, path };
   }
+  // Codex runs every hook the config names, for every account: a config
+  // another account can change makes no hook in it failproofai's to vouch for.
+  const unsafeConfig = configProblem(path, trusted);
+  if (unsafeConfig) return { ok: false, reason: "unsafe", detail: unsafeConfig, path };
   const programs = codexRunnerProgramsFor(deps);
   if (runnerState.kind === "foreign") {
     // Our block must not run a file failproofai did not write: it is taken out, the file is left.
@@ -1322,6 +1389,8 @@ export type CodexSystemRefresh =
   | { status: "needs-root"; path: string; reason: string }
   /** It has to change, and only an account that set it up, or root, can do that. */
   | { status: "others"; path: string; reason: string }
+  /** The config itself can be changed by an account other than root: nothing in it can be vouched for. */
+  | { status: "unsafe-config"; path: string; reason: string }
   | { status: "failed"; path: string; reason: string };
 
 /**
@@ -1359,6 +1428,12 @@ export function refreshCodexSystemHooks(deps: CodexSystemDeps = {}): CodexSystem
   }
   const { form, runner, runnerState } = state;
   const listed = runnerAccounts(state).some((a) => a.uid === self.uid);
+  const unsafeConfig = configProblem(path, state.trusted);
+  if (unsafeConfig) {
+    const earlier = form.kind === "direct" ? earlierBlock(form, state.trusted, self, state.accounts) : null;
+    const owner = earlier !== null && earlier.kind !== "root" && earlier.owners.has(self.uid);
+    return { status: listed || owner ? "unsafe-config" : "others", path, reason: unsafeConfig };
+  }
 
   const settle = (
     applied: Applied,
@@ -1465,6 +1540,11 @@ export function codexRefreshLines(result: CodexSystemRefresh): string[] {
       return [
         `▲ Codex: failproofai's hooks in ${result.path} need updating by an account that set them up, or by root: ${result.reason}.`,
         "  If you set them up, run `failproofai config`; otherwise tell whoever administers this machine.",
+      ];
+    case "unsafe-config":
+      return [
+        `✕ Codex: ${result.path} can be changed by an account other than root (${result.reason}),`,
+        "  so failproofai's hooks in it cannot be relied on. Make it, and every directory above it, root's alone.",
       ];
     case "failed":
       return [`✕ Codex: could not check failproofai's hooks in ${result.path}: ${result.reason}.`];

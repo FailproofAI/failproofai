@@ -102,6 +102,8 @@ describe("E2E: Codex hooks in the system config", () => {
     mkdir755(dirname(systemConfig));
     const original = '# set by the admin\napproval_policy = "never"\n';
     writeFileSync(systemConfig, original);
+    // As an admin's config is: 0644 whatever this run's umask, or failproofai refuses it.
+    chmodSync(systemConfig, 0o644);
     // An older install's entries in hooks.json, next to someone else's hook.
     mkdirSync(join(home, ".codex"), { recursive: true });
     writeFileSync(
@@ -193,6 +195,7 @@ describe("E2E: Codex hooks in the system config", () => {
         "",
       ].join("\n"),
     );
+    chmodSync(systemConfig, 0o644);
     expect(hookPrograms()).toEqual([cliPath, cliPath]);
 
     const updated = run(["update", "--no-daemon"]);

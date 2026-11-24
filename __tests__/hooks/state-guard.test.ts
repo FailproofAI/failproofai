@@ -655,8 +655,9 @@ describe("block-failproofai-commands — the state guard", () => {
     // when the path is BUILT at run time the literal never appears, so there is
     // nothing to match. The real fix is action-gating on the resolved path,
     // which is not something a string check can do.
+    // (`~/.failproof$X` used to sit here too. A variable spliced INTO a path is
+    // now read as a wildcard, so that one is caught; see settings-guard.test.ts.)
     it("does not catch a path assembled at run time", async () => {
-      expect(await decide("X=ai; rm -rf ~/.failproof$X")).toBe("allow");
       expect(await decide('echo ~/.failproofai > /tmp/t; rm -rf "$(cat /tmp/t)"')).toBe("allow");
       expect(await decide("find ~ -inum 12345 -delete")).toBe("allow");
     });

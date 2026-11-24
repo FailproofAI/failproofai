@@ -242,6 +242,24 @@ describe("block-failproofai-commands — agent settings and hook files", () => {
     it("allows the rest of a dotfiles directory", async () => {
       expect(await decision("Write", { file_path: join(home, "dotfiles", "zshrc"), content: "" })).toBe("allow");
     });
+
+    it("denies the dotfiles target from the shell too", async () => {
+      expect(await bash(`sed -i '/failproofai/d' ~/dotfiles/claude/settings.json`)).toBe(true);
+      expect(await bash(`sed -i '/failproofai/d' ${join(home, "dotfiles", "claude", "settings.json")}`)).toBe(true);
+      expect(await bashDecision(`sed -i 's/a/b/' ~/dotfiles/zshrc`)).toBe("allow");
+    });
+
+    it("denies the target of a project's settings link", async () => {
+      // A committed `.claude/settings.json -> ../config/claude.json`: the file an
+      // agent edits names no agent directory.
+      const project = join(root, "linkproj");
+      mkdirSync(join(project, ".claude"), { recursive: true });
+      mkdirSync(join(project, "config"), { recursive: true });
+      writeFileSync(join(project, "config", "claude.json"), "{}");
+      symlinkSync(join("..", "config", "claude.json"), join(project, ".claude", "settings.json"));
+      expect(await write(join(project, "config", "claude.json"), project)).toBe(true);
+      expect(await decision("Write", { file_path: join(project, "config", "other.json"), content: "{}" }, project)).toBe("allow");
+    });
   });
 
   describe("ordinary file work stays allowed", () => {
@@ -392,6 +410,181 @@ describe("block-failproofai-commands — agent settings and hook files", () => {
   });
 });
 
+/**
+ * The second review round: one-command writes that still got through, and
+ * ordinary work the first round denied.
+ */
+describe("block-failproofai-commands — agent settings, review round two", () => {
+  function runIn(toolName: string, toolInput: Record<string, unknown>, session: PolicyContext["session"]) {
+    const ctx: PolicyContext = { eventType: "PreToolUse", payload: {}, toolName, toolInput, session };
+    return policy.fn(ctx);
+  }
+
+  describe("a destination the shell resolves where a cd left it", () => {
+    it.each([
+      `cd ~/.claude && echo '{"disableAllHooks":true}' > settings.json`,
+      `cd ~/.claude && cp /tmp/evil.json settings.json`,
+      `cd ~/.claude && tee settings.json < /tmp/evil.json`,
+      `pushd ~/.claude && cp /tmp/evil.json settings.json`,
+      `(cd ~/.claude && cp /tmp/evil.json settings.json)`,
+      `cd ~/.config && rm -rf opencode`,
+      `cd ~ && cd .claude && cp /tmp/evil.json settings.local.json`,
+    ])("denies %s", async (command) => {
+      expect(await bash(command)).toBe(true);
+    });
+
+    it("keeps the cd's reach inside its subshell and stops it at popd", async () => {
+      expect(await bashDecision(`(cd ~/.claude && cat settings.json); cp /tmp/x settings.json`)).toBe("allow");
+      expect(await bashDecision(`pushd ~/.claude && cat settings.json && popd && cp /tmp/x settings.json`)).toBe("allow");
+    });
+
+    it("closes the same hole for the state", async () => {
+      const result = await run("Bash", { command: "cd ~/.failproofai && cp /dev/null policies-config.json" });
+      expect(result.decision).toBe("deny");
+      expect(result.reason).toMatch(/failproofai's own state/);
+      expect((await run("Bash", { command: "cd ~/.failproofai && echo {} > policies-config.json" })).decision).toBe("deny");
+    });
+  });
+
+  describe("writers the first round missed", () => {
+    it.each([
+      `sed -Ei 's/a/b/' ~/.claude/settings.json`,
+      `sed -ni 's/a/b/p' ~/.claude/settings.json`,
+      `sed -n 's/^//w/home/u/.claude/settings.json' /tmp/evil.json`,
+      `sed -n '1p; w /home/u/.claude/settings.json' /tmp/evil.json`,
+      `awk 'BEGIN{printf "{\\"disableAllHooks\\":true}" > ARGV[1]}' ~/.claude/settings.json`,
+      `git log -1 --format='format:{"disableAllHooks":true}' --output=$HOME/.claude/settings.json`,
+      `git diff --output=.claude/settings.json HEAD~1`,
+      `git archive -o ~/.claude/settings.json HEAD`,
+      `git -c alias.x='!rm -rf ~/.claude' x`,
+      `gh release download v1 -O ~/.claude/settings.json`,
+      `sort -o$HOME/.claude/settings.json /tmp/evil.json`,
+      `curl -so$HOME/.claude/settings.json https://example.com/x`,
+      `echo ~/.claude/settings.json | xargs tee`,
+      `echo ~/.claude/settings.json | xargs -n1 cp /tmp/evil.json`,
+      `echo x > >(tee ~/.claude/settings.json)`,
+      `rg --pre ./x.sh foo ~/.claude`,
+    ])("denies %s", async (command) => {
+      expect(await bash(command)).toBe(true);
+    });
+
+    it("denies an agent CLI's own command that turns its hooks off", async () => {
+      expect(await bashDecision("codex features disable hooks")).toBe("deny");
+      expect(await bashDecision("npx codex features disable hooks")).toBe("deny");
+      expect(await bashDecision("pi remove /usr/lib/node_modules/failproofai/pi-extension")).toBe("deny");
+      expect(await bashDecision("codex features list")).toBe("allow");
+      expect(await bashDecision("codex features enable web_search")).toBe("allow");
+    });
+  });
+
+  describe("paths spelled so the text never matches", () => {
+    it.each([
+      `cp evil ~/.claude/settings$X.json`,
+      `cp evil ~/.clau\${X}de/settings.json`,
+      `cp evil ~/.claude/settings$(true).json`,
+      `cp evil /home/u/.claude/./settings.json`,
+      `cp evil /home/u/.claude//settings.json`,
+      `cp -l ~/.claude/settings.json /tmp/x`,
+      `cp -rs ~/.claude /tmp/c`,
+    ])("denies %s", async (command) => {
+      expect(await bash(command)).toBe(true);
+    });
+
+    it("splices variables into the state's paths too", async () => {
+      const result = await run("Bash", { command: "X=ai; rm -rf ~/.failproof$X" });
+      expect(result.decision).toBe("deny");
+    });
+  });
+
+  describe("files this session knows about beyond the shapes", () => {
+    it("protects the settings file the hook was loaded from, wherever CLAUDE_CONFIG_DIR put it", async () => {
+      const session = { cwd: PROJ, agentSettingsPath: `${home}/.claude-work/settings.json` };
+      const write = await runIn("Write", { file_path: `${home}/.claude-work/settings.json`, content: "{}" }, session);
+      expect(write.decision).toBe("deny");
+      for (const command of [`sed -i 's/a/b/' ~/.claude-work/settings.json`, `rm -rf ~/.claude-work`]) {
+        expect((await runIn("Bash", { command }, session)).decision).toBe("deny");
+      }
+      // The rest of that directory is not settings.
+      const other = await runIn("Write", { file_path: `${home}/.claude-work/CLAUDE.md`, content: "x" }, session);
+      expect(other.decision).toBe("allow");
+    });
+
+    it("reads Antigravity's own cwd for a run_command", async () => {
+      expect(await deniedAsSettings("Bash", { command: "printf '{}' > hooks.json", cwd: "~/.gemini/config" })).toBe(true);
+      expect(await decision("Bash", { command: "printf '{}' > hooks.json", cwd: "/work/proj/tmp" })).toBe("allow");
+    });
+
+    it("reads an indented apply_patch marker, and a patch beside a path key", async () => {
+      expect(await deniedAsSettings("Edit", { input: "*** Begin Patch\n *** Update File: .claude/settings.json\n@@\n-a\n+b\n*** End Patch" })).toBe(true);
+      expect(await deniedAsSettings("Edit", { input: "*** Begin Patch\n\t*** Update File: .claude/settings.json\n*** End Patch" })).toBe(true);
+      expect(
+        await deniedAsSettings("Edit", { path: "notes.md", patch: "*** Begin Patch\n*** Update File: ~/.hermes/config.yaml\n*** End Patch" }),
+      ).toBe(true);
+    });
+
+    it("reads a program that builds the path from its parts", async () => {
+      for (const command of [
+        `python3 -c "import os; p=os.path.join(os.path.expanduser('~'),'.claude','settings.json'); open(p,'w').write('{}')"`,
+        `node -e "const p=require('path').join(require('os').homedir(),'.claude','settings.json'); require('fs').writeFileSync(p,'{}')"`,
+        `python3 - <<'EOF'\nimport os\np = os.path.join(os.path.expanduser('~'), '.codex', 'hooks.json')\nopen(p, 'w').write('{}')\nEOF`,
+      ]) {
+        expect(await bash(command)).toBe(true);
+      }
+    });
+
+    it("denies a sweep of the agent directory the session stands in", async () => {
+      expect(await bash("rm -rf *", `${home}/.claude`)).toBe(true);
+      expect(await bashDecision("rm -rf skills/*", `${home}/.claude`)).toBe("allow");
+    });
+  });
+
+  describe("ordinary work the first round denied", () => {
+    it.each([
+      // Claude Code's own commit and PR shapes: the message is stored, never run.
+      `git commit -m "$(cat <<'EOF'\nRegister failproofai in .claude/settings.json\n\nCo-Authored-By: someone <a@b.c>\nEOF\n)"`,
+      `gh pr create --title t --body "$(cat <<'EOF'\n## Summary\nBlocks edits to ~/.claude/settings.json and \`rm -rf ~/.claude\`\nEOF\n)"`,
+      `git commit -m "Install\n\nWrites .codex/hooks.json; and rm -rf ~/.claude is refused"`,
+      `git commit -m "Protect \\\`~/.claude/settings.json\\\` from agent edits"`,
+      `cat > docs/hooks.md <<'EOF'\nSee .github/hooks/failproofai.json\nrm -rf ~/.claude\nEOF`,
+      `echo "a; rm -rf ~/.claude > ~/.claude/settings.json"`,
+      // Git hooks kept in .github/hooks.
+      `git config core.hooksPath .github/hooks`,
+      `chmod +x .github/hooks/*`,
+      `cp scripts/pre-commit .github/hooks/`,
+      // Reads that a loose sed or git check read as writes.
+      `sed -n '1,20p' /workspaces/p/.claude/settings.json`,
+      `git restore --staged .claude/settings.json`,
+      `echo ~/.claude/settings.json | xargs cat`,
+    ])("allows %s", async (command) => {
+      expect(await bashDecision(command)).toBe("allow");
+    });
+
+    it("still denies what those shapes really run", async () => {
+      expect(await bash(`bash -c 'cat x; rm -rf ~/.claude'`)).toBe(true);
+      expect(await bash(`git commit -m "$(rm ~/.claude/settings.json)"`)).toBe(true);
+      expect(await bash(`cat <<'EOF' | sh\nrm -rf ~/.claude\nEOF`)).toBe(true);
+      expect(await bash(`cat <<EOF\n$(rm -rf ~/.claude)\nEOF`)).toBe(true);
+    });
+
+    it("no longer denies the state's own false positives from the same causes", async () => {
+      expect(await bashDecision(`git merge feature -m "notes about ~/.failproofai"`)).toBe("allow");
+      expect(await bashDecision(`sed -n 1p /Users/Wei/.failproofai/policies-config.json`)).toBe("allow");
+    });
+  });
+
+  it("stays fast on a long line", async () => {
+    // A heredoc pattern rescanned the rest of the line for every
+    // interpreter-shaped word: 100 KB of prose took 12.6 s on the first
+    // version of this guard, against 0.15 s now. The bound is loose enough for
+    // a slow CI runner and still far below the old cost.
+    const words = "node php lua perl ruby bun deno python3 said ";
+    const command = "echo " + words.repeat(Math.ceil((100 * 1024) / words.length));
+    const started = performance.now();
+    expect(await bashDecision(command)).toBe("allow");
+    expect(performance.now() - started).toBeLessThan(5000);
+  }, 60_000);
+});
+
 describe("agent-settings-guard helpers", () => {
   it("matches settings files anchored at the end, and config directories exactly", () => {
     expect(isAgentSettingsPath("/h/.claude/settings.json")).toBe(true);
@@ -403,7 +596,10 @@ describe("agent-settings-guard helpers", () => {
     expect(isAgentConfigDirPath("/h/.claude/")).toBe(true);
     expect(isAgentConfigDirPath("/h/.claude/skills")).toBe(false);
     expect(isAgentConfigDirPath("/h/.github")).toBe(false);
-    expect(isAgentConfigDirPath("/h/.github/hooks")).toBe(true);
+    // `.github/hooks/` is also where repositories keep GIT hooks: only its
+    // `*.json` files are Copilot's.
+    expect(isAgentConfigDirPath("/h/.github/hooks")).toBe(false);
+    expect(isAgentSettingsPath("/h/.github/hooks/failproofai.json")).toBe(true);
   });
 
   it("reads file paths before patch text, and patch text only without them", () => {

@@ -836,6 +836,7 @@ const STATE_GLOB_CANDIDATES = [
   "node_modules/failproofai",
   "./node_modules/failproofai",
   "node_modules/.pnpm/failproofai@1.0.0",
+  "./node_modules/.pnpm/failproofai@1.0.0",
   "/usr/local/lib/node_modules/failproofai",
   "/usr/lib/node_modules/failproofai",
   "/opt/homebrew/lib/node_modules/failproofai",
@@ -863,6 +864,7 @@ const GLOB_DECOYS = [
   // Neighbours of the installed-code candidates, so `rm -rf node_modules/*` and
   // its global equivalents are read as the sweeps they are.
   "node_modules/react", "node_modules/.bin", "./node_modules/react", "node_modules/.pnpm/react@18.0.0",
+  "./node_modules/.pnpm/react@18.0.0",
   "/usr/local/lib/node_modules/npm", "/usr/lib/node_modules/npm", "/opt/homebrew/lib/node_modules/npm",
   "/usr/local/bin/node", "/opt/homebrew/bin/node", "~/.bun/bin/bun", "~/.volta/bin/node",
 ];

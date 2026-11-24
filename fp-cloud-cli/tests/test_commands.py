@@ -8,7 +8,7 @@ import respx
 from fp_cli import config
 from fp_cli.app import app
 
-BASE = "http://dash.test"
+BASE = "https://dash.test"
 
 
 # --- auth commands ----------------------------------------------------------

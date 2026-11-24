@@ -19,7 +19,7 @@ from fp_cli import config
 from fp_cli._context import AppState, AuthMode, resolve_auth
 from fp_cli.app import app
 
-BASE = "http://dash.test"
+BASE = "https://dash.test"
 KEY = "ak_live_abc123"
 
 

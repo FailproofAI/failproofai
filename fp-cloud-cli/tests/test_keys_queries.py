@@ -65,7 +65,7 @@ def test_parse_permissions_accepts_jev_evaluate():
     assert _parse_permissions(["events:add policies:pull jev:evaluate"]) == [
         "events:add", "policies:pull", "jev:evaluate"]
 
-BASE = "http://dash.test"
+BASE = "https://dash.test"
 
 
 def test_parse_permissions_expands_and_dedupes():

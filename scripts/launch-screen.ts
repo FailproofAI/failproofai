@@ -58,7 +58,7 @@ export function launchScreenLines(facts: LaunchScreenFacts, opts: LaunchScreenOp
   const art = opts.logo ? k.logo() : [];
   // One attention line at most. The exposed bind is a security warning and
   // outranks the state one; the fix sits on its own line because the sentence
-  // carries all three consequences and is too long to share one.
+  // carries every consequence and is too long to share one.
   const attention = facts.exposed
     ? [k.caution(exposedBindWarning(facts.exposed.host)), `  ${k.cmd(facts.exposed.fix)}`]
     : facts.notEnforcing
@@ -104,12 +104,15 @@ export function dashboardBrowseUrl(bindHost: string, port: string | number): str
   return `http://${host}:${port}`;
 }
 
-/** The security warning for a bind other machines can reach. All three consequences stay. */
+/**
+ * The security warning for a bind other machines can reach. Every consequence
+ * stays, code execution included: installing a policy pack runs its code.
+ */
 export function exposedBindWarning(bindHost: string): string {
   return (
-    `The dashboard is bound to ${bindHost}, which is reachable from outside this machine, and has no ` +
-    "authentication: anyone who can reach it can read your session transcripts, disable your policies " +
-    "and uninstall failproofai's hooks."
+    `The dashboard is bound to ${bindHost}, which is reachable from outside this machine. Anyone with its ` +
+    "address, which carries this launch's access token, can read your session transcripts, disable your " +
+    "policies, uninstall failproofai's hooks and run code on this machine by installing a policy pack."
   );
 }
 

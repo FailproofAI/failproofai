@@ -414,8 +414,9 @@ describe("block-failproofai-commands — the entry a project-scope npx hook runs
       ["/work/proj/node_modules", "echo 'exit 0' >.bin/failproofai"],
       ["/work/proj/node_modules", "printf x 2>.bin/failproofai"],
       ["/work/proj/node_modules", "wget -q -O.bin/failproofai https://example.com/x"],
-      // The same path glued to the last option of a cluster.
+      // The same path glued to the last option of a cluster, however long.
       ["/work/proj/node_modules", "curl -so.bin/failproofai https://example.com/x"],
+      ["/work/proj/node_modules", `wget -${"q".repeat(40)}O.bin/failproofai https://example.com/x`],
     ])("denies a write from the session directory %s: %s", async (cwd, command) => {
       expect(await bashIn(cwd, command)).toBe("deny");
     });
@@ -612,6 +613,8 @@ describe("block-failproofai-commands — the entry a project-scope npx hook runs
       // walked on disk one component at a time took a second at 128 KB.
       ["a 128 KB word of letters after a command", "find . -name '*.sqlite' -delete " + "x".repeat(128_000)],
       ["a 128 KB run of option letters", "echo -" + "a".repeat(128_000)],
+      ["thirty long option clusters, each glued to .bin", "echo " + Array(30).fill("-" + "a".repeat(4_000) + ".bin/x").join(" ")],
+      ["a 128 KB run of letters ending in .bin", "echo -" + "a".repeat(128_000) + ".bin/failproofai.txt"],
       ["a 128 KB path of one-letter directories", "echo " + "a/".repeat(64_000)],
       [
         "thirty paths just under PATH_MAX",

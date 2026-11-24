@@ -998,9 +998,9 @@ that is optional and absent on three machines out of four at build time.
 **2. The GitHub Release asset.** `failproofaid-<os>-<arch>.gz` plus a `SHA256SUMS` manifest,
 which `daemon-download.ts` fetches for this CLI's own version, verifying the SHA-256
 **before** decompressing. `SHA256SUMS` comes from the same release as the binary, so it
-catches corruption but not a replaced asset. A published build also holds the decompressed
-binary to the digest `build-daemon-packages.mjs` recorded in the npm package
-(`failproofaidBinaries`). That digest is the same one the npm channel checks, and the one a
+catches corruption but not a replaced asset. A CLI installed from the npm registry also holds
+the decompressed binary to the digest `build-daemon-packages.mjs` recorded in the npm package
+(`failproofaidBinaries`; the release's own CLI tarball is packed before it exists). That digest is the same one the npm channel checks, and the one a
 copy already at `~/.failproofai/bin` must still match before `ensureFailproofaidBinary()`
 reuses it. Covers installs that skipped optional dependencies, tarballs
 installed from disk, and anyone installing the daemon standalone. The URL is *constructed*

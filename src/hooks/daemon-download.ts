@@ -371,8 +371,9 @@ export function binaryDigestMismatch(
  * digest a fresh install from either channel must match, and a mismatch sends
  * the caller to reinstall it from a verified channel.
  *
- * A build with no recorded digest (every dev build) has nothing to compare
- * against and reuses the file as before.
+ * A build with no recorded digest (every dev build, and the CLI tarball
+ * attached to a release, which is packed before the digests are recorded) has
+ * nothing to compare against and reuses the file as before.
  */
 export function installedBinaryMismatch(key: PlatformKey): string | null {
   const expected = expectedNpmBinaryDigest(key);

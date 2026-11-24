@@ -7,7 +7,7 @@
 - `failproofai config` no longer reuses a `~/.failproofai/bin/failproofaid-<version>` that fails to match the digest this build recorded at publish time. It reinstalls the binary from the npm platform package or the release (both held to that digest) and refuses when neither can, where it used to stage whatever file was there as the root-installed service binary (#1056)
 - The daemon download is checked against the digest recorded in the npm package as well as the release's `SHA256SUMS`, which comes from the same release as the binary and so cannot catch a replaced asset (#1056)
 - `FAILPROOFAI_DAEMON_BASE_URL` must be https. Plain http is accepted only for a loopback address, because over http the checksum manifest arrives on the same unauthenticated connection as the binary (#1056)
-- CI: bun is pinned to 1.4.5 in every workflow instead of `latest`, the `pull_request_target` workflow pins `actions/github-script` by commit, and translate-docs reads its `languages` input from `env:` and accepts only supported codes. The input used to run as shell, including in the job holding the translation credentials (#1056)
+- CI: bun is pinned to 1.4.5 in every workflow and in the integration-suite images instead of `latest`, the `pull_request_target` workflow pins `actions/github-script` by commit, and translate-docs reads its `languages` input from `env:` and accepts only supported codes. The input used to run as shell, including in the job holding the translation credentials. The ts-sdk release preflight reads `github.ref` from `env:` too, where a crafted branch name could skip its branch check (#1056)
 
 ## 1.0.17 — 2026-11-24
 

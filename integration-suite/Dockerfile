@@ -16,7 +16,7 @@
 FROM node:22-bookworm-slim
 
 # bun from the official image — no `curl | bash` needed at build time.
-COPY --from=oven/bun:latest /usr/local/bin/bun /usr/local/bin/bun
+COPY --from=oven/bun:1.4.5 /usr/local/bin/bun /usr/local/bin/bun
 
 # Tooling for the various vendor installers. Deliberately NO sudo.
 #   bzip2/xz-utils      : goose extracts its Rust binary with these

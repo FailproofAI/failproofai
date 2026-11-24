@@ -10,7 +10,7 @@ from fp_cli import theme
 from fp_cli.app import app
 from fp_cli.output import _group_permissions
 
-BASE = "http://dash.test"
+BASE = "https://dash.test"
 
 
 # --- permission grouping / coloring -----------------------------------------

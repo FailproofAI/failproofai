@@ -495,7 +495,7 @@ What enforcement actually did. **Session-only**, same reason as above.
 | Flag | Description |
 | --- | --- |
 | `--json` | Emit machine-readable JSON. Errors include the failed request's `request_id`. |
-| `--base-url <url>` | Use a self-hosted or development dashboard. |
+| `--base-url <url>` | Use a self-hosted or development dashboard. It must be `https://`; plain `http://` is accepted only for `localhost` and loopback addresses. |
 | `--org <slug>` | Select an organization for this invocation. |
 | `--token <token>` | Override the saved user-session token. |
 | `--api-key <key>` | Authenticate automation with an API key; never saved. |

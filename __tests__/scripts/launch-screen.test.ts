@@ -201,10 +201,19 @@ describe("exposedBindWarning", () => {
     const text = exposedBindWarning("10.0.0.5");
     expect(text).toContain("10.0.0.5");
     expect(text).toContain("reachable from outside this machine");
-    expect(text).toContain("no authentication");
     expect(text).toContain("read your session transcripts");
     expect(text).toContain("disable your policies");
     expect(text).toContain("uninstall failproofai's hooks");
+  });
+
+  // FailproofAI/agenteye#1799. A routable bind now requires the launch's access
+  // token, so "no authentication" is no longer true, and the worst consequence
+  // was missing: installing a policy pack runs its code on this machine.
+  it("says who can act (whoever has the token address) and that they can run code", () => {
+    const text = exposedBindWarning("10.0.0.5");
+    expect(text).toContain("access token");
+    expect(text).toContain("run code on this machine");
+    expect(text).not.toContain("no authentication");
   });
 });
 

@@ -7,10 +7,12 @@ circular dependency (``app.py`` imports the command modules).
 from __future__ import annotations
 
 import dataclasses
+import ipaddress
 import math
 import re
 from dataclasses import dataclass
 from typing import List, Optional, Sequence, Tuple
+from urllib.parse import urlsplit
 
 from . import _click_compat as click  # the Click Typer is running; see _click_compat
 from . import config as cfgmod
@@ -120,15 +122,70 @@ def deny_in_key_mode(state: "AppState", command: str, reason: str) -> None:
         )
 
 
+def plain_http_destination(url: Optional[str]) -> Optional[str]:
+    """Where ``url`` would send a request in clear, or ``None`` when it would not.
+
+    Every request this CLI makes carries a credential: the saved session cookie, an API
+    key, or (for `login`) the emailed code and the session it is exchanged for. Over plain
+    http to another machine, anyone on the network path reads them. Loopback has no such
+    path, so `http://localhost` stays allowed for a local stack. failproofai applies the
+    same rule to its own Cloud URL (`validateCloudUrl`, `cloud_client.rs`).
+
+    Loopback is judged by what the address is (all of 127.0.0.0/8, and ::1) plus the
+    name `localhost`. Any other name is refused even if it resolves to loopback today,
+    because a resolver's answer is not a property of the URL.
+
+    Returns ``http://host[:port]`` for the message, never the userinfo part of the URL.
+    """
+    if not url:
+        return None
+    try:
+        parts = urlsplit(url.strip())
+        if parts.scheme.lower() != "http":
+            return None
+        host = parts.hostname or ""
+        port = parts.port
+    except ValueError:
+        # An unclosed IPv6 bracket or a bad port. Refuse rather than guess where it goes.
+        return "that address"
+    if host == "localhost":
+        return None
+    try:
+        if ipaddress.ip_address(host).is_loopback:
+            return None
+    except ValueError:
+        pass  # a name, not an address
+    shown = f"[{host}]" if ":" in host else host
+    return f"http://{shown}:{port}" if port is not None else f"http://{shown}"
+
+
 def resolved_base_url(state: AppState) -> str:
-    """The effective dashboard URL.
+    """The effective dashboard URL, refused if a request to it would travel in clear.
 
     The app callback already resolves flag/env > saved config > the public
     default (`config.DEFAULT_BASE_URL`), so `state.base_url` is normally set.
     This falls back to the same default for any AppState built by another path
     (tests, embedders), so the CLI always has a URL to talk to.
+
+    Every request goes to the URL this returns: `build_context` and `require_auth`
+    call it, and so does `login`. That makes it the place to refuse plain http to
+    another host (see `plain_http_destination`). The URL can come from
+    `FP_DASHBOARD_URL` or the saved config as easily as from `--base-url`, and none
+    was checked. Refusing here rather than in the app callback keeps `--help` working
+    for every command, because Click runs the callback before it parses a
+    subcommand's own `--help`. `logout` reads `state.base_url` itself, and clears
+    the local session without contacting such a host.
     """
-    return state.base_url or cfgmod.DEFAULT_BASE_URL
+    base = state.base_url or cfgmod.DEFAULT_BASE_URL
+    cleartext = plain_http_destination(base)
+    if cleartext:
+        raise click.BadParameter(
+            f"refusing to send credentials to {cleartext} over plain http. Use https "
+            "(with --insecure for a self-signed certificate), or plain http only for "
+            "localhost.",
+            param_hint="--base-url",
+        )
+    return base
 
 
 def _org_header(state: AppState) -> Optional[str]:

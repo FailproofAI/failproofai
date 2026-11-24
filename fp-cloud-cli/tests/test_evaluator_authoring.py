@@ -6,7 +6,7 @@ import respx
 
 from fp_cli.app import app
 
-BASE = "http://dash.test"
+BASE = "https://dash.test"
 SOURCE = "EvalResult(score=Score(value=0.9), reasoning='ok')"
 
 

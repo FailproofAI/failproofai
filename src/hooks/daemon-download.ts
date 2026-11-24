@@ -78,6 +78,46 @@ function baseUrl(): string {
   return (process.env.FAILPROOFAI_DAEMON_BASE_URL || DEFAULT_BASE_URL).replace(/\/+$/, "");
 }
 
+/**
+ * Why the configured mirror may not be downloaded from, or null if it may.
+ *
+ * `FAILPROOFAI_DAEMON_BASE_URL` used to take any URL. Over plain http the
+ * `SHA256SUMS` check proves nothing, because the manifest arrives on the same
+ * unauthenticated connection as the binary: anyone on that network path can
+ * rewrite both, and the result is installed as a boot-persistent service. So a
+ * mirror must be https. Plain http is accepted only for a loopback address,
+ * where there is no path to sit on, which is also what the tests serve from.
+ */
+export function daemonBaseUrlProblem(): string | null {
+  const configured = process.env.FAILPROOFAI_DAEMON_BASE_URL;
+  if (!configured) return null;
+  let url: URL;
+  try {
+    url = new URL(configured);
+  } catch {
+    return "FAILPROOFAI_DAEMON_BASE_URL is not a valid URL";
+  }
+  if (isAllowedDownloadUrl(url)) return null;
+  return (
+    `FAILPROOFAI_DAEMON_BASE_URL must be an https:// URL (plain http is accepted only ` +
+    `for a loopback address), not ${url.protocol}//${url.host}`
+  );
+}
+
+/**
+ * The rule for the configured mirror and for every hop a redirect sends a
+ * download to: https, or plain http to a loopback address.
+ */
+function isAllowedDownloadUrl(url: URL): boolean {
+  return url.protocol === "https:" || (url.protocol === "http:" && isLoopbackHost(url.hostname));
+}
+
+/** `localhost`, 127.0.0.0/8 or ::1. The URL parser has already normalised the host. */
+function isLoopbackHost(hostname: string): boolean {
+  const host = hostname.replace(/^\[(.*)\]$/, "$1").toLowerCase();
+  return host === "localhost" || host === "::1" || /^127\.\d{1,3}\.\d{1,3}\.\d{1,3}$/.test(host);
+}
+
 /** Where downloaded binaries live. One directory, one file per version. */
 export function daemonBinaryDir(): string {
   return layoutBinDir();
@@ -273,10 +313,10 @@ export function expectedNpmBinaryDigest(key: PlatformKey): string | null {
  * What this is worth, stated plainly: the digest travels in a DIFFERENT package
  * from the bytes it describes, and `bun build` inlines it into `dist/cli.mjs`,
  * so it is not simply a second file the same writer could edit. It is still not
- * proof against an attacker already executing code in this tree — such an
- * attacker can write `~/.failproofai/bin` directly and skip all of this. It
- * closes accidental corruption and the non-adaptive overwrite, and it makes the
- * two install channels make the same promise.
+ * proof against an attacker already executing code as this user — such an
+ * attacker can replace the file in `~/.failproofai/bin` after it was checked.
+ * It closes accidental corruption and the non-adaptive overwrite, and the
+ * download and the reuse of an installed copy are held to the same digest.
  *
  * Deliberately NOT gated on `FAILPROOFAI_NO_DOWNLOAD` — that variable exists
  * so an air-gapped machine does not reach out, and this is a local copy. On
@@ -303,9 +343,10 @@ export function installFromNpmPackage(key: PlatformKey): DaemonDownloadResult {
 /**
  * Why `bytes` may not be installed, or null if it may.
  *
- * Split out from `installFromNpmPackage` so the comparison is testable without
- * mocking `package.json` — the digest map is inlined at build time, so a test
- * cannot otherwise reach the branch that matters.
+ * Shared by the npm channel, the download and the reuse check, and split out
+ * so the comparison is testable on its own — the digest map is inlined at
+ * build time, so a test reaches the callers' branches only by mocking
+ * `package.json`.
  *
  * A null `expected` is "this build recorded no digest", which is every dev
  * build and every unpublished commit, and means there is nothing to compare
@@ -325,10 +366,71 @@ export function binaryDigestMismatch(
   );
 }
 
+/**
+ * Why the binary already at this version's install path may not be reused, or
+ * null if it may.
+ *
+ * Reuse used to stop at "a file is there": both `ensureFailproofaidBinary` and
+ * `downloadFailproofaidBinary` returned it unread, and the install then made it
+ * the service binary. `~/.failproofai/bin` is the user's own directory, so a
+ * file corrupted or replaced there went into the service unexamined, even on a
+ * build carrying the digest to check it against. It is now held to the same
+ * digest a fresh install from either channel must match, and a mismatch sends
+ * the caller to reinstall it from a verified channel.
+ *
+ * A build with no recorded digest (every dev build, and the CLI tarball
+ * attached to a release, which is packed before the digests are recorded) has
+ * nothing to compare against and reuses the file as before.
+ */
+export function installedBinaryMismatch(key: PlatformKey): string | null {
+  const expected = expectedNpmBinaryDigest(key);
+  if (!expected) return null;
+  const path = installedBinaryPath();
+  try {
+    return binaryDigestMismatch(expected, readFileSync(path), path);
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    return `cannot verify ${path}: ${message}`;
+  }
+}
+
+/** Statuses whose `Location` a download follows. GitHub's own chain is one hop. */
+const REDIRECT_STATUSES = new Set([301, 302, 303, 307, 308]);
+const MAX_REDIRECTS = 10;
+
+/**
+ * GETs `url`, following redirects by hand so that every hop is held to the
+ * rule the configured mirror is.
+ *
+ * `fetch` follows redirects by itself, and that let an https mirror send the
+ * download on to plain http: there the asset and `SHA256SUMS` can both be
+ * replaced in transit and still agree, and only a build carrying a recorded
+ * digest would notice. A refused hop is never requested.
+ */
 async function fetchBytes(url: string): Promise<Buffer> {
-  const response = await fetch(url, { signal: AbortSignal.timeout(DOWNLOAD_TIMEOUT_MS) });
-  if (!response.ok) throw new Error(`GET ${url} returned ${response.status}`);
-  return Buffer.from(await response.arrayBuffer());
+  // One deadline for the whole chain, not one per hop.
+  const signal = AbortSignal.timeout(DOWNLOAD_TIMEOUT_MS);
+  let current = new URL(url);
+  for (let redirects = 0; ; redirects++) {
+    const response = await fetch(current.href, { redirect: "manual", signal });
+    if (!REDIRECT_STATUSES.has(response.status)) {
+      if (!response.ok) throw new Error(`GET ${current.href} returned ${response.status}`);
+      return Buffer.from(await response.arrayBuffer());
+    }
+    // Release the connection; a redirect's body is never read.
+    await response.body?.cancel().catch(() => undefined);
+    const location = response.headers.get("location");
+    if (!location) throw new Error(`GET ${current.href} returned ${response.status} with no Location`);
+    if (redirects >= MAX_REDIRECTS) throw new Error(`GET ${url} redirected more than ${MAX_REDIRECTS} times`);
+    const next = new URL(location, current);
+    if (!isAllowedDownloadUrl(next)) {
+      throw new Error(
+        `${current.host} redirected the download to ${next.protocol}//${next.host}, but like ` +
+          `FAILPROOFAI_DAEMON_BASE_URL every hop must be https (plain http only for a loopback address)`,
+      );
+    }
+    current = next;
+  }
 }
 
 /**
@@ -349,16 +451,27 @@ export function digestFor(manifest: string, assetName: string): string | null {
 /**
  * Downloads, verifies and installs the daemon binary for `key`.
  *
- * Idempotent: an already-installed binary for this version is returned as-is,
- * so re-running the wizard costs nothing.
+ * Idempotent: a binary already installed for this version is returned as-is
+ * when it still matches the digest this build recorded (or the build recorded
+ * none), so re-running the wizard costs nothing. One that does not match is
+ * downloaded again and replaced.
+ *
+ * The download is checked twice when this build carries a digest. `SHA256SUMS`
+ * comes from the same release as the asset, so it catches a truncated or
+ * corrupted download but not a replaced one: whoever can edit the release can
+ * edit both files. The digest recorded in this package at publish time is out
+ * of that reach, so the decompressed binary must match it as well.
  */
 export async function downloadFailproofaidBinary(key: PlatformKey): Promise<DaemonDownloadResult> {
   const target = installedBinaryPath();
-  if (existsSync(target)) return { path: target };
+  if (existsSync(target) && !installedBinaryMismatch(key)) return { path: target };
 
   if (process.env.FAILPROOFAI_NO_DOWNLOAD) {
     return { error: "daemon downloads are disabled (FAILPROOFAI_NO_DOWNLOAD)" };
   }
+
+  const urlProblem = daemonBaseUrlProblem();
+  if (urlProblem) return { error: urlProblem };
 
   const assetName = `failproofaid-${key}.gz`;
 
@@ -377,7 +490,10 @@ export async function downloadFailproofaidBinary(key: PlatformKey): Promise<Daem
       return { error: `checksum mismatch for ${assetName} (expected ${expected}, got ${actual})` };
     }
 
-    return { path: installBinaryBytes(gunzipSync(asset)) };
+    const binary = gunzipSync(asset);
+    const mismatch = binaryDigestMismatch(expectedNpmBinaryDigest(key), binary, daemonAssetUrl(key));
+    if (mismatch) return { error: mismatch };
+    return { path: installBinaryBytes(binary) };
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     return { error: `failed to download failproofaid v${version} for ${key}: ${message}` };

@@ -353,6 +353,10 @@ plain CSV for piping.
 Precedence is **flag > environment variable > config file > built-in default**. A fresh
 install points at the hosted product with no configuration; set `--base-url` or
 `FP_DASHBOARD_URL` for a self-hosted or dev instance and it is saved after `login`.
+The URL must be `https://` (add `--insecure` for a self-signed certificate). Plain
+`http://` is accepted only for `localhost` and loopback addresses: every request carries
+your session, your API key or a sign-in code, and over plain http another machine on the
+network path could read them.
 
 The session lives at `~/.failproofai/fpcli/cli-auth.json` (mode `0600`). The directory
 is resolved as `FP_HOME` > `$FAILPROOFAI_HOME/fpcli` > `~/.failproofai/fpcli` — `FP_HOME`

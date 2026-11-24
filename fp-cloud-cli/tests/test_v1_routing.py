@@ -41,7 +41,7 @@ from fp_cli.app import app
 from fp_cli.errors import KeyModeUnsupportedError
 
 CLIENT_PY = pathlib.Path(api.__file__)
-BASE = "http://dash.test"
+BASE = "https://dash.test"
 KEY = "ak_live_abc123"
 
 

@@ -5,7 +5,7 @@ import respx
 
 from fp_cli.app import app
 
-BASE = "http://dash.test"
+BASE = "https://dash.test"
 DASHBOARD = {"name": "Quality", "description": "Keep", "definition": {"filters": {"env": "prod"}}}
 TILE = {"id": "t1", "query_id": "q1", "title": "Before", "chart_type": "table",
         "chart_config": {}, "param_bindings": {}, "pos_x": 0, "pos_y": 0, "pos_w": 6, "pos_h": 4}

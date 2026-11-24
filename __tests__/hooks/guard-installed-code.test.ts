@@ -205,9 +205,26 @@ describe("block-failproofai-commands — failproofai's installed code", () => {
       ["the TypeScript SDK", "/work/proj/node_modules/@failproofai/sdk/dist/index.js"],
       ["a project file named after the product", "/work/proj/src/failproofai.ts"],
       ["a project in a directory of that name under bin/", "/home/u/bin/failproofai/src/index.ts"],
+      // `node_modules` and `.pnpm` count only as whole path components.
+      ["a fixture under a directory that merely ends in node_modules", "/work/proj/cached_node_modules/failproofai/index.js"],
+      ["a fixture under a hyphenated node_modules", "/work/proj/my-node_modules/failproofai/index.js"],
+      ["a fixture under a directory that merely ends in .pnpm", "/work/proj/foo.pnpm/failproofai@1.0.0/x.js"],
+      ["a fixture under a directory named like an option", "/tmp/-xnode_modules/failproofai/index.js"],
     ])("allows writing %s", async (_label, path) => {
       expect((await write(path)).decision).toBe("allow");
     });
+  });
+
+  // A variable-length lookbehind in front of a name ran at every position of the
+  // input and went quadratic on a run of letters: 32,000 of them took 35 s in the
+  // guard, long enough to time a hook out. It now runs only where a name matched.
+  it("stays fast on a long run of letters", async () => {
+    const started = Date.now();
+    expect(await bash(`find . -name '*.sqlite' -delete ${"x".repeat(128_000)}`)).toBe("allow");
+    expect((await write(`/work/proj/${"x".repeat(128_000)}`)).decision).toBe("allow");
+    // ...and a long option cluster is no way past: the cluster needs no bound.
+    expect(await bash(`wget -q${"x".repeat(64_000)}Onode_modules/failproofai/dist/cli.mjs https://e/x`)).toBe("deny");
+    expect(Date.now() - started).toBeLessThan(2000);
   });
 
   describe("shell commands", () => {
@@ -234,6 +251,10 @@ describe("block-failproofai-commands — failproofai's installed code", () => {
       ["removing pnpm's global store entry", "rm -rf /home/u/.local/share/pnpm/global/5/.pnpm/failproofai@1.0.15"],
       ["removing the daemon package from pnpm's store", "rm -rf node_modules/.pnpm/@failproofai+failproofaid-linux-x64@1.0.15"],
       ["a glob onto pnpm's store entry", "rm -rf node_modules/.pnpm/fail*"],
+      // An output file glued to a short option, alone or in a cluster.
+      ["wget writing the CLI through -O<path>", "wget -q -Onode_modules/failproofai/dist/cli.mjs https://example.com/x"],
+      ["wget writing the CLI through a -qO<path> cluster", "wget -qOnode_modules/failproofai/dist/cli.mjs https://example.com/x"],
+      ["wget writing pnpm's store entry through -qO<path>", "wget -qO.pnpm/failproofai@1.0.15/x https://example.com/x"],
       ["a dotted glob onto pnpm's store entry", "rm -rf ./node_modules/.pnpm/fail*"],
     ])("denies %s", async (_label, command) => {
       expect(await bash(command)).toBe("deny");
@@ -250,6 +271,7 @@ describe("block-failproofai-commands — failproofai's installed code", () => {
       ["clearing every dependency", "rm -rf node_modules/*"],
       ["clearing pnpm's whole store", "rm -rf node_modules/.pnpm/*"],
       ["clearing pnpm's whole store, dotted", "rm -rf ./node_modules/.pnpm/*"],
+      ["removing a fixture under cached_node_modules", "rm -rf cached_node_modules/failproofai"],
       ["a test run inside a directory of that name under bin/", "vitest run --root /home/u/bin/failproofai/web"],
       ["clearing a build cache", "rm -rf node_modules/.cache"],
       ["removing a checkout of the repo", "rm -rf /home/u/src/failproofai"],

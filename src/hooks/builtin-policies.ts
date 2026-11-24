@@ -462,6 +462,26 @@ const GIT_COMMIT_MERGE_RE = /git\s+(commit|merge|rebase|cherry-pick)\b/;
 
 // blockFailproofaiCommands
 /**
+ * The path component `name` (regex source), only where it STARTS a component:
+ * after a separator, a space, a quote or `=`, or glued to a cluster of short
+ * options (`wget -Onode_modules/…`, `wget -qO.pnpm/…`), which is how those tools
+ * take an output file. Not after a letter, digit, `_`, `.` or `-` of the same
+ * name: `cached_node_modules/…` and `my-node_modules/…` are somebody's fixtures.
+ *
+ * The check is a lookbehind placed AFTER the name, so it runs only where the
+ * name already matched. A variable-length lookbehind in FRONT of the name ran
+ * at every position of the input and rescanned a whole run of letters each
+ * time: a command carrying 32,000 letters took 35 s in the guard, long enough
+ * to time a hook out. Here each match scans back over the letters just before
+ * it, and those runs cannot overlap — every name ends in a non-letter (`_` in
+ * `node_modules`, the `.` that starts `.pnpm`) — so the cluster needs no bound,
+ * and a long one (`-qqqq…O<path>`) is not a way past.
+ */
+function pathComponent(name: string): string {
+  return String.raw`${name}(?<=(?:^|[^\w.-])${name}|(?:^|\s)-[A-Za-z]+${name})`;
+}
+
+/**
  * failproofai's INSTALLED CODE: the package a hook command runs, and the bin
  * entry that names it.
  *
@@ -497,11 +517,13 @@ const FAILPROOFAI_CODE_PATH_RE = new RegExp(
   [
     // The package, in every layout a package manager uses, and the daemon's
     // platform package, which `failproofai config` and `update` copy into place
-    // (on Linux as root, under `/opt`).
-    String.raw`node_modules[\\/](?:\.?[\\/])*(?:failproofai(?![\w.@-])|@failproofai[\\/](?:\.?[\\/])*failproofaid\b)`,
+    // (on Linux as root, under `/opt`). `node_modules` as a whole path
+    // component (`pathComponent`).
+    pathComponent("node_modules") +
+      String.raw`[\\/](?:\.?[\\/])*(?:failproofai(?![\w.@-])|@failproofai[\\/](?:\.?[\\/])*failproofaid\b)`,
     // pnpm's virtual store, which holds each package one directory above its
     // own `node_modules/failproofai`.
-    String.raw`\.pnpm[\\/](?:\.?[\\/])*(?:failproofai|@failproofai\+failproofaid[\w.-]*)@`,
+    pathComponent(String.raw`\.pnpm`) + String.raw`[\\/](?:\.?[\\/])*(?:failproofai|@failproofai\+failproofaid[\w.-]*)@`,
     // The entry a hook command names: `…/bin/failproofai` for npm, nvm,
     // Homebrew, bun, Volta and yarn, `…/pnpm/failproofai` for pnpm's home, and
     // the variables nvm and pnpm export for those directories. A FILE, so a
@@ -512,19 +534,14 @@ const FAILPROOFAI_CODE_PATH_RE = new RegExp(
     // npx cache). With the shims npm (`.cmd`, `.ps1`) and bun (`.exe`, `.bunx`)
     // write beside it on Windows. Not anchored on `node_modules`, so the
     // relative `.bin/failproofai` a command run from inside `node_modules`
-    // names is the same file. `.bin` must start a path component, so
-    // `firmware.bin/failproofai` is not it, but anything that is not part of a
-    // name may stand before it (`>.bin/…`), and so may a short option the
-    // path is glued to, alone or at the end of a cluster (`-O.bin/…`,
-    // `-so.bin/…`). The lookbehind comes after the literal, so it runs only
-    // where `.bin` matched and scans back over the letters just before it,
-    // which no other match shares (`.bin` starts with a dot): linear. Placed
-    // before the literal it ran at every position of a run of letters and
-    // scanned back over all of it, and a padded 32 KB command took 16 s. A
-    // FILE, like the entry above: the rest of
+    // names is the same file. `.bin` must start a path component
+    // (`pathComponent`), so `firmware.bin/failproofai` is not it, while
+    // `>.bin/…` and a short option the path is glued to (`-O.bin/…`,
+    // `-so.bin/…`) are. A FILE, like the entry above: the rest of
     // `node_modules/.bin` (every other package's binary, run by path all the
     // time) stays out of it.
-    String.raw`\.bin(?<=(?:^|[^\w.-])\.bin|(?:^|\s)-[A-Za-z]+\.bin)[\\/](?:\.?[\\/])*failproofai(?:\.(?:cmd|ps1|exe|bunx))?(?![\w.@\\/-])`,
+    pathComponent(String.raw`\.bin`) +
+      String.raw`[\\/](?:\.?[\\/])*failproofai(?:\.(?:cmd|ps1|exe|bunx))?(?![\w.@\\/-])`,
   ].join("|"),
   "i",
 );

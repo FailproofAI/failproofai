@@ -49,7 +49,7 @@ import { listInstallableIds, getIntegration } from "./integrations";
 import type { IntegrationType } from "./types";
 import { removeHooks } from "./manager";
 import { shellQuote } from "./shell-quote";
-import { sudoCommandLine } from "./system-command";
+import { NO_PRINTED_COMMAND_REASON, sudoCommandLine } from "./system-command";
 import { installedAgentSkillDirs, removeAgentSkill } from "./agent-skill";
 import { CODEX_MANAGED_BEGIN, CODEX_MANAGED_END, codexSystemConfigPath, codexSystemHooksPresent } from "./codex-system-hooks";
 import { optsFor, screenKit, type RenderOpts } from "./tui";
@@ -361,10 +361,15 @@ export async function runUninstallCommand(opts: UninstallOptions = {}): Promise<
     // "still there, here is what to run as root" path below.
     elevateOnce();
     // What to run as root when the removal could not elevate, and where to look.
-    const byHand = (servicePath: string): string =>
-      "\nRemove it as root:\n" +
-      manualServiceRemoval(servicePath).map((step) => `  \`${step}\``).join("\n") +
-      (daemonStatusCommand() ? `\nCheck it with  \`${daemonStatusCommand()}\`` : "");
+    const byHand = (servicePath: string): string => {
+      const steps = manualServiceRemoval(servicePath);
+      return (
+        (steps
+          ? "\nRemove it as root:\n" + steps.map((step) => `  \`${step}\``).join("\n")
+          : `\nRemove ${servicePath} as root (${NO_PRINTED_COMMAND_REASON}).`) +
+        (daemonStatusCommand() ? `\nCheck it with  \`${daemonStatusCommand()}\`` : "")
+      );
+    };
     try {
       await uninstallDaemonService();
       // uninstallDaemonService is best-effort by contract — it warns and
@@ -376,9 +381,10 @@ export async function runUninstallCommand(opts: UninstallOptions = {}): Promise<
             byHand(found.servicePath),
         );
       } else if (found.stagedBinaryDir && existsSync(found.stagedBinaryDir)) {
+        const removal = sudoCommandLine("rm", "-rf", shellQuote(found.stagedBinaryDir));
         failures.push(
           `The failproofaid binary in ${found.stagedBinaryDir} is still there, most often because sudo was not available.` +
-            `\nRemove it as root:\n  \`${sudoCommandLine("rm", "-rf", shellQuote(found.stagedBinaryDir))}\``,
+            (removal ? `\nRemove it as root:\n  \`${removal}\`` : `\nRemove it as root (${NO_PRINTED_COMMAND_REASON}).`),
         );
       } else if (found.serviceInstalled) {
         lines.push(kit.ok("Stopped and removed the failproofaid service."));
@@ -430,26 +436,29 @@ export async function runUninstallCommand(opts: UninstallOptions = {}): Promise<
   return { exitCode: 0, lines, planLines, purged };
 }
 
-/** The exact commands to finish a service removal that could not elevate. The
- *  paths are quoted: these are pasted into a root shell, and an unquoted path
- *  holding a space would make `rm -rf` remove something else. */
-function manualServiceRemoval(servicePath: string): string[] {
-  // sudo and each program by absolute path, as failproofai runs them itself:
-  // see system-command.ts.
+/** The exact commands to finish a service removal that could not elevate, or
+ *  null where root's directories lack sudo or a program they name (see
+ *  system-command.ts: a printed bare name is looked up through the user's
+ *  PATH). The paths are quoted: these are pasted into a root shell, and an
+ *  unquoted path holding a space would make `rm -rf` remove something else. */
+function manualServiceRemoval(servicePath: string): string[] | null {
+  const steps: (string | null)[] = [];
   if (process.platform === "darwin") {
-    return [
+    steps.push(
       sudoCommandLine("launchctl", "unload", "-w", shellQuote(servicePath)),
       sudoCommandLine("rm", "-f", shellQuote(servicePath)),
-    ];
+    );
+  } else {
+    const unit = servicePath.split("/").pop() ?? servicePath;
+    const binDir = daemonSystemBinaryDir();
+    steps.push(
+      sudoCommandLine("systemctl", "disable", "--now", unit),
+      sudoCommandLine("rm", "-f", shellQuote(servicePath)),
+      sudoCommandLine("systemctl", "daemon-reload"),
+      ...(binDir ? [sudoCommandLine("rm", "-rf", shellQuote(binDir))] : []),
+    );
   }
-  const unit = servicePath.split("/").pop() ?? servicePath;
-  const binDir = daemonSystemBinaryDir();
-  return [
-    sudoCommandLine("systemctl", "disable", "--now", unit),
-    sudoCommandLine("rm", "-f", shellQuote(servicePath)),
-    sudoCommandLine("systemctl", "daemon-reload"),
-    ...(binDir ? [sudoCommandLine("rm", "-rf", shellQuote(binDir))] : []),
-  ];
+  return steps.every((step): step is string => step !== null) ? steps : null;
 }
 
 /** What `daemonServiceStatus()` says, for the status line the CLI prints. */

@@ -969,7 +969,8 @@ Three consequences, all handled explicitly rather than assumed:
   `src/hooks/system-command.ts`, which looks only in `/usr/bin`, `/bin`, `/usr/sbin` and
   `/sbin` and starts them with `privilegedEnv()` (root's PATH, the caller's locale and the
   settings sudo authenticates with). PATH is the user's to change. Printed commands use
-  `sudoCommandLine()` for the same reason.
+  `sudoCommandLine()`, which returns null rather than a bare name where root's directories
+  lack sudo or the program; callers then print what to do instead of a command.
 - **A system unit has no login environment.** `resolveWorkerCommand()` uses
   `process.execPath`, not a bare `node`: the single most common Node install is nvm, whose
   binary lives under `~/.nvm/versions/node/*/bin` and is on no system PATH. A bare `node`

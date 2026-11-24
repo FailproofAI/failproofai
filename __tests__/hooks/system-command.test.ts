@@ -9,6 +9,7 @@ import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, resolve } from "node:path";
 import {
+  NO_PRINTED_COMMAND_REASON,
   SYSTEM_BIN_DIRS,
   SYSTEM_PATH,
   privilegedEnv,
@@ -83,9 +84,14 @@ describe("system-command", () => {
     expect(Object.keys(env).every((key) => allowed.includes(key))).toBe(true);
   });
 
-  it("prints sudo and the program by absolute path, and the bare name where root has none", () => {
-    expect(sudoCommandLine("sh", "-c", "'true'")).toBe(`${sudoPath()} ${systemCommandPath("sh")} -c 'true'`);
-    expect(sudoCommandLine("failproofai-only-on-path", "-x")).toBe(`${sudoPath()} failproofai-only-on-path -x`);
-    expect(sudoPath()).toBe(systemCommandPath("sudo") ?? "sudo");
+  it("prints sudo and the program by absolute path, and nothing where root's directories lack either", () => {
+    const sudo = sudoPath();
+    expect(sudo).toBe(systemCommandPath("sudo"));
+    expect(sudoCommandLine("sh", "-c", "'true'")).toBe(sudo ? `${sudo} ${systemCommandPath("sh")} -c 'true'` : null);
+    // Never a bare name: the program below is only on PATH.
+    expect(sudoCommandLine("failproofai-only-on-path", "-x")).toBeNull();
+    expect(NO_PRINTED_COMMAND_REASON).toBe(
+      "sudo or the program it would run is not in /usr/bin, /bin, /usr/sbin, /sbin, so no command to run as root is printed",
+    );
   });
 });

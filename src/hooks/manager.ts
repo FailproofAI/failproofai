@@ -41,7 +41,7 @@ import type { ResolvedPack } from "./pack-manifest";
 import { hasInstalledRegexPacks, readInstalledPacks } from "./pack-manifest";
 import { packPolicyParamKey } from "./policy-evaluator";
 import { probeDaemonPolicyEvaluation } from "./daemon-service";
-import { sudoPath } from "./system-command";
+import { NO_PRINTED_COMMAND_REASON, sudoPath } from "./system-command";
 import { keepAgentSelectionTrue } from "./agent-selection";
 import { INDENT, colorsEnabled, optsFor, printBlock, screenKit, type ScreenKitOpts } from "./tui";
 
@@ -1141,11 +1141,15 @@ export async function removeHooks(policyNames?: string[], scope: HookScope | "al
           }
         } else if (system.status === "failed") {
           // Non-interactive by design (this also runs from the dashboard), so
-          // the fix is to prime sudo and come back.
+          // the fix is to prime sudo and come back. Only a sudo from root's own
+          // directories is named: a bare one is whatever PATH finds first.
+          const sudo = sudoPath();
           for (const line of screenKit(optsFor(process.stdout)).notice(
             "caution",
             `failproofai's Codex hooks are still in ${system.path}: ${system.reason}.\n` +
-              `Run  \`${sudoPath()} -v\`,  then this command again.`,
+              (sudo
+                ? `Run  \`${sudo} -v\`,  then this command again.`
+                : `Remove failproofai's block from ${system.path} as root (${NO_PRINTED_COMMAND_REASON}).`),
           )) {
             say(line);
           }

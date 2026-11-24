@@ -37,6 +37,8 @@ import {
 import { logsDir } from "./fp-home";
 import { shellQuote, shellQuotedWords } from "./shell-quote";
 import {
+  NO_PRINTED_COMMAND_REASON,
+  SYSTEM_BIN_DIRS,
   SYSTEM_PATH,
   privilegedEnv,
   requireSystemCommand,
@@ -1204,8 +1206,21 @@ function recipeWriteInline(destination: string, contents: string, mode: string):
  * before any service is started.
  */
 function renderRecipe(steps: string[]): string {
-  const define = `${RECIPE_WRITE_FN}() { ${sudoPath()} ${SYSTEM_SH} -c ${shellQuote(PRIVILEGED_INSTALL_SCRIPT)} failproofai-install "$@"; }`;
+  const sudo = sudoPath();
+  if (!sudo) throw new Error(NO_PRINTED_COMMAND_REASON);
+  const define = `${RECIPE_WRITE_FN}() { ${sudo} ${SYSTEM_SH} -c ${shellQuote(PRIVILEGED_INSTALL_SCRIPT)} failproofai-install "$@"; }`;
   return [define, steps.join(" &&\n")].join("\n");
+}
+
+/**
+ * One privileged step of the recipe. Throws where root's directories lack sudo
+ * or the program: the recipe is then not printed at all, rather than printed
+ * with a name that whoever pastes it would look up through their own PATH.
+ */
+function recipeCommand(command: string, ...args: string[]): string {
+  const line = sudoCommandLine(command, ...args);
+  if (!line) throw new Error(NO_PRINTED_COMMAND_REASON);
+  return line;
 }
 
 /**
@@ -1230,24 +1245,24 @@ function daemonInstallRecipe(binaryPath: string, workerCmd: string | null, cliCm
         // Quoted: a home directory may hold a space, and an unquoted path
         // splits into words that stop this `&&`-chained recipe before the
         // unit is ever written.
-        sudoCommandLine("install", "-d", "-m", "0755", shellQuote(systemBinaryDir())),
+        recipeCommand("install", "-d", "-m", "0755", shellQuote(systemBinaryDir())),
         `${RECIPE_WRITE_FN} ${shellQuote(target)} ${digest} 0755 < ${shellQuote(binaryPath)}`,
       );
       // Only where root's directories have it: SELinux systems always do, and a
       // bare name would leave sudo to find one.
       if (systemCommandPath("restorecon")) {
-        steps.push(`{ ${sudoCommandLine("restorecon", "-R", shellQuote(systemBinaryRoot()))} 2>/dev/null || true; }`);
+        steps.push(`{ ${recipeCommand("restorecon", "-R", shellQuote(systemBinaryRoot()))} 2>/dev/null || true; }`);
       }
     }
     steps.push(
       recipeWriteInline(systemdUnitPath(), systemdUnitContents(target ?? binaryPath, workerCmd, cliCmd), "0644"),
-      sudoCommandLine("systemctl", "daemon-reload"),
-      sudoCommandLine("systemctl", "enable", systemdUnitName()),
+      recipeCommand("systemctl", "daemon-reload"),
+      recipeCommand("systemctl", "enable", systemdUnitName()),
       // `restart`, not `enable --now`, for the reason the install path gives:
       // `--now` does nothing to an already-active unit, and these commands are
       // handed to someone whose daemon may well be running — an upgrade is the
       // most likely reason they are reading them.
-      sudoCommandLine("systemctl", "restart", systemdUnitName()),
+      recipeCommand("systemctl", "restart", systemdUnitName()),
     );
     return renderRecipe(steps);
   }
@@ -1259,8 +1274,8 @@ function daemonInstallRecipe(binaryPath: string, workerCmd: string | null, cliCm
   return renderRecipe([
     `mkdir -p ${shellQuote(logDir)}`,
     recipeWriteInline(plistPath, launchdPlistContents(binaryPath, logDir, workerCmd, cliCmd), "0644"),
-    `{ ${sudoCommandLine("launchctl", "unload", shellQuote(plistPath))} 2>/dev/null || true; }`,
-    sudoCommandLine("launchctl", "load", "-w", shellQuote(plistPath)),
+    `{ ${recipeCommand("launchctl", "unload", shellQuote(plistPath))} 2>/dev/null || true; }`,
+    recipeCommand("launchctl", "load", "-w", shellQuote(plistPath)),
   ]);
 }
 
@@ -2161,12 +2176,17 @@ export async function refreshDaemonToCliVersion(
     // and names this command: get sudo, then run it again. Never "run the CLI
     // under sudo" — that would configure root's account instead of this one.
     const needsRoot = /root privileges are required/.test(result.reason ?? "");
+    // Only a sudo from root's own directories is named; with none there, a
+    // bare `sudo` would be whatever the user's PATH finds first.
+    const sudo = sudoPath();
     return {
       ok: false,
       lines: needsRoot
         ? [
             `✕ failproofaid ${version} was not installed: root privileges are required. The previous daemon is untouched.`,
-            `  Run \`${sudoPath()} -v\` and then \`failproofai update\` again.`,
+            sudo
+              ? `  Run \`${sudo} -v\` and then \`failproofai update\` again.`
+              : `  No sudo was found in ${SYSTEM_BIN_DIRS.join(", ")}, so failproofai cannot install its service here.`,
           ]
         : [
             `✕ failproofaid ${version} could not be installed: ${(result.reason ?? "unknown reason").replace(/\.$/, "")}. ` +

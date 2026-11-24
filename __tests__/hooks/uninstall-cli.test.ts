@@ -15,7 +15,8 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { mkdtempSync, rmSync, existsSync, writeFileSync, mkdirSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { sudoCommandLine } from "../../src/hooks/system-command";
+import { NO_PRINTED_COMMAND_REASON, sudoCommandLine } from "../../src/hooks/system-command";
+import { hiddenSystemPrograms } from "../helpers/system-command-stand-in";
 
 /** Call order across the mocked modules, which is the actual thing under test. */
 const calls: string[] = [];
@@ -46,6 +47,14 @@ vi.mock("../../src/hooks/agent-skill", () => ({
     return removed;
   }),
 }));
+
+// sudo and the programs it runs are named by absolute path, looked up on this
+// machine; any it lacks (systemctl on a Mac) gets a stand-in path. See the helper.
+vi.mock("../../src/hooks/system-command", async (importOriginal) =>
+  (await import("../helpers/system-command-stand-in")).standInSystemCommand(
+    await importOriginal<typeof import("../../src/hooks/system-command")>(),
+  ),
+);
 
 vi.mock("../../src/hooks/daemon-service", () => ({
   isDaemonSupportedPlatform: () => true,
@@ -426,6 +435,24 @@ describe("hooks/uninstall-cli — who decides the daemon's fate", () => {
       `    ${sudoCommandLine("rm", "-rf", `'${stagedDir}'`)}`,
       "  Check it with  systemctl status failproofaid@tester",
     ]);
+  });
+
+  it("prints no command, only what to remove, where root's directories have no sudo", async () => {
+    // A bare `sudo` would be whatever the PATH of whoever pastes it finds first.
+    hiddenSystemPrograms().add("sudo");
+    try {
+      serviceExists = false;
+      const { runUninstallCommand } = await import("../../src/hooks/uninstall-cli");
+      const res = await runUninstallCommand({ yes: true });
+
+      const out = res.lines.join("\n");
+      expect(res.exitCode).toBe(1);
+      expect(out).toContain(`Remove ${servicePath} as root (${NO_PRINTED_COMMAND_REASON}).`);
+      expect(out).not.toContain("Remove it as root:");
+      expect(out).not.toMatch(/`sudo /);
+    } finally {
+      hiddenSystemPrograms().clear();
+    }
   });
 });
 

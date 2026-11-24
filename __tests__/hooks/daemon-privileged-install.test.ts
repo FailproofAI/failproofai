@@ -35,6 +35,7 @@ import { installedBinaryPath } from "../../src/hooks/daemon-download";
 import { logsDir } from "../../src/hooks/fp-home";
 import { shellQuote } from "../../src/hooks/shell-quote";
 import packageJson from "../../package.json";
+import { hiddenSystemPrograms, standInSystemCommand } from "../helpers/system-command-stand-in";
 
 vi.mock("../../src/hooks/hook-logger", () => ({
   hookLogWarn: vi.fn(),
@@ -131,6 +132,7 @@ describe.skipIf(isRoot)("privileged service install: root is handed bytes, never
   });
 
   afterEach(() => {
+    hiddenSystemPrograms().clear();
     vi.doUnmock("node:child_process");
     vi.doUnmock("../../src/hooks/system-command");
     vi.doUnmock("../../package.json");
@@ -172,14 +174,24 @@ describe.skipIf(isRoot)("privileged service install: root is handed bytes, never
    * `beforeRoot` has had its turn. `elevate: false` is a machine where sudo
    * cannot run anything; `warmUp: true` one where it can only after `sudo -v`.
    * `onElevate` runs at each `sudo -n true`, the check made just before the
-   * install starts copying.
+   * install starts copying. `hide` names programs root's directories are to
+   * lack. Programs the machine lacks are stood in for (see the helper).
    */
   function mockSudo(
-    opts: { beforeRoot?: BeforeRoot; elevate?: boolean; warmUp?: boolean; onElevate?: () => void } = {},
+    opts: {
+      beforeRoot?: BeforeRoot;
+      elevate?: boolean;
+      warmUp?: boolean;
+      onElevate?: () => void;
+      hide?: string[];
+    } = {},
   ): RootCall[] {
     const calls: RootCall[] = [];
     let warm = !opts.warmUp;
-    standInSystemPrograms();
+    for (const name of opts.hide ?? []) hiddenSystemPrograms().add(name);
+    vi.doMock("../../src/hooks/system-command", async (importOriginal) =>
+      standInSystemCommand(await importOriginal<SystemCommand>()),
+    );
     vi.doMock("node:child_process", async (importOriginal) => {
       const actual = await importOriginal<typeof import("node:child_process")>();
       return {
@@ -226,25 +238,6 @@ describe.skipIf(isRoot)("privileged service install: root is handed bytes, never
       };
     });
     return calls;
-  }
-
-  /**
-   * The install looks programs up only in root's own directories, and a test
-   * machine may lack some: launchctl on Linux, systemctl on a Mac or in a
-   * container, sudo itself. Each of these the sudo mock answers for without
-   * running it, so where one is missing a path stands in for it. Programs the
-   * mock does run (install, mv, rm, sh) are always the machine's own.
-   */
-  function standInSystemPrograms(): void {
-    const answered = new Set(["sudo", "true", "systemctl", "launchctl", "restorecon"]);
-    vi.doMock("../../src/hooks/system-command", async (importOriginal) => {
-      const actual = await importOriginal<SystemCommand>();
-      return {
-        ...actual,
-        requireSystemCommand: (name: string) =>
-          actual.systemCommandPath(name) ?? (answered.has(name) ? `/usr/bin/${name}` : actual.requireSystemCommand(name)),
-      };
-    });
   }
 
   /**
@@ -465,9 +458,10 @@ describe.skipIf(isRoot)("privileged service install: root is handed bytes, never
      */
     async function runRecipe(recipe: string): Promise<{ status: number; stderr: string }> {
       const sudo = (await systemCommand()).sudoPath();
+      if (!sudo) throw new Error("no sudo to stand in for: the recipe would not have been printed");
       const stand = fakeSudo();
-      const runnable = sudo.startsWith("/") ? recipe.split(`${sudo} `).join(`${stand} `) : recipe;
-      if (sudo.startsWith("/")) expect(runnable).not.toContain(sudo);
+      const runnable = recipe.split(`${sudo} `).join(`${stand} `);
+      expect(runnable).not.toContain(sudo);
       try {
         realExecFileSync("/bin/sh", ["-c", runnable], {
           env: { ...process.env, PATH: `${dirname(stand)}:/usr/bin:/bin` },
@@ -493,7 +487,7 @@ describe.skipIf(isRoot)("privileged service install: root is handed bytes, never
       expect(recipe).toContain(`< '${managed}'`);
       expect(recipe).not.toMatch(/sudo (install -m|tee|cp) /);
       // sudo and the programs it runs, by absolute path.
-      expect(recipe).toContain(sys.sudoCommandLine("systemctl", "daemon-reload"));
+      expect(recipe).toContain(sys.sudoCommandLine("systemctl", "daemon-reload")!);
 
       expect(await runRecipe(recipe)).toEqual({ status: 0, stderr: "" });
       expect(readFileSync(target, "utf8")).toBe(BINARY);
@@ -512,6 +506,55 @@ describe.skipIf(isRoot)("privileged service install: root is handed bytes, never
       expect(stderr).toMatch(/do not match sha256/);
       expect(existsSync(svc.systemBinaryTarget(managed)!)).toBe(false);
       expect(existsSync(svc.daemonServiceFilePath()!)).toBe(false);
+    });
+
+    // Never a bare name: whoever pastes a printed command would look it up
+    // through their own PATH.
+    const missing: [NodeJS.Platform, string][] = [
+      ["linux", "sudo"],
+      ["darwin", "sudo"],
+      ["linux", "systemctl"],
+    ];
+    it.each(missing)("%s, without %s in root's directories: prints no command to run as root", async (platform, hide) => {
+      writeManagedBinary();
+      setPlatform(platform);
+      mockSudo({ elevate: false, hide: [hide] });
+      const svc = await loadService();
+      const sys = await systemCommand();
+
+      const result = await svc.installDaemonService();
+
+      expect(result.installed).toBe(false);
+      expect(result.reason).toMatch(/root privileges are required/);
+      expect(result.reason).toContain(`No manual steps could be prepared: ${sys.NO_PRINTED_COMMAND_REASON}`);
+      expect(result.reason).not.toContain("failproofai_install");
+      expect(svc.daemonRestartCommand()).toBeNull();
+      if (platform === "darwin") expect(svc.daemonStatusCommand()).toBeNull();
+    });
+
+    const updateHints: [string, string[]][] = [
+      ["with sudo in root's directories", []],
+      ["without", ["sudo"]],
+    ];
+    it.each(updateHints)("update's needs-root hint %s names no bare sudo", async (_label, hide) => {
+      setPlatform("linux");
+      mockSudo({ hide });
+      const svc = await loadService();
+      const sys = await systemCommand();
+
+      const result = await svc.refreshDaemonToCliVersion({
+        status: () => "running",
+        interactive: () => false,
+        install: async () => ({ installed: false, reason: "root privileges are required to install it" }),
+      });
+
+      const sudo = sys.sudoPath();
+      expect(result.lines[1]).toBe(
+        sudo
+          ? `  Run \`${sudo} -v\` and then \`failproofai update\` again.`
+          : `  No sudo was found in ${sys.SYSTEM_BIN_DIRS.join(", ")}, so failproofai cannot install its service here.`,
+      );
+      expect(Boolean(sudo)).toBe(hide.length === 0);
     });
 
     it("macOS: carries the plist inline and installs exactly it, run as printed", async () => {

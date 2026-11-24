@@ -66,16 +66,25 @@ export function privilegedEnv(): NodeJS.ProcessEnv {
   return env as NodeJS.ProcessEnv;
 }
 
-/** `sudo` as printed for someone to run: its absolute path, or the bare name where there is none. */
-export function sudoPath(): string {
-  return systemCommandPath("sudo") ?? "sudo";
+/**
+ * Why no command to run as root is printed, where a caller would have printed
+ * one: a printed bare name is looked up by whoever runs it (their shell's PATH,
+ * or sudo's), which is the lookup this module exists to avoid.
+ */
+export const NO_PRINTED_COMMAND_REASON = `sudo or the program it would run is not in ${SYSTEM_BIN_DIRS.join(", ")}, so no command to run as root is printed`;
+
+/** `sudo` as printed for someone to run: its absolute path, or null where root's directories have none. */
+export function sudoPath(): string | null {
+  return systemCommandPath("sudo");
 }
 
 /**
  * A privileged command as printed for someone to run: `sudo` and the program
- * by absolute path where root's directories have them, the bare names where
- * they do not. `args` are pasted as given, so the caller quotes them.
+ * by absolute path, or null where root's directories lack either; never a bare
+ * name. `args` are pasted as given, so the caller quotes them.
  */
-export function sudoCommandLine(command: string, ...args: string[]): string {
-  return [sudoPath(), systemCommandPath(command) ?? command, ...args].join(" ");
+export function sudoCommandLine(command: string, ...args: string[]): string | null {
+  const sudo = sudoPath();
+  const program = systemCommandPath(command);
+  return sudo && program ? [sudo, program, ...args].join(" ") : null;
 }

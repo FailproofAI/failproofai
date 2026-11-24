@@ -1,7 +1,7 @@
 /**
  * Built-in security policies for Claude Code hooks.
  */
-import { resolve, join, isAbsolute, posix } from "node:path";
+import { resolve, join, posix } from "node:path";
 import { statSync } from "node:fs";
 import { readFile, writeFile } from "node:fs/promises";
 import { execSync, execFileSync } from "node:child_process";
@@ -1592,12 +1592,11 @@ function simpleCommandDestroys(
   if (head === "git") {
     const subcommand = gitSubcommand(args);
     const gitWords = quoteAwareCommandWords(rawSimple).words;
-    // A relative output path lands in the repository `-C` names.
+    // A relative output path lands in the repository `-C` names, joined as
+    // written so a `..` after a link there is walked the way the kernel does.
     const repositories = gitRepositoryDirs(gitWords, cwds);
     const namesInRepository = (text: string): boolean =>
-      namesState(text) ||
-      (isRelativeShellWord(text) &&
-        repositories.some((repository) => namesState(isAbsolute(repository) ? resolve(repository, text) : posix.join(repository, text))));
+      namesState(text) || (isRelativeShellWord(text) && repositories.some((repository) => namesState(`${repository}/${text}`)));
     // Output files, whatever the subcommand: `git log --output=<file>` writes
     // what `--format` says into it, and `-o` is the archive's or the patches'.
     if (writesViaOutputFlag("git", args, namesInRepository)) return true;
@@ -1795,6 +1794,9 @@ const MASK_TRANSPARENT_WORDS: ReadonlySet<string> = new Set([
 /** Characters that steer the walk and mean nothing to the shell inside a quoted argument. */
 const MASKABLE_IN_QUOTES = "\n\r;&|<>()";
 
+/** Marks a word in the lexer's decoded words that holds an expansion. */
+const UNKNOWN_IN_WORD = "\u0000";
+
 /** What a quoted message holds and a quoted word does not. */
 const NOT_IN_A_QUOTED_WORD = ` \t\v\f${MASKABLE_IN_QUOTES}`;
 
@@ -1810,12 +1812,21 @@ interface LexCommandFrame {
   /** The current simple command's words so far (the first few). */
   words: string[];
   word: string;
+  /**
+   * The same words with their quotes undone — `'/tmp/example.md'` is
+   * `/tmp/example.md`, `"-"` is `-` — for the heredoc analysis only. A word
+   * holding an expansion carries UNKNOWN_IN_WORD and reads as unknown.
+   */
+  decodedWords: string[];
+  decoded: string;
 }
 
 interface LexQuoteFrame {
   kind: "sq" | "dq" | "ansi";
   /** Blank separators inside: the command receiving this argument is not a shell. */
   mask: boolean;
+  /** An expansion inside (`$X`, `$(…)`, a backtick): its text is not known. */
+  expands?: boolean;
   /** Where the quoted text starts. */
   start: number;
   /**
@@ -2054,7 +2065,7 @@ function lexShell(text: string, substitutionBody = false): ShellLex {
   };
   const programBodies: string[] = [];
   const newCommand = (closer: ")" | "`" | null, substitution: boolean): LexCommandFrame => ({
-    kind: "cmd", closer, substitution, head: null, words: [], word: "",
+    kind: "cmd", closer, substitution, head: null, words: [], word: "", decodedWords: [], decoded: "",
   });
   const stack: LexFrame[] = [newCommand(null, false)];
   const pending: PendingHeredoc[] = [];
@@ -2078,7 +2089,7 @@ function lexShell(text: string, substitutionBody = false): ShellLex {
       if (!frame.substitution) return undefined;
       for (let j = k - 1; j >= 0; j--) {
         const below = stack[j];
-        if (below.kind === "cmd") return { head: below.head ?? (below.word ? commandBasename(below.word) : null), words: [...below.words] };
+        if (below.kind === "cmd") return { head: below.head ?? (below.word ? commandBasename(below.word) : null), words: knownWords(below.decodedWords) };
       }
       return null;
     }
@@ -2086,7 +2097,11 @@ function lexShell(text: string, substitutionBody = false): ShellLex {
   };
   const endWord = (frame: LexCommandFrame): void => {
     if (!frame.word) return;
-    if (frame.words.length < 32) frame.words.push(frame.word);
+    if (frame.words.length < 32) {
+      frame.words.push(frame.word);
+      frame.decodedWords.push(frame.decoded);
+    }
+    frame.decoded = "";
     if (frame.head === null) {
       const base = commandBasename(frame.word);
       const skipped =
@@ -2098,11 +2113,24 @@ function lexShell(text: string, substitutionBody = false): ShellLex {
   };
   const endCommand = (frame: LexCommandFrame): void => {
     endWord(frame);
-    if (pending.length > 0) lineCommands.push({ head: frame.head, words: frame.words.map((w) => w.replace(/^q+$/, "")) });
+    if (pending.length > 0) lineCommands.push({ head: frame.head, words: knownWords(frame.decodedWords) });
     frame.head = null;
     frame.words = [];
+    frame.decodedWords = [];
   };
   const quoteMask = (frame: LexCommandFrame): boolean => frame.head !== null && !isShellHead(frame.head);
+  // A word whose text an expansion decides is not known: empty, as before.
+  const knownWords = (words: readonly string[]): string[] => words.map((w) => (w.includes(UNKNOWN_IN_WORD) ? "" : w));
+  // A closing quote hands its text, quotes undone, to the word it is part of.
+  const decodeQuote = (frame: LexQuoteFrame, end: number): void => {
+    const owner = stack[stack.length - 2];
+    if (owner?.kind !== "cmd") return;
+    const raw = text.slice(frame.start, end);
+    if (frame.expands) owner.decoded += UNKNOWN_IN_WORD;
+    else if (frame.kind === "sq") owner.decoded += raw;
+    else if (frame.kind === "ansi") owner.decoded += decodeAnsiC(raw);
+    else owner.decoded += raw.replace(/\\([\\"$`])/g, "$1").replace(/\\\n/g, "");
+  };
   const closeQuote = (frame: LexQuoteFrame, end: number): void => {
     if (!frame.mask || !frame.plain) return;
     for (let k = frame.start; k < end; k++) blanks[k] &= ~COMMANDS;
@@ -2190,6 +2218,7 @@ function lexShell(text: string, substitutionBody = false): ShellLex {
     if (frame.kind === "sq") {
       if (ch === "'") {
         closeQuote(frame, i);
+        decodeQuote(frame, i);
         stack.pop();
       } else if (frame.mask) {
         if (MASKABLE_IN_QUOTES.includes(ch)) blankAt(i, SPLITTABLE);
@@ -2211,6 +2240,7 @@ function lexShell(text: string, substitutionBody = false): ShellLex {
       }
       if (ch === "'") {
         closeQuote(frame, i);
+        decodeQuote(frame, i);
         stack.pop();
       } else if (frame.mask) {
         if (MASKABLE_IN_QUOTES.includes(ch)) blankAt(i, SPLITTABLE);
@@ -2277,11 +2307,13 @@ function lexShell(text: string, substitutionBody = false): ShellLex {
       }
       if (ch === '"') {
         closeQuote(frame, i);
+        decodeQuote(frame, i);
         stack.pop();
         i++;
         continue;
       }
       if (ch === "`" || (ch === "$" && (text[i + 1] === "(" || text[i + 1] === "{"))) frame.plain = false;
+      if (ch === "`" || (ch === "$" && /[A-Za-z_({0-9@*#?$!-]/.test(text[i + 1] ?? ""))) frame.expands = true;
       // The parentheses of `$(…)` and `$((…))` open no subshell: blanked where
       // the walk counts subshells, so a `cd "$(dirname …)"` keeps its reach.
       if (ch === "$" && text[i + 1] === "(" && text[i + 2] === "(") {
@@ -2320,7 +2352,10 @@ function lexShell(text: string, substitutionBody = false): ShellLex {
     const command = frame as LexCommandFrame;
     if (ch === "\\") {
       // A backslash-newline joins lines; any other escaped character is literal.
-      if (text[i + 1] !== "\n") command.word += text[i + 1] ?? "";
+      if (text[i + 1] !== "\n") {
+        command.word += text[i + 1] ?? "";
+        command.decoded += text[i + 1] ?? "";
+      }
       i += 2;
       continue;
     }
@@ -2328,6 +2363,7 @@ function lexShell(text: string, substitutionBody = false): ShellLex {
       endCommand(command);
       stack.pop();
       commandFrame().word += "q";
+      commandFrame().decoded += UNKNOWN_IN_WORD;
       i++;
       continue;
     }
@@ -2347,6 +2383,7 @@ function lexShell(text: string, substitutionBody = false): ShellLex {
       blankAt(i + 1, SPLITTABLE);
       blankAt(i + 2, SPLITTABLE);
       command.word += "q";
+      command.decoded += UNKNOWN_IN_WORD;
       i += 3;
       continue;
     }
@@ -2354,18 +2391,21 @@ function lexShell(text: string, substitutionBody = false): ShellLex {
       stack.push(newCommand(")", true));
       blankAt(i + 1, SPLITTABLE);
       command.word += "q";
+      command.decoded += UNKNOWN_IN_WORD;
       i += 2;
       continue;
     }
     if (ch === "$" && text[i + 1] === "{") {
       stack.push({ kind: "param", depth: 0 });
       command.word += "q";
+      command.decoded += UNKNOWN_IN_WORD;
       i += 2;
       continue;
     }
     if (ch === "`") {
       stack.push(newCommand("`", true));
       command.word += "q";
+      command.decoded += UNKNOWN_IN_WORD;
       i++;
       continue;
     }
@@ -2427,6 +2467,7 @@ function lexShell(text: string, substitutionBody = false): ShellLex {
       continue;
     }
     command.word += ch;
+    command.decoded += ch;
     i++;
   }
   if (pending.length > 0) {
@@ -2742,6 +2783,27 @@ function cdDestination(from: string | undefined, operand: string | undefined): s
   if (operand === "-" || operand.includes("$") || operand.includes("`")) return undefined;
   if (operand.startsWith("/")) return resolve(operand);
   return from === undefined ? undefined : resolve(from, operand);
+}
+
+/**
+ * Whether a git command reaches the target through the directories its `-C`
+ * options move it to — which no word of its text names: `git -C external -C
+ * link/.. log --output=settings.json` writes ~/.claude/settings.json with
+ * `external/link -> ~/.claude/x`. Asked before the walk's own gate, which
+ * reads only the text.
+ */
+function gitReachesTarget(
+  gitWords: string[],
+  cwds: ReadonlyArray<string | undefined>,
+  names: (text: string) => boolean,
+): boolean {
+  const repositories = gitRepositoryDirs(gitWords, cwds);
+  if (repositories.length === 0) return false;
+  if (repositories.some((repository) => names(repository))) return true;
+  return gitWords.some((word) => {
+    const value = word.includes("=") ? word.slice(word.indexOf("=") + 1) : word;
+    return isRelativeShellWord(value) && repositories.some((repository) => names(`${repository}/${value}`));
+  });
 }
 
 /** Short options of `cp` and `install` that take a value; `t` is the target directory. */
@@ -3067,7 +3129,15 @@ function destroysProtectedPath(command: string, target: ProtectedPathTarget, dep
           if (head === "popd" && stackOnly) {
             if (dirStack !== null) dirStack = dirStack.below;
           } else if (rotation) {
-            if (!stackOnly) after = [...before, ...stackDirs()];
+            // The stack's order after a rotation is not followed: every entry
+            // may now hold any of the directories, so every later `popd` may
+            // land on any of them.
+            const all = [...new Set([...before, ...stackDirs()])];
+            let depth = 0;
+            for (let entry = dirStack; entry !== null; entry = entry.below) depth++;
+            dirStack = null;
+            for (let k = 0; k < depth; k++) dirStack = { dirs: all, below: dirStack };
+            if (!stackOnly) after = all;
           } else if (head === "popd") {
             // `popd` returns to wherever the shell was before `pushd`, which
             // ends the window as surely as a `cd` out does. Without it every
@@ -3132,7 +3202,7 @@ function destroysProtectedPath(command: string, target: ProtectedPathTarget, dep
         // `echo 'rm -rf ~/.claude' | sh`. Whatever names the target upstream is
         // its program.
         return true;
-      } else if (reachesState && words.length > 0) {
+      } else if ((reachesState || (head === "git" && gitReachesTarget(quoteAwareCommandWords(simple).words, walkCwds, namesHere))) && words.length > 0) {
         // `xargs` hands the paths on its stdin to the command after it, so a
         // copy or a `tee` fed by `echo <path> |` names its destination nowhere
         // in its own words. Judged like `find -exec`: only a reader is safe.
@@ -4306,6 +4376,9 @@ function blockFailproofaiCommands(ctx: PolicyContext): PolicyResult {
   return allow();
 }
 
+/** A word an agent CLI's hooks-off command is made of. */
+const HOOKS_OFF_WORD_RE = /(?:^|[^A-Za-z0-9_-])(?:codex|features?|disable|(?:codex_)?hooks|pi|remove|uninstall|rm|delete|failproofai|pi-extension|hermes|openclaw|plugins?)(?![A-Za-z0-9_-])/i;
+
 /**
  * Each command of a line as its argv reads, one per line, for the agent-CLI
  * checks: quotes and `$'…'` escapes undone (`codex features disable
@@ -4314,21 +4387,29 @@ function blockFailproofaiCommands(ctx: PolicyContext): PolicyResult {
  * a message — replaced by `_`, so its words never read as a command.
  */
 function agentCliArgvLines(lexed: ShellLex): string {
-  const values = new Map<string, string>();
+  // Every value a variable is given anywhere on the line, not the last one:
+  // `F=hooks; codex features disable "$F"; F=web_search` runs with `hooks`.
+  const values = new Map<string, string[]>();
   for (const [, name, value] of lexed.readable.matchAll(/(?:^|[\s;&|(])(?:export\s+)?([A-Za-z_][A-Za-z0-9_]*)=("[^"]*"|'[^']*'|[^\s;&|)]*)/g)) {
-    values.set(name, value.replace(/^["']|["']$/g, ""));
+    const known = values.get(name) ?? [];
+    if (known.length < 64) known.push(value.replace(/^["']|["']$/g, ""));
+    values.set(name, known);
   }
+  // Of the values a reference may take, the one that would turn hooks off if
+  // any would: what the check needs to know is whether some run does.
+  const pick = (options: readonly string[]): string => options.find((o) => HOOKS_OFF_WORD_RE.test(o)) ?? options[0] ?? "";
   // `${NAME:-word}`, `${NAME=word}`, `${NAME:+word}`…: a variable this line
   // does not set may be unset, so its default word is what the command gets
   // (`${UNSET:-ho}oks` is `hooks`); a set one gives its value.
   const expand = (text: string): string =>
     text
       .replace(/\$\{([A-Za-z_][A-Za-z0-9_]*):?([-=+?])([^{}]*)\}/g, (_whole, name: string, op: string, word: string) => {
-        const value = values.get(name);
-        if (op === "+") return value === "" ? "" : word;
-        return value === undefined || value === "" ? word : value;
+        const known = values.get(name) ?? [];
+        return op === "+" ? pick([word, ""]) : pick([...known.filter(Boolean), word]);
       })
-      .replace(/\$\{([A-Za-z_][A-Za-z0-9_]*)\}|\$([A-Za-z_][A-Za-z0-9_]*)/g, (whole, braced?: string, bare?: string) => values.get(braced ?? bare ?? "") ?? whole);
+      .replace(/\$\{([A-Za-z_][A-Za-z0-9_]*)\}|\$([A-Za-z_][A-Za-z0-9_]*)/g, (whole, braced?: string, bare?: string) =>
+        pick([...(values.get(braced ?? bare ?? "") ?? []), whole]),
+      );
   const lines: string[] = [];
   for (const [start, end] of cutRanges(lexed.splittable, PIPELINE_SEPARATORS)) {
     const splitPipeline = lexed.splittable.slice(start, end);

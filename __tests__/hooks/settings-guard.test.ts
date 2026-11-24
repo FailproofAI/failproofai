@@ -1102,6 +1102,8 @@ describe("block-failproofai-commands — review round seven", () => {
     symlinkSync(join(pkg7, "hermes-plugin"), join(h7, ".hermes", "plugins", "failproofai"));
     mkdirSync(join(h7, ".claude", "x"), { recursive: true });
     symlinkSync(join(h7, ".claude", "x"), join(p7, "physical-link"));
+    mkdirSync(join(p7, "external", ".git"), { recursive: true });
+    symlinkSync(join(h7, ".claude", "x"), join(p7, "external", "link"));
     outerHome = process.env.HOME;
     outerPackageRoot = process.env.FAILPROOFAI_PACKAGE_ROOT;
     process.env.HOME = h7;
@@ -1214,6 +1216,34 @@ describe("block-failproofai-commands — review round seven", () => {
   it("resolves git -C the way chdir walks it", async () => {
     expect(await bash(`git -C physical-link/.. log -1 --format='format:{"disableAllHooks":true}' --output=settings.json`, p7)).toBe(true);
     expect(await bashDecision(`git -C physical-link log -1 --output=/tmp/out.txt`, p7)).toBe("allow");
+  });
+
+  // hermes round 4.
+  it("reads every value a variable is given on the line, not only the last", async () => {
+    const result = await run("Bash", { command: `F=hooks; codex features disable "$F"; F=web_search` });
+    expect(result.decision).toBe("deny");
+    expect(result.reason).toMatch(/Turning an agent's hooks off/);
+    expect(await bashDecision(`F=web_search; codex features disable "$F"`)).toBe("allow");
+  });
+
+  it("does not trust the stack's order after a rotation", async () => {
+    expect(await bash(`pushd ~/.claude; pushd /tmp; pushd +2; cd /tmp; popd; popd; cp /tmp/settings.json settings.json`, p7)).toBe(true);
+    expect(await bashDecision(`pushd /tmp; pushd /var; popd; popd; cp /tmp/x settings.json`, p7)).toBe("allow");
+  });
+
+  it("follows git's -C directories and output through links before the text gate", async () => {
+    expect(await bash(`git -C external -C link/.. log -1 --format='format:{"disableAllHooks":true}' --output=settings.json`, p7)).toBe(true);
+    expect(await bash(`git -C external log -1 --output=link/../settings.json`, p7)).toBe(true);
+    expect(await bashDecision(`git -C external log -1 --output=out.txt`, p7)).toBe("allow");
+  });
+
+  it("reads a quoted heredoc output filename, and a quoted -F -, as written", async () => {
+    const program = `python3 -c "open('${settings()}','w')"`;
+    expect(await bashDecision(`cat > '/tmp/example.md' <<'EOF'\n${program}\nEOF\n`, p7)).toBe("allow");
+    expect(await bashDecision(`cat > "/tmp/my example.md" <<'EOF'\n${program}\nEOF\n`, p7)).toBe("allow");
+    expect(await bashDecision(`git commit -F "-" <<'EOF'\nKeep rm -rf ~/.claude out of agents\nEOF\n`, p7)).toBe("allow");
+    // A file named by an expansion is still unknown, so a body run from it is read.
+    expect(await bash(`cat > "$F" <<'EOF'\nrm -rf ~/.claude\nEOF\nbash "$F"\n`, p7)).toBe(true);
   });
 
   it("reads an empty heredoc delimiter the way bash does", async () => {

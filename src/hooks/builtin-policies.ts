@@ -544,13 +544,15 @@ const FAILPROOFAI_CODE_PATH_RE = new RegExp(
     // `firmware.bin/failproofai` is not it, but anything that is not part of a
     // name may stand before it (`>.bin/…`), and so may a short option the
     // path is glued to, alone or at the end of a cluster (`-O.bin/…`,
-    // `-so.bin/…`). The lookbehind comes after the literal and the cluster is
-    // bounded: before it, a long run of letters made every position scan back
-    // over the whole run, and a padded 32 KB command took 16 s. A FILE, like
-    // the entry above: the rest of
+    // `-so.bin/…`). The lookbehind comes after the literal, so it runs only
+    // where `.bin` matched and scans back over the letters just before it,
+    // which no other match shares (`.bin` starts with a dot): linear. Placed
+    // before the literal it ran at every position of a run of letters and
+    // scanned back over all of it, and a padded 32 KB command took 16 s. A
+    // FILE, like the entry above: the rest of
     // `node_modules/.bin` (every other package's binary, run by path all the
     // time) stays out of it.
-    String.raw`\.bin(?<=(?:^|[^\w.-])\.bin|(?:^|\s)-[A-Za-z]{1,16}\.bin)[\\/](?:\.?[\\/])*failproofai(?:\.(?:cmd|ps1|exe|bunx))?(?![\w.@\\/-])`,
+    String.raw`\.bin(?<=(?:^|[^\w.-])\.bin|(?:^|\s)-[A-Za-z]+\.bin)[\\/](?:\.?[\\/])*failproofai(?:\.(?:cmd|ps1|exe|bunx))?(?![\w.@\\/-])`,
   ].join("|"),
   "i",
 );

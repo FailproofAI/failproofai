@@ -526,8 +526,10 @@ const FAILPROOFAI_CODE_PATH_RE = new RegExp(
     pathComponent("node_modules") +
       String.raw`[\\/](?:\.?[\\/])*(?:failproofai(?![\w.@-])|@failproofai[\\/](?:\.?[\\/])*failproofaid\b)`,
     // pnpm's virtual store, which holds each package one directory above its
-    // own `node_modules/failproofai`.
-    pathComponent(String.raw`\.pnpm`) + String.raw`[\\/](?:\.?[\\/])*(?:failproofai|@failproofai\+failproofaid[\w.-]*)@`,
+    // own `node_modules/failproofai`. The daemon's entry is recognised by its
+    // name alone, so a glob over its platform or version
+    // (`@failproofai+failproofaid-*@*`) still names it.
+    pathComponent(String.raw`\.pnpm`) + String.raw`[\\/](?:\.?[\\/])*(?:failproofai@|@failproofai\+failproofaid\b)`,
     // The entry a hook command names: `…/bin/failproofai` for npm, nvm,
     // Homebrew, bun, Volta and yarn, `…/pnpm/failproofai` for pnpm's home, and
     // the variables nvm and pnpm export for those directories. A FILE, so a
@@ -999,6 +1001,15 @@ const STATE_GLOB_CANDIDATES = [
   "./node_modules/failproofai",
   "node_modules/.pnpm/failproofai@1.0.0",
   "./node_modules/.pnpm/failproofai@1.0.0",
+  // The daemon's platform package, in pnpm's store and in its scope, for each
+  // platform it ships to, so a glob that wildcards its name is still read as
+  // aimed at it (`node_modules/.pnpm/@failproofai+*`, `node_modules/@failproofai/f*`).
+  ...["linux-x64", "linux-arm64", "darwin-x64", "darwin-arm64"].flatMap((platform) => [
+    `node_modules/.pnpm/@failproofai+failproofaid-${platform}@1.0.0`,
+    `./node_modules/.pnpm/@failproofai+failproofaid-${platform}@1.0.0`,
+    `node_modules/@failproofai/failproofaid-${platform}`,
+    `./node_modules/@failproofai/failproofaid-${platform}`,
+  ]),
   "/usr/local/lib/node_modules/failproofai",
   "/usr/lib/node_modules/failproofai",
   "/opt/homebrew/lib/node_modules/failproofai",
@@ -1046,6 +1057,8 @@ const GLOB_DECOYS = [
   // its global equivalents are read as the sweeps they are.
   "node_modules/react", "node_modules/.bin", "./node_modules/react", "node_modules/.pnpm/react@18.0.0",
   "./node_modules/.pnpm/react@18.0.0",
+  "node_modules/.pnpm/@types+node@20.0.0", "./node_modules/.pnpm/@types+node@20.0.0",
+  "node_modules/@types/node", "./node_modules/@types/node",
   "/usr/local/lib/node_modules/npm", "/usr/lib/node_modules/npm", "/opt/homebrew/lib/node_modules/npm",
   "/usr/local/bin/node", "/opt/homebrew/bin/node", "~/.bun/bin/bun", "~/.volta/bin/node",
   // Other packages' entries beside it, so `rm -rf node_modules/.bin/*` is the
@@ -1394,7 +1407,10 @@ function globPrefixNamesState(token: string, candidates: readonly string[] = STA
   const pattern = "^" + compileGlobPattern(token);
   let re: RegExp;
   try {
-    re = new RegExp(pattern + "$");
+    // Case-insensitive, like FAILPROOFAI_STATE_PATH_RE: on a default macOS
+    // volume `NODE_MODULES/fail*` reaches the real `node_modules/failproofai`,
+    // because the literal parent is resolved by the filesystem.
+    re = new RegExp(pattern + "$", "i");
   } catch {
     return false;
   }

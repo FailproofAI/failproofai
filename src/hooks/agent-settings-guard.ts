@@ -30,7 +30,7 @@
  * bundler rename that local (config-status.ts explains why that matters: the
  * audit cache in src/audit/cache.ts keys on each policy's source).
  */
-import { realpathSync } from "node:fs";
+import { existsSync, realpathSync } from "node:fs";
 import { homedir } from "node:os";
 import { basename, dirname, isAbsolute, join, normalize, relative, resolve } from "node:path";
 
@@ -318,7 +318,7 @@ export function agentSettingsWriteTarget(
   cwd: string | undefined,
   extraPaths: readonly string[] = [],
 ): string | null {
-  const extras = new Set(extraPaths.map((path) => resolve(path)));
+  const extras = new Set([...extraPaths.map((path) => resolve(path)), ...relocatedAgentSettings(extraPaths)]);
   let realTargets: Set<string> | undefined;
   for (const raw of agentToolWritePaths(toolInput)) {
     const lexical = resolveAgentSettingsCandidate(raw, cwd);
@@ -360,15 +360,20 @@ function agentSettingsWordForms(raw: string): string[] {
  * directory's agent links (a dotfiles checkout). A shell command reaching any of
  * them reaches the agent's settings.
  */
-function agentSettingsShellExtras(extraPaths: readonly string[]): { files: Set<string>; dirs: Set<string> } {
+function agentSettingsShellExtras(
+  extraPaths: readonly string[],
+  cwd: string | undefined,
+): { files: Set<string>; dirs: Set<string> } {
   const files = new Set<string>();
   const dirs = new Set<string>();
   const home = homedir();
-  for (const path of extraPaths) {
-    const absolute = resolve(path);
+  for (const absolute of relocatedAgentSettings(extraPaths)) {
     files.add(absolute);
     dirs.add(dirname(absolute));
   }
+  // `.github/hooks/` is protected as a directory only in a project that keeps
+  // failproofai's Copilot hooks there; elsewhere it is where git hooks live.
+  if (cwd && existsSync(join(cwd, ".github", "hooks", "failproofai.json"))) dirs.add(join(resolve(cwd), ".github", "hooks"));
   for (const relativePath of HOME_AGENT_SETTINGS_FILES) {
     const lexical = join(home, relativePath);
     try {
@@ -390,6 +395,27 @@ function agentSettingsShellExtras(extraPaths: readonly string[]): { files: Set<s
   return { files, dirs };
 }
 
+/**
+ * The session's settings files that no shape describes — a config directory
+ * moved by `CLAUDE_CONFIG_DIR` or `CODEX_HOME` — with the files beside them
+ * that switch the same hooks off: Claude Code's `settings.local.json`, Codex's
+ * `config.toml` (its hook trust and `[features] hooks`). A file the shapes
+ * already cover adds nothing: its directory may be a shared one
+ * (`.github/hooks`), where a directory rule would only refuse ordinary work.
+ */
+function relocatedAgentSettings(extraPaths: readonly string[]): string[] {
+  const out: string[] = [];
+  for (const path of extraPaths) {
+    const absolute = resolve(path);
+    if (isAgentSettingsPath(absolute)) continue;
+    out.push(absolute);
+    const name = basename(absolute).toLowerCase();
+    if (name === "settings.json") out.push(join(dirname(absolute), "settings.local.json"));
+    if (name === "hooks.json") out.push(join(dirname(absolute), "config.toml"));
+  }
+  return out;
+}
+
 /** A path under the home directory as `~/…` too, the way commands usually spell it. */
 function withAgentSettingsHomeForm(path: string): string[] {
   const home = homedir();
@@ -403,8 +429,8 @@ function withAgentSettingsHomeForm(path: string): string[] {
  * extra files and directories. Relative words are left to the caller, which
  * knows the directory a `cd` has moved the shell to.
  */
-export function agentSettingsShellNamer(extraPaths: readonly string[]): (text: string) => boolean {
-  const extras = agentSettingsShellExtras(extraPaths);
+export function agentSettingsShellNamer(extraPaths: readonly string[], cwd?: string): (text: string) => boolean {
+  const extras = agentSettingsShellExtras(extraPaths, cwd);
   const textForms = [
     ...[...extras.files].flatMap((path) => withAgentSettingsHomeForm(path).map((form) => agentSettingsPathInTextRe(form, false))),
     ...[...extras.dirs].flatMap((path) => withAgentSettingsHomeForm(path).map((form) => agentSettingsPathInTextRe(form, true))),
@@ -530,8 +556,7 @@ function underEveryAgentSettingsHome(paths: readonly string[]): string[] {
  */
 export function agentSettingsGlobCandidates(cwd: string | undefined, extraPaths: readonly string[] = []): string[] {
   const candidates = [...PROJECT_AGENT_SETTINGS_GLOB_PATHS, ...underEveryAgentSettingsHome(HOME_AGENT_SETTINGS_GLOB_PATHS)];
-  for (const path of extraPaths) {
-    const absolute = resolve(path);
+  for (const absolute of relocatedAgentSettings(extraPaths)) {
     candidates.push(...withAgentSettingsHomeForm(absolute), ...withAgentSettingsHomeForm(dirname(absolute)));
   }
   if (cwd && isAgentConfigDirPath(cwd)) {

@@ -545,7 +545,6 @@ describe("block-failproofai-commands — agent settings, review round two", () =
       `gh pr create --title t --body "$(cat <<'EOF'\n## Summary\nBlocks edits to ~/.claude/settings.json and \`rm -rf ~/.claude\`\nEOF\n)"`,
       `git commit -m "Install\n\nWrites .codex/hooks.json; and rm -rf ~/.claude is refused"`,
       `git commit -m "Protect \\\`~/.claude/settings.json\\\` from agent edits"`,
-      `cat > docs/hooks.md <<'EOF'\nSee .github/hooks/failproofai.json\nrm -rf ~/.claude\nEOF`,
       `echo "a; rm -rf ~/.claude > ~/.claude/settings.json"`,
       // Git hooks kept in .github/hooks.
       `git config core.hooksPath .github/hooks`,
@@ -564,6 +563,8 @@ describe("block-failproofai-commands — agent settings, review round two", () =
       expect(await bash(`git commit -m "$(rm ~/.claude/settings.json)"`)).toBe(true);
       expect(await bash(`cat <<'EOF' | sh\nrm -rf ~/.claude\nEOF`)).toBe(true);
       expect(await bash(`cat <<EOF\n$(rm -rf ~/.claude)\nEOF`)).toBe(true);
+      // A heredoc written to a file is read line by line: the same command could run it next.
+      expect(await bash(`cat > /tmp/x.sh <<'EOF'\nrm -rf ~/.claude\nEOF\nbash /tmp/x.sh`)).toBe(true);
     });
 
     it("no longer denies the state's own false positives from the same causes", async () => {
@@ -582,6 +583,130 @@ describe("block-failproofai-commands — agent settings, review round two", () =
     const started = performance.now();
     expect(await bashDecision(command)).toBe("allow");
     expect(performance.now() - started).toBeLessThan(5000);
+  }, 60_000);
+});
+
+/**
+ * The third review pass: holes the second round's heredoc and quote handling
+ * opened (for the state too), and the gaps it left.
+ */
+describe("block-failproofai-commands — review round three", () => {
+  function runIn(toolName: string, toolInput: Record<string, unknown>, session: PolicyContext["session"]) {
+    const ctx: PolicyContext = { eventType: "PreToolUse", payload: {}, toolName, toolInput, session };
+    return policy.fn(ctx);
+  }
+  const stateDenied = async (command: string) => {
+    const result = await run("Bash", { command });
+    return result.decision === "deny" && /failproofai's own state/.test(result.reason ?? "");
+  };
+
+  describe("a `<<` that is not a heredoc does not hide the lines after it", () => {
+    it.each([
+      `cat <<< x\nrm -rf ~/.failproofai`,
+      `echo "<<EOF"\nrm -rf ~/.failproofai\nEOF`,
+      `echo ok # don't\nrm -rf ~/.failproofai`,
+      `x=$((1<<n))\nrm -rf ~/.failproofai`,
+    ])("state: denies %s", async (command) => {
+      expect(await stateDenied(command)).toBe(true);
+    });
+
+    it.each([
+      `echo $((1<<n))\ncp /tmp/evil.json ~/.claude/settings.json`,
+      `echo ok # don't\nrm ~/.claude/settings.json`,
+    ])("settings: denies %s", async (command) => {
+      expect(await bash(command)).toBe(true);
+    });
+  });
+
+  describe("a heredoc whose body is used is read", () => {
+    it.each([
+      `git apply <<'EOF'\n--- a/.claude/settings.json\n+++ b/.claude/settings.json\n@@ -1 +1 @@\n-{}\n+{"disableAllHooks":true}\nEOF`,
+      `patch -p1 <<'EOF'\n--- a/.claude/settings.json\n+++ b/.claude/settings.json\nEOF`,
+      `while read f; do cp /tmp/evil.json "$f"; done <<EOF\n/home/u/.claude/settings.json\nEOF`,
+    ])("settings: denies %s", async (command) => {
+      expect(await bash(command)).toBe(true);
+    });
+
+    it.each([
+      `xargs rm -rf <<'EOF'\n/home/u/.failproofai\nEOF`,
+      `cat > /tmp/x.sh <<'EOF'\nrm -rf ~/.failproofai\nEOF\nbash /tmp/x.sh`,
+    ])("state: denies %s", async (command) => {
+      expect(await stateDenied(command)).toBe(true);
+    });
+  });
+
+  describe("gaps the second round left", () => {
+    it.each([
+      `cp /tmp/evil.json ~/.claude/settings$( true ).json`,
+      "cp /tmp/evil.json ~/.claude/settings` true `.json",
+      `cd "$(dirname ~/.claude/settings.json)" && echo '{}' > settings.json`,
+      `python3 -c"import os; p=os.path.join(os.path.expanduser('~'),'.claude','settings.json'); open(p,'w')"`,
+      `python3 \\\n -c "import os; p=os.path.join(os.path.expanduser('~'),'.claude','settings.json'); open(p,'w')"`,
+      `git -C ~/.claude log -1 --output=settings.json`,
+      `git bundle create ~/.claude/settings.json HEAD`,
+      `sed -n -l 1 "w $HOME/.claude/settings.json" /tmp/evil.json`,
+      `git rebase -x 'cp /tmp/evil.json ~/.claude/settings.json' HEAD~1`,
+      `git submodule foreach 'cp /tmp/evil.json ~/.claude/settings.json'`,
+      `git -C ~/.claude switch evil`,
+      `git -C ~/.claude merge FETCH_HEAD`,
+      `git -C ~/.claude rebase evil`,
+      `git -C ~/.claude am /tmp/evil.mbox`,
+    ])("denies %s", async (command) => {
+      expect(await bash(command)).toBe(true);
+    });
+
+    it("no longer takes a trailing comment for the destination", async () => {
+      expect(await stateDenied("cp /dev/null ~/.failproofai/policies-config.json # reset")).toBe(true);
+      expect(await bash("cp /dev/null ~/.claude/settings.json # reset")).toBe(true);
+    });
+
+    it("protects config.toml beside a relocated Codex hooks file", async () => {
+      const session = { cwd: PROJ, agentSettingsPath: `${home}/.codex-work/hooks.json` };
+      const result = await runIn("Write", { file_path: `${home}/.codex-work/config.toml`, content: "[features]\nhooks = false\n" }, session);
+      expect(result.decision).toBe("deny");
+    });
+
+    it("protects .github/hooks as a directory only where failproofai's Copilot hooks live", async () => {
+      const withHooks = join(root, "copilot-proj");
+      mkdirSync(join(withHooks, ".github", "hooks"), { recursive: true });
+      writeFileSync(join(withHooks, ".github", "hooks", "failproofai.json"), "{}");
+      expect(await bash("rm -rf .github/hooks", withHooks)).toBe(true);
+      const gitHooksOnly = join(root, "githooks-proj");
+      mkdirSync(join(gitHooksOnly, ".github", "hooks"), { recursive: true });
+      expect(await bashDecision("rm -rf .github/hooks", gitHooksOnly)).toBe("allow");
+    });
+  });
+
+  describe("false positives the second round added", () => {
+    it.each([
+      `git commit -m "Deny xargs writes to .claude/settings.json"`,
+      `git commit -m "Refuse codex features disable hooks"`,
+      `git -c core.pager=cat log -p -- .claude/settings.json`,
+      `awk '$2 > 1 {print $1}' ~/.claude/settings.json`,
+      `git merge feature -m "notes about ~/.claude/settings.json"`,
+      `git stash push -m "before editing .claude/settings.json"`,
+    ])("allows %s", async (command) => {
+      expect(await bashDecision(command)).toBe("allow");
+    });
+
+    it("allows pointing git's hooksPath at a Copilot install's directory", async () => {
+      const session = { cwd: PROJ, agentSettingsPath: `${PROJ}/.github/hooks/failproofai.json` };
+      expect((await runIn("Bash", { command: "git config core.hooksPath .github/hooks" }, session)).decision).toBe("allow");
+    });
+
+    it("still judges the state's merge message as a message", async () => {
+      expect(await bashDecision(`git merge feature -m "notes about ~/.failproofai"`)).toBe("allow");
+    });
+  });
+
+  it("stays linear on many quoted arguments", async () => {
+    // Deciding whether a quote's command was a shell copied the command's
+    // words at every quote: 20k quoted printf arguments took 1.46 s in the
+    // second round. One pass now; the bound leaves room for a slow runner.
+    const command = "printf '%s\\n' " + Array.from({ length: 40000 }, (_, i) => `'arg${i}'`).join(" ");
+    const started = performance.now();
+    expect(await bashDecision(command)).toBe("allow");
+    expect(performance.now() - started).toBeLessThan(3000);
   }, 60_000);
 });
 

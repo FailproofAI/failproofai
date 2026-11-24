@@ -135,6 +135,25 @@ describe("block-failproofai-commands — the entry a project-scope npx hook runs
       it("still allows other files through the same link", async () => {
         expect((await write(join(root, "proj", "tools", "bins", "my-script"))).decision).toBe("allow");
       });
+
+      // The shell follows the same links the file tools do.
+      it.each([
+        "printf x > tools/bins/failproofai",
+        "cp /tmp/stub.sh tools/bins/failproofai",
+        "cp /tmp/stage/failproofai tools/bins/",
+        "tee tools/bins/failproofai < /tmp/stub.sh",
+        "printf x > tools/hook",
+      ])("denies a shell write through a link: %s", async (command) => {
+        expect(await bashIn(join(root, "proj"), command)).toBe("deny");
+        expect(await bash(`cd ${join(root, "proj")} && ${command}`)).toBe("deny");
+      });
+
+      it.each(["printf x > tools/bins/my-script", "cat tools/bins/failproofai", "ls -la tools/bins/ > listing.txt"])(
+        "still allows shell work through a link: %s",
+        async (command) => {
+          expect(await bashIn(join(root, "proj"), command)).not.toBe("deny");
+        },
+      );
     });
 
     // The entry, and nothing else that lives beside it or shares its name.
@@ -344,6 +363,24 @@ describe("block-failproofai-commands — the entry a project-scope npx hook runs
       ["install --strip", "install --strip /tmp/stage/failproofai node_modules/.bin/"],
       // A program handed to a shell is judged as the command it is.
       ["bash -c around a copy", "bash -c 'cp /tmp/stub.sh node_modules/.bin/failproofai'"],
+      // A `cd` that fails leaves the shell where it was, and `;` runs the next
+      // command anyway.
+      ["a cd out of the state that may fail", "cd ~/.failproofai; cat config.json; cd /elsewhere; rm -rf *"],
+      // A `..` that climbs above the sixteen directories the walk reads from.
+      ["a climb above a deep cd", "cd node_modules/.bin && cd a/b/c/d/e/f/g/h/i/j/k/l/m/n/o/p/q && printf x > ../../../../../../../../../../../../../../../../../failproofai"],
+      // Symlinks the same line makes, before any `lstat` could see them.
+      ["a write through a link the line makes to the directory", "ln -s /work/proj/node_modules/.bin /tmp/bins && printf x > /tmp/bins/failproofai"],
+      ["a write through a link the line makes to the entry", "ln -s /work/proj/node_modules/.bin/failproofai /tmp/hook && printf x > /tmp/hook"],
+      // In a loop, an assignment later on the line can come first.
+      ["a loop that assigns the directory after the copy", 'while :; do cp /tmp/x "$D/failproofai"; D=/work/proj/node_modules/.bin; done'],
+      // Shim names spelled with a glob, as a destination and as a source.
+      ["a glob for npm's cmd shim", "cp /tmp/stub.cmd node_modules/.bin/failproofai.[c]md"],
+      ["a glob source for npm's cmd shim", "cp /tmp/stage/failproofai.[c]md node_modules/.bin/"],
+      ["moving a .bin directory given with a trailing slash", "mv /tmp/x/.bin/ ~/node_modules/"],
+      // A command word that is also an Object property name once threw inside
+      // the guard, and a policy that throws is skipped.
+      ["a command named like an Object method", "constructor -v; cp /tmp/x node_modules/.bin/failproofai"],
+      ["a command named __proto__", "__proto__ -v; rm -rf ~/.failproofai"],
     ])("denies %s", async (_label, command) => {
       expect(await bash(command)).toBe("deny");
     });
@@ -357,6 +394,25 @@ describe("block-failproofai-commands — the entry a project-scope npx hook runs
       ["/work/proj/node_modules", "printf x 2>.bin/failproofai"],
       ["/work/proj/node_modules", "wget -q -O.bin/failproofai https://example.com/x"],
     ])("denies a write from the session directory %s: %s", async (cwd, command) => {
+      expect(await bashIn(cwd, command)).toBe("deny");
+    });
+
+    // A move that can fail leaves the shell where it already was, and only
+    // `&&` makes the next command wait for it.
+    it.each([
+      ["/work/proj/node_modules/.bin", "cd /nonexistent; printf x > failproofai"],
+      ["/work/proj/node_modules/.bin", "cd /tmp || true; cp /tmp/stub.sh failproofai"],
+      ["/work/proj/node_modules/.bin", "cd /tmp && true; printf x > failproofai"],
+      ["/work/proj/node_modules/.bin", "cd /a && cd /b; cp /tmp/stub.sh failproofai"],
+      ["/work/proj/node_modules/.bin/sub", "cd /tmp; cd ..; printf x > failproofai"],
+      ["/work/proj/node_modules/.bin", "cd /nonexistent; popd; printf x > failproofai"],
+      // `-n` changes the stack and leaves the shell where it is.
+      ["/work/proj/node_modules/.bin", "pushd -n /tmp; printf x > failproofai"],
+      ["/work/proj/node_modules/.bin", "popd -n; printf x > failproofai"],
+      ["/work/proj/node_modules/.bin", "cd a/b/c/d/e/f/g/h/i/j/k/l/m/n/o/p/q && cp /tmp/x ../../../../../../../../../../../../../../../../../failproofai"],
+      ["/work/proj", "ln -s node_modules/.bin bins; cp /tmp/stub.sh bins/failproofai"],
+      ["/work/proj", "ln -sfn node_modules/.bin bins && cp /tmp/failproofai bins/"],
+    ])("denies a write where the shell may still stand, from %s: %s", async (cwd, command) => {
       expect(await bashIn(cwd, command)).toBe("deny");
     });
 
@@ -418,8 +474,29 @@ describe("block-failproofai-commands — the entry a project-scope npx hook runs
       ["a backup with a comment naming the state", "cp -r ~/.failproofai /tmp/bak  # copy of ~/.failproofai"],
       ["a find whose comment names -delete", "find ~/.failproofai -name '*.log' -print  # not -delete yet"],
       ["a read run through bash -c", "bash -c 'cat ~/.failproofai/policies-config.json'"],
+      // rsync puts a source directory inside the destination; it does not
+      // become npm's bin directory.
+      ["syncing a directory into the bin directory", "rsync -a /tmp/my-tool node_modules/.bin/"],
+      // Outside a loop the shell reads a variable as it stands at that point.
+      ["a variable assigned only after its use", 'D=/tmp; cp notes.txt "$D/failproofai"; D=/work/proj/node_modules/.bin'],
+      // Each stage of a pipeline is a subshell, so its cd moves nothing after it.
+      ["a cd in a pipeline stage", "cd node_modules/.bin | true; cp notes.txt failproofai"],
+      // `cd -` and `popd` return to where the shell already stood.
+      ["a cd - back out of the state", "cd ~/.failproofai; cat config.json; cd -; rm -rf node_modules"],
+      ["leaving through a link to elsewhere", "ln -s /work/proj/dist current && rm -rf current/x"],
     ])("allows %s", async (_label, command) => {
       expect(await bash(command)).not.toBe("deny");
+    });
+
+    it.each([
+      // The session's own directory exists, so a cd back to it does not fail.
+      ["/work/proj", "cd ~/.failproofai; cat config.json; cd /work/proj; rm -rf node_modules"],
+      ["/work/proj", "cd frontend; npm install; cd ..; rm -rf node_modules"],
+      ["/work/proj", "cd /tmp; printf x > notes.txt"],
+      ["/work/proj", "cd node_modules/.bin && ls -la && cd ../.. && rm -rf build"],
+      ["/work/proj", "pushd /tmp && make && popd && rm -rf out"],
+    ])("allows ordinary moves from %s: %s", async (cwd, command) => {
+      expect(await bashIn(cwd, command)).not.toBe("deny");
     });
 
     it.each([
@@ -443,6 +520,13 @@ describe("block-failproofai-commands — the entry a project-scope npx hook runs
       ["a script of 700 cd / build / cd ../.. steps", "bash <<'EOF'\n" + Array.from({ length: 700 }, (_, i) => `cd packages/pkg-${i}\nnpm run build\ncd ../..`).join("\n") + "\nEOF"],
       ["2,000 relative cds", Array(2000).fill("cd a").join(" && ") + " && ls"],
       ["1,000 cds into globs", Array(1000).fill("cd a*").join(" && ") + " && ls"],
+      // Each `;` keeps the directories a failed cd would leave the shell in.
+      ["2,000 cds that may each fail", Array(2000).fill("cd a").join("; ") + "; ls"],
+      ["2,000 cds into globs that may each fail", Array(2000).fill("cd a*").join("; ") + "; ls"],
+      [
+        "1,000 links and a write through each",
+        Array.from({ length: 1000 }, (_, i) => `ln -s /tmp/t${i} /tmp/l${i}; printf x > /tmp/l${i}/f`).join("; "),
+      ],
       ["a 2,000-segment glob", "rm -rf " + Array(2000).fill("*").join("/")],
       // A value that refers to itself grew with every expansion pass.
       ["a self-referring variable", "A=" + "$A".repeat(100) + "; echo $A"],
@@ -461,18 +545,22 @@ describe("block-failproofai-commands — the entry a project-scope npx hook runs
     const names = new Set<string>();
     const viaNpx: string[] = [];
     const otherwise: string[] = [];
+    const mixed: string[] = [];
     for (const integration of listIntegrations()) {
       if (!integration.scopes.includes("project")) continue;
-      let found = false;
-      for (const eventType of integration.eventTypes) {
+      // Every event's entry, not just one: an event launched some other way
+      // would be a hook the guard was never checked against.
+      const launched = integration.eventTypes.map((eventType) => {
         const entry = JSON.stringify(integration.buildHookEntry("/opt/fp/bin/failproofai", eventType, "project"));
-        for (const [, name] of entry.matchAll(/npx -y (\S+)/g)) {
-          names.add(name);
-          found = true;
-        }
-      }
-      (found ? viaNpx : otherwise).push(integration.id);
+        const found = [...entry.matchAll(/npx -y (\S+)/g)].map(([, name]) => name);
+        for (const name of found) names.add(name);
+        return found.length > 0;
+      });
+      if (launched.every(Boolean)) viaNpx.push(integration.id);
+      else if (launched.some(Boolean)) mixed.push(integration.id);
+      else otherwise.push(integration.id);
     }
+    expect(mixed).toEqual([]);
     // A new integration, or a new launcher (`npx --yes`, `bunx`), lands in one
     // of these lists and fails here until the guard is checked against it.
     expect(viaNpx.sort()).toEqual(["antigravity", "claude", "codex", "copilot", "cursor", "devin", "factory", "goose"]);

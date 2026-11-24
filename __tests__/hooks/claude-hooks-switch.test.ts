@@ -64,7 +64,7 @@ describe("claudeHooksSwitchedOffBy — Claude Code's precedence", () => {
 
   it("orders the layers managed, local, project, user", () => {
     expect(claudeSettingsLayersByPrecedence({ user: "u", project: "p", local: "l" }, "/m.json")).toEqual(["/m.json", "l", "p", "u"]);
-    expect(claudeSettingsLayersByPrecedence({ user: "u", project: "p", local: ["l1", "l2"] }, undefined)).toEqual(["l1", "l2", "p", "u"]);
+    expect(claudeSettingsLayersByPrecedence({ user: "u", project: "p", local: ["l1", "l2"] }, null)).toEqual(["l1", "l2", "p", "u"]);
   });
 
   it("reads the managed file where Claude Code keeps it, Windows included", () => {

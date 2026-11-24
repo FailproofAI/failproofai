@@ -1820,12 +1820,13 @@ function heredocWritesFile(command: LexEndedCommand): string | null {
 function heredocIsStoredText(
   doc: PendingHeredoc,
   own: LexEndedCommand,
-  downstream: LexEndedCommand[],
+  /** How many commands follow `own` on its line, and the first of them. */
+  downstream: { count: number; next: LexEndedCommand | undefined },
   later: { runsText: boolean; names: { has(name: string): boolean } },
   substitutionBody: boolean,
 ): boolean {
   if (later.runsText) return false;
-  if (downstream.length === 0) {
+  if (downstream.count === 0) {
     if (catReadsOnlyStdin(own)) {
       // Inside a substitution whose text the outer command stores; or a body
       // being judged on its own (depth 1), whose outer command was judged with it.
@@ -1840,9 +1841,10 @@ function heredocIsStoredText(
     return false;
   }
   return (
-    downstream.length === 1 &&
+    downstream.count === 1 &&
+    downstream.next !== undefined &&
     catReadsOnlyStdin(own) &&
-    (gitTakesMessageFromStdin(downstream[0]) || ghTakesBodyFromStdin(downstream[0]))
+    (gitTakesMessageFromStdin(downstream.next) || ghTakesBodyFromStdin(downstream.next))
   );
 }
 
@@ -2026,11 +2028,18 @@ function lexShell(text: string, substitutionBody = false): ShellLex {
     // looked up rather than read: reading the rest of the text again for each
     // line of heredocs made a script of them quadratic.
     const later = { runsText: runsTextFrom(pos), names: { has: (name: string) => namedFrom(name, pos) } };
+    // Whether an interpreter runs at or after each command of the line, read
+    // once from the end. Copying and scanning the rest of the line for every
+    // heredoc made a line of thousands of them quadratic.
+    const interpreterFrom = new Array<boolean>(lineCommands.length + 1).fill(false);
+    for (let k = lineCommands.length - 1; k >= 0; k--) {
+      interpreterFrom[k] = interpreterFrom[k + 1] || isInterpreterHead(lineCommands[k].head);
+    }
     for (const { doc, start, end } of spans) {
       const own = lineCommands[doc.commandIndex] ?? { head: null, words: [] };
-      const downstream = lineCommands.slice(doc.commandIndex + 1);
+      const downstream = { count: Math.max(0, lineCommands.length - doc.commandIndex - 1), next: lineCommands[doc.commandIndex + 1] };
       if (heredocIsStoredText(doc, own, downstream, later, substitutionBody)) blankStored(start, end, doc.literal);
-      else if (isInterpreterHead(own.head) || downstream.some((command) => isInterpreterHead(command.head))) {
+      else if (isInterpreterHead(own.head) || interpreterFrom[doc.commandIndex + 1] === true) {
         programBodies.push(text.slice(start, end));
       }
     }

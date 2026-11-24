@@ -408,7 +408,7 @@ function readCodexTrust(deps: StatusDeps): CodexHookTrust {
  */
 export function claudeHooksSwitchedOff(
   cwd: string,
-  managed: string | undefined = CLAUDE_MANAGED_SETTINGS_PATHS[process.platform],
+  managed: string | null = CLAUDE_MANAGED_SETTINGS_PATHS[process.platform] ?? null,
 ): string | null {
   const installed = HOOK_SCOPES.some((scope) => claudeCode.hooksInstalledInSettings(scope, cwd));
   if (!installed) return null;

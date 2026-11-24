@@ -29,7 +29,8 @@ export const CLAUDE_MANAGED_SETTINGS_PATHS: Readonly<Partial<Record<NodeJS.Platf
 /** The settings files that can decide `disableAllHooks`, highest precedence first. */
 export function claudeSettingsLayersByPrecedence(
   scopes: { user: string; project: string; local: string | readonly string[] },
-  managed: string | undefined = CLAUDE_MANAGED_SETTINGS_PATHS[process.platform],
+  /** The managed settings file; null where there is none. */
+  managed: string | null = CLAUDE_MANAGED_SETTINGS_PATHS[process.platform] ?? null,
 ): string[] {
   const local = typeof scopes.local === "string" ? [scopes.local] : scopes.local;
   return [...(managed ? [managed] : []), ...local, scopes.project, scopes.user];

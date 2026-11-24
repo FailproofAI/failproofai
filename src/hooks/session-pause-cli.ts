@@ -12,8 +12,8 @@
  */
 import {
   PAUSE_CEILING_MS,
+  clearAllPauses,
   clearPause,
-  listActivePauses,
   parsePauseDuration,
   readActivePause,
   resolveSessionForCwd,
@@ -114,9 +114,7 @@ export function runPauseCommand(opts: PauseCommandOptions): PauseCommandResult {
   if (opts.action === "resume") {
     const kit = kitFor(true);
     if (opts.all) {
-      const active = listActivePauses(now);
-      let cleared = 0;
-      for (const pause of active) if (clearPause(pause.sessionId)) cleared++;
+      const cleared = clearAllPauses(now);
       return {
         exitCode: 0,
         lines: [

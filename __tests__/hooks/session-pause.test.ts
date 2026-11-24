@@ -6,6 +6,7 @@ import { resolve } from "node:path";
 import {
   PAUSE_CEILING_MS,
   PAUSE_DEFAULT_MS,
+  clearAllPauses,
   clearPause,
   formatDuration,
   listActivePauses,
@@ -254,6 +255,26 @@ describe("pause state", () => {
       const renewed = writePause({ sessionId: "sess-f", durationMs: 60_000, now });
       expect(renewed.firstPausedAt).toBe(now);
       expect(renewed.expiresAt).toBe(now + 60_000);
+    });
+
+    // A renewal carries the run's start forward. After a small clock step back,
+    // that start reads as later than the renewal, and the reader would refuse
+    // the very pause the CLI had just reported extended.
+    it("survives a renewal issued just after the clock stepped back", () => {
+      writePause({ sessionId: "sess-c", durationMs: 600_000, now });
+      const renewed = writePause({ sessionId: "sess-c", durationMs: 600_000, now: now - 30_000 });
+      expect(renewed.firstPausedAt).toBe(now - 30_000);
+      expect(readActivePause("sess-c", now - 30_000)?.expiresAt).toBe(now + 570_000);
+    });
+
+    // Not honoured yet is not the same as gone: a file dated an hour ahead turns
+    // live in an hour. Ending every pause has to end that one too.
+    it("is removed by clearAllPauses, which counts only the active ones", () => {
+      forge({ pausedAt: now + 3_600_000, firstPausedAt: now + 3_600_000, expiresAt: now + 9 * 3_600_000 });
+      writePause({ sessionId: "sess-live", durationMs: 600_000, now });
+      expect(clearAllPauses(now)).toBe(1);
+      expect(readdirSync(pauseStateDir())).toEqual([]);
+      expect(readActivePause("sess-f", now + 2 * 3_600_000)).toBeNull();
     });
   });
 });

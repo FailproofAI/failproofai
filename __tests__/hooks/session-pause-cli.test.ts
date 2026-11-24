@@ -257,6 +257,18 @@ describe("--resume", () => {
     expect(readActivePause("s1", NOW)).toBeNull();
     expect(readActivePause("s2", NOW)).toBeNull();
   });
+
+  // A pause file dated in the future is not honoured, so it is not listed — but
+  // it turns live when its date arrives. `--all` is how a person ends every
+  // pause, so it must remove that one too (FailproofAI/agenteye#1796).
+  it("--all also removes a pause dated in the future, before it can turn live", () => {
+    writePause({ sessionId: "s1", durationMs: 600_000, now: NOW });
+    writePause({ sessionId: "later", durationMs: 600_000, now: NOW + 3_600_000 });
+    expect(readActivePause("later", NOW)).toBeNull();
+    const r = runPauseCommand({ action: "resume", all: true, cwd: "/tmp/p", now: NOW, render: PLAIN });
+    expect(r.affected).toBe(1);
+    expect(readActivePause("later", NOW + 3_600_000)).toBeNull();
+  });
 });
 
 // `--status` is a whole-machine screen now (config-status.ts). Its two tests

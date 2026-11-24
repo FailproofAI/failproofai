@@ -212,7 +212,10 @@ export function writePause(opts: {
   // Carry the run's original start forward while a pause is still live, so a
   // renewal extends the same stretch rather than starting a fresh ceiling.
   const existing = readActivePause(opts.sessionId, now);
-  const firstPausedAt = existing?.firstPausedAt ?? now;
+  // Never later than this renewal: after a small clock step backwards the run's
+  // start can read as later than `now`, and the reader refuses a start after the
+  // latest renewal — the pause the CLI just reported extended would not exist.
+  const firstPausedAt = existing ? Math.min(existing.firstPausedAt, now) : now;
   const pause: ActivePause = {
     sessionId: opts.sessionId,
     pausedAt: now,
@@ -238,6 +241,34 @@ export function clearPause(sessionId: string): boolean {
   } catch {
     return false;
   }
+}
+
+/**
+ * Remove every pause file, whatever it holds. Returns how many pauses were
+ * ACTIVE, which is what a person ending them is told.
+ *
+ * Every file, not every active pause: a file dated in the future is not honoured
+ * yet, so it is not listed, and clearing only the listed ones left it to turn
+ * live later — out of sight of the `--resume --all` meant to end them all.
+ */
+export function clearAllPauses(now = Date.now()): number {
+  const active = listActivePauses(now).length;
+  const dir = pauseStateDir();
+  let names: string[] = [];
+  try {
+    names = readdirSync(dir);
+  } catch {
+    return active;
+  }
+  for (const name of names) {
+    if (!name.endsWith(".json")) continue;
+    try {
+      rmSync(join(dir, name));
+    } catch {
+      // One file that will not go must not stop the rest.
+    }
+  }
+  return active;
 }
 
 /** Every pause that has not yet expired, newest first. Expired files are ignored. */

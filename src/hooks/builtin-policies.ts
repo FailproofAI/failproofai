@@ -1,8 +1,8 @@
 /**
  * Built-in security policies for Claude Code hooks.
  */
-import { resolve, join, dirname, basename, isAbsolute } from "node:path";
-import { realpathSync, statSync } from "node:fs";
+import { resolve, join } from "node:path";
+import { lstatSync, readlinkSync, statSync } from "node:fs";
 import { readFile, writeFile } from "node:fs/promises";
 import { execSync, execFileSync } from "node:child_process";
 import { homedir } from "node:os";
@@ -474,24 +474,36 @@ const GIT_COMMIT_MERGE_RE = /git\s+(commit|merge|rebase|cherry-pick)\b/;
  * tampered client never asks it. The state pattern below needs a `.` the
  * package path does not have (FailproofAI/agenteye#1796).
  *
- * - `node_modules/failproofai`, in every layout a package manager uses — and
- *   `node_modules/@failproofai/failproofaid-*`, the daemon's platform package,
- *   which `failproofai config` and `update` copy into place (on Linux as root,
- *   under `/opt`).
- * - `…/bin/failproofai`, the entry npm, nvm, Homebrew, bun, Volta and yarn put
- *   on PATH, and `…/pnpm/failproofai`, which pnpm puts directly in its home.
- *
- * A checkout of this repository matches neither — no `node_modules` above it,
- * and its entry is `bin/failproofai.mjs` — so the guard does not stand in front
- * of working on failproofai itself. `node_modules/.bin/failproofai`, the stub
- * `npx` prefers, is not matched here either (FailproofAI/agenteye#1795).
+ * A checkout of this repository matches none of the shapes below — no
+ * `node_modules` above it, and its entry is `bin/failproofai.mjs` — so the guard
+ * does not stand in front of working on failproofai itself.
+ * `node_modules/.bin/failproofai`, the stub `npx` prefers, is not matched here
+ * either (FailproofAI/agenteye#1795).
  *
  * Case-insensitive because macOS volumes are by default: every casing of these
  * paths opens the real file. `(?:\.?[\\/])*` absorbs the `//` and `/./` a path
- * resolver collapses.
+ * resolver collapses. This matches the path as WRITTEN: a shell spelling that
+ * only the shell resolves — `..`, a `cd` before a relative path, a command
+ * substitution — is beyond it, as it is for the state (see `stripShellQuoting`).
+ * The file tools also check the path a write really lands on (`resolveWriteTarget`).
  */
-const FAILPROOFAI_CODE_PATH_RE =
-  /node_modules[\\/](?:\.?[\\/])*(?:failproofai(?![\w.@-])|@failproofai[\\/](?:\.?[\\/])*failproofaid\b)|[\\/](?:bin|pnpm)[\\/](?:\.?[\\/])*failproofai(?:\.cmd|\.ps1)?(?![\w.@-])/i;
+const FAILPROOFAI_CODE_PATH_RE = new RegExp(
+  [
+    // The package, in every layout a package manager uses, and the daemon's
+    // platform package, which `failproofai config` and `update` copy into place
+    // (on Linux as root, under `/opt`).
+    String.raw`node_modules[\\/](?:\.?[\\/])*(?:failproofai(?![\w.@-])|@failproofai[\\/](?:\.?[\\/])*failproofaid\b)`,
+    // pnpm's virtual store, which holds each package one directory above its
+    // own `node_modules/failproofai`.
+    String.raw`\.pnpm[\\/](?:\.?[\\/])*(?:failproofai|@failproofai\+failproofaid[\w.-]*)@`,
+    // The entry a hook command names: `…/bin/failproofai` for npm, nvm,
+    // Homebrew, bun, Volta and yarn, `…/pnpm/failproofai` for pnpm's home, and
+    // the variables nvm and pnpm export for those directories. A FILE, so a
+    // directory of that name (`~/bin/failproofai/src/…`) is not it.
+    String.raw`(?:[\\/](?:bin|pnpm)|\$\{?(?:NVM_BIN|PNPM_HOME)\}?)[\\/](?:\.?[\\/])*failproofai(?:\.cmd|\.ps1)?(?![\w.@\\/-])`,
+  ].join("|"),
+  "i",
+);
 
 /**
  * failproofai's own files: its state, and the installed code above.
@@ -509,10 +521,16 @@ const FAILPROOFAI_STATE_PATH_RE = new RegExp(
   "i",
 );
 
-/** Which of failproofai's own files `path` names, for a deny message that says which. */
-function failproofaiFileKind(path: string): "state" | "code" | null {
-  if (!path || !FAILPROOFAI_STATE_PATH_RE.test(path)) return null;
-  return FAILPROOFAI_CODE_PATH_RE.test(path) ? "code" : "state";
+/**
+ * Which of failproofai's own files `path` names, for a deny message that says
+ * which. Tool input is untrusted JSON, so a non-string is read the way
+ * `RegExp.test` always read it — as its string form — rather than waved through.
+ */
+function failproofaiFileKind(path: unknown): "state" | "code" | null {
+  if (path === undefined || path === null || path === "") return null;
+  const text = String(path);
+  if (!FAILPROOFAI_STATE_PATH_RE.test(text)) return null;
+  return FAILPROOFAI_CODE_PATH_RE.test(text) ? "code" : "state";
 }
 
 /**
@@ -520,28 +538,60 @@ function failproofaiFileKind(path: string): "state" | "code" | null {
  *
  * A file tool writes THROUGH a link, so the path it is handed is not
  * necessarily the one it changes — and npm, nvm and bun install the
- * `failproofai` bin entry as exactly such a link into the package. A tail that
- * does not exist yet (a file about to be created) is re-attached to the deepest
- * ancestor that does, so a new file under a linked directory resolves too. A
- * relative path is taken from the session's directory, not this process's: the
- * daemon's worker runs somewhere else entirely.
+ * `failproofai` bin entry as exactly such a link into the package.
  *
- * "" when nothing resolves. Never throws — this runs for every file write.
+ * Walked one component at a time, the way the kernel resolves a path: a link is
+ * expanded where it stands, and a `..` after it steps out of what it points at.
+ * `path.resolve` and Node's `realpathSync` both collapse `..` as TEXT first, so
+ * a write to `<link-to-pkg/dist>/../dist/cli.mjs` resolved to a harmless path
+ * while `open(2)` wrote the CLI. From the first component that does not exist
+ * nothing below can be a link, so the rest is the tail of a file being created.
+ * A relative path is taken from the session's directory, not this process's —
+ * the daemon's worker runs somewhere else entirely — and `~` from home.
+ *
+ * "" when nothing resolves. Never throws, whatever the tool input holds: a
+ * throw here would take the always-on guard out of the evaluation.
  */
-function resolveWriteTarget(path: string, cwd: string | undefined): string {
-  let current = isAbsolute(path) ? path : path && cwd ? join(cwd, path) : "";
-  const missing: string[] = [];
-  for (let depth = 0; current && depth < 64; depth++) {
-    try {
-      return join(realpathSync(current), ...missing);
-    } catch {
-      const parent = dirname(current);
-      if (parent === current) break;
-      missing.unshift(basename(current));
-      current = parent;
+function resolveWriteTarget(path: unknown, cwd: unknown): string {
+  if (typeof path !== "string" || path === "") return "";
+  try {
+    const expanded = path === "~" || path.startsWith("~/") ? homedir() + path.slice(1) : path;
+    const start = expanded.startsWith("/")
+      ? expanded
+      : typeof cwd === "string" && cwd.startsWith("/")
+        ? `${cwd}/${expanded}`
+        : "";
+    if (!start) return "";
+    const pending = start.split("/");
+    let resolved = ""; // "" is the root
+    for (let links = 0; pending.length > 0; ) {
+      const part = pending.shift()!;
+      if (part === "" || part === ".") continue;
+      if (part === "..") {
+        resolved = resolved.slice(0, resolved.lastIndexOf("/"));
+        continue;
+      }
+      const next = `${resolved}/${part}`;
+      let isLink: boolean;
+      try {
+        isLink = lstatSync(next).isSymbolicLink();
+      } catch {
+        return join(next, ...pending);
+      }
+      if (!isLink) {
+        resolved = next;
+        continue;
+      }
+      // The kernel's own bound on a chain of links (MAXSYMLINKS).
+      if (++links > 40) return "";
+      const target = readlinkSync(next);
+      if (target.startsWith("/")) resolved = "";
+      pending.unshift(...target.split("/"));
     }
+    return resolved || "/";
+  } catch {
+    return "";
   }
-  return "";
 }
 
 /**
@@ -782,6 +832,8 @@ const STATE_GLOB_CANDIDATES = [
   // directory and the npx cache's hash are not, so a glob under those is not one
   // this list can anticipate; the literal paths there still match.
   "node_modules/failproofai",
+  "./node_modules/failproofai",
+  "node_modules/.pnpm/failproofai@1.0.0",
   "/usr/local/lib/node_modules/failproofai",
   "/usr/lib/node_modules/failproofai",
   "/opt/homebrew/lib/node_modules/failproofai",
@@ -808,7 +860,7 @@ const GLOB_DECOYS = [
   "a", "foo.txt", "test-failures",
   // Neighbours of the installed-code candidates, so `rm -rf node_modules/*` and
   // its global equivalents are read as the sweeps they are.
-  "node_modules/react", "node_modules/.bin",
+  "node_modules/react", "node_modules/.bin", "./node_modules/react", "node_modules/.pnpm/react@18.0.0",
   "/usr/local/lib/node_modules/npm", "/usr/lib/node_modules/npm", "/opt/homebrew/lib/node_modules/npm",
   "/usr/local/bin/node", "/opt/homebrew/bin/node", "~/.bun/bin/bun", "~/.volta/bin/node",
 ];

@@ -156,9 +156,33 @@ describe("block-failproofai-commands — failproofai's installed code", () => {
         expect((await write("elsewhere/tool.mjs", root)).decision).toBe("deny");
       });
 
+      // `path.resolve` and Node's realpathSync collapse `..` as text before they
+      // follow links, so this resolved to `elsewhere/dist/cli.mjs` — a path that
+      // does not exist — while open(2) follows `pkg` first and writes the CLI.
+      // (Template strings, not `join`, which would collapse the `..` right here.)
+      it("steps out of a link the way the kernel does, not the way path.resolve does", async () => {
+        expect((await write(`${root}/elsewhere/pkg/../failproofai/dist/cli.mjs`)).decision).toBe("deny");
+        const viaDist = join(root, "elsewhere", "dist-link");
+        symlinkSync(join(pkg, "dist"), viaDist);
+        expect((await write(`${viaDist}/../dist/cli.mjs`)).decision).toBe("deny");
+        // And the same `..` from a directory that is not a link lands next to it.
+        expect((await write(`${root}/elsewhere/../elsewhere/notes.md`)).decision).toBe("allow");
+      });
+
       it("still allows an ordinary file next to the links", async () => {
         expect((await write(join(root, "elsewhere", "notes.md"))).decision).toBe("allow");
       });
+    });
+
+    // Tool input is untrusted JSON. A throw from the guard takes it out of the
+    // evaluation entirely, so a malformed path must be judged, not crash it.
+    it("judges a non-string path instead of throwing", async () => {
+      const odd = async (file_path: unknown) =>
+        (await policy.fn(makeCtx({ toolName: "Write", toolInput: { file_path, content: "x" }, session: { cwd: "/work/proj" } })))
+          .decision;
+      expect(await odd(42)).toBe("allow");
+      expect(await odd({ path: "/tmp/x" })).toBe("allow");
+      expect(await odd(["/usr/local/bin/failproofai"])).toBe("deny");
     });
 
     // Not a general file-write blocker: the package directory and the bin
@@ -171,6 +195,7 @@ describe("block-failproofai-commands — failproofai's installed code", () => {
       ["a package that only shares a prefix", "/work/proj/node_modules/failproofai-extras/index.js"],
       ["the TypeScript SDK", "/work/proj/node_modules/@failproofai/sdk/dist/index.js"],
       ["a project file named after the product", "/work/proj/src/failproofai.ts"],
+      ["a project in a directory of that name under bin/", "/home/u/bin/failproofai/src/index.ts"],
     ])("allows writing %s", async (_label, path) => {
       expect((await write(path)).decision).toBe("allow");
     });
@@ -188,9 +213,18 @@ describe("block-failproofai-commands — failproofai's installed code", () => {
       ["cd into the package, then delete", `cd ${NVM_PKG} && rm -rf dist`],
       ["a project install", "rm -rf node_modules/failproofai"],
       ["a glob onto a project install", "rm -rf node_modules/fail*"],
+      ["a dotted glob onto a project install", "rm -rf ./node_modules/fail*"],
       ["relinking the hook entry", "ln -sf /tmp/evil.sh /home/u/.nvm/versions/node/v22.11.0/bin/failproofai"],
       ["copying over the hook entry", "cp /tmp/evil.sh /usr/local/bin/failproofai"],
       ["installing over the hook entry", "install -m 755 /tmp/evil.sh /home/u/.bun/bin/failproofai"],
+      // The variables nvm and pnpm export for the directory the entry lives in.
+      ["copying over the entry through $NVM_BIN", 'cp /tmp/evil.sh "$NVM_BIN/failproofai"'],
+      ["relinking the entry through ${PNPM_HOME}", "ln -sf /tmp/evil.sh ${PNPM_HOME}/failproofai"],
+      // pnpm keeps the package one directory above its own node_modules.
+      ["removing pnpm's store entry in a project", "rm -rf node_modules/.pnpm/failproofai@1.0.15"],
+      ["removing pnpm's global store entry", "rm -rf /home/u/.local/share/pnpm/global/5/.pnpm/failproofai@1.0.15"],
+      ["removing the daemon package from pnpm's store", "rm -rf node_modules/.pnpm/@failproofai+failproofaid-linux-x64@1.0.15"],
+      ["a glob onto pnpm's store entry", "rm -rf node_modules/.pnpm/fail*"],
     ])("denies %s", async (_label, command) => {
       expect(await bash(command)).toBe("deny");
     });
@@ -204,6 +238,8 @@ describe("block-failproofai-commands — failproofai's installed code", () => {
       ["backing the package up", "cp -r node_modules/failproofai /tmp/fp-backup"],
       ["a clean reinstall", "rm -rf node_modules && npm ci"],
       ["clearing every dependency", "rm -rf node_modules/*"],
+      ["clearing pnpm's whole store", "rm -rf node_modules/.pnpm/*"],
+      ["a test run inside a directory of that name under bin/", "vitest run --root /home/u/bin/failproofai/web"],
       ["clearing a build cache", "rm -rf node_modules/.cache"],
       ["removing a checkout of the repo", "rm -rf /home/u/src/failproofai"],
       ["cloning the repo", "git clone https://github.com/FailproofAI/failproofai"],

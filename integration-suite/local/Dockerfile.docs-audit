@@ -9,7 +9,7 @@
 # with nothing in it but node, bun, git and the checkout.
 FROM node:22-bookworm-slim
 
-COPY --from=oven/bun:latest /usr/local/bin/bun /usr/local/bin/bun
+COPY --from=oven/bun:1.4.5 /usr/local/bin/bun /usr/local/bin/bun
 
 RUN apt-get update -qq \
  && apt-get install -y -qq --no-install-recommends git ca-certificates curl \

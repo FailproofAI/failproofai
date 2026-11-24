@@ -15,7 +15,11 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Post welcome message
-        uses: actions/github-script@v9
+        # Pinned to a commit, never a tag. `pull_request_target` runs this for
+        # every fork PR with a token that can write pull requests and issues,
+        # and whoever can move a tag decides what code holds that token.
+        # Dependabot's github-actions updates move the SHA and the comment.
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
         with:
           script: |
             const author = context.payload.pull_request.user.login;
@@ -37,7 +41,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Approve pull request
-        uses: actions/github-script@v9
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
         with:
           script: |
             await github.rest.pulls.createReview({

@@ -20,6 +20,7 @@ import { Settings } from "lucide-react";
 import { ReachDevelopers } from "@/components/reach-developers";
 import { RefreshButton } from "@/app/components/refresh-button";
 import { usePostHog } from "@/contexts/PostHogContext";
+import { telemetryRoute } from "@/lib/client-telemetry";
 
 const NAV_LINKS = [
   { href: "/projects", label: "projects" },
@@ -76,7 +77,7 @@ export const Navbar: React.FC<{
               onClick={() => {
                 if (href !== "/audit") return;
                 capture("audit_nav_clicked", {
-                  from_path: pathname,
+                  from_path: telemetryRoute(pathname),
                   is_active_tab: active,
                 });
               }}

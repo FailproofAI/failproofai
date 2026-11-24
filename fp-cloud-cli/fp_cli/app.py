@@ -374,6 +374,9 @@ def main(
             f"'{resolved_base}' must start with http:// or https://.",
             param_hint="--base-url",
         )
+    # Plain http to another host is refused where a request is built, in
+    # `_context.resolved_base_url`, not here: this callback runs before Click parses
+    # a subcommand's `--help`, so refusing here would break `fp <command> --help`.
     # TLS verification, resolved AFTER the base URL because the saved preference
     # is only honoured for the URL it was granted for.
     #

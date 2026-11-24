@@ -10,7 +10,7 @@ import respx
 
 from fp_cli.app import app
 
-BASE = "http://dash.test"
+BASE = "https://dash.test"
 CODE = 'EvalResult(score=Score(0.7), reasoning="Tool usage")'
 DEFINITION = {
     "eval_key": "tool_usage", "display_name": "Tool usage", "eval_version": "1",

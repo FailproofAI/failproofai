@@ -11,7 +11,7 @@ from fp_cli import output
 from fp_cli.app import app
 from fp_cli.commands import _write
 
-BASE = "http://dash.test"
+BASE = "https://dash.test"
 
 
 # --- alerts -----------------------------------------------------------------

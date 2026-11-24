@@ -107,10 +107,14 @@ jobs:
         env:
           ACTOR: ${{ github.actor }}
           TRIGGERING_ACTOR: ${{ github.triggering_actor }}
+          # From env, never `${{ }}` in the script: a branch name is chosen
+          # by whoever pushed it, and pasted into the script it ran as shell
+          # (a branch named `x";exit${IFS}0;test${IFS}"` passed this check).
+          REF: ${{ github.ref }}
         run: |
           set -euo pipefail
-          if [ "${{ github.ref }}" != "refs/heads/main" ]; then
-            echo "::error::releases are cut from main only (got ${{ github.ref }})"
+          if [ "$REF" != "refs/heads/main" ]; then
+            echo "::error::releases are cut from main only (got $REF)"
             exit 1
           fi
           for who in "$ACTOR" "$TRIGGERING_ACTOR"; do

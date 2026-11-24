@@ -13,7 +13,7 @@
  * one writer, so signing in here shows up there on the next read, and signing
  * out there ends the session the scheduled audit was going to report under.
  */
-import { AuthApiError, requestLoginCode, verifyLoginCode } from "../../lib/auth/api-server-client";
+import { AuthApiError, INSECURE_API_URL, requestLoginCode, verifyLoginCode } from "../../lib/auth/api-server-client";
 import {
   authFromTokenResponse,
   readAuth,
@@ -293,6 +293,9 @@ function describeAuthError(err: unknown, prefix: string): string {
       const wait = err.retryAfterSecs;
       return `${prefix}: too many attempts.${wait ? ` Try again in ${wait}s.` : ""}`;
     }
+    // Refused before anything was sent: the message already names the remedy,
+    // and "did not respond" would send the reader looking for a down server.
+    if (err.code === INSECURE_API_URL) return `${prefix}: ${err.message}`;
     if (err.status === 0 || err.code === "timeout") {
       return (
         `${prefix}: the api-server did not respond.\n` +

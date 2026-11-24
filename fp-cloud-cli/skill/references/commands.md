@@ -26,7 +26,7 @@ Set on the CLI, **before** the subcommand. Precedence: flag > env var > config f
 
 | Flag | Env var | Meaning |
 |---|---|---|
-| `--base-url <url>` | `FP_DASHBOARD_URL` | Dashboard URL. Defaults to `https://app.befailproof.ai` (the hosted product); override for self-hosted/dev. Must start with `http://`/`https://`. |
+| `--base-url <url>` | `FP_DASHBOARD_URL` | Dashboard URL. Defaults to `https://app.befailproof.ai` (the hosted product); override for self-hosted/dev. Must be `https://`; plain `http://` is accepted only for `localhost` and loopback addresses, because every request carries a credential. |
 | `--org <slug>` | `FP_ORG` | Active org for this command (multi-tenant override). |
 | `--token <t>` | `FP_TOKEN` | Session token (normally from config after `login`). |
 | `--api-key <k>` | `FP_API_KEY` | Scoped API key — authenticate as a credential instead of as a signed-in user. Never saved to the config file. |

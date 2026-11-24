@@ -8,7 +8,7 @@ from rich.console import Console
 from fp_cli import output
 from fp_cli.app import app
 
-BASE = "http://dash.test"
+BASE = "https://dash.test"
 SOURCE = 'EvalResult(score=Score(0.7), reasoning="Tool usage")'
 
 

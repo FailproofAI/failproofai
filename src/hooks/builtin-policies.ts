@@ -1574,7 +1574,23 @@ function simpleCommandDestroys(
     }
     const operands = args.filter((a) => !a.startsWith("-"));
     const destination = operands[operands.length - 1];
-    return destination !== undefined && namesState(destination);
+    if (destination === undefined) return false;
+    // Into a directory that exists, each source lands under its own name:
+    // `cp README.md ~/.claude` writes ~/.claude/README.md and nothing else. Not
+    // with `-T`, which makes the directory the file; and a source's contents
+    // (`dir/.`, rsync's `dir/`) land in the directory itself.
+    const sources = operands.slice(0, -1);
+    const noTarget = args.some((a) => a === "--no-target-directory" || /^-(?!-)[A-Za-z]*T/.test(a));
+    if (!noTarget && sources.length > 0 && cwds.some((cwd) => existingDirectory(destination, cwd))) {
+      const dir = stripShellQuoting(destination).replace(/\/+$/, "");
+      return sources.some((source) => {
+        const plain = stripShellQuoting(source);
+        const name = plain.replace(/\/+$/, "").split("/").pop() ?? "";
+        const contents = name === "" || name === "." || name === ".." || (head === "rsync" && plain.endsWith("/"));
+        return namesState(contents ? dir : `${dir}/${name}`);
+      });
+    }
+    return namesState(destination);
   }
 
   // `tee` writes every operand it is given and reads none of them.
@@ -2148,6 +2164,10 @@ function lexShell(text: string, substitutionBody = false): ShellLex {
   // newline, which stands in for the start of the text the regex once saw.
   let nextRunsText = -2;
   let lastNamed: Map<string, number> | undefined;
+  // Later words an expansion builds (`bash /tmp/exam$X`), as patterns over the
+  // names they could make; past the cap, every name counts as used.
+  let wildNames: Array<{ at: number; re: RegExp }> = [];
+  let wildOverflowAt = -1;
   const runsTextFrom = (pos: number): boolean => {
     if (nextRunsText === -1) return false;
     if (nextRunsText >= pos - 1) return true;
@@ -2159,11 +2179,20 @@ function lexShell(text: string, substitutionBody = false): ShellLex {
   const namedFrom = (name: string, pos: number): boolean => {
     if (lastNamed === undefined) {
       lastNamed = new Map();
-      for (const word of text.matchAll(/[^\s;&|<>()'"`=]+/g)) {
-        lastNamed.set(word[0].slice(word[0].lastIndexOf("/") + 1), word.index);
+      // Words as the shell hands them over, quotes undone: `bash
+      // /tmp/exam'ple.md'` runs /tmp/example.md.
+      for (const { word, at } of decodedWordsAt(text)) {
+        const base = word.slice(word.lastIndexOf("/") + 1);
+        if (EXPANSION_IN_WORD_RE.test(base)) {
+          if (wildNames.length < 256) wildNames.push({ at, re: expansionNameRe(base) });
+          else wildOverflowAt = Math.max(wildOverflowAt, at);
+          continue;
+        }
+        lastNamed.set(base, at);
       }
     }
-    return (lastNamed.get(name) ?? -1) >= pos;
+    if ((lastNamed.get(name) ?? -1) >= pos || wildOverflowAt >= pos) return true;
+    return wildNames.some((wild) => wild.at >= pos && wild.re.test(name));
   };
   /** Read every pending heredoc's body, starting at `at`; return where lexing resumes. */
   const consumeBodies = (at: number): number => {
@@ -2851,6 +2880,14 @@ function copyTargetDirectory(head: string, args: readonly string[]): { dir: stri
   return dir === null ? null : { dir, values };
 }
 
+/** Whether a copy's destination word names a directory that exists now, seen from `cwd`. */
+function existingDirectory(word: string, cwd: string | undefined): boolean {
+  const plain = stripShellQuoting(word);
+  if (/[$`*?[]/.test(plain)) return false;
+  const path = cdDestination(cwd, plain);
+  return path !== undefined && isDirectoryNow(path);
+}
+
 /** Whether `path` is a directory now, so a `cd` into it succeeds. */
 function isDirectoryNow(path: string): boolean {
   try {
@@ -2945,7 +2982,11 @@ function destroysProtectedPath(command: string, target: ProtectedPathTarget, dep
     for (const [name, value] of assignments) {
       const holdsState =
         target.namesLiteral(value) ||
-        [...value.matchAll(VAR_REFERENCE_RE)].some(([, ref]) => stateVars.has(ref));
+        [...value.matchAll(VAR_REFERENCE_RE)].some(([, ref]) => stateVars.has(ref)) ||
+        // A value that reaches the target where the session stands — through
+        // a link (`D=cfg.json`, `D=link/..`), or relative to it.
+        (target.namesThroughLinks?.(value, target.cwd) ?? false) ||
+        (target.cwd !== undefined && isRelativeShellWord(value) && target.namesLiteral(resolve(target.cwd, value)));
       if (holdsState) stateVars.add(name);
     }
     if (stateVars.size === before) break;
@@ -4350,7 +4391,8 @@ function blockFailproofaiCommands(ctx: PolicyContext): PolicyResult {
   if (
     agentCliSwitchesHooksOff(cliText) ||
     agentCliSwitchesHooksOff(stripShellQuoting(cliText)) ||
-    agentCliSwitchesHooksOff(agentCliArgvLines(lexed))
+    agentCliSwitchesHooksOff(agentCliArgvLines(lexed)) ||
+    agentCliHooksOffByArgv(lexed)
   ) {
     return deny(
       "Turning an agent's hooks off would switch failproofai's enforcement off. " +
@@ -4374,6 +4416,135 @@ function blockFailproofaiCommands(ctx: PolicyContext): PolicyResult {
     );
   }
   return allow();
+}
+
+/** A word whose text an expansion decides: `$F`, `${F:-x}`, `$(…)`, a backtick. */
+const EXPANSION_IN_WORD_RE = /\$[A-Za-z_{(0-9@*#?!$-]|`/;
+
+/**
+ * The agent CLIs' hooks-off commands, read word by word from each command's
+ * argv: `codex features disable hooks`, `pi remove <failproofai>`, `hermes |
+ * openclaw plugins disable|remove <failproofai>`. A word an expansion decides
+ * could be any word, so it stands for whichever word the shape needs there —
+ * `codex $(echo features) disable "$F"` is refused whatever F holds — unless
+ * it is exactly `$NAME` for a variable every assignment of which comes
+ * earlier on the line with a plain value: then it is each of those values.
+ * A head an expansion decides is not followed; every command could be it.
+ */
+function agentCliHooksOffByArgv(lexed: ShellLex): boolean {
+  const assignments = new Map<string, Array<{ at: number; value: string }>>();
+  for (const match of lexed.readable.matchAll(/(?:^|[\s;&|(])(?:export\s+)?([A-Za-z_][A-Za-z0-9_]*)=("[^"]*"|'[^']*'|[^\s;&|)]*)/g)) {
+    const list = assignments.get(match[1]) ?? [];
+    list.push({ at: match.index, value: match[2].replace(/^["']|["']$/g, "") });
+    assignments.set(match[1], list);
+  }
+  // A word's possible texts, or null for any word at all.
+  const optionsOf = (word: string, at: number): string[] | null => {
+    if (!EXPANSION_IN_WORD_RE.test(word)) return [word];
+    const ref = /^\$(?:\{([A-Za-z_][A-Za-z0-9_]*)\}|([A-Za-z_][A-Za-z0-9_]*))$/.exec(word);
+    const list = ref ? assignments.get(ref[1] ?? ref[2]) : undefined;
+    if (!list || list.length > 64 || list.some((a) => a.at > at || EXPANSION_IN_WORD_RE.test(a.value))) return null;
+    return list.map((a) => a.value);
+  };
+  const can = (options: string[] | null, test: (word: string) => boolean): boolean => options === null || options.some(test);
+  for (const [start, end] of cutRanges(lexed.splittable, PIPELINE_SEPARATORS)) {
+    const splitPipeline = lexed.splittable.slice(start, end);
+    for (const [simpleStart, simpleEnd] of cutRanges(splitPipeline, /\|/)) {
+      const at = start + simpleStart;
+      const words = quoteAwareWords(lexed.readable.slice(at, start + simpleEnd)).map((word) => optionsOf(word, at));
+      // The head: past assignments, wrappers, runners and their flags.
+      let h = 0;
+      while (h < words.length) {
+        const options = words[h];
+        if (options === null) break;
+        const word = options[0] ?? "";
+        if (ENV_ASSIGNMENT_RE.test(word) || word.startsWith("-") || RUNNER_OPERAND_RE.test(word) || COMMAND_PREFIX_TOKENS.has(commandBasename(word))) {
+          h++;
+          continue;
+        }
+        break;
+      }
+      const head = words[h];
+      if (!head) continue;
+      const heads = new Set(head.map((word) => commandBasename(word).toLowerCase()));
+      const rest = words.slice(h + 1).filter((options) => options === null || !options.every((w) => w.startsWith("-")));
+      const seq = (tests: Array<(word: string) => boolean>): boolean => {
+        // Each test met by a later word than the one before it.
+        let k = 0;
+        for (const test of tests) {
+          while (k < rest.length && !can(rest[k], test)) k++;
+          if (k >= rest.length) return false;
+          k++;
+        }
+        return true;
+      };
+      if (heads.has("codex") && seq([(w) => /^features?$/i.test(w), (w) => /^disable$/i.test(w), (w) => /(?:^|[^A-Za-z0-9_])(?:codex_)?hooks(?![A-Za-z0-9_])/i.test(w)])) {
+        return true;
+      }
+      if (heads.has("pi") && seq([(w) => /^(?:remove|uninstall|rm)$/i.test(w), (w) => /failproofai|pi-extension/i.test(w)])) return true;
+      if (
+        (heads.has("hermes") || heads.has("openclaw")) &&
+        seq([(w) => /^plugins?$/i.test(w), (w) => /^(?:disable|remove|uninstall|rm|delete)$/i.test(w), (w) => /failproofai/i.test(w)])
+      ) {
+        return true;
+      }
+    }
+  }
+  return false;
+}
+
+/**
+ * The words of `text` as the shell splits and unquotes them — at blanks and at
+ * `;&|<>()=` outside quotes — each with where it starts. An expansion stays
+ * in its word as written, for the caller to treat as unknown.
+ */
+function decodedWordsAt(text: string): Array<{ word: string; at: number }> {
+  const out: Array<{ word: string; at: number }> = [];
+  let word = "";
+  let at = -1;
+  const end = (): void => {
+    if (at !== -1) out.push({ word, at });
+    word = "";
+    at = -1;
+  };
+  for (let i = 0; i < text.length; i++) {
+    const ch = text[i];
+    if (/[\s;&|<>()=]/.test(ch)) {
+      end();
+      continue;
+    }
+    if (at === -1) at = i;
+    if (ch === "\\" && i + 1 < text.length) {
+      word += text[++i];
+    } else if (ch === "'" && text[i - 1] === "$") {
+      const close = text.indexOf("'", i + 1);
+      const stop = close === -1 ? text.length : close;
+      word = word.slice(0, -1) + decodeAnsiC(text.slice(i + 1, stop));
+      i = stop;
+    } else if (ch === "'") {
+      const close = text.indexOf("'", i + 1);
+      const stop = close === -1 ? text.length : close;
+      word += text.slice(i + 1, stop);
+      i = stop;
+    } else if (ch === '"') {
+      let j = i + 1;
+      for (; j < text.length && text[j] !== '"'; j++) {
+        if (text[j] === "\\" && j + 1 < text.length) j++;
+        word += text[j];
+      }
+      i = j;
+    } else {
+      word += ch;
+    }
+  }
+  end();
+  return out;
+}
+
+/** A name built by an expansion as a pattern over the names it could make: `exam$X` → `^exam.*$`. */
+function expansionNameRe(base: string): RegExp {
+  const parts = base.split(/\$\{[^}]*\}?|\$\([^)]*\)?|\$[A-Za-z_][A-Za-z0-9_]*|\$.?|`[^`]*`?/);
+  return new RegExp(`^${parts.map((part) => part.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).join(".*")}$`, "s");
 }
 
 /** A word an agent CLI's hooks-off command is made of. */

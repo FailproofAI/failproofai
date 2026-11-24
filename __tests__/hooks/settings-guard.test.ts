@@ -1104,6 +1104,9 @@ describe("block-failproofai-commands — review round seven", () => {
     symlinkSync(join(h7, ".claude", "x"), join(p7, "physical-link"));
     mkdirSync(join(p7, "external", ".git"), { recursive: true });
     symlinkSync(join(h7, ".claude", "x"), join(p7, "external", "link"));
+    mkdirSync(join(p7, "archive"), { recursive: true });
+    symlinkSync(join(h7, ".claude", "x"), join(p7, "archive", "link"));
+    symlinkSync(settings(), join(p7, "cfg.json"));
     outerHome = process.env.HOME;
     outerPackageRoot = process.env.FAILPROOFAI_PACKAGE_ROOT;
     process.env.HOME = h7;
@@ -1244,6 +1247,49 @@ describe("block-failproofai-commands — review round seven", () => {
     expect(await bashDecision(`git commit -F "-" <<'EOF'\nKeep rm -rf ~/.claude out of agents\nEOF\n`, p7)).toBe("allow");
     // A file named by an expansion is still unknown, so a body run from it is read.
     expect(await bash(`cat > "$F" <<'EOF'\nrm -rf ~/.claude\nEOF\nbash "$F"\n`, p7)).toBe(true);
+  });
+
+  // hermes round 5.
+  it.each([
+    `F=ho; F=\${F}oks; codex features disable "$F"`,
+    `F=hooks; X=$F; codex features disable "$X"`,
+    `codex $(echo features) disable hooks`,
+  ])("refuses a hooks-off command whose words an expansion could make: %s", async (command) => {
+    const result = await run("Bash", { command });
+    expect(result.decision).toBe("deny");
+    expect(result.reason).toMatch(/Turning an agent's hooks off/);
+  });
+
+  it("is not hidden by many earlier assignments, and reads a known other feature as itself", async () => {
+    const decoys = Array.from({ length: 70 }, (_, i) => `F=decoy${i}`).join("; ");
+    expect((await run("Bash", { command: `${decoys}; F=hooks; codex features disable "$F"` })).decision).toBe("deny");
+    expect(await bashDecision(`F=web_search; codex features disable "$F"`)).toBe("allow");
+  });
+
+  it("reads a value glued to git archive's -o through a link", async () => {
+    expect(await bash(`git archive -oarchive/link/../settings.json HEAD`, p7)).toBe(true);
+    expect(await bashDecision(`git archive -o/tmp/out.tar HEAD`, p7)).toBe("allow");
+  });
+
+  it("follows a variable that holds a link to the settings", async () => {
+    expect(await bash(`D=cfg.json; cp /tmp/evil.json "$D"`, p7)).toBe(true);
+    expect(await bash(`D=physical-link/..; cd -P "$D"; cp /tmp/evil.json settings.json`, p7)).toBe(true);
+    expect(await bashDecision(`D=notes.md; cp /tmp/evil.json "$D"`, p7)).toBe("allow");
+  });
+
+  it("finds a stored script run later under a quoted, escaped or built name", async () => {
+    const store = `cat > '/tmp/example.md' <<'EOF'\ncp /tmp/evil ${settings()}\nEOF\n`;
+    expect(await bash(`${store}bash /tmp/exam'ple.md'\n`, p7)).toBe(true);
+    expect(await bash(`${store}bash /tmp/exam\\ple.md\n`, p7)).toBe(true);
+    expect(await bash(`${store}bash /tmp/exam$X\n`, p7)).toBe(true);
+    expect(await bashDecision(`${store}echo done\n`, p7)).toBe("allow");
+  });
+
+  it("copies into an existing directory under each source's own name", async () => {
+    expect(await bashDecision(`cp README.md ~/.claude`, p7)).toBe("allow");
+    expect(await bash(`cp /tmp/settings.json ~/.claude`, p7)).toBe(true);
+    expect(await bash(`cp -rT /tmp/evil ~/.claude`, p7)).toBe(true);
+    expect(await bash(`cp -r /tmp/evil/. ~/.claude`, p7)).toBe(true);
   });
 
   it("reads an empty heredoc delimiter the way bash does", async () => {

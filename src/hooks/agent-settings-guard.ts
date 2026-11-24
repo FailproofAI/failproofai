@@ -672,7 +672,10 @@ export function agentSettingsShellMatcher(
   const physicalHits = new Map<string, boolean>();
   const physicalBases = new Map<string, string | null>();
   const throughLinks = (raw: string, cwd: string | undefined): boolean => {
-    for (const word of agentSettingsWordForms(raw)) {
+    const forms = agentSettingsWordForms(raw);
+    // A value glued to a short option is a path too: `-oarchive/link/../settings.json`.
+    if (/^-[A-Za-z]./.test(raw) && !raw.startsWith("--")) forms.push(...agentSettingsWordForms(raw.slice(2)));
+    for (const word of forms) {
       if (!word || word.startsWith("-") || (word.includes("$") && !/^\$\{?HOME\}?(?:[\\/]|$)/.test(word))) continue;
       const key = `${cwd ?? ""}\0${word}`;
       let hit = physicalHits.get(key);

@@ -210,6 +210,8 @@ describe("block-failproofai-commands — failproofai's installed code", () => {
       ["a fixture under a hyphenated node_modules", "/work/proj/my-node_modules/failproofai/index.js"],
       ["a fixture under a directory that merely ends in .pnpm", "/work/proj/foo.pnpm/failproofai@1.0.0/x.js"],
       ["a fixture under a directory named like an option", "/tmp/-xnode_modules/failproofai/index.js"],
+      ["a fixture under a directory joined with +", "/work/fixture+node_modules/failproofai/index.js"],
+      ["a fixture under a .pnpm-suffixed directory joined with +", "/work/fixture+.pnpm/failproofai@1.0.0/x.js"],
     ])("allows writing %s", async (_label, path) => {
       expect((await write(path)).decision).toBe("allow");
     });
@@ -255,6 +257,12 @@ describe("block-failproofai-commands — failproofai's installed code", () => {
       ["wget writing the CLI through -O<path>", "wget -q -Onode_modules/failproofai/dist/cli.mjs https://example.com/x"],
       ["wget writing the CLI through a -qO<path> cluster", "wget -qOnode_modules/failproofai/dist/cli.mjs https://example.com/x"],
       ["wget writing pnpm's store entry through -qO<path>", "wget -qO.pnpm/failproofai@1.0.15/x https://example.com/x"],
+      // What ends a shell word still starts a component.
+      ["the package named in a subshell", "(rm -rf node_modules/failproofai)"],
+      ["the package named in a brace list", "rm -rf {node_modules/failproofai,tmp}"],
+      ["the package named after a redirect", "cat /tmp/x.mjs >node_modules/failproofai/dist/cli.mjs"],
+      ["the package named inside quotes", 'rm -rf "node_modules/failproofai"'],
+      ["the package named in an assignment", "D=node_modules/failproofai; rm -rf $D"],
       ["a dotted glob onto pnpm's store entry", "rm -rf ./node_modules/.pnpm/fail*"],
     ])("denies %s", async (_label, command) => {
       expect(await bash(command)).toBe("deny");

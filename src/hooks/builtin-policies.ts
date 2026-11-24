@@ -463,10 +463,14 @@ const GIT_COMMIT_MERGE_RE = /git\s+(commit|merge|rebase|cherry-pick)\b/;
 // blockFailproofaiCommands
 /**
  * The path component `name` (regex source), only where it STARTS a component:
- * after a separator, a space, a quote or `=`, or glued to a cluster of short
- * options (`wget -Onode_modules/…`, `wget -qO.pnpm/…`), which is how those tools
- * take an output file. Not after a letter, digit, `_`, `.` or `-` of the same
- * name: `cached_node_modules/…` and `my-node_modules/…` are somebody's fixtures.
+ * at the start, after a path separator, or after what ends a shell word —
+ * whitespace, a quote, `=`, `:`, `;`, `|`, `&`, a redirect, a bracket of a
+ * subshell or a brace list, a comma — or glued to a cluster of short options
+ * (`wget -Onode_modules/…`, `wget -qO.pnpm/…`), which is how those tools take an
+ * output file. Anything else in front of it is part of the same name, so it is
+ * a different directory: `cached_node_modules/…`, `my-node_modules/…` and
+ * `fixture+node_modules/…` are somebody's fixtures. A list of what may come
+ * before, not of what may not — the second kind is never finished.
  *
  * The check is a lookbehind placed AFTER the name, so it runs only where the
  * name already matched. A variable-length lookbehind in FRONT of the name ran
@@ -478,7 +482,7 @@ const GIT_COMMIT_MERGE_RE = /git\s+(commit|merge|rebase|cherry-pick)\b/;
  * and a long one (`-qqqq…O<path>`) is not a way past.
  */
 function pathComponent(name: string): string {
-  return String.raw`${name}(?<=(?:^|[^\w.-])${name}|(?:^|\s)-[A-Za-z]+${name})`;
+  return String.raw`${name}(?<=(?:^|[\\/\s"'\`=:;|&<>(){},])${name}|(?:^|\s)-[A-Za-z]+${name})`;
 }
 
 /**

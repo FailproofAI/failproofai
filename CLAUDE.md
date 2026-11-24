@@ -1044,6 +1044,33 @@ It is how you install the CLI without the registry (`npm i -g ./failproofai-<ver
 and it is attached on every release — that job is deliberately **not** gated on
 `has_daemon`.
 
+### How releases authenticate to npm
+
+Both npm workflows publish through **trusted publishing (OIDC)**; there is no `NPM_TOKEN`.
+Each `npm publish` exchanges the publishing job's GitHub OIDC token for a short-lived token
+scoped to that one package, which npm grants only if the package has a trusted-publisher
+entry on npmjs.com matching the repo, the workflow **filename** and the job's
+**environment**: `publish.yml` + `npm-failproofai` for `failproofai`, the four platform
+packages and every alias; `publish-failproofai-ts-sdk.yml` + `npm-failproofai-ts-sdk` for
+`@failproofai/sdk`. The entries are set up by hand from the comment at the top of each
+workflow, and `__tests__/ci/npm-trusted-publishing.test.ts` keeps that comment, the job's
+environment, the npm upgrade and the prerequisite check in agreement. What will bite:
+
+- **A new package cannot publish through this until it exists.** npm only accepts an entry
+  for a package that is already on the registry, so a new daemon platform or alias has to be
+  published once by hand and given its entry before a release includes it — otherwise that
+  package fails at `npm publish`, which for a platform package stops the release.
+- **npm 11.5.1+, not the npm that ships with Node 22.** npm 10 never attempts the exchange;
+  it falls back to setup-node's placeholder token and the registry refuses the publish
+  without saying why. Both publishing jobs upgrade npm and check it first.
+- **No stored token may come back as a fallback.** npm tries OIDC first and quietly uses any
+  token it finds when that fails, so a re-added `NODE_AUTH_TOKEN` would hide a broken entry.
+- **Provenance is automatic.** A retry without provenance must say `--provenance=false`;
+  merely dropping `--provenance` signs again.
+- **`id-token: write` is job-wide.** Every step in a publishing job can mint a publish token,
+  so third-party code belongs in jobs without it. The TS SDK workflow publishes a tarball
+  built elsewhere; `publish.yml`'s `publish` job still runs `bun run build` itself.
+
 ### Always add unit tests for new behaviour
 When you add or change logic, add a corresponding test in `__tests__/`. Never modify
 existing tests just to make them pass — if a test breaks, fix the code, not the test.

@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.0.17-beta.0 — 2026-11-24
+
+### Fixes
+
+- Release workflows now open the version-bump pull request themselves, using the job's own token, when the repository lets GitHub Actions create pull requests. When it does not, the run prints the pre-filled link as a warning and the release still succeeds. A re-run reuses an open bump pull request instead of opening a second one (#1052)
+
 ## 1.0.16-beta.0 — 2026-11-24
 
 ### Features

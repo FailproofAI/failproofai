@@ -23,6 +23,12 @@ let root: string;
 let home: string;
 let fakeBin: string;
 let systemConfig: string;
+/**
+ * This account's failproofai as the hooks name it: a wrapper in the test's own
+ * 0755 directory that runs the in-tree CLI. A checkout made with umask 002 is
+ * group-writable, which the runner accepts only for a provably private group.
+ */
+let cliPath: string;
 
 function fakeCodex(version: string): void {
   const script = join(fakeBin, "codex");
@@ -39,7 +45,7 @@ function run(args: string[], env: Record<string, string> = {}) {
       USERPROFILE: home,
       FAILPROOFAI_HOME: join(home, ".failproofai"),
       FAILPROOFAI_PACK_DIR: join(root, "packs"),
-      FAILPROOFAI_BINARY_OVERRIDE: BINARY_PATH,
+      FAILPROOFAI_BINARY_OVERRIDE: cliPath,
       FAILPROOFAI_TELEMETRY_DISABLED: "1",
       FAILPROOFAI_CODEX_SYSTEM_CONFIG: systemConfig,
       PATH: `${fakeBin}:${process.env.PATH}`,
@@ -78,6 +84,10 @@ beforeEach(() => {
   systemConfig = join(root, "etc", "codex", "config.toml");
   mkdirSync(home, { recursive: true });
   mkdirSync(fakeBin, { recursive: true });
+  chmodSync(fakeBin, 0o755);
+  cliPath = join(fakeBin, "failproofai");
+  writeFileSync(cliPath, `#!/bin/sh\nexec bun ${JSON.stringify(BINARY_PATH)} "$@"\n`);
+  chmodSync(cliPath, 0o755);
   fakeCodex("0.162.1");
 });
 
@@ -124,11 +134,11 @@ describe("E2E: Codex hooks in the system config", () => {
     const programs = hookPrograms();
     expect(programs.length).toBeGreaterThan(0);
     expect(new Set(programs)).toEqual(new Set([runnerPath()]));
-    expect(written).not.toContain(BINARY_PATH);
+    expect(written).not.toContain(cliPath);
     const runner = readFileSync(runnerPath(), "utf8");
     const arms = runner.split("\n").filter((line) => /^ {2}\d+\) exec /.test(line));
     expect(arms).toHaveLength(1);
-    expect(arms[0]).toContain(`  ${process.getuid!()}) exec '${BINARY_PATH}' "$@" ;;`);
+    expect(arms[0]).toContain(`  ${process.getuid!()}) exec '${cliPath}' "$@" ;;`);
     // For this account, the runner is this account's failproofai.
     const viaRunner = spawnSync(runnerPath(), ["--version"], { encoding: "utf8", timeout: 20_000 });
     expect(viaRunner.status, viaRunner.stderr).toBe(0);
@@ -158,7 +168,7 @@ describe("E2E: Codex hooks in the system config", () => {
   it("update rewrites hooks that run failproofai itself to run the hook runner", () => {
     // A block in the format earlier versions wrote: every hook runs failproofai itself.
     mkdir755(dirname(systemConfig));
-    const command = (event: string) => JSON.stringify(`"${BINARY_PATH}" --hook ${event} --cli codex --agent-scope user`);
+    const command = (event: string) => JSON.stringify(`"${cliPath}" --hook ${event} --cli codex --agent-scope user`);
     writeFileSync(
       systemConfig,
       [
@@ -179,7 +189,7 @@ describe("E2E: Codex hooks in the system config", () => {
         "",
       ].join("\n"),
     );
-    expect(hookPrograms()).toEqual([BINARY_PATH, BINARY_PATH]);
+    expect(hookPrograms()).toEqual([cliPath, cliPath]);
 
     const updated = run(["update", "--no-daemon"]);
     expect(updated.exitCode, updated.stdout + updated.stderr).toBe(0);
@@ -187,7 +197,7 @@ describe("E2E: Codex hooks in the system config", () => {
     expect(updated.stdout.replace(/\s+/g, " ")).toContain(`now go through ${runnerPath()},`);
     expect(hookPrograms()).toEqual([runnerPath(), runnerPath()]);
     expect(readFileSync(systemConfig, "utf8")).toContain("--hook stop --cli codex --agent-scope user");
-    expect(readFileSync(runnerPath(), "utf8")).toContain(`  ${process.getuid!()}) exec '${BINARY_PATH}' "$@" ;;`);
+    expect(readFileSync(runnerPath(), "utf8")).toContain(`  ${process.getuid!()}) exec '${cliPath}' "$@" ;;`);
 
     // Checked again on the next update, with nothing to say.
     const again = run(["update", "--no-daemon"]);

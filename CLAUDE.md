@@ -52,7 +52,10 @@ or `/usr/bin`. Rules that keep it safe:
   through files owned by root or that account. Its group may write them only when it is
   the account's private group, as a umask of 002 leaves an install: its primary group,
   named after it, nobody else's primary group and no other member in `/etc/passwd` and
-  `/etc/group` (`isPrivateGroup`). Root's line must be root's alone, group included, and
+  `/etc/group` (`isPrivateGroup`), and only where `/etc/nsswitch.conf` takes accounts
+  and groups from `files`, `compat` (no `+`/`-` entries) or `systemd` alone. With LDAP,
+  SSSD, NIS or winbind in it, those files cannot prove a group private, so such an
+  install is refused and that account keeps `hooks.json` (or runs `chmod -R g-w` on it). Root's line must be root's alone, group included, and
   names its interpreter by absolute path, so nothing on it goes through PATH. Another
   account's line that this process cannot read (a 0750 home) is kept as it is.
 - **What root wrote is read back.** The runner and the config are compared with what was

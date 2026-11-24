@@ -807,14 +807,16 @@ describe("the lines the runner keeps", () => {
     if (ME === 0) return; // root's line takes no group at all
     const home = dirname(myCli());
     const gid = statSync(home).gid;
-    const own = { users: [{ name: "me", uid: ME, gid }], groups: [{ name: "me", gid, members: [] }] };
+    const own = { users: [{ name: "me", uid: ME, gid }], groups: [{ name: "me", gid, members: [] }], local: true };
     chmodSync(home, 0o775);
     expect(install({ accounts: own })).toMatchObject({ ok: true });
-    // The same group, shared: another account's primary group, a listed member, or a name not the account's.
+    // The same group, shared: another account's primary group, a listed member, a name not the
+    // account's, or accounts that may come from a directory service the files do not show.
     for (const shared of [
-      { users: [...own.users, { name: "other", uid: ME + 1, gid }], groups: own.groups },
-      { users: own.users, groups: [{ name: "me", gid, members: ["other"] }] },
-      { users: own.users, groups: [{ name: "staff", gid, members: [] }] },
+      { ...own, users: [...own.users, { name: "other", uid: ME + 1, gid }] },
+      { ...own, groups: [{ name: "me", gid, members: ["other"] }] },
+      { ...own, groups: [{ name: "staff", gid, members: [] }] },
+      { ...own, local: false },
     ]) {
       expect(install({ accounts: shared })).toMatchObject({
         ok: false,
@@ -843,6 +845,7 @@ describe("the lines the runner keeps", () => {
     const shared = {
       users: [{ name: "me", uid: ME, gid }, { name: "other", uid: ME + 1, gid }],
       groups: [{ name: "me", gid, members: [] }],
+      local: true,
     };
     chmodSync(home, 0o775);
     mkdirs(dirname(path()));
@@ -854,6 +857,19 @@ describe("the lines the runner keeps", () => {
     });
     expect(existsSync(path())).toBe(false);
     expect(existsSync(runner())).toBe(false);
+  });
+
+  it("takes out an earlier block no account can keep when it refuses this account's install", () => {
+    if (ME === 0) return; // root's line takes no group at all
+    const home = dirname(myCli());
+    const gid = statSync(home).gid;
+    chmodSync(home, 0o775);
+    // The program it ran is gone: no account owns it, and it is not another account's to keep.
+    mkdirs(dirname(path()));
+    writeFileSync(path(), renderCodexManagedBlock(codexSystemHookEntries(join(dir, "gone", "failproofai"))));
+    const notPrivate = { users: [{ name: "me", uid: ME, gid }], groups: [{ name: "me", gid, members: [] }], local: false };
+    expect(install({ accounts: notPrivate })).toMatchObject({ ok: false, reason: "unsafe" });
+    expect(existsSync(path())).toBe(false);
   });
 
   it("keeps another account's line that this account cannot read", () => {

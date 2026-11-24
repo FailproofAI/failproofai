@@ -468,6 +468,40 @@ export function untrustedPathReason(
 export interface CodexAccountsDb {
   users: Array<{ name: string; uid: number; gid: number }>;
   groups: Array<{ name: string; gid: number; members: string[] }>;
+  /**
+   * Whether those files are the whole story: no other source (LDAP, SSSD,
+   * NIS, winbind) can add an account to a group without appearing in them.
+   */
+  local: boolean;
+}
+
+/** NSS sources whose accounts are all in the files, or created by root alone (systemd's userdb). */
+const LOCAL_NSS_SOURCES = new Set(["files", "compat", "systemd"]);
+
+/**
+ * Whether /etc/nsswitch.conf resolves accounts and groups only from local
+ * sources. No file, or any other source, is not local: a directory service
+ * can then give an account this group without /etc/passwd or /etc/group
+ * knowing.
+ */
+function identityIsLocal(): boolean {
+  let conf: string;
+  try {
+    conf = readFileSync("/etc/nsswitch.conf", "utf8");
+  } catch {
+    return false;
+  }
+  for (const db of ["passwd", "group"]) {
+    const line = conf.split("\n").find((l) => new RegExp(`^\\s*${db}\\s*:`).test(l));
+    if (!line) return false;
+    const sources = line
+      .slice(line.indexOf(":") + 1)
+      .replace(/\[[^\]]*\]/g, " ")
+      .split(/\s+/)
+      .filter(Boolean);
+    if (sources.length === 0 || sources.some((source) => !LOCAL_NSS_SOURCES.has(source))) return false;
+  }
+  return true;
 }
 
 function readAccountsDb(deps: CodexSystemDeps): CodexAccountsDb {
@@ -482,7 +516,10 @@ function readAccountsDb(deps: CodexSystemDeps): CodexAccountsDb {
       return [];
     }
   };
+  // `compat`'s +/- lines pull accounts in from NIS.
+  const nis = [...rows("/etc/passwd"), ...rows("/etc/group")].some((f) => /^[+-]/.test(f[0] ?? ""));
   return {
+    local: identityIsLocal() && !nis,
     users: rows("/etc/passwd")
       .filter((f) => f.length >= 4)
       .map((f) => ({ name: f[0], uid: Number(f[2]), gid: Number(f[3]) })),
@@ -496,9 +533,11 @@ function readAccountsDb(deps: CodexSystemDeps): CodexAccountsDb {
  * Whether `gid` is `uid`'s own private group, which a umask of 002 makes safe
  * to leave writing its files: its primary group, named after it, no other
  * account's primary group, and listing no other member. Only what /etc/passwd
- * and /etc/group say counts, so a group they cannot vouch for is not private.
+ * and /etc/group say counts, and only on a machine whose accounts all come
+ * from them: a group they cannot vouch for is not private.
  */
 function isPrivateGroup(uid: number, gid: number, db: CodexAccountsDb): boolean {
+  if (!db.local) return false;
   const user = db.users.find((u) => u.uid === uid);
   if (!user || user.gid !== gid) return false;
   const group = db.groups.find((g) => g.gid === gid);
@@ -1159,8 +1198,10 @@ export function installCodexSystemHooks(
     // its own goes too, and so does an earlier block that runs this account's
     // install for every account. Another account's earlier block, or one this
     // account cannot read, is left to that account.
+    // Its program is this account's, or no account's (root's, or gone): not another account's to keep.
     const earlierMine =
-      (earlierInfo?.kind === "account" || earlierInfo?.kind === "none") && earlierInfo.owners.has(self.uid);
+      (earlierInfo?.kind === "account" || earlierInfo?.kind === "none") &&
+      (earlierInfo.owners.has(self.uid) || (earlierInfo.kind === "none" && earlierInfo.owners.size === 0));
     if (runnerAccounts(state).some((a) => a.uid === self.uid) || earlierMine) {
       const form = state.form!;
       const block = form.kind === "direct" && others.length > 0 ? retargetedBlock(form, runner) : null;

@@ -227,7 +227,8 @@ async function loadSingleFile(
       return null;
     }
 
-    const entryTmp = absPath + tmpSuffix;
+    const commonJsEntry = absPath + tmpSuffix + ".cjs";
+    const entryTmp = tmpFiles.includes(commonJsEntry) ? commonJsEntry : absPath + tmpSuffix;
     const fileUrl = pathToFileURL(entryTmp).href;
     const hooksBefore = getCustomHooks().length;
     const semanticBefore = getSemanticRegistrations().length;

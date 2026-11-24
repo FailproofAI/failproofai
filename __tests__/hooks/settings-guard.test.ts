@@ -1100,6 +1100,8 @@ describe("block-failproofai-commands — review round seven", () => {
     symlinkSync(settings(), join(p7, "my cfg.json"));
     symlinkSync(join(h7, ".claude", "subdir"), join(p7, "clink"));
     symlinkSync(join(pkg7, "hermes-plugin"), join(h7, ".hermes", "plugins", "failproofai"));
+    mkdirSync(join(h7, ".claude", "x"), { recursive: true });
+    symlinkSync(join(h7, ".claude", "x"), join(p7, "physical-link"));
     outerHome = process.env.HOME;
     outerPackageRoot = process.env.FAILPROOFAI_PACKAGE_ROOT;
     process.env.HOME = h7;
@@ -1173,6 +1175,40 @@ describe("block-failproofai-commands — review round seven", () => {
     expect(await bash(`cd -P clink/.. && cp /tmp/x settings.json`, p7)).toBe(true);
     expect(await bashDecision(`cd clink/.. && cp /tmp/x settings.json`, p7)).toBe("allow");
     expect(await bashDecision(`mkdir -p build && cd build && cp /tmp/x settings.json`, p7)).toBe("allow");
+  });
+
+  // hermes round 3.
+  it.each([
+    `codex features disable "\${UNSET:-hooks}"`,
+    `codex features disable \${UNSET:-ho}oks`,
+    `F=1; codex features disable \${F:+hooks}`,
+  ])("reads a parameter default in a hooks-off command: %s", async (command) => {
+    const result = await run("Bash", { command });
+    expect(result.decision).toBe("deny");
+    expect(result.reason).toMatch(/Turning an agent's hooks off/);
+  });
+
+  it("keeps a message that quotes a parameter default a message", async () => {
+    expect(await bashDecision(`git commit -m "codex features disable \${X:-hooks} is refused"`)).toBe("allow");
+  });
+
+  it.each([
+    `cd ~/.claude; pushd -n /tmp; cp /tmp/settings.json settings.json`,
+    `pushd ~/.claude; popd -n; cp /tmp/settings.json settings.json`,
+    `cd ~/.claude; cd /tmp; cd /missing-r8; cd -; cp /tmp/settings.json settings.json`,
+    `pushd ~/.claude; pushd /tmp; pushd; cp /tmp/settings.json settings.json`,
+    `pushd ~/.claude; pushd /tmp; pushd +1; cp /tmp/settings.json settings.json`,
+  ])("knows a directory command that leaves the shell, or OLDPWD, in place: %s", async (command) => {
+    expect(await bash(command, p7)).toBe(true);
+  });
+
+  it("still follows an ordinary pushd and popd", async () => {
+    expect(await bashDecision(`pushd /tmp && ls && popd && cp /tmp/x settings.json`, p7)).toBe("allow");
+  });
+
+  it("resolves git -C the way chdir walks it", async () => {
+    expect(await bash(`git -C physical-link/.. log -1 --format='format:{"disableAllHooks":true}' --output=settings.json`, p7)).toBe(true);
+    expect(await bashDecision(`git -C physical-link log -1 --output=/tmp/out.txt`, p7)).toBe("allow");
   });
 
   it("reads an empty heredoc delimiter the way bash does", async () => {

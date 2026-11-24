@@ -715,22 +715,28 @@ function gitRepositoryDirs(gitWords: string[], cwds: ReadonlyArray<string | unde
   if (chain.length === 0) return [];
   const dirs = new Set<string>();
   for (const cwd of cwds) {
-    let dir: string | undefined = cwd;
-    let relativeChain = "";
-    for (const step of chain) {
-      const next = cdDestination(dir, step);
-      if (next !== undefined) {
-        dir = next;
-        relativeChain = "";
-      } else if (dir === undefined && isRelativeShellWord(step) && !/[$`]/.test(step)) {
-        relativeChain = posix.join(relativeChain, step);
-      } else {
-        dir = undefined;
-        relativeChain = "";
+    // As text, and as chdir walks it: `-C link/..` with `link -> ~/.claude/x`
+    // is ~/.claude to git, whatever the text says.
+    for (const physical of [false, true]) {
+      let dir: string | undefined = cwd;
+      let relativeChain = "";
+      for (const step of chain) {
+        const literal = !/[$`]/.test(step);
+        const walked = physical && literal ? physicalAgentPath(step, dir) : null;
+        const next = walked ?? cdDestination(dir, step);
+        if (next !== undefined) {
+          dir = next;
+          relativeChain = "";
+        } else if (dir === undefined && isRelativeShellWord(step) && literal) {
+          relativeChain = posix.join(relativeChain, step);
+        } else {
+          dir = undefined;
+          relativeChain = "";
+        }
       }
+      if (dir !== undefined) dirs.add(dir);
+      else if (relativeChain) dirs.add(relativeChain);
     }
-    if (dir !== undefined) dirs.add(dir);
-    else if (relativeChain) dirs.add(relativeChain);
   }
   return [...dirs];
 }
@@ -3046,7 +3052,21 @@ function destroysProtectedPath(command: string, target: ProtectedPathTarget, dep
           const before = walkCwds;
           let after: ReadonlyArray<string | undefined> = before;
           let mayFail = false;
-          if (head === "popd") {
+          const stackWords = head === "cd" ? [] : quoteAwareCommandWords(simple).words.slice(1);
+          // `-n` changes the stack and leaves the shell where it is; `+N`/`-N`
+          // rotate the stack, so any entry of it may end up where the shell stands.
+          const stackOnly = stackWords.includes("-n");
+          const rotation = stackWords.some((w) => /^[+-]\d+$/.test(w));
+          const stackDirs = (): Array<string | undefined> => {
+            const dirs: Array<string | undefined> = [];
+            for (let entry = dirStack; entry !== null; entry = entry.below) dirs.push(...entry.dirs);
+            return dirs;
+          };
+          if (head === "popd" && stackOnly) {
+            if (dirStack !== null) dirStack = dirStack.below;
+          } else if (rotation) {
+            if (!stackOnly) after = [...before, ...stackDirs()];
+          } else if (head === "popd") {
             // `popd` returns to wherever the shell was before `pushd`, which
             // ends the window as surely as a `cd` out does. Without it every
             // command for the rest of the line was judged as if it stood in
@@ -3056,6 +3076,12 @@ function destroysProtectedPath(command: string, target: ProtectedPathTarget, dep
               cwdInState = false;
               after = dirStack.dirs;
               dirStack = dirStack.below;
+            }
+          } else if (head === "pushd" && !stackWords.some((w) => !w.startsWith("-") && !/^[+-]\d+$/.test(w))) {
+            // A bare `pushd` swaps the shell's directory with the top of the stack.
+            if (dirStack !== null) {
+              after = dirStack.dirs;
+              dirStack = { dirs: before, below: dirStack.below };
             }
           } else {
             const operands = quoteAwareCommandWords(simple).words.slice(1);
@@ -3078,9 +3104,20 @@ function destroysProtectedPath(command: string, target: ProtectedPathTarget, dep
               );
               mayFail = after.some((dir) => dir === undefined || !isDirectoryNow(dir));
             }
-            if (head === "pushd") dirStack = { dirs: before, below: dirStack };
+            if (head === "pushd") {
+              if (stackOnly) {
+                // `pushd -n DIR` files DIR under the top and stays put.
+                dirStack = { dirs: after, below: dirStack };
+                after = before;
+                mayFail = false;
+              } else {
+                dirStack = { dirs: before, below: dirStack };
+              }
+            }
           }
-          oldCwds = before;
+          // A `cd` that fails leaves OLDPWD alone too: after `cd /missing`,
+          // `cd -` may still return to where an earlier `cd` left.
+          oldCwds = mayFail ? [...new Set([...before, ...oldCwds])] : after === before ? oldCwds : before;
           walkCwds = [...new Set(mayFail || simples.length > 1 ? [...after, ...before] : after)];
           // A handful of places is plenty; past that, the walk stops naming them.
           if (walkCwds.length > 4) {
@@ -4279,10 +4316,17 @@ function agentCliArgvLines(lexed: ShellLex): string {
   for (const [, name, value] of lexed.readable.matchAll(/(?:^|[\s;&|(])(?:export\s+)?([A-Za-z_][A-Za-z0-9_]*)=("[^"]*"|'[^']*'|[^\s;&|)]*)/g)) {
     values.set(name, value.replace(/^["']|["']$/g, ""));
   }
+  // `${NAME:-word}`, `${NAME=word}`, `${NAME:+word}`…: a variable this line
+  // does not set may be unset, so its default word is what the command gets
+  // (`${UNSET:-ho}oks` is `hooks`); a set one gives its value.
   const expand = (text: string): string =>
-    values.size === 0
-      ? text
-      : text.replace(/\$\{([A-Za-z_][A-Za-z0-9_]*)\}|\$([A-Za-z_][A-Za-z0-9_]*)/g, (whole, braced?: string, bare?: string) => values.get(braced ?? bare ?? "") ?? whole);
+    text
+      .replace(/\$\{([A-Za-z_][A-Za-z0-9_]*):?([-=+?])([^{}]*)\}/g, (_whole, name: string, op: string, word: string) => {
+        const value = values.get(name);
+        if (op === "+") return value === "" ? "" : word;
+        return value === undefined || value === "" ? word : value;
+      })
+      .replace(/\$\{([A-Za-z_][A-Za-z0-9_]*)\}|\$([A-Za-z_][A-Za-z0-9_]*)/g, (whole, braced?: string, bare?: string) => values.get(braced ?? bare ?? "") ?? whole);
   const lines: string[] = [];
   for (const [start, end] of cutRanges(lexed.splittable, PIPELINE_SEPARATORS)) {
     const splitPipeline = lexed.splittable.slice(start, end);

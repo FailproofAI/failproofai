@@ -259,6 +259,35 @@ impl CollectorHandle {
     }
 }
 
+/// A handle dropped while its owner panics stops its collector instead of
+/// abandoning it running.
+///
+/// The daemon's collector manager is restarted after a panic. Unwinding drops
+/// the handles it held, and a handle that only detached left that collector
+/// running: the restarted manager then started a second one over the same
+/// queues and cursors. Bounded by the flush budget, like process exit, so a
+/// wedged collector cannot hang the unwind. An ordinary drop is unchanged.
+impl Drop for CollectorHandle {
+    fn drop(&mut self) {
+        if !std::thread::panicking() || self.thread.is_none() {
+            return;
+        }
+        let handle = CollectorHandle {
+            thread: self.thread.take(),
+            stop: self.stop.clone(),
+            metrics: self.metrics.clone(),
+        };
+        if let Err(mut wedged) = handle.stop_within(crate::DEFAULT_FLUSH_BUDGET) {
+            // Detach before it drops: dropping it as-is would re-enter this
+            // `drop` (still panicking, thread still attached) and wait again,
+            // for ever on a wedged collector, so the unwind never ended.
+            // Asked to stop, it still exits on its own.
+            drop(wedged.thread.take());
+            tracing::warn!("a collector abandoned by a panic did not stop within its flush budget");
+        }
+    }
+}
+
 /// Start the collector on its own thread with its own Tokio runtime.
 ///
 /// `shutdown` is the daemon's existing flag, observed rather than owned, so a

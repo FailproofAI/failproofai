@@ -363,6 +363,28 @@ export function readCloudAgentScopeRequired(): boolean {
 }
 
 /**
+ * {@link readCloudAgentScopeRequired}, failing the other way: true unless the
+ * deployment is KNOWN not to target agents. For deciding whether an answer
+ * that names no agent may be used, where a manifest that exists but cannot be
+ * read must count as targeted. A machine in `oss` mode enforces no deployment.
+ */
+export function cloudDeploymentMayTargetAgents(): boolean {
+  if (disconnectedByConfig()) return false;
+  let text: string;
+  try {
+    text = readFileSync(resolve(cloudManagedPolicyRoot(), "active.json"), "utf8");
+  } catch (err) {
+    return (err as NodeJS.ErrnoException).code !== "ENOENT";
+  }
+  try {
+    const version = (JSON.parse(text) as { schemaVersion?: unknown })?.schemaVersion;
+    return !(typeof version === "number" && Number.isInteger(version) && version < 3);
+  } catch {
+    return true;
+  }
+}
+
+/**
  * Cloud's Jev mode from `active.json`, or null — no deployment, no mode, or a
  * file that cannot be read (which is then simply not a mode: the local
  * `jev.json` decides, as it does on a machine Cloud never touched). Cheap and

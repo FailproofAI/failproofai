@@ -330,6 +330,8 @@ export function comparableHandlerOutcome(
     row = { ...activity };
     delete row.timestamp;
     delete row.durationMs;
+    // Timing as well: `timestamp - durationMs`.
+    delete row.startedAt;
   }
   return {
     out: { exitCode: outcome.exitCode, stdout: outcome.stdout, stderr: outcome.stderr, evaluation },

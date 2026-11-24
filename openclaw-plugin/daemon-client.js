@@ -15,12 +15,17 @@
  * Self-contained on purpose — node built-ins only, nothing imported from
  * outside this directory — because the capture copies nothing else.
  */
+import { readFile } from "node:fs/promises";
 import { createConnection } from "node:net";
 import { performance } from "node:perf_hooks";
 import { homedir } from "node:os";
 import { resolve } from "node:path";
 
 export const PROTOCOL_VERSION = 2;
+// Oldest daemon version this plugin falls back to (crates/fpai-ipc
+// MIN_PROTOCOL_VERSION), and the first that carries agentSettingsPath.
+export const MIN_PROTOCOL_VERSION = 1;
+const AGENT_SETTINGS_PATH_SINCE = 2;
 // The daemon's frame limit (crates/fpai-ipc/src/framing.rs), both ways.
 const MAX_FRAME_BYTES = 16 * 1024 * 1024;
 // The payload limit the CLI applies to its stdin (handler.ts, read-stdin.ts).
@@ -55,6 +60,34 @@ const PROTOCOL_MISMATCH_MESSAGE =
 const UNREACHABLE_MESSAGE =
   "failproofaid could not be reached. This machine is configured to run hooks through it " +
   "— check the daemon (see `failproofai config`) rather than retrying blindly.";
+
+// active.json schema that can target policies at agents (crates/failproofaid
+// cloud_policies.rs SCOPED_DESIRED_STATE_SCHEMA_VERSION).
+const SCOPED_SCHEMA_VERSION = 3;
+
+/**
+ * Whether this machine's Cloud deployment targets policies at agents. An older
+ * daemon evaluates without naming the agent, and a targeted policy does not
+ * apply to an unknown one, so such a machine is never asked in the older
+ * version. A deployment that exists but cannot be read counts as targeted.
+ */
+export async function agentTargetedDeployment(env = process.env, home = homedir()) {
+  const dir =
+    env.FAILPROOFAI_CLOUD_POLICY_DIR ||
+    resolve(env.FAILPROOFAI_HOME || resolve(home, ".failproofai"), "policies", "cloud-policies");
+  let text;
+  try {
+    text = await readFile(resolve(dir, "active.json"), "utf8");
+  } catch (err) {
+    return err?.code !== "ENOENT";
+  }
+  try {
+    const version = JSON.parse(text)?.schemaVersion;
+    return !(Number.isInteger(version) && version < SCOPED_SCHEMA_VERSION);
+  } catch {
+    return true;
+  }
+}
 
 /** Mirrors `daemonSocket()` in src/hooks/fp-home.ts. */
 export function daemonSocketPath(env = process.env, home = homedir()) {
@@ -92,12 +125,12 @@ function failed(failure, message) {
  * OpenClaw the evaluator always exits 0 and prints either nothing (allow) or
  * one JSON object, so anything else is an evaluation failure — never an allow.
  */
-function readHookResult(message) {
+function readHookResult(message, protocolVersion) {
   if (message === null || typeof message !== "object" || Array.isArray(message)) {
     return failed("invalid", "failproofaid returned a non-object response");
   }
-  if (message.protocolVersion !== PROTOCOL_VERSION) {
-    return failed("protocol-mismatch", PROTOCOL_MISMATCH_MESSAGE);
+  if (message.protocolVersion !== protocolVersion) {
+    return { ...failed("protocol-mismatch", PROTOCOL_MISMATCH_MESSAGE), daemonVersion: message.protocolVersion };
   }
   if (message.type === "error") {
     const detail = typeof message.message === "string" && message.message ? message.message : "no detail";
@@ -158,8 +191,34 @@ function isVerdict(verdict) {
  * CLI discards an oversized stdin and evaluates an empty payload;
  * `oversized: true` lets the caller say so instead of discarding it silently.
  */
-export function requestHookVerdict(request) {
-  return requestWithRetry(request);
+export async function requestHookVerdict(request) {
+  // One deadline for the whole call, shared by every attempt below (#1029).
+  const startedAt = performance.now();
+  const budgetMs = request.responseTimeoutMs ?? RESPONSE_TIMEOUT_MS;
+  const clock = { startedAt, budgetMs, deadline: startedAt + budgetMs };
+
+  const first = await requestWithRetry(PROTOCOL_VERSION, request, clock);
+  // An older daemon still inside the supported range: ask again in its version
+  // rather than block every call until it is replaced.
+  const older = first.ok ? undefined : first.daemonVersion;
+  if (
+    !Number.isInteger(older) ||
+    older < MIN_PROTOCOL_VERSION ||
+    older >= PROTOCOL_VERSION ||
+    (await agentTargetedDeployment())
+  ) {
+    if (!first.ok) delete first.daemonVersion;
+    return first;
+  }
+  const retried = await requestWithRetry(older, request, clock);
+  // Asked again after the answer: a targeted deployment activated while the
+  // older daemon was evaluating makes its answer unsafe too.
+  if (await agentTargetedDeployment()) {
+    delete first.daemonVersion;
+    return first;
+  }
+  if (!retried.ok) delete retried.daemonVersion;
+  return retried;
 }
 
 /**
@@ -168,7 +227,7 @@ export function requestHookVerdict(request) {
  * evaluate a call twice. Every other failure came from a daemon that saw the
  * request, and is returned as it is.
  *
- * Both attempts share ONE deadline of `responseTimeoutMs`, set before the
+ * Every attempt shares ONE deadline of `responseTimeoutMs`, set before the
  * first and passed to each attempt as an absolute time: an attempt arms its
  * timer with what is left of it just before connecting (so encoding time
  * counts too), and the retry is skipped when the pause before it would use the
@@ -180,14 +239,11 @@ export function requestHookVerdict(request) {
  * (gateway log only) names both attempts, so the first attempt's cause is
  * never lost behind the second's.
  */
-async function requestWithRetry(request) {
-  const startedAt = performance.now();
-  const budgetMs = request.responseTimeoutMs ?? RESPONSE_TIMEOUT_MS;
-  const deadline = startedAt + budgetMs;
+async function requestWithRetry(protocolVersion, request, { startedAt, budgetMs, deadline }) {
   const noTimeToRetry = (first) =>
     ({ ...first, detail: `${first.detail}; no time left in the ${budgetMs} ms budget to retry` });
 
-  const first = await requestOnce({ ...request, deadline, budgetMs });
+  const first = await requestOnce(protocolVersion, { ...request, deadline, budgetMs });
   if (first.ok || first.failure !== "unreachable") return first;
 
   const delayMs = request.retryDelayMs ?? UNREACHABLE_RETRY_DELAY_MS;
@@ -195,7 +251,7 @@ async function requestWithRetry(request) {
   await new Promise((resume) => setTimeout(resume, delayMs));
   if (deadline - performance.now() <= 0) return noTimeToRetry(first);
 
-  const second = await requestOnce({ ...request, deadline, budgetMs });
+  const second = await requestOnce(protocolVersion, { ...request, deadline, budgetMs });
   if (second.ok) return second;
   return {
     ...second,
@@ -205,7 +261,7 @@ async function requestWithRetry(request) {
   };
 }
 
-function requestOnce({
+function requestOnce(protocolVersion, {
   event,
   payload,
   cwd = "",
@@ -230,12 +286,12 @@ function requestOnce({
       body = Buffer.from(
         JSON.stringify({
           type: "hook",
-          protocolVersion: PROTOCOL_VERSION,
+          protocolVersion,
           hookEvent: event,
           cli: "openclaw",
           stdin,
           ...(typeof cwd === "string" && cwd ? { cwd } : {}),
-          agentSettingsPath: agentSettingsPath || "",
+          ...(protocolVersion >= AGENT_SETTINGS_PATH_SINCE ? { agentSettingsPath: agentSettingsPath || "" } : {}),
         }),
         "utf8",
       );
@@ -308,7 +364,7 @@ function requestOnce({
         finish(failed("invalid", "failproofaid returned a response that is not JSON"));
         return;
       }
-      const result = readHookResult(message);
+      const result = readHookResult(message, protocolVersion);
       finish(result.ok && oversized ? { ...result, oversized: true } : result);
     });
     socket.on("error", (err) => {

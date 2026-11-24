@@ -34,6 +34,17 @@ const OBSERVATION_EVENTS = [
 
 const HOOK_OPTIONS = { priority: 100, timeoutMs: 60_000 };
 
+/** OpenClaw's id for the tool call a hook is about (on the event and the tool
+ *  context of before/after_tool_call), the id its transcript records the call
+ *  under. Sent as `tool_use_id` so the check joins that call in Cloud instead
+ *  of sitting beside it by timestamp alone. */
+function toolCallIdOf(p, c) {
+  for (const id of [p.toolCallId, c.toolCallId]) {
+    if (typeof id === "string" && id.length > 0) return id;
+  }
+  return undefined;
+}
+
 /** Claude-shaped stdin base. Extra keys are ignored by the evaluator's payload
  *  parser; they're forwarded for activity attribution. */
 function baseMeta(payload, ctx, config, workspace) {
@@ -41,6 +52,7 @@ function baseMeta(payload, ctx, config, workspace) {
   const c = ctx || {};
   return {
     session_id: c.sessionId ?? p.sessionId ?? c.sessionKey ?? p.sessionKey,
+    tool_use_id: toolCallIdOf(p, c),
     cwd: workspace.resolveWorkspace(p, c, config) ?? process.cwd(),
     transcript_path: p.transcriptPath,
     stop_hook_active: p.stopHookActive === true,

@@ -1117,6 +1117,12 @@ export interface LayoutCheckDeps {
   daemonStatus?: () => DaemonServiceStatus;
   /** How to draw the banners. Defaults to what stderr can show, where they print. */
   render?: RenderOpts;
+  /**
+   * The command is setup (`failproofai config` without --status, --pause and
+   * the like), which brings the daemon to this version itself: telling the
+   * person to run `failproofai update` first would be wrong advice.
+   */
+  daemonUpdatedByCommand?: boolean;
 }
 
 /**
@@ -1164,7 +1170,7 @@ export async function checkLayoutForCli(deps: LayoutCheckDeps = {}): Promise<Lay
     // Read AFTER the migration: on a machine coming from layout 1 or 2 the
     // config this reads is the one the migration just carried across, so asking
     // any earlier would read a file that is about to move.
-    const daemonHint = staleDaemonHint(kit);
+    const daemonHint = deps.daemonUpdatedByCommand ? [] : staleDaemonHint(kit);
     return {
       state,
       fatal: false,
@@ -1244,7 +1250,7 @@ export async function checkLayoutForCli(deps: LayoutCheckDeps = {}): Promise<Lay
     state,
     fatal: false,
     didReset: false,
-    lines: [...(await healDaemonFlag(deps, kit)), ...staleDaemonHint(kit)],
+    lines: [...(await healDaemonFlag(deps, kit)), ...(deps.daemonUpdatedByCommand ? [] : staleDaemonHint(kit))],
   };
 }
 

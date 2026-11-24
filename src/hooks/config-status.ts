@@ -27,7 +27,6 @@ import { readCloudCredentials } from "./cloud-enrollment";
 import { CODEX_UNTRUSTED_NOTICE, codexHookTrust, type CodexHookTrust } from "./codex-system-hooks";
 import { describeMachine } from "./cloud-enrollment-cli";
 import { cloudBaseFor } from "./cloud-connection";
-import { listActiveCloudManagedPolicies } from "./cloud-managed-policies";
 import { readIngestCredential } from "./collector-config";
 import { discoverPolicyFiles } from "./custom-hooks-loader";
 import { daemonSocketPresent, isDaemonConfigured } from "./daemon-client";
@@ -44,7 +43,7 @@ import { isAgentTraced, readConfig, readCredentials, readVersionFile } from "./f
 import { collectorHealthFile, customPoliciesDir } from "./fp-home";
 import { configuredCustomPolicyPaths, findProjectConfigDir, readMergedHooksConfig } from "./hooks-config";
 import { detectInstalledClis, listInstallableIds } from "./integrations";
-import { notEnforcingReason, type NotEnforcingReason } from "./manager";
+import { cloudPolicyStatus, notEnforcingReason, type NotEnforcingReason } from "./manager";
 import { hasInstalledRegexPacks, readInstalledPacks } from "./pack-manifest";
 import { CORE_SOURCE } from "./pack-store";
 import { formatDuration, listActivePauses } from "./session-pause";
@@ -84,6 +83,8 @@ export type StatusCloud =
   | {
       kind: "file";
       host: string;
+      /** The dashboard as configured, path included. */
+      url?: string;
       /** The org as the server named it at connect time, when it did. */
       org?: string;
       machine?: string;
@@ -258,17 +259,12 @@ export function summarizePolicySources(cwd?: string): StatusPolicies {
     // An unreadable manifest is reported by `failproofai policies`.
   }
 
-  try {
-    // Every assignment, whatever agent it targets: a hook's agent scope applied
-    // with no agent hid each targeted policy ("None installed" beside a
-    // deployment that enforces), the status twin of B4.
-    for (const artifact of listActiveCloudManagedPolicies()) {
-      if (artifact.effect === "observe") summary.observing++;
-      else summary.cloudOn++;
-    }
-  } catch {
-    // No deployment, or an unreadable one: nothing comes from there.
-  }
+  // Every assignment, whatever agent it targets, JS and Cloud Jev alike:
+  // counting JS alone showed "None installed" beside a Jev-only deployment the
+  // line below it called enforcing.
+  const cloud = cloudPolicyStatus();
+  summary.cloudOn += cloud.count;
+  summary.observing += cloud.observingCount;
 
   // Deduplicated by path: run from the home directory, the project's convention
   // folder IS the global one.
@@ -323,6 +319,7 @@ export async function gatherStatusFacts(deps: StatusDeps = {}): Promise<StatusFa
       cloud = {
         kind: "file",
         host,
+        url: base,
         ...(orgName ? { org: orgName } : {}),
         ...(machineId ? { machine: describeMachine(machineId, creds?.machineLabel) } : {}),
         pullsPolicies: Boolean(creds),
@@ -434,9 +431,13 @@ export function pickStatusAttention(facts: StatusFacts): StatusAttention | null 
         ? "failproofai config"
         : facts.notEnforcing === "observe-only"
           ? "failproofai policies"
-          : policies.packsInstalled > 0
-            ? "failproofai policies add"
-            : `failproofai policies add ${CORE_SOURCE}`;
+          : cloud.kind === "env"
+            ? cloud.url
+            : cloud.kind === "file" && cloud.pullsPolicies
+              ? (cloud.url ?? cloud.host)
+            : policies.packsInstalled > 0
+              ? "failproofai policies add"
+              : `failproofai policies add ${CORE_SOURCE}`;
     return { severity: "caution", text: "Policies are not enforcing yet.", fix };
   }
   if (facts.codex?.kind === "untrusted") {
@@ -530,20 +531,31 @@ export function renderStatusScreen(facts: StatusFacts, opts: ScreenKitOpts & { c
     if (!health.delivering) return `${kit.off} Not delivering, failproofaid has no key`;
     // Batches an earlier key had refused wait for the daemon to re-send them
     // with the key that works now: queued, not refused.
-    const pending = queued + (refused.resending ?? 0);
+    // So do batches an outage parked: the daemon retries them itself.
+    const retrying = refused.retrying ?? 0;
+    const pending = queued + (refused.resending ?? 0) + retrying;
     const backlog = pending === 0 ? "nothing queued" : `${many(pending, "batch", "batches")} queued`;
+    // A long outage moves the spool into `failed/` batch by batch, so the spool
+    // alone always looks young: the parked batches' age counts too.
+    const waiting = queued + retrying;
+    const oldestWaitingMs = Math.max(
+      queued > 0 ? (oldestQueuedMs ?? 0) : 0,
+      retrying > 0 ? (refused.oldestAgeMs ?? 0) : 0,
+    );
     const stuck =
-      queued > 0 &&
-      (oldestQueuedMs ?? 0) > STATUS_QUEUE_STUCK_MS &&
+      waiting > 0 &&
+      oldestWaitingMs > STATUS_QUEUE_STUCK_MS &&
       (health.lastOkAt === undefined || now - health.lastOkAt > STATUS_QUEUE_STUCK_MS);
     if (stuck) {
       const last = health.lastOkAt !== undefined ? `last delivered ${ago(health.lastOkAt)}` : "nothing delivered since failproofaid started";
-      return kit.caution(`${many(queued, "batch", "batches")} queued, oldest ${formatDuration(oldestQueuedMs ?? 0)}, ${last}`);
+      return kit.caution(`${many(waiting, "batch", "batches")} queued, oldest ${formatDuration(oldestWaitingMs)}, ${last}`);
     }
     const lastEvent = health.lastEventAt !== undefined ? `last event ${ago(health.lastEventAt)}` : "no events since failproofaid started";
     return `${kit.on} Healthy, ${lastEvent}, ${backlog}`;
   };
 
+  // Its policies are deployed from Cloud, so "install some" is the wrong advice.
+  const cloudManaged = cloud.kind === "env" || (cloud.kind === "file" && cloud.pullsPolicies);
   const policiesValue = (): string => {
     const clauses: string[] = [];
     if (policies.packOn > 0) {
@@ -558,7 +570,8 @@ export function renderStatusScreen(facts: StatusFacts, opts: ScreenKitOpts & { c
     if (policies.observing > 0) clauses.push(`${policies.observing} observing`);
     if (policies.refusedPacks > 0) clauses.push(`${many(policies.refusedPacks, "pack")} will not load`);
     if (clauses.length > 0) return clauses.join(", ");
-    return policies.anyPack ? `0 on from ${policies.anyPack}` : "None installed";
+    if (policies.anyPack) return `0 on from ${policies.anyPack}`;
+    return cloudManaged ? "None deployed from Cloud" : "None installed";
   };
 
   // Only when failproofai's Codex hooks are installed at user scope: whether

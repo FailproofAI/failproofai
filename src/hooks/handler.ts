@@ -94,6 +94,29 @@ import { isHealthProbe } from "./health-probe";
 import { readRuntimeAgentIdentity, runtimeAgentSettingsPath } from "./agent-roster";
 import type { AgentIdentity } from "./agent-targets";
 
+/** Set once the legacy-shim warning has been logged in this process. */
+let legacyShimWarned = false;
+
+/**
+ * The agent's own id for the tool call a hook payload is about: Claude, Devin,
+ * Factory and Pi (via its shim) send `tool_use_id`, Devin also
+ * `tool_call_id`, Hermes nests it under `hermes.tool_call_id`. It is the id the
+ * agent's transcript records that call under, so a hook event that carries it
+ * joins the transcript events for the same call instead of being placed
+ * beside them by timestamp alone.
+ */
+export function toolCallIdOf(parsed: Record<string, unknown>): string | undefined {
+  const hermes = parsed.hermes;
+  const nested =
+    hermes && typeof hermes === "object" && !Array.isArray(hermes)
+      ? (hermes as Record<string, unknown>).tool_call_id
+      : undefined;
+  for (const value of [parsed.tool_use_id, parsed.tool_call_id, parsed.toolCallId, parsed.toolUseId, nested]) {
+    if (typeof value === "string" && value.length > 0 && value.length <= 256) return value;
+  }
+  return undefined;
+}
+
 /**
  * Canonicalize an event name to PascalCase. Codex sends snake_case event names
  * on stdin and as the --hook arg; Cursor sends camelCase (`preToolUse`,
@@ -648,6 +671,9 @@ export async function evaluateHookEvent(
   opts?: EvaluateHookEventOptions,
 ): Promise<HookEventOutcome> {
   const startTime = performance.now();
+  // Wall clock at arrival, for the activity row's `startedAt`. Taken here, not
+  // derived from `durationMs`, which is measured before the work after it.
+  const arrivedAt = Date.now();
   // A home from another layout resolves to no global config, so every builtin
   // silently stops firing — the machine looks protected and is not. Say so on
   // every call rather than deleting anything (a hook is unattended) or denying
@@ -796,7 +822,10 @@ export async function evaluateHookEvent(
       // so an empty list still registers the guard — which is exactly what this
       // build should contribute once packs carry everything else.
       registerBuiltinPolicies(activePause ? [] : legacyNames);
-      if (legacyNames.length > 0) {
+      // Once per process: the warm worker evaluates every hook on the machine,
+      // and repeating this on each one buried the daemon log.
+      if (legacyNames.length > 0 && !legacyShimWarned) {
+        legacyShimWarned = true;
         hookLogWarn(
           `enforcing ${legacyNames.length} policies from this build because no pack is installed — ` +
             `run \`failproofai policies add FailproofAI/policies\` to move them into a real pack`,
@@ -1240,8 +1269,16 @@ export async function evaluateHookEvent(
     const jevOrigin = result.policyName && result.twoTier?.decidedByJev ? result.twoTier.jevOrigin : undefined;
 
     // Persist activity to disk (visible in /policies activity tab)
+    const writtenAt = Date.now();
+    const toolCallId = toolCallIdOf(parsed);
     const activityEntry = {
-      timestamp: Date.now(),
+      timestamp: writtenAt,
+      // When the hook arrived. `timestamp` is when its evaluation ENDED, so a
+      // hook start ordered by it sorted late by the whole evaluation.
+      startedAt: Math.min(arrivedAt, writtenAt),
+      // The agent's own id for the tool call this hook governed, the key its
+      // transcript records the call under (see `toolCallIdOf`).
+      ...(toolCallId ? { toolCallId } : {}),
       eventType: canonicalEventType,
       integration: cli,
       toolName: (parsed.tool_name as string) ?? null,

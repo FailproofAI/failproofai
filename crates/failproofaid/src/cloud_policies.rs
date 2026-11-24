@@ -679,10 +679,11 @@ impl PolicyStore {
         if let Some(active) = &previous
             && active.deployment > desired.deployment
         {
-            eprintln!(
-                "[failproofaid] local active deployment {} is ahead of the server's {}; \
+            tracing::warn!(
+                "local active deployment {} is ahead of the server's {}; \
                  taking the server's state (the local pointer is not authority)",
-                active.deployment, desired.deployment
+                active.deployment,
+                desired.deployment
             );
         }
 
@@ -1053,9 +1054,9 @@ pub fn spawn_integrity_monitor(
             match store.repair_active_from_cache() {
                 Ok(0) => {}
                 Ok(repaired) => {
-                    eprintln!("[failproofaid] repaired {repaired} cloud-managed policy artifact(s)")
+                    tracing::info!("repaired {repaired} cloud-managed policy artifact(s)")
                 }
-                Err(err) => eprintln!("[failproofaid] cloud policy integrity error: {err}"),
+                Err(err) => tracing::warn!("cloud policy integrity error: {err}"),
             }
 
             let deadline = Instant::now() + interval;

@@ -200,6 +200,15 @@ impl SpoolWriter {
                 "dropped an event recorded before the org boundary");
             return Ok(());
         }
+        // Live tool calls, per source, for the daemon's hook watch: an agent
+        // making tool calls that never reach failproofai's hooks is running
+        // unchecked. Counted here because every transcript event passes here.
+        if self.prefix != "hooks"
+            && crate::health::is_live_tool_call(&event, crate::health::now_secs() as i64)
+        {
+            crate::health::report_live_tool_call(&self.prefix);
+        }
+
         // The single choke point every event passes through, which is why
         // redaction happens here rather than in each transform: a source
         // cannot forget it, and a new source inherits it for free. It runs

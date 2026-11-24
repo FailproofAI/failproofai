@@ -169,6 +169,16 @@ describe("hooks/delivery-health — refusals the current key has outlived", () =
 });
 
 describe("hooks/delivery-health deliveryHealthLine", () => {
+  it("counts batches an outage parked as retrying, not refused", () => {
+    park("a-0.a1.jsonl");
+    park("a-1.a4.jsonl");
+    park("a-2.a1.c422.jsonl");
+    park("a-3.a1.jsonl.poison");
+    const health = deliveryHealth(home);
+    expect(health.retrying).toBe(2);
+    expect(health.rejected).toBe(1);
+  });
+
   it("says nothing when only transient parks exist", () => {
     // The retry pass will pick these up. Reporting them would cry wolf over a
     // blip the daemon is already handling.

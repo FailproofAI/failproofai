@@ -324,6 +324,130 @@ describe("hooks/daemon-download", () => {
       expect(result.path).toBe(installedBinaryPath());
     });
 
+    // `fetch` followed redirects by itself, so an https mirror could send the
+    // download on to plain http, where the asset and SHA256SUMS can both be
+    // replaced in transit and still agree. Each hop now meets the rule the
+    // configured mirror does, checked before it is requested. (#1800 review)
+    describe("redirects", () => {
+      type Reply = { status: number; location?: string; body?: Buffer | string };
+
+      function startRoutedServer(route: (url: string, port: number) => Reply): Promise<{
+        url: string;
+        close: () => Promise<void>;
+      }> {
+        const server = createServer((req, res) => {
+          const address = server.address();
+          const port = typeof address === "object" && address ? address.port : 0;
+          const reply = route(req.url ?? "", port);
+          res.writeHead(reply.status, reply.location ? { location: reply.location } : {}).end(reply.body ?? "");
+        });
+        return new Promise((done) => {
+          server.listen(0, "127.0.0.1", () => {
+            const address = server.address();
+            const port = typeof address === "object" && address ? address.port : 0;
+            done({
+              url: `http://127.0.0.1:${port}`,
+              close: () => new Promise<void>((closed) => server.close(() => closed())),
+            });
+          });
+        });
+      }
+
+      const asset = `/v${version}/failproofaid-linux-x64.gz`;
+      const sums = `/v${version}/SHA256SUMS`;
+      const manifest = `${DIGEST}  failproofaid-linux-x64.gz\n`;
+
+      it("follows a redirect that stays on loopback, relative or absolute", async () => {
+        const server = await startRoutedServer((url, port) => {
+          if (url === asset) return { status: 302, location: "/assets/failproofaid-linux-x64.gz" };
+          if (url === sums) return { status: 307, location: `http://127.0.0.1:${port}/assets/SHA256SUMS` };
+          if (url === "/assets/failproofaid-linux-x64.gz") return { status: 200, body: GZIPPED };
+          if (url === "/assets/SHA256SUMS") return { status: 200, body: manifest };
+          return { status: 404 };
+        });
+        process.env.FAILPROOFAI_DAEMON_BASE_URL = server.url;
+        try {
+          const { downloadFailproofaidBinary, installedBinaryPath } = await import(
+            "../../src/hooks/daemon-download"
+          );
+          const result = await downloadFailproofaidBinary("linux-x64");
+          expect(result.error).toBeUndefined();
+          expect(readFileSync(installedBinaryPath())).toEqual(BINARY);
+        } finally {
+          await server.close();
+        }
+      });
+
+      it("refuses a redirect to plain http on another host, without requesting it", async () => {
+        const server = await startRoutedServer((url) => {
+          if (url === asset) return { status: 302, location: "http://mirror.invalid/failproofai-linux-x64.gz" };
+          if (url === sums) return { status: 200, body: manifest };
+          return { status: 404 };
+        });
+        process.env.FAILPROOFAI_DAEMON_BASE_URL = server.url;
+        const fetchSpy = vi.spyOn(globalThis, "fetch");
+        try {
+          const { downloadFailproofaidBinary, installedBinaryPath } = await import(
+            "../../src/hooks/daemon-download"
+          );
+          const result = await downloadFailproofaidBinary("linux-x64");
+
+          expect(result.path).toBeUndefined();
+          expect(result.error).toContain("FAILPROOFAI_DAEMON_BASE_URL");
+          expect(result.error).toContain("http://mirror.invalid");
+          expect(existsSync(installedBinaryPath())).toBe(false);
+          const requested = fetchSpy.mock.calls.map((call) => String(call[0]));
+          expect(requested.some((u) => u.includes("mirror.invalid"))).toBe(false);
+        } finally {
+          fetchSpy.mockRestore();
+          await server.close();
+        }
+      });
+
+      it("lets a redirect move on to an https host", async () => {
+        // Port 1 refuses the connection, so the hop fails fast — but it was
+        // requested, which is the point: https is followed, not refused.
+        const server = await startRoutedServer((url) => {
+          if (url === asset) return { status: 302, location: "https://127.0.0.1:1/failproofaid-linux-x64.gz" };
+          if (url === sums) return { status: 200, body: manifest };
+          return { status: 404 };
+        });
+        process.env.FAILPROOFAI_DAEMON_BASE_URL = server.url;
+        const fetchSpy = vi.spyOn(globalThis, "fetch");
+        try {
+          const { downloadFailproofaidBinary } = await import("../../src/hooks/daemon-download");
+          const result = await downloadFailproofaidBinary("linux-x64");
+
+          expect(result.path).toBeUndefined();
+          expect(result.error).not.toContain("FAILPROOFAI_DAEMON_BASE_URL");
+          const requested = fetchSpy.mock.calls.map((call) => String(call[0]));
+          expect(requested).toContain("https://127.0.0.1:1/failproofaid-linux-x64.gz");
+        } finally {
+          fetchSpy.mockRestore();
+          await server.close();
+        }
+      });
+
+      it("gives up on a redirect loop", async () => {
+        const server = await startRoutedServer((url) => {
+          if (url === asset) return { status: 302, location: asset };
+          if (url === sums) return { status: 200, body: manifest };
+          return { status: 404 };
+        });
+        process.env.FAILPROOFAI_DAEMON_BASE_URL = server.url;
+        try {
+          const { downloadFailproofaidBinary, installedBinaryPath } = await import(
+            "../../src/hooks/daemon-download"
+          );
+          const result = await downloadFailproofaidBinary("linux-x64");
+          expect(result.error).toContain("redirected more than 10 times");
+          expect(existsSync(installedBinaryPath())).toBe(false);
+        } finally {
+          await server.close();
+        }
+      });
+    });
+
     // SHA256SUMS is published in the same release as the asset, so whoever can
     // replace one can replace both. A published build carries each binary's
     // digest in its own manifest, out of that reach. (#1675, #1800)

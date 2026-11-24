@@ -97,12 +97,19 @@ export function daemonBaseUrlProblem(): string | null {
   } catch {
     return "FAILPROOFAI_DAEMON_BASE_URL is not a valid URL";
   }
-  if (url.protocol === "https:") return null;
-  if (url.protocol === "http:" && isLoopbackHost(url.hostname)) return null;
+  if (isAllowedDownloadUrl(url)) return null;
   return (
     `FAILPROOFAI_DAEMON_BASE_URL must be an https:// URL (plain http is accepted only ` +
     `for a loopback address), not ${url.protocol}//${url.host}`
   );
+}
+
+/**
+ * The rule for the configured mirror and for every hop a redirect sends a
+ * download to: https, or plain http to a loopback address.
+ */
+function isAllowedDownloadUrl(url: URL): boolean {
+  return url.protocol === "https:" || (url.protocol === "http:" && isLoopbackHost(url.hostname));
 }
 
 /** `localhost`, 127.0.0.0/8 or ::1. The URL parser has already normalised the host. */
@@ -387,10 +394,43 @@ export function installedBinaryMismatch(key: PlatformKey): string | null {
   }
 }
 
+/** Statuses whose `Location` a download follows. GitHub's own chain is one hop. */
+const REDIRECT_STATUSES = new Set([301, 302, 303, 307, 308]);
+const MAX_REDIRECTS = 10;
+
+/**
+ * GETs `url`, following redirects by hand so that every hop is held to the
+ * rule the configured mirror is.
+ *
+ * `fetch` follows redirects by itself, and that let an https mirror send the
+ * download on to plain http: there the asset and `SHA256SUMS` can both be
+ * replaced in transit and still agree, and only a build carrying a recorded
+ * digest would notice. A refused hop is never requested.
+ */
 async function fetchBytes(url: string): Promise<Buffer> {
-  const response = await fetch(url, { signal: AbortSignal.timeout(DOWNLOAD_TIMEOUT_MS) });
-  if (!response.ok) throw new Error(`GET ${url} returned ${response.status}`);
-  return Buffer.from(await response.arrayBuffer());
+  // One deadline for the whole chain, not one per hop.
+  const signal = AbortSignal.timeout(DOWNLOAD_TIMEOUT_MS);
+  let current = new URL(url);
+  for (let redirects = 0; ; redirects++) {
+    const response = await fetch(current.href, { redirect: "manual", signal });
+    if (!REDIRECT_STATUSES.has(response.status)) {
+      if (!response.ok) throw new Error(`GET ${current.href} returned ${response.status}`);
+      return Buffer.from(await response.arrayBuffer());
+    }
+    // Release the connection; a redirect's body is never read.
+    await response.body?.cancel().catch(() => undefined);
+    const location = response.headers.get("location");
+    if (!location) throw new Error(`GET ${current.href} returned ${response.status} with no Location`);
+    if (redirects >= MAX_REDIRECTS) throw new Error(`GET ${url} redirected more than ${MAX_REDIRECTS} times`);
+    const next = new URL(location, current);
+    if (!isAllowedDownloadUrl(next)) {
+      throw new Error(
+        `${current.host} redirected the download to ${next.protocol}//${next.host}, but like ` +
+          `FAILPROOFAI_DAEMON_BASE_URL every hop must be https (plain http only for a loopback address)`,
+      );
+    }
+    current = next;
+  }
 }
 
 /**

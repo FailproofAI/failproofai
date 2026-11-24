@@ -1050,6 +1050,8 @@ an already-installed binary keeps working — it gates *fetching*, not the npm c
 `FAILPROOFAI_DAEMON_BASE_URL` (an internal mirror, and what the tests point at a local HTTP
 server). The mirror must be https. Plain http is accepted only for a loopback address,
 because over http `SHA256SUMS` arrives on the same unauthenticated connection as the binary.
+The rule covers every redirect hop too: `fetchBytes()` follows redirects by hand and refuses
+a hop to plain http before requesting it (`fetch`'s own following went there silently).
 
 The release also carries `failproofai-<version>.tgz`, the CLI's own npm tarball, packed by
 the `cli-tarball` job at the version being published and covered by the same `SHA256SUMS`.

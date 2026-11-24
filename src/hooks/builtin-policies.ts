@@ -462,13 +462,24 @@ const GIT_COMMIT_MERGE_RE = /git\s+(commit|merge|rebase|cherry-pick)\b/;
 
 // blockFailproofaiCommands
 /**
- * Where a path component may start: after a separator, a space, a quote or `=`,
- * or glued to a cluster of short options (`wget -Onode_modules/…`, `curl
- * -sonode_modules/…`), which is how those tools take an output file. Not after a
- * letter, digit, `_`, `.` or `-` of the same name: `cached_node_modules/…` and
- * `my-node_modules/…` are somebody's fixtures.
+ * The path component `name` (regex source), only where it STARTS a component:
+ * after a separator, a space, a quote or `=`, or glued to a cluster of short
+ * options (`wget -Onode_modules/…`, `wget -qO.pnpm/…`), which is how those tools
+ * take an output file. Not after a letter, digit, `_`, `.` or `-` of the same
+ * name: `cached_node_modules/…` and `my-node_modules/…` are somebody's fixtures.
+ *
+ * The check is a lookbehind placed AFTER the name, so it runs only where the
+ * name already matched. A variable-length lookbehind in FRONT of the name ran
+ * at every position of the input and rescanned a whole run of letters each
+ * time: a command carrying 32,000 letters took 35 s in the guard, long enough
+ * to time a hook out. Here each match scans back over the letters just before
+ * it, and those runs cannot overlap — every name ends in a non-letter (`_` in
+ * `node_modules`, the `.` that starts `.pnpm`) — so the cluster needs no bound,
+ * and a long one (`-qqqq…O<path>`) is not a way past.
  */
-const PATH_COMPONENT_START = String.raw`(?:(?<![\w.-])|(?<=(?:^|\s)-[A-Za-z]+))`;
+function pathComponent(name: string): string {
+  return String.raw`${name}(?<=(?:^|[^\w.-])${name}|(?:^|\s)-[A-Za-z]+${name})`;
+}
 
 /**
  * failproofai's INSTALLED CODE: the package a hook command runs, and the bin
@@ -501,12 +512,12 @@ const FAILPROOFAI_CODE_PATH_RE = new RegExp(
     // The package, in every layout a package manager uses, and the daemon's
     // platform package, which `failproofai config` and `update` copy into place
     // (on Linux as root, under `/opt`). `node_modules` as a whole path
-    // component (`PATH_COMPONENT_START`).
-    PATH_COMPONENT_START +
-      String.raw`node_modules[\\/](?:\.?[\\/])*(?:failproofai(?![\w.@-])|@failproofai[\\/](?:\.?[\\/])*failproofaid\b)`,
+    // component (`pathComponent`).
+    pathComponent("node_modules") +
+      String.raw`[\\/](?:\.?[\\/])*(?:failproofai(?![\w.@-])|@failproofai[\\/](?:\.?[\\/])*failproofaid\b)`,
     // pnpm's virtual store, which holds each package one directory above its
     // own `node_modules/failproofai`.
-    PATH_COMPONENT_START + String.raw`\.pnpm[\\/](?:\.?[\\/])*(?:failproofai|@failproofai\+failproofaid[\w.-]*)@`,
+    pathComponent(String.raw`\.pnpm`) + String.raw`[\\/](?:\.?[\\/])*(?:failproofai|@failproofai\+failproofaid[\w.-]*)@`,
     // The entry a hook command names: `…/bin/failproofai` for npm, nvm,
     // Homebrew, bun, Volta and yarn, `…/pnpm/failproofai` for pnpm's home, and
     // the variables nvm and pnpm export for those directories. A FILE, so a

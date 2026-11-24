@@ -2310,7 +2310,7 @@ const SHELL_DIR_SEGMENTS = 16;
  * above `SHELL_DIR_SEGMENTS` and for following symlinks. Bounded so that a
  * script of a thousand `cd`s stays linear.
  */
-const FULL_DIR_SEGMENTS = 256;
+const FULL_DIR_SEGMENTS = 64;
 
 /** How many directories a failed `cd` can leave the shell in that the walk tracks. */
 const MAX_ALTERNATE_DIRS = 4;
@@ -2390,8 +2390,13 @@ function shellPath(base: string | undefined, word: string): string {
  * later word it is joined to.
  */
 function shellTail(path: string): string {
-  const parts = path.split("/");
-  return parts.length > SHELL_DIR_SEGMENTS ? parts.slice(-SHELL_DIR_SEGMENTS).join("/") : path;
+  let cut = path.length;
+  for (let kept = 0; kept < SHELL_DIR_SEGMENTS; kept++) {
+    if (cut <= 0) return path;
+    cut = path.lastIndexOf("/", cut - 1);
+    if (cut < 0) return path;
+  }
+  return path.slice(cut + 1);
 }
 
 const FAILPROOFAI_UNINSTALL_RE = /(?:npm\s+(?:uninstall|remove|un|r)\s.*failproofai|bun\s+remove\s.*failproofai|yarn\s+global\s+remove\s+failproofai|pnpm\s+(?:remove|uninstall|un)\s.*failproofai)/;

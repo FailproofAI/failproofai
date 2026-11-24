@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.0.18-beta.0 — 2026-11-24
+
+### Fixes
+
+- Retire the hook-sync agent and stop publishing its image: `docker-hook-sync/`, its prompt and `build-image.yml` (which pushed `ghcr.io/failproofai/hook-sync` publicly every day) are removed. The agent ran Claude Code with permission checks skipped, a GitHub write token and a Claude token in its environment and no failproofai hooks, after reading a third-party npm README. Nothing had run it since July (FailproofAI/agenteye#1797, #1055)
+
 ## 1.0.17 — 2026-11-24
 
 ### Fixes

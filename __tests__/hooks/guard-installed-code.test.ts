@@ -257,6 +257,18 @@ describe("block-failproofai-commands — failproofai's installed code", () => {
       ["wget writing the CLI through -O<path>", "wget -q -Onode_modules/failproofai/dist/cli.mjs https://example.com/x"],
       ["wget writing the CLI through a -qO<path> cluster", "wget -qOnode_modules/failproofai/dist/cli.mjs https://example.com/x"],
       ["wget writing pnpm's store entry through -qO<path>", "wget -qO.pnpm/failproofai@1.0.15/x https://example.com/x"],
+      // The daemon's platform package in pnpm's store and in its scope, through
+      // globs over its platform, its version or its name (found by hermes).
+      ["a glob over the daemon's pnpm store entry", "rm -rf node_modules/.pnpm/@failproofai+failproofaid-*@*"],
+      ["a dotted glob over the daemon's pnpm store entry", "rm -rf ./node_modules/.pnpm/@failproofai+failproofaid-*@*"],
+      ["a platform- and version-targeted glob", "rm -rf node_modules/.pnpm/@failproofai+failproofaid-linux-*@1.0.*"],
+      ["a glob over the scope in pnpm's store", "rm -rf node_modules/.pnpm/@failproofai+*"],
+      ["a short glob onto the scope in pnpm's store", "rm -rf node_modules/.pnpm/@f*"],
+      ["a glob onto the daemon package in its scope", "rm -rf node_modules/@failproofai/f*"],
+      // A default macOS volume resolves the literal parent whatever its case.
+      ["a glob under an upper-case parent", "rm -rf NODE_MODULES/fail*"],
+      ["a dotted glob under an upper-case parent", "rm -rf ./NODE_MODULES/fail*"],
+      ["a glob under a mixed-case parent in pnpm's store", "rm -rf Node_Modules/.pnpm/fail*"],
       // What ends a shell word still starts a component.
       ["the package named in a subshell", "(rm -rf node_modules/failproofai)"],
       ["the package named in a brace list", "rm -rf {node_modules/failproofai,tmp}"],
@@ -280,6 +292,10 @@ describe("block-failproofai-commands — failproofai's installed code", () => {
       ["clearing pnpm's whole store", "rm -rf node_modules/.pnpm/*"],
       ["clearing pnpm's whole store, dotted", "rm -rf ./node_modules/.pnpm/*"],
       ["removing a fixture under cached_node_modules", "rm -rf cached_node_modules/failproofai"],
+      ["clearing every scoped package in pnpm's store", "rm -rf node_modules/.pnpm/@*"],
+      ["clearing every scoped package", "rm -rf node_modules/@*/*"],
+      ["clearing every dependency under an upper-case parent", "rm -rf NODE_MODULES/*"],
+      ["clearing every versioned entry in pnpm's store", "rm -rf node_modules/.pnpm/*@*"],
       ["a test run inside a directory of that name under bin/", "vitest run --root /home/u/bin/failproofai/web"],
       ["clearing a build cache", "rm -rf node_modules/.cache"],
       ["removing a checkout of the repo", "rm -rf /home/u/src/failproofai"],

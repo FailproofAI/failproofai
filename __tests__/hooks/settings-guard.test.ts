@@ -710,6 +710,105 @@ describe("block-failproofai-commands — review round three", () => {
   }, 60_000);
 });
 
+/**
+ * The fourth review pass: what the lexer still read differently from bash,
+ * message bodies that something runs after all, and inputs that grew
+ * faster than their size.
+ */
+describe("block-failproofai-commands — review round four", () => {
+  const stateDenied = async (command: string) => {
+    const result = await run("Bash", { command });
+    return result.decision === "deny" && /failproofai's own state/.test(result.reason ?? "");
+  };
+
+  describe("what the lexer read differently from bash", () => {
+    it("reads ${…} as one word: a # inside it starts no comment", async () => {
+      expect(await stateDenied("echo ${X:- #}; rm -rf ~/.failproofai")).toBe(true);
+      expect(await bash("echo ${X:- #}; rm ~/.claude/settings.json")).toBe(true);
+      expect(await bash(`echo "$(echo \${X:-)}; cp /tmp/evil.json ~/.claude/settings.json)"`)).toBe(true);
+    });
+
+    it("reads a heredoc delimiter the way bash does", async () => {
+      // `<<E\OF` ends at EOF, so the `cp` after it runs.
+      expect(await bash("git commit --allow-empty -F - <<E\\OF\nmsg\nEOF\ncp /tmp/evil.json ~/.claude/settings.json\nE")).toBe(true);
+      // `<<"EOF"x` ends at EOFx.
+      expect(await bash('git commit --allow-empty -F - <<"EOF"x\nmsg\nEOFx\ncp /tmp/evil.json ~/.claude/settings.json\nEOF')).toBe(true);
+    });
+
+    it("splices a parameter expansion's default into the path, however long", async () => {
+      expect(await stateDenied("rm -rf ~/.fa${X:-ilproofai}")).toBe(true);
+      expect(await stateDenied(`rm -rf ~/.fa\${X:-il\${Z:+${"A".repeat(300)}}proofai}`)).toBe(true);
+      expect(await bash("cp /tmp/evil.json ~/.clau${X:-de}/settings.json")).toBe(true);
+    });
+
+    it("keeps an unquoted substitution whole as a cd operand", async () => {
+      expect(await bash("cd $(echo ~/.claude) && echo '{}' > settings.json")).toBe(true);
+    });
+  });
+
+  describe("a message body that something runs", () => {
+    const body = "$(cat <<'EOF'\ncp /tmp/evil.json ~/.claude/settings.json\nEOF\n)";
+    it.each([
+      `sudo -u root sh -c "${body}"`,
+      `timeout -s KILL 5 sh -c "${body}"`,
+      `find /tmp -maxdepth 0 -exec sh -c "${body}" \;`,
+      `X="${body}"; eval "$X"`,
+      `echo "${body}" | sh`,
+    ])("denies %s", async (command) => {
+      expect(await bash(command)).toBe(true);
+    });
+  });
+
+  describe("text piped into a shell", () => {
+    it("is judged as a command", async () => {
+      expect(await stateDenied("echo 'rm -rf ~/.failproofai' | sh")).toBe(true);
+      expect(await bash("printf 'cp /tmp/evil.json %s\\n' ~/.claude/settings.json | sh")).toBe(true);
+      expect(await bashDecision("echo 'codex features disable hooks' | sh")).toBe("deny");
+      expect(await bashDecision("echo 'codex features disable hooks' | cat")).toBe("allow");
+    });
+  });
+
+  describe("commands git runs", () => {
+    it.each([
+      `git difftool -x 'cp /tmp/evil.json ~/.claude/settings.json' HEAD`,
+      `git filter-branch --tree-filter 'cp /tmp/evil.json .claude/settings.json' HEAD`,
+    ])("denies %s", async (command) => {
+      expect(await bash(command)).toBe(true);
+    });
+  });
+
+  describe("message shapes that are only messages", () => {
+    it.each([
+      "git commit -m \"$(cat <<EOF\nRegister failproofai in .claude/settings.json\nEOF\n)\"",
+      "cat <<'EOF' | git commit -F -\nmsg about .claude/settings.json and rm -rf ~/.claude\nEOF",
+      "git commit -F- <<'EOF'\nmsg about .claude/settings.json and rm -rf ~/.claude\nEOF",
+      "git commit -F /dev/stdin <<'EOF'\nmsg about .claude/settings.json and rm -rf ~/.claude\nEOF",
+      "cat > docs/hooks.md <<'EOF'\nSee .github/hooks/failproofai.json\nrm -rf ~/.claude\nEOF",
+      "tee docs/hooks.md <<'EOF' >/dev/null\nrm -rf ~/.claude\nEOF",
+    ])("allows %s", async (command) => {
+      expect(await bashDecision(command)).toBe("allow");
+    });
+
+    it("allows the state's quoted message too, which main denied", async () => {
+      expect(await bashDecision("git commit -m \"$(cat <<'EOF'\nKeep ~/.failproofai intact\nEOF\n)\"")).toBe("allow");
+    });
+  });
+
+  describe("inputs that grew faster than their size", () => {
+    const fast = async (command: string, limitMs: number) => {
+      const started = performance.now();
+      await bashDecision(command);
+      return performance.now() - started < limitMs;
+    };
+    it("handles thousands of heredoc operators on one line", async () => {
+      expect(await fast("cat " + "<<EOF ".repeat(5000) + "\nEOF\n", 3000)).toBe(true);
+    }, 60_000);
+    it("handles an unclosed ${ repeated through a long command", async () => {
+      expect(await fast("echo " + "${".repeat(50000), 3000)).toBe(true);
+    }, 60_000);
+  });
+});
+
 describe("agent-settings-guard helpers", () => {
   it("matches settings files anchored at the end, and config directories exactly", () => {
     expect(isAgentSettingsPath("/h/.claude/settings.json")).toBe(true);

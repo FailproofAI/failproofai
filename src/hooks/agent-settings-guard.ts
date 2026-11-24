@@ -423,22 +423,46 @@ function withAgentSettingsHomeForm(path: string): string[] {
   return rel && !rel.startsWith("..") && !isAbsolute(rel) ? [path, `~/${rel}`] : [path];
 }
 
+/** Text that every agent settings path or directory contains somewhere. */
+const AGENT_SETTINGS_HINT_SOURCE =
+  "claude|codex|cursor|copilot|github|opencode|\\.pi|gemini|agents|factory|devin|goose|hermes|openclaw|settings|hooks|config|plugins|extensions";
+
+/**
+ * The hint for this session: the agents' names, plus every name in the
+ * session's extra settings files and the real locations behind the home
+ * directory's links, so a word that could reach one is never skipped.
+ */
+function agentSettingsHintFrom(extras: { files: Set<string>; dirs: Set<string> }): RegExp {
+  const names = [...extras.files, ...extras.dirs]
+    .flatMap((path) => path.split(/[\\/]/))
+    .filter((segment) => segment.length > 2)
+    .map((segment) => segment.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
+  return new RegExp([AGENT_SETTINGS_HINT_SOURCE, ...names].join("|"), "i");
+}
+
 /**
  * What a shell command can name for this session: the shapes, anywhere in its
  * text; each word on its own, home expanded and normalised; and the session's
  * extra files and directories. Relative words are left to the caller, which
  * knows the directory a `cd` has moved the shell to.
  */
-export function agentSettingsShellNamer(extraPaths: readonly string[], cwd?: string): (text: string) => boolean {
+export function agentSettingsShellMatcher(
+  extraPaths: readonly string[],
+  cwd?: string,
+): { names: (text: string) => boolean; hint: RegExp } {
   const extras = agentSettingsShellExtras(extraPaths, cwd);
+  const hint = agentSettingsHintFrom(extras);
   const textForms = [
     ...[...extras.files].flatMap((path) => withAgentSettingsHomeForm(path).map((form) => agentSettingsPathInTextRe(form, false))),
     ...[...extras.dirs].flatMap((path) => withAgentSettingsHomeForm(path).map((form) => agentSettingsPathInTextRe(form, true))),
   ];
-  return (text: string): boolean => {
+  const names = (text: string): boolean => {
     if (AGENT_SETTINGS_IN_TEXT_RE.test(text) || AGENT_CONFIG_DIR_IN_TEXT_RE.test(text)) return true;
     if (textForms.some((re) => re.test(text))) return true;
     for (const raw of text.split(/\s+/)) {
+      // A word with none of the agents' names in it cannot be one of their
+      // paths; skipping it spares a path resolution per word of a long line.
+      if (!hint.test(raw)) continue;
       for (const word of agentSettingsWordForms(raw)) {
         if (!word || word.startsWith("-")) continue;
         // A variable other than HOME is the caller's to follow (it tracks which
@@ -451,6 +475,7 @@ export function agentSettingsShellNamer(extraPaths: readonly string[], cwd?: str
     }
     return false;
   };
+  return { names, hint };
 }
 
 /** Whether a program handed to an interpreter builds an agent settings path. */

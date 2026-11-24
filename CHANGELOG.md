@@ -4,6 +4,7 @@
 
 ### Fixes
 
+- Retire the hook-sync agent and stop publishing its image: `docker-hook-sync/`, its prompt and `build-image.yml` (which pushed `ghcr.io/failproofai/hook-sync` publicly every day) are removed. The agent ran Claude Code with permission checks skipped, a GitHub write token and a Claude token in its environment and no failproofai hooks, after reading a third-party npm README. Nothing had run it since July (FailproofAI/agenteye#1797, #1055)
 - `failproofai config` no longer reuses a `~/.failproofai/bin/failproofaid-<version>` that fails to match the digest this build recorded at publish time. It reinstalls the binary from the npm platform package or the release (both held to that digest) and refuses when neither can, where it used to stage whatever file was there as the root-installed service binary (#1056)
 - The daemon download is checked against the digest recorded in the npm package as well as the release's `SHA256SUMS`, which comes from the same release as the binary and so cannot catch a replaced asset (#1056)
 - `FAILPROOFAI_DAEMON_BASE_URL` must be https, and so must every hop a redirect sends the download to. Plain http is accepted only for a loopback address, because over http the checksum manifest arrives on the same unauthenticated connection as the binary (#1056)

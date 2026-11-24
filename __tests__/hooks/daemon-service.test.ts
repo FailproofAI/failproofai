@@ -466,6 +466,13 @@ describe("hooks/daemon-service", () => {
       // read the same as root or not.
       async function runUninstall(opts: { failOn?: string } = {}): Promise<{ ran: string[]; root: string; unit: string }> {
         const ran: string[] = [];
+        // The install names sudo and each program by absolute path, looked up
+        // on this machine; none of them runs here, so any the machine lacks
+        // gets a stand-in path rather than failing the lookup.
+        vi.doMock("../../src/hooks/system-command", async (importOriginal) => {
+          const actual = await importOriginal<typeof import("../../src/hooks/system-command")>();
+          return { ...actual, requireSystemCommand: (name: string) => actual.systemCommandPath(name) ?? `/usr/bin/${name}` };
+        });
         vi.doMock("node:child_process", async (importOriginal) => ({
           ...(await importOriginal<typeof import("node:child_process")>()),
           execFileSync: (cmd: string, args: string[] = []) => {
@@ -484,6 +491,7 @@ describe("hooks/daemon-service", () => {
           await uninstallDaemonService();
           return { ran, root: daemonSystemBinaryDir()!, unit: daemonServiceFilePath()! };
         } finally {
+          vi.doUnmock("../../src/hooks/system-command");
           vi.doUnmock("node:child_process");
           vi.resetModules();
         }

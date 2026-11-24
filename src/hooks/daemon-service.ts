@@ -606,12 +606,12 @@ function selinuxEnabled(): boolean {
  * directories `install -d` creates under `/opt` (`usr_t`) come out `usr_t`
  * too, never the `bin_t` the policy names for them.
  */
-function stageSystemBinary(binaryPath: string): string {
+function stageSystemBinary(binaryPath: string, bytes?: Buffer): string {
   const target = systemBinaryTarget(binaryPath);
   if (!target) return binaryPath;
-  const bytes = readDaemonBinaryForRoot(binaryPath);
+  const data = bytes ?? readDaemonBinaryForRoot(binaryPath);
   runPrivileged("install", ["-d", "-m", "0755", systemBinaryDir()]);
-  writePrivilegedFile(target, bytes, "0755");
+  writePrivilegedFile(target, data, "0755");
   if (selinuxEnabled()) {
     const root = systemBinaryRoot();
     try {
@@ -1334,6 +1334,20 @@ export async function installDaemonService(): Promise<DaemonInstallResult> {
     };
   }
 
+  // The bytes root will install under /opt, read and checked BEFORE anything
+  // is torn down below: a binary that is refused must leave whatever daemon
+  // runs now still running.
+  let stagedBytes: Buffer | undefined;
+  if (process.platform === "linux" && systemBinaryTarget(binaryPath)) {
+    try {
+      stagedBytes = readDaemonBinaryForRoot(binaryPath);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      hookLogWarn(`daemon service install failed: ${msg}`);
+      return { installed: false, reason: msg };
+    }
+  }
+
   // A daemon left over from a pre-1.0.0-beta.1 install holds the same
   // singleton lock the new one needs, so the system unit would start, lose
   // the flock race, and leave the machine fail-closed against a daemon that
@@ -1345,7 +1359,7 @@ export async function installDaemonService(): Promise<DaemonInstallResult> {
     if (process.platform === "linux") {
       // Before the unit is written, so a copy that fails leaves the previous
       // unit and the daemon it runs untouched. See `systemBinaryDir()`.
-      execPath = stageSystemBinary(binaryPath);
+      execPath = stageSystemBinary(binaryPath, stagedBytes);
       writePrivilegedFile(systemdUnitPath(), systemdUnitContents(execPath, workerCmd, cliCmd));
       runPrivileged("systemctl", ["daemon-reload"]);
       // `enable` for boot persistence, then `restart` — NOT `enable --now`.

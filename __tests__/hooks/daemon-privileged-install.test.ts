@@ -320,11 +320,15 @@ describe.skipIf(isRoot)("privileged service install: root is handed bytes, never
     }, 20_000);
   });
 
-  it("linux: refuses a daemon binary that is a symbolic link, and copies nothing", async () => {
+  it("linux: refuses a daemon binary that is a symbolic link, copies nothing and stops nothing", async () => {
     setPlatform("linux");
     const managed = installedBinaryPath();
     mkdirSync(dirname(managed), { recursive: true });
     symlinkSync(otherPath, managed);
+    // A daemon from an older install that a successful install would retire.
+    const legacyUnit = resolve(home, ".config", "systemd", "user", "failproofaid.service");
+    mkdirSync(dirname(legacyUnit), { recursive: true });
+    writeFileSync(legacyUnit, "[Unit]\n");
     mockSudo();
     const svc = await loadService();
 
@@ -332,6 +336,8 @@ describe.skipIf(isRoot)("privileged service install: root is handed bytes, never
 
     expect(result.installed).toBe(false);
     expect(result.reason).toMatch(/symbolic link/);
+    // Refused before anything was torn down.
+    expect(existsSync(legacyUnit)).toBe(true);
     expect(filesUnder(rootDir).filter((p) => p !== otherPath).map((p) => readFileSync(p, "utf8"))).not.toContain(
       OTHER,
     );

@@ -960,9 +960,11 @@ Three consequences, all handled explicitly rather than assumed:
   plist, Codex's `/etc/codex/config.toml`, the `/opt` binary) goes through
   `writePrivilegedFile()`: the bytes go to `PRIVILEGED_INSTALL_SCRIPT` on stdin with their
   SHA-256 as an argument, and root checks them in a hidden `mktemp` file beside the
-  destination before it sets the mode and renames. The binary is read by the CLI, as the
-  user, with `O_NOFOLLOW`. No `sudo install <file under $HOME or $TMPDIR>`: root installs
-  only bytes it has verified. The printed `needs_root` recipe carries the same digests.
+  destination before it sets the mode and renames. On Linux the `/opt` binary is read by
+  the CLI, as the user, with `O_NOFOLLOW`, and checked before the install tears anything
+  down; on macOS root writes only the plist, which runs the user's own copy as that user.
+  No `sudo install <file under $HOME or $TMPDIR>`: root installs only bytes it has
+  verified. The printed `needs_root` recipe carries the same digests.
 - **Nor a program found through PATH.** `sudo` and everything it runs come from
   `src/hooks/system-command.ts`, which looks only in `/usr/bin`, `/bin`, `/usr/sbin` and
   `/sbin` and starts them with `privilegedEnv()` (root's PATH, the caller's locale and the

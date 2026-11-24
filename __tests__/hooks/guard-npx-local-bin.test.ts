@@ -30,6 +30,9 @@ const policy = BUILTIN_POLICIES.find((p) => p.name === "block-failproofai-comman
 const bash = async (command: string) =>
   (await policy.fn(makeCtx({ toolName: "Bash", toolInput: { command } }))).decision;
 
+const bashIn = async (cwd: string, command: string) =>
+  (await policy.fn(makeCtx({ toolName: "Bash", toolInput: { command }, session: { cwd } }))).decision;
+
 const write = async (file_path: string, cwd?: string) =>
   policy.fn(
     makeCtx({
@@ -266,6 +269,52 @@ describe("block-failproofai-commands — the entry a project-scope npx hook runs
       expect(await bash(command)).toBe("deny");
     });
 
+    // A word is read without knowing whether it sits in quotes, so a quoted
+    // `#` or `<` must not hide the words after it.
+    it.each([
+      ["a quoted # before an output flag", "curl -sS -H 'X-Ticket: #1795' -o ~/.failproofai/policies-config.json https://example.com/c"],
+      ["a quoted # before -delete", "find ~/.failproofai -name 'x #' -o -delete"],
+      ["a quoted # before tee's file", "printf 'exit 0' | tee 'a #' node_modules/.bin/failproofai"],
+      ["a quoted < in an option value", 'cp /tmp/stub.sh --suffix "y < " node_modules/.bin/failproofai'],
+      ["a {fd} redirect after the destination", "cp /tmp/stub.sh node_modules/.bin/failproofai {fd}>/dev/null"],
+      ["an abbreviated option's value after the destination", "cp /dev/null ~/.failproofai/policies-config.json --suf x"],
+      ["an rsync option's value after the destination", "rsync /tmp/stub.sh node_modules/.bin/failproofai --max-delete 5"],
+      ["a .. that steps back into .bin", "cp /tmp/stub.sh node_modules/.bin/x/../failproofai"],
+    ])("denies %s", async (_label, command) => {
+      expect(await bash(command)).toBe("deny");
+    });
+
+    // Paths built from what the same line assigns, and the shell's position
+    // carried through every way a shell moves it.
+    it.each([
+      ["a variable holding the directory", "D=node_modules/.bin; cp /tmp/stub.sh $D/failproofai"],
+      ["a variable spliced into the state", "X=ai; rm -rf ~/.failproof$X"],
+      ["a variable holding npm's bin directory", "B=~/node_modules/.bin; ln -s /tmp/stage $B"],
+      ["a cd into a variable", "D=node_modules/.bin; cd $D && cp /tmp/stub.sh failproofai"],
+      ["$PWD after a cd", "cd node_modules/.bin && cp /tmp/stub.sh $PWD/failproofai"],
+      ["popd back to the directory", "pushd node_modules/.bin && pushd /tmp && popd && cp /tmp/stub.sh failproofai"],
+      ["cd - back to the directory", "cd node_modules/.bin && cd /tmp && cd - && cp /tmp/stub.sh failproofai"],
+      ["parentheses inside quotes", 'echo "(" && cd node_modules/.bin && echo ")" && cp /tmp/stub.sh failproofai'],
+      ["a directory named .bin moved into a node_modules", "mv /tmp/x/.bin ~/node_modules/"],
+      ["a glob of sources into the directory", "cp /tmp/stage/* node_modules/.bin/"],
+      ["a glob of sources after -t", "cp -t node_modules/.bin /tmp/stage/*"],
+      ["an abbreviated --recursive", "cp --rec /tmp/stage ~/node_modules/.bin"],
+    ])("denies %s", async (_label, command) => {
+      expect(await bash(command)).toBe("deny");
+    });
+
+    // The session's directory is where the command starts: a `cd` in an
+    // earlier call persists.
+    it.each([
+      ["/work/proj/node_modules/.bin", "cp /tmp/stub.sh failproofai"],
+      ["/work/proj/node_modules/.bin", "printf 'exit 0' > failproofai"],
+      ["/work/proj/node_modules", "echo 'exit 0' >.bin/failproofai"],
+      ["/work/proj/node_modules", "printf x 2>.bin/failproofai"],
+      ["/work/proj/node_modules", "wget -q -O.bin/failproofai https://example.com/x"],
+    ])("denies a write from the session directory %s: %s", async (cwd, command) => {
+      expect(await bashIn(cwd, command)).toBe("deny");
+    });
+
     it.each([
       ["running another package's binary", "./node_modules/.bin/vitest run"],
       ["running a binary through node", "node node_modules/.bin/eslint src"],
@@ -295,8 +344,49 @@ describe("block-failproofai-commands — the entry a project-scope npx hook runs
       ["a cd that a subshell undoes", "(cd node_modules/.bin && ls) && cp /tmp/stub.sh failproofai"],
       ["copying a tool after a cd", "cd node_modules/.bin && cp /tmp/stage/my-tool ."],
       ["clearing a tree's .bin directories", "rm -rf ~/projects/*/node_modules/.bin/*"],
+      // Somebody's own `~/.bin` is not npm's.
+      ["moving a tool into ~/.bin", "mv /tmp/tool ~/.bin/"],
+      ["linking a script into ~/.bin", "ln -s ~/dotfiles/scripts/deploy ~/.bin/"],
+      ["copying scripts into ~/.bin", "cp -r ./scripts/ ~/.bin/"],
+      ["syncing dotfiles into ~/.bin", "rsync -a dotfiles/bin/ ~/.bin/"],
+      ["moving a binary into a project's .bin", "mv golangci-lint .bin/"],
+      // `ln` cannot create a directory given a trailing `/`.
+      ["linking a package's CLI into node_modules/.bin/", "ln -s ../my-pkg/cli.js node_modules/.bin/"],
+      // A one-segment glob below another directory is not aimed at the state.
+      ["a glob ending in ai", "rm -rf models/*ai"],
+      ["a glob ending in i", "rm -f out/*i"],
+      ["a glob around proof", "rm -rf vendor/*proof*"],
+      ["a dotfile glob in a cache", "rm -rf ~/.cache/.f*"],
+      ["a sed program that looks like a glob", "sed -i 's/.*ai/X/' notes.txt"],
+      ["a commit message with a #", "git commit -m 'fix #12: cp a b'"],
+      ["a loop copying files out", "for f in *.txt; do cp $f /tmp/; done"],
+      ["a cd and a build", "cd packages/api && npm run build"],
+      ["clearing a scratch directory", "cd /tmp && rm -rf *"],
     ])("allows %s", async (_label, command) => {
       expect(await bash(command)).not.toBe("deny");
+    });
+
+    it.each([
+      ["a checkout of failproofai itself", "/home/u/src/failproofai", "npm test"],
+      ["a checkout of failproofai itself", "/home/u/src/failproofai", "rm -rf dist"],
+      ["node_modules/.bin", "/work/proj/node_modules/.bin", "cp README.md /tmp/"],
+      ["node_modules/.bin", "/work/proj/node_modules/.bin", "./vitest run"],
+    ])("allows ordinary work from %s", async (_label, cwd, command) => {
+      expect(await bashIn(cwd, command)).not.toBe("deny");
+    });
+
+    // The walk runs on every tool call, and one evaluation holds up every hook
+    // on the machine. A directory that grew with each `cd` made later words
+    // slower to judge without bound (28.9 s for the first input in review).
+    it.each([
+      ["a script of 700 cd / build / cd ../.. steps", "bash <<'EOF'\n" + Array.from({ length: 700 }, (_, i) => `cd packages/pkg-${i}\nnpm run build\ncd ../..`).join("\n") + "\nEOF"],
+      ["2,000 relative cds", Array(2000).fill("cd a").join(" && ") + " && ls"],
+      ["1,000 cds into globs", Array(1000).fill("cd a*").join(" && ") + " && ls"],
+      ["a 2,000-segment glob", "rm -rf " + Array(2000).fill("*").join("/")],
+    ])("judges %s in bounded time", async (_label, command) => {
+      const started = performance.now();
+      await bash(command);
+      expect(performance.now() - started).toBeLessThan(3000);
     });
   });
 

@@ -512,11 +512,13 @@ const FAILPROOFAI_CODE_PATH_RE = new RegExp(
     // npx cache). With the shims npm (`.cmd`, `.ps1`) and bun (`.exe`, `.bunx`)
     // write beside it on Windows. Not anchored on `node_modules`, so the
     // relative `.bin/failproofai` a command run from inside `node_modules`
-    // names is the same file; anchored on the start of a path component, so
-    // `firmware.bin/failproofai` is not it. A FILE, like the entry above: the
-    // rest of `node_modules/.bin` (every other package's binary, run by path
-    // all the time) stays out of it.
-    String.raw`(?<![^\s\\/"'=:(\x60{,])\.bin[\\/](?:\.?[\\/])*failproofai(?:\.(?:cmd|ps1|exe|bunx))?(?![\w.@\\/-])`,
+    // names is the same file. `.bin` must start a path component, so
+    // `firmware.bin/failproofai` is not it, but anything that is not part of a
+    // name may stand before it (`>.bin/…`), and so may a glued short option
+    // (`-O.bin/…`). A FILE, like the entry above: the rest of
+    // `node_modules/.bin` (every other package's binary, run by path all the
+    // time) stays out of it.
+    String.raw`(?:(?<![\w.-])|(?<=(?:^|\s)-[A-Za-z]))\.bin[\\/](?:\.?[\\/])*failproofai(?:\.(?:cmd|ps1|exe|bunx))?(?![\w.@\\/-])`,
   ].join("|"),
   "i",
 );
@@ -711,25 +713,29 @@ const INTO_DIRECTORY_OPTIONS: Record<string, { short: string; long: readonly str
   mv: { short: "St", long: ["suffix", "target-directory"] },
   ln: { short: "St", long: ["suffix", "target-directory"] },
   install: { short: "mogSt", long: ["mode", "owner", "group", "suffix", "target-directory", "strip-program"] },
+  // From `rsync --help` (3.4.1): every option documented with `=VALUE`.
   rsync: {
-    short: "efTBM",
+    short: "@BefMT",
     long: [
-      "rsh", "filter", "exclude", "include", "exclude-from", "include-from", "files-from", "temp-dir",
-      "partial-dir", "backup-dir", "suffix", "compare-dest", "copy-dest", "link-dest", "chmod", "chown",
-      "usermap", "groupmap", "block-size", "max-size", "min-size", "timeout", "contimeout", "port",
-      "log-file", "out-format", "remote-option", "bwlimit", "rsync-path", "password-file", "info", "debug",
+      "address", "backup-dir", "block-size", "bwlimit", "checksum-choice", "checksum-seed", "chmod", "chown",
+      "compare-dest", "compress-choice", "compress-level", "contimeout", "copy-as", "copy-dest", "debug",
+      "early-input", "exclude", "exclude-from", "files-from", "filter", "groupmap", "iconv", "include",
+      "include-from", "info", "link-dest", "log-file", "log-file-format", "max-alloc", "max-delete", "max-size",
+      "min-size", "modify-window", "only-write-batch", "outbuf", "out-format", "partial-dir", "password-file",
+      "port", "protocol", "read-batch", "remote-option", "rsh", "rsync-path", "skip-compress", "sockopts",
+      "stop-after", "suffix", "temp-dir", "timeout", "usermap", "write-batch",
     ],
   },
 };
 
 /**
- * npm's bin directory: `node_modules/.bin`, or `.bin` alone once a `cd` put the
- * shell in `node_modules`. A directory moved, linked or copied recursively ONTO
- * it brings entries the line never names: `ln -s /tmp/stage ~/node_modules/.bin`
- * hands every project under `~` without its own entry a `failproofai` from
- * `/tmp/stage`, because npx searches each parent's `.bin` (#1795).
+ * npm's bin directory, `node_modules/.bin`. A directory moved, linked or copied
+ * recursively ONTO it brings entries the line never names:
+ * `ln -s /tmp/stage ~/node_modules/.bin` hands every project under `~` without
+ * its own entry a `failproofai` from `/tmp/stage`, because npx searches each
+ * parent's `.bin` (#1795). Only npm's: `~/.bin` is somebody's own scripts.
  */
-const NPM_BIN_DIRECTORY_RE = /(?:^|[\\/])\.bin$/i;
+const NPM_BIN_DIRECTORY_RE = /(?:^|[\\/])node_modules[\\/](?:\.?[\\/])*\.bin$/i;
 
 /**
  * Commands that write EVERY path operand they are given.
@@ -905,6 +911,15 @@ const STATE_GLOB_CANDIDATES = [
 
 /** How many `/`-separated segments the deepest glob candidate has. */
 const GLOB_CANDIDATE_DEPTH = Math.max(...STATE_GLOB_CANDIDATES.map((candidate) => candidate.split("/").length));
+
+/**
+ * The candidates a mid-path stretch is tried against: the relative ones of two
+ * segments or more (`node_modules/failproofai`, `node_modules/.bin/failproofai`),
+ * which stand for the same files under any directory.
+ */
+const MULTI_SEGMENT_GLOB_CANDIDATES = STATE_GLOB_CANDIDATES.filter(
+  (candidate) => /^[^~/$]/.test(candidate) && candidate.replace(/^\.\//, "").includes("/"),
+);
 
 /**
  * Ordinary paths a targeted pattern must NOT be able to match.
@@ -1094,19 +1109,27 @@ function wordNamesState(word: string): boolean {
   // segment that is not the last one — compiled to a pattern that could never
   // equal `~/.failproofai` and was read as naming nothing. Naming a file INSIDE
   // the state is naming the state.
-  const segments = word.split("/");
-  for (let end = 1; end <= segments.length; end++) {
+  // Somebody else's home is the same place as the candidates' `/home/u`:
+  // `/home/alice/.failproof*` and `~alice/.failproof*` named nothing.
+  const segments = word
+    .replace(/^\/(home|Users)\/[^/]+(?=\/)/, "/$1/u")
+    .replace(/^~[A-Za-z0-9._-]+(?=\/)/, "~")
+    .split("/");
+  // A prefix with more segments than the deepest candidate cannot equal one:
+  // a compiled `*` never crosses a `/`.
+  for (let end = 1; end <= Math.min(segments.length, GLOB_CANDIDATE_DEPTH); end++) {
     if (globPrefixNamesState(segments.slice(0, end).join("/"))) return true;
   }
-  // And every stretch that starts after a `/`, since the candidates are the
-  // TAILS of the paths they stand for: `/home/u/.failproof*` and
-  // `/work/proj/node_modules/.bin/fail*` begin with a prefix no candidate
-  // spells, so as whole words they named nothing (FailproofAI/agenteye#1795).
-  // A stretch longer than the deepest candidate cannot equal one.
+  // And every stretch that starts after a `/`, because the paths the
+  // multi-segment candidates stand for can sit under any directory:
+  // `/work/proj/node_modules/.bin/fail*` named nothing as a whole word
+  // (FailproofAI/agenteye#1795). Only those candidates: a one-segment stretch
+  // such as `models/*ai` or the `.*ai` in `sed 's/.*ai/X/'` matches
+  // `.failproofai` by name, and no decoy can tell it from an aim at the state.
   for (let start = 1; start < segments.length; start++) {
     const last = Math.min(segments.length, start + GLOB_CANDIDATE_DEPTH);
-    for (let end = start + 1; end <= last; end++) {
-      if (globPrefixNamesState(segments.slice(start, end).join("/"))) return true;
+    for (let end = start + 2; end <= last; end++) {
+      if (globPrefixNamesState(segments.slice(start, end).join("/"), MULTI_SEGMENT_GLOB_CANDIDATES)) return true;
     }
   }
   return false;
@@ -1252,7 +1275,7 @@ function bracketExpressionAt(token: string, start: number): { source: string; en
  * One `/`-delimited prefix of a brace-expanded word, compiled and tried against
  * the candidates. Braces are already gone by here; an unmatched one is literal.
  */
-function globPrefixNamesState(token: string): boolean {
+function globPrefixNamesState(token: string, candidates: readonly string[] = STATE_GLOB_CANDIDATES): boolean {
   if (!GLOB_METACHAR_RE.test(token)) return false;
   const pattern = "^" + compileGlobPattern(token);
   let re: RegExp;
@@ -1261,7 +1284,7 @@ function globPrefixNamesState(token: string): boolean {
   } catch {
     return false;
   }
-  if (!STATE_GLOB_CANDIDATES.some((candidate) => re.test(candidate))) return false;
+  if (!candidates.some((candidate) => re.test(candidate))) return false;
   return !GLOB_DECOYS.some((decoy) => re.test(decoy));
 }
 
@@ -1343,14 +1366,28 @@ function commandBasename(token: string): string {
  * and return the tokens from the command word on. Mirrors the walk in
  * `classifySelfInvocation` — the same prefixes hide a deleter that hid the
  * binary, and `xargs -0 rm -f` is the one that matters most here.
- *
- * After the command word, redirects and a comment are not arguments either.
- * They were returned as words, so the copy checks took the LAST one for the
- * destination: `cp /dev/null ~/.failproofai/policies-config.json 2>/dev/null`
- * judged `2>/dev/null`, and `… # note` judged `note`, and both walked through.
- * A redirect's target is judged by the redirect scan, not here.
  */
 function commandWords(simpleCommand: string): string[] {
+  return commandWordLists(simpleCommand).words;
+}
+
+/** A redirect operator, with an optional fd (`2>`, `{fd}>`), and the same alone. */
+const REDIRECT_OPERATOR_RE = /^(?:\d*|\{[A-Za-z_]\w*\})(?:>{1,2}\|?|<{1,3})/;
+const LONE_REDIRECT_OPERATOR_RE = /^(?:\d*|\{[A-Za-z_]\w*\})(?:>{1,2}\|?|<{1,3})$/;
+
+/**
+ * `commandWords`, and the same words with redirects and a comment taken out
+ * after the command word.
+ *
+ * The copy checks take the LAST operand for the destination, so a redirect or
+ * comment after it became the destination they judged:
+ * `cp /dev/null ~/.failproofai/policies-config.json 2>/dev/null` and
+ * `… node_modules/.bin/failproofai # keep` both walked through. But a token is
+ * read here without knowing whether it sits inside quotes, so `-H 'X: #1'` or
+ * `-name 'x #'` would cut off the real words after it. Neither list is right
+ * every time, so callers judge both and deny when either does (FailproofAI/agenteye#1795).
+ */
+function commandWordLists(simpleCommand: string): { words: string[]; trimmed: string[] } {
   const all = simpleCommand
     .trim()
     .split(/\s+/)
@@ -1375,18 +1412,18 @@ function commandWords(simpleCommand: string): string[] {
     if (!skippable) break;
     i++;
   }
-  const words: string[] = [];
+  const trimmed: string[] = [];
   for (let j = i; j < all.length; j++) {
-    // Read as the shell does, unquoted: `">"` and `"#"` are arguments.
+    // Judged on the token as written: a quoted `">"` or `"#"` is an argument.
     const { raw, token } = all[j];
-    if (raw.startsWith("#")) break;
-    if (j > i && /^\d*(?:>{1,2}\|?|<{1,3})/.test(raw)) {
-      if (/^\d*(?:>{1,2}\|?|<{1,3})$/.test(raw)) j++;
+    if (j > i && raw.startsWith("#")) break;
+    if (j > i && REDIRECT_OPERATOR_RE.test(raw)) {
+      if (LONE_REDIRECT_OPERATOR_RE.test(raw)) j++;
       continue;
     }
-    words.push(token);
+    trimmed.push(token);
   }
-  return words;
+  return { words: tokens.slice(i), trimmed };
 }
 
 /**
@@ -1434,17 +1471,18 @@ function landsInDirectoryAs(
       const eq = arg.indexOf("=");
       const name = arg.slice(2, eq === -1 ? undefined : eq);
       const value = eq === -1 ? undefined : arg.slice(eq + 1);
-      // GNU takes any unambiguous prefix: `--target DIR` is `--target-directory`.
+      // GNU takes any unambiguous prefix of a long option: `--target DIR` is
+      // `--target-directory`, `--rec` is `--recursive`, `--suf x` is `--suffix x`.
       if (head !== "rsync" && name.length > 0 && "target-directory".startsWith(name)) {
         directory = value ?? args[++i];
-      } else if (options.long.includes(name)) {
-        if (value === undefined) i++;
-      } else if (name === "recursive" || name === "archive") {
-        recursive = true;
-      } else if (name === "no-target-directory") {
+      } else if (name.length >= 4 && "no-target-directory".startsWith(name)) {
         ontoItself = true;
-      } else if (head === "install" && name.length > 1 && "directory".startsWith(name)) {
+      } else if (name.length >= 3 && ("recursive".startsWith(name) || "archive".startsWith(name))) {
+        recursive = true;
+      } else if (head === "install" && name.length >= 2 && "directory".startsWith(name)) {
         createsDirectories = true;
+      } else if (name.length >= 2 && options.long.some((long) => long.startsWith(name))) {
+        if (value === undefined) i++;
       }
       continue;
     }
@@ -1475,19 +1513,37 @@ function landsInDirectoryAs(
   if (directory === undefined && namesState(destination)) return true;
 
   const into = destination.replace(/(?:[\\/]+\.?)+$/, "");
-  if (NPM_BIN_DIRECTORY_RE.test(into)) {
-    if (head === "mv" || head === "ln") return true;
-    if (recursive || ontoItself || sources.some((s) => /[\\/]\.?$/.test(s))) return true;
-  }
+  // A directory becomes npm's bin directory when it is moved, linked or copied
+  // recursively onto a path that does not exist yet. `-t` needs a directory
+  // that exists, and so does `ln` given a trailing separator, so neither can.
+  // Copying what is IN a directory (`src/.`, rsync's `src/`, `-T`) fills an
+  // existing one with names that are not on the line.
+  const createsDirectory =
+    directory === undefined && !(head === "ln" && /[\\/]$/.test(written)) && (head === "mv" || head === "ln" || recursive);
+  const copiesContents = recursive && (ontoItself || sources.some((s) => /[\\/]\.?$/.test(s)));
+  if (NPM_BIN_DIRECTORY_RE.test(into) && (createsDirectory || copiesContents)) return true;
   if (into === "" || ontoItself) return false;
   return sources.some((source) => {
     if (/[\\/]$/.test(source)) return false;
     const name = source.slice(Math.max(source.lastIndexOf("/"), source.lastIndexOf("\\")) + 1);
     if (name === "" || name === "." || name === "..") return false;
     const landing = `${into}/${name}`;
+    // A directory named `.bin` landing in a `node_modules` is the same swap.
+    if (NPM_BIN_DIRECTORY_RE.test(landing) && (head === "mv" || head === "ln" || recursive)) return true;
+    // A glob source puts names the line does not spell into the directory.
+    if (NPM_BIN_DIRECTORY_RE.test(into) && GLOB_METACHAR_RE.test(name) && globCouldBeEntry(name)) return true;
     if (!namesState(landing)) return false;
     return !namesState(inShell(source)) || FAILPROOFAI_CODE_PATH_RE.test(landing);
   });
+}
+
+/** True when a one-segment glob could expand to the entry's own name. */
+function globCouldBeEntry(name: string): boolean {
+  try {
+    return new RegExp(`^${compileGlobPattern(name)}$`, "i").test("failproofai");
+  } catch {
+    return true;
+  }
 }
 
 /**
@@ -1626,7 +1682,7 @@ function writesViaOutputFlag(head: string, args: string[], namesState: (text: st
  * `cat ~/.failproofai/config.json && rm /tmp/scratch` has to stay allowed, and
  * does, because nothing in the second command reaches the state.
  */
-function destroysFailproofaiState(command: string, depth = 0): boolean {
+function destroysFailproofaiState(command: string, depth = 0, startDir?: string): boolean {
   // A substitution runs its body as a command of its own, so it is judged as
   // one — `echo $(rm -rf ~/.failproofai)` otherwise presents `echo` as the head
   // and walks straight through. Bounded, because a body can contain another.
@@ -1637,7 +1693,7 @@ function destroysFailproofaiState(command: string, depth = 0): boolean {
   if (depth === 0) {
     const bodies = substitutionBodies(command);
     for (let i = 0; i < bodies.length && i < 64; i++) {
-      if (destroysFailproofaiState(bodies[i], 1)) return true;
+      if (destroysFailproofaiState(bodies[i], 1, startDir)) return true;
       bodies.push(...substitutionBodies(bodies[i]));
     }
   }
@@ -1682,18 +1738,56 @@ function destroysFailproofaiState(command: string, depth = 0): boolean {
   // was denying a cleanup in an entirely unrelated directory.
   let parenDepth = 0;
   let cdParenDepth: number | null = null;
-  // Where the `cd`s so far put the shell, as written, when the walk can tell.
-  // A protected FILE sits in a directory nothing protects, so `cwdInState` never
-  // fires for it: `cd node_modules/.bin && printf 'exit 0' > failproofai` names
+
+  // Where the shell stands, when the walk can tell: the session's directory to
+  // begin with, then wherever each `cd`, `pushd` and `popd` moves it. A
+  // protected FILE sits in a directory nothing protects, so `cwdInState` never
+  // fires for it: `cd node_modules/.bin && printf 'exit 0' > failproofai`, or
+  // the same `printf` in a session a previous call left there, names
   // `node_modules/.bin/failproofai` only once `failproofai` is read from there
-  // (FailproofAI/agenteye#1795). The patterns match the tail of a path, so a
-  // relative `cd` needs no starting directory. A subshell's `cd` is undone
-  // when it closes, which `shellDirScopes` remembers.
-  let shellDir: string | undefined;
+  // (FailproofAI/agenteye#1795). Kept as its last `SHELL_DIR_SEGMENTS` segments
+  // with `.` and `..` resolved, because the patterns match the tail of a path
+  // and an unbounded path made every later word slower to judge.
+  let shellDir = startDir ? shellPath(undefined, startDir) : undefined;
+  let previousDir: string | undefined;
+  const dirStack: Array<string | undefined> = [];
   const shellDirScopes: Array<{ depth: number; dir: string | undefined }> = [];
+  const isRelative = (word: string) => word !== "" && !/^(?:[~/\\$]|[A-Za-z]:)/.test(word);
+  // A relative word read from where the shell stands, and `..` resolved in any.
   const inShell = (word: string): string =>
-    shellDir === undefined || word === "" || /^(?:[~/\\$]|[A-Za-z]:)/.test(word) ? word : `${shellDir}/${word}`;
-  const namesHere = (text: string): boolean => namesState(text) || (shellDir !== undefined && namesState(inShell(text)));
+    isRelative(word) && shellDir !== undefined ? shellPath(shellDir, word) : word.includes("..") ? shellPath(undefined, word) : word;
+  const judged = new Map<string, boolean>();
+  const namesHere = (text: string): boolean => {
+    if (namesState(text)) return true;
+    // Every pattern spells `failproof`, so only a word or a directory that
+    // does, or a glob that could, can resolve onto one.
+    if (!/failproof/i.test(text) && !/failproof/i.test(shellDir ?? "") && !GLOB_METACHAR_RE.test(text)) return false;
+    const resolved = inShell(text);
+    if (resolved === text) return false;
+    let verdict = judged.get(resolved);
+    if (verdict === undefined) judged.set(resolved, (verdict = namesState(resolved)));
+    return verdict;
+  };
+  // What the line assigns, so a word built from it is judged as the path it
+  // spells: `B=~/node_modules/.bin; ln -s /tmp/stage $B`. `$PWD` is where the
+  // shell stands. A variable the line never sets stays a reference.
+  const values = new Map<string, string>(assignments);
+  const expand = (word: string): string => {
+    let out = word;
+    for (let pass = 0; pass < 3 && out.includes("$"); pass++) {
+      out = out.replace(VAR_REFERENCE_RE, (reference, name: string) =>
+        name === "PWD" && shellDir !== undefined ? shellDir : values.get(name) ?? reference,
+      );
+    }
+    return out;
+  };
+  const moveTo = (dir: string | undefined) => {
+    previousDir = shellDir;
+    shellDir = dir;
+    cwdInState = dir !== undefined && namesState(dir);
+    cdParenDepth = cwdInState ? parenDepth : null;
+  };
+
   // A loop header hands its word list to the body, and the body is a separate
   // pipeline that names nothing. Without this, `for f in ~/.failproofai/*; do
   // rm -rf $f; done` is a header that only expands and a body that only deletes
@@ -1712,46 +1806,49 @@ function destroysFailproofaiState(command: string, depth = 0): boolean {
     // `grep -r sudo ~/.failproofai 2>/dev/null` and
     // `cat ~/.failproofai/config.json > /tmp/backup.json` both denied, which is
     // exactly the diagnosis this guard must not block.
-    if (reachesState || shellDir !== undefined) {
-      for (const [, target] of pipeline.matchAll(REDIRECT_TARGET_RE)) {
-        if (namesHere(target.replace(/^["']|["']$/g, ""))) return true;
-      }
+    for (const [, target] of pipeline.matchAll(REDIRECT_TARGET_RE)) {
+      if (namesHere(expand(target.replace(/^["']|["']$/g, "")))) return true;
     }
 
     for (const simple of simpleCommands) {
-      parenDepth += (simple.match(/\(/g) ?? []).length;
-      const words = commandWords(simple);
+      // Parentheses inside quotes open and close nothing.
+      const shellText = simple.replace(/'[^']*'|"(?:[^"\\]|\\.)*"/g, "");
+      parenDepth += (shellText.match(/\(/g) ?? []).length;
+      const lists = Object.values(commandWordLists(simple)).map((list) => list.map(expand));
+      const words = lists[0];
       const head = words.length > 0 ? commandBasename(words[0]) : "";
       // Track the shell's position before judging: a `cd` INTO the state makes
       // every later relative path a state path, and a `cd` back out ends that.
-      if (head === "cd" || head === "pushd") {
-        const operand = words.slice(1).find((w) => !w.startsWith("-"));
-        cwdInState = operand !== undefined && namesHere(operand);
-        cdParenDepth = cwdInState ? parenDepth : null;
+      if (head === "cd" || head === "pushd" || head === "popd") {
         if (parenDepth > 0) shellDirScopes.push({ depth: parenDepth, dir: shellDir });
-        // No operand is home; `cd -` goes somewhere the walk cannot see.
-        shellDir = operand === undefined ? "~" : operand === "-" ? undefined : inShell(operand);
-      } else if (head === "popd") {
-        // `popd` returns to wherever the shell was before `pushd`, which ends
-        // the window as surely as a `cd` out does. Without it every command for
-        // the rest of the line was judged as if it stood in the state directory.
-        cwdInState = false;
-        cdParenDepth = null;
-        shellDir = undefined;
-      } else if (landsInDirectoryAs(words, namesState, inShell)) {
+        const operand = words.slice(1).find((w) => !w.startsWith("-") || w === "-");
+        if (head === "popd") {
+          // `popd` returns to wherever the shell was before the `pushd`.
+          moveTo(dirStack.length > 0 ? dirStack.pop() : undefined);
+        } else if (head === "pushd" && operand === undefined) {
+          // A bare `pushd` swaps the top two directories.
+          const top = dirStack.pop();
+          dirStack.push(shellDir);
+          moveTo(top);
+        } else {
+          if (head === "pushd") dirStack.push(shellDir);
+          // No operand is home, and `cd -` is wherever the shell was before.
+          moveTo(operand === undefined ? "~" : operand === "-" ? previousDir : shellPath(isRelative(operand) ? shellDir : undefined, operand));
+        }
+      } else if (lists.some((list) => landsInDirectoryAs(list, namesState, inShell))) {
         // Before the `reachesState` gate, because the point is that nothing on
         // the line names the path: the source's name and the directory do.
         return true;
       } else if (
-        (reachesState || (shellDir !== undefined && words.some((w) => namesHere(w)))) &&
         words.length > 0 &&
-        simpleCommandDestroys(words, namesHere)
+        (reachesState || lists.some((list) => list.some((w) => namesHere(w)))) &&
+        lists.some((list) => simpleCommandDestroys(list, namesHere))
       ) {
         // Judged BEFORE the closing parenthesis is counted: a `rm -rf ./*)`
         // still runs inside the subshell it closes.
         return true;
       }
-      parenDepth -= (simple.match(/\)/g) ?? []).length;
+      parenDepth -= (shellText.match(/\)/g) ?? []).length;
       if (cdParenDepth !== null && parenDepth < cdParenDepth) {
         cwdInState = false;
         cdParenDepth = null;
@@ -1762,6 +1859,29 @@ function destroysFailproofaiState(command: string, depth = 0): boolean {
     }
   }
   return false;
+}
+
+/** How much of the shell's directory the walk keeps; see `shellPath`. */
+const SHELL_DIR_SEGMENTS = 16;
+
+/**
+ * `word` read from directory `base` (as given when absolute, or with no base),
+ * with `.` and `..` resolved as text, the way a shell's logical `cd` does, and
+ * cut to its last `SHELL_DIR_SEGMENTS` segments. Every protected pattern
+ * matches the END of a path, so the dropped head never decides anything, and
+ * the cut keeps a script of a thousand `cd`s from growing every later word.
+ */
+function shellPath(base: string | undefined, word: string): string {
+  const parts: string[] = [];
+  for (const part of (base === undefined ? word : `${base}/${word}`).split("/")) {
+    if (part === ".") continue;
+    if (part === ".." && parts.length > 0 && parts[parts.length - 1] !== ".." && parts[parts.length - 1] !== "") {
+      parts.pop();
+      continue;
+    }
+    parts.push(part);
+  }
+  return parts.slice(-SHELL_DIR_SEGMENTS).join("/");
 }
 
 const FAILPROOFAI_UNINSTALL_RE = /(?:npm\s+(?:uninstall|remove|un|r)\s.*failproofai|bun\s+remove\s.*failproofai|yarn\s+global\s+remove\s+failproofai|pnpm\s+(?:remove|uninstall|un)\s.*failproofai)/;
@@ -2870,8 +2990,11 @@ function blockFailproofaiCommands(ctx: PolicyContext): PolicyResult {
   // Deleting the state IS disabling enforcement, without ever naming the binary.
   // Checked on the raw command AND its shell-unescaped form for the same reason
   // the binary walk is: `rm -rf ~/.failproof"ai"` presents a broken literal to a
-  // matcher and a real path to the shell.
-  if (destroysFailproofaiState(cmd) || destroysFailproofaiState(unescaped)) {
+  // matcher and a real path to the shell. The walk starts where the command runs:
+  // the session's directory, or the one an Antigravity `run_command` names.
+  const toolCwd = ctx.toolInput?.cwd;
+  const shellCwd = typeof toolCwd === "string" && toolCwd !== "" ? toolCwd : ctx.session?.cwd;
+  if (destroysFailproofaiState(cmd, 0, shellCwd) || destroysFailproofaiState(unescaped, 0, shellCwd)) {
     return deny(
       "Deleting, moving or overwriting failproofai's own state or installed code would switch enforcement off. " +
         "If a policy is blocking legitimate work, say so and let the operator decide.",

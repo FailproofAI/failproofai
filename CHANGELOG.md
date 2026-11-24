@@ -1,5 +1,15 @@
 # Changelog
 
+## 1.0.18-beta.0 — 2026-11-24
+
+### Fixes
+
+- An install of failproofai fetches one third-party package, `sql.js`, pinned to an exact version with no dependencies or install script of its own; everything else it uses is compiled into its bundles at build time from `bun.lock`. It used to declare six caret ranges, so each `npm install -g failproofai` or `npx failproofai` resolved them, and posthog-node's own ranges under them, afresh: a malicious in-range release (posthog-node was hit by Shai-Hulud 2.0 in November 2025) reached every install made after it was published, and its install script ran there. posthog-node, yaml, smol-toml, jsonc-parser and html-to-image are devDependencies now, since nothing loaded them from `node_modules` at run time, so the pin holds whichever package manager installs failproofai, and an install downloads about 1.2 MB less. `bun run build` now fails first if a runtime dependency is a range, has dependencies of its own or an install script, if a bundle leaves a package external that the install would not carry, or if the package itself gains an install script, a peer dependency or an optional dependency other than the daemon packages (#PRNUM)
+
+### Docs
+
+- The Cloud policy docs say what a deployment runs: a policy's JavaScript runs unsandboxed, as the agent's user, on every machine it targets, checked against a digest from the same server and not yet signed by its publisher, so `policies:write` amounts to running code on the organization's machines (#PRNUM)
+
 ## 1.0.17 — 2026-11-24
 
 ### Fixes

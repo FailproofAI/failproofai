@@ -298,3 +298,17 @@ Downloaded JavaScript executes in the existing TypeScript policy worker with
 the user's authority. Cloud authorization must therefore treat assigning an
 arbitrary JavaScript policy as remote code execution until a sandboxed policy
 runtime exists.
+
+The SHA-256 each artifact is checked against arrives in the desired state,
+from the same Cloud origin and under the same credential the artifact is
+requested with (the artifact request follows redirects, so its bytes may be
+served from elsewhere; the digest is what binds them). It catches corruption
+in transit or on disk, and a cache file changed on the machine; it cannot
+catch a Cloud that serves bad code, because Cloud names both the code and its
+digest. Until the publisher signature above exists, anyone who can change an
+organization's deployments — Cloud itself, or any member or API key holding
+`policies:write` (publish, deploy, rollback, disable) — can run code on every
+machine that organization's deployments reach. The public docs say so in
+`docs/policies/deploy.mdx` and `docs/admin/keys-and-permissions.mdx`.
+Disabling a policy is the fleet-wide emergency stop, so an approval step added
+on the Cloud side must not gate it.

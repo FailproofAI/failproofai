@@ -1,7 +1,7 @@
 /**
  * Built-in security policies for Claude Code hooks.
  */
-import { resolve, join } from "node:path";
+import { resolve, join, isAbsolute, posix } from "node:path";
 import { statSync } from "node:fs";
 import { readFile, writeFile } from "node:fs/promises";
 import { execSync, execFileSync } from "node:child_process";
@@ -23,6 +23,7 @@ import {
   agentSettingsShellCwd,
   agentSettingsShellMatcher,
   agentSettingsWriteTarget,
+  physicalAgentPath,
   programNamesAgentSettings,
 } from "./agent-settings-guard";
 
@@ -692,10 +693,46 @@ function gitOperandsNameTarget(
   return false;
 }
 
-/** The repository a git command runs in, from `-C <dir>`, when the text says. */
-function gitRepositoryDir(gitWords: string[]): string | undefined {
-  const at = gitWords.indexOf("-C");
-  return at === -1 ? undefined : cdDestination(undefined, gitWords[at + 1]);
+/**
+ * The directories a git command runs in: every `-C <dir>` before the
+ * subcommand applies in turn, from where the shell may stand, so `git -C
+ * .claude log --output=settings.json` writes `.claude/settings.json`. Where
+ * the shell stands is unknown, the chain stays relative, which the shapes
+ * still read. A `-C` after the subcommand is that subcommand's own option.
+ */
+function gitRepositoryDirs(gitWords: string[], cwds: ReadonlyArray<string | undefined>): string[] {
+  const chain: string[] = [];
+  const at = gitWords.findIndex((word) => commandBasename(word) === "git");
+  for (let i = at + 1; at !== -1 && i < gitWords.length; i++) {
+    const word = gitWords[i];
+    if (GIT_FLAGS_WITH_OPERANDS.has(word)) {
+      if (word === "-C" && i + 1 < gitWords.length) chain.push(gitWords[i + 1]);
+      i++;
+      continue;
+    }
+    if (!word.startsWith("-")) break;
+  }
+  if (chain.length === 0) return [];
+  const dirs = new Set<string>();
+  for (const cwd of cwds) {
+    let dir: string | undefined = cwd;
+    let relativeChain = "";
+    for (const step of chain) {
+      const next = cdDestination(dir, step);
+      if (next !== undefined) {
+        dir = next;
+        relativeChain = "";
+      } else if (dir === undefined && isRelativeShellWord(step) && !/[$`]/.test(step)) {
+        relativeChain = posix.join(relativeChain, step);
+      } else {
+        dir = undefined;
+        relativeChain = "";
+      }
+    }
+    if (dir !== undefined) dirs.add(dir);
+    else if (relativeChain) dirs.add(relativeChain);
+  }
+  return [...dirs];
 }
 
 /**
@@ -1263,7 +1300,7 @@ function substitutionBodies(command: string): string[] {
 }
 
 /** An output redirect and the token it targets: `>f`, `> f`, `2>f`, `>>f`, `>|f`. */
-const REDIRECT_TARGET_RE = /\d*>{1,2}\|?\s*("[^"]*"|'[^']*'|[^\s;&|<>]+)/g;
+const REDIRECT_TARGET_RE = /\d*>{1,2}\|?\s*("[^"]*"|'[^']*'|(?:\\.|[^\s;&|<>\\])+)/g;
 
 /**
  * Strip the punctuation a shell consumes, so `(cd` reads as `cd`.
@@ -1302,16 +1339,63 @@ function commandBasename(token: string): string {
 }
 
 /**
+ * `text` cut where the shell cuts words: at blanks outside quotes, a backslash
+ * keeping the character after it. Quotes and backslashes stay in the words, so
+ * `cp /tmp/x "my cfg.json"` has the destination `"my cfg.json"`, not `cfg.json"`.
+ */
+function shellSplit(text: string): string[] {
+  const words: string[] = [];
+  let current = "";
+  let quote: "'" | '"' | "ansi" | null = null;
+  for (let i = 0; i < text.length; i++) {
+    const ch = text[i];
+    if (quote !== null) {
+      current += ch;
+      if (ch === "\\" && quote !== "'" && i + 1 < text.length) current += text[++i];
+      else if (ch === (quote === "ansi" ? "'" : quote)) quote = null;
+      continue;
+    }
+    if (ch === "\\" && i + 1 < text.length) {
+      current += ch + text[++i];
+      continue;
+    }
+    if (ch === "'" || ch === '"') {
+      quote = ch === "'" && text[i - 1] === "$" ? "ansi" : ch;
+      current += ch;
+      continue;
+    }
+    if (/\s/.test(ch)) {
+      if (current) words.push(current);
+      current = "";
+      continue;
+    }
+    current += ch;
+  }
+  if (current) words.push(current);
+  return words;
+}
+
+/**
  * Walk off everything a shell resolves before it settles on the command word,
  * and return the tokens from the command word on. Mirrors the walk in
  * `classifySelfInvocation` — the same prefixes hide a deleter that hid the
  * binary, and `xargs -0 rm -f` is the one that matters most here.
  */
 function commandWords(simpleCommand: string): string[] {
-  const tokens = simpleCommand.trim().split(/\s+/).map(bareToken).filter(Boolean);
+  const tokens = shellSplit(simpleCommand.trim()).map(bareToken).filter(Boolean);
   let i = 0;
   while (i < tokens.length) {
     const token = tokens[i];
+    // A quoted word in the command's place — a shell's `-c` program — is a
+    // command line of its own: `bash -c 'cat x'` runs `cat`. An assignment
+    // with a quoted value (`env "A=b c" cp …`) is still one assignment.
+    if (/\s/.test(token) && !ENV_ASSIGNMENT_RE.test(token)) {
+      const inner = shellSplit(token).map(bareToken).filter(Boolean);
+      if (inner.length > 1) {
+        tokens.splice(i, 1, ...inner);
+        continue;
+      }
+    }
     // A redirect operator and, when it stands alone, the token it targets —
     // `> file` must not leave `file` sitting where the command word goes.
     if (/^\d*(?:>{1,2}\|?|<{1,3})/.test(token)) {
@@ -1376,6 +1460,7 @@ function simpleCommandDestroys(
   target: ProtectedPathTarget,
   rawSimple: string,
   cwdInTarget = false,
+  cwds: ReadonlyArray<string | undefined> = [undefined],
 ): boolean {
   if (words.length === 0) return false;
   const head = commandBasename(words[0]);
@@ -1467,9 +1552,18 @@ function simpleCommandDestroys(
     // reaches it through: `cp -l ~/.claude/settings.json /tmp/x; echo … > /tmp/x`.
     const links = args.some((a) => /^-(?!-)[A-Za-z]*[ls]/.test(a) || a === "--link" || a === "--symbolic-link");
     if (head === "cp" && links && args.some((a) => !a.startsWith("-") && namesState(a))) return true;
-    const targetAt = args.findIndex((a) => a === "-t" || a === "--target-directory");
-    if (targetAt !== -1 && namesState(args[targetAt + 1] ?? "")) return true;
-    if (args.some((a) => a.startsWith("--target-directory=") && namesState(a))) return true;
+    const target = copyTargetDirectory(head, args);
+    if (target) {
+      // Every other operand is a source, and lands in the directory under its
+      // own name: `cp -t ~/.claude /tmp/settings.json` writes the settings,
+      // `cp -t ~/.claude /tmp/notes.md` and `cp -t /tmp/bak ~/.claude/settings.json` do not.
+      const sources = args.filter((a, i) => !a.startsWith("-") && !target.values.has(i));
+      const dir = stripShellQuoting(target.dir).replace(/\/+$/, "");
+      return sources.some((source) => {
+        const name = stripShellQuoting(source).replace(/\/+$/, "").split("/").pop() ?? "";
+        return namesState(name === "" || name === "." || name === ".." ? dir : `${dir}/${name}`);
+      });
+    }
     const operands = args.filter((a) => !a.startsWith("-"));
     const destination = operands[operands.length - 1];
     return destination !== undefined && namesState(destination);
@@ -1491,9 +1585,11 @@ function simpleCommandDestroys(
     const subcommand = gitSubcommand(args);
     const gitWords = quoteAwareCommandWords(rawSimple).words;
     // A relative output path lands in the repository `-C` names.
-    const repository = gitRepositoryDir(gitWords);
+    const repositories = gitRepositoryDirs(gitWords, cwds);
     const namesInRepository = (text: string): boolean =>
-      namesState(text) || (repository !== undefined && isRelativeShellWord(text) && namesState(resolve(repository, text)));
+      namesState(text) ||
+      (isRelativeShellWord(text) &&
+        repositories.some((repository) => namesState(isAbsolute(repository) ? resolve(repository, text) : posix.join(repository, text))));
     // Output files, whatever the subcommand: `git log --output=<file>` writes
     // what `--format` says into it, and `-o` is the archive's or the patches'.
     if (writesViaOutputFlag("git", args, namesInRepository)) return true;
@@ -1919,7 +2015,8 @@ function readHeredocDelimiter(
     delimiter += c;
     j++;
   }
-  return delimiter ? { delimiter, literal, stripTabs, end: j } : null;
+  // `<<''` and `<<""` are heredocs too, ended by the first empty line.
+  return delimiter || literal ? { delimiter, literal, stripTabs, end: j } : null;
 }
 
 /**
@@ -2639,6 +2736,60 @@ function cdDestination(from: string | undefined, operand: string | undefined): s
   return from === undefined ? undefined : resolve(from, operand);
 }
 
+/** Short options of `cp` and `install` that take a value; `t` is the target directory. */
+const COPY_VALUE_OPTIONS: Readonly<Record<string, string>> = { cp: "St", install: "gmoSt" };
+
+/**
+ * The target directory a `cp` or `install` names, however it is spelled — `-t
+ * DIR`, `-tDIR`, `-vt DIR`, `-vtDIR`, `--target-directory=DIR` or any prefix
+ * of it — with the indexes of option values, which are no operands. Not
+ * `rsync`, whose `-t` is `--times`.
+ */
+function copyTargetDirectory(head: string, args: readonly string[]): { dir: string; values: Set<number> } | null {
+  const valued = COPY_VALUE_OPTIONS[head];
+  if (!valued) return null;
+  let dir: string | null = null;
+  const values = new Set<number>();
+  for (let i = 0; i < args.length; i++) {
+    const arg = args[i];
+    if (arg === "--") break;
+    if (arg.startsWith("--")) {
+      const eq = arg.indexOf("=");
+      const name = arg.slice(2, eq === -1 ? undefined : eq);
+      if (name.length >= 1 && "target-directory".startsWith(name)) {
+        if (eq !== -1) dir = arg.slice(eq + 1);
+        else if (i + 1 < args.length) {
+          dir = args[i + 1];
+          values.add(++i);
+        }
+      }
+      continue;
+    }
+    if (!arg.startsWith("-") || arg.length < 2) continue;
+    for (let k = 1; k < arg.length; k++) {
+      if (!valued.includes(arg[k])) continue;
+      const rest = arg.slice(k + 1);
+      let value: string | undefined = rest;
+      if (rest.length === 0) {
+        value = args[i + 1];
+        if (value !== undefined) values.add(++i);
+      }
+      if (arg[k] === "t" && value !== undefined) dir = value;
+      break;
+    }
+  }
+  return dir === null ? null : { dir, values };
+}
+
+/** Whether `path` is a directory now, so a `cd` into it succeeds. */
+function isDirectoryNow(path: string): boolean {
+  try {
+    return statSync(path, { throwIfNoEntry: false })?.isDirectory() === true;
+  } catch {
+    return false;
+  }
+}
+
 /** `text` cut at every match of `separator`, as `[start, end)` ranges. */
 function cutRanges(text: string, separator: RegExp): Array<[number, number]> {
   const global = new RegExp(separator.source, separator.flags.includes("g") ? separator.flags : `${separator.flags}g`);
@@ -2730,11 +2881,18 @@ function destroysProtectedPath(command: string, target: ProtectedPathTarget, dep
     if (stateVars.size === before) break;
   }
 
-  // The directory the shell stands in, where the text says. Undefined once it
-  // cannot be known; `pushd` keeps the one it left for `popd` to return to, on
-  // a stack shared by reference, so a subshell can hand the parent's back.
-  let walkCwd = target.cwd;
-  type DirStack = { dir: string | undefined; below: DirStack } | null;
+  // Where the shell may stand, as far as the text says: one directory, or a
+  // few when a `cd` may not have happened. Its directory may not exist, so it
+  // fails unless an earlier command makes it — `cd /nowhere; cp x settings.json`
+  // copies into the directory the shell already stood in — and the last
+  // command of a pipeline runs in the shell under zsh and not under bash. A
+  // relative word is judged against each of them; undefined is a place the
+  // text cannot name. `oldCwds` is OLDPWD for `cd -`, unknown until a `cd`
+  // sets it. `pushd` keeps where it left for `popd`, on a stack shared by
+  // reference, so a subshell can hand the parent's back.
+  let walkCwds: ReadonlyArray<string | undefined> = [target.cwd];
+  let oldCwds: ReadonlyArray<string | undefined> = [undefined];
+  type DirStack = { dirs: ReadonlyArray<string | undefined>; below: DirStack } | null;
   let dirStack: DirStack = null;
 
   // A word's glob verdict, once per walk: a command can repeat a word
@@ -2760,23 +2918,39 @@ function destroysProtectedPath(command: string, target: ProtectedPathTarget, dep
     // — that would expand onto the state. Expansions are spliced first, so one
     // holding a space (`settings$( true ).json`) stays inside its word.
     const spliced = spliceWordExpansions(text);
+    // A quoted or escaped name with a space in it is ONE word to the shell:
+    // `> "my cfg.json"` writes through a link of that name.
+    if (target.namesThroughLinks && /["'\\]/.test(text)) {
+      for (const word of quoteAwareWords(text)) {
+        if (/\s/.test(word) && walkCwds.some((cwd) => target.namesThroughLinks!(word, cwd))) return true;
+      }
+    }
+    // And a word handed over whole with its quotes already off: an operand,
+    // `my cfg.json`.
+    const whole = text.trim();
+    if (target.namesThroughLinks && /\s/.test(whole) && !/["'\\]/.test(whole) && whole.length <= 4096) {
+      if (walkCwds.some((cwd) => target.namesThroughLinks!(whole, cwd))) return true;
+    }
+    const here = walkCwds.filter((cwd): cwd is string => cwd !== undefined);
     return spliced.split(/\s+/).some((token) => {
       const word = unquotedToken(token);
       if (globNames(word)) return true;
-      if (target.namesThroughLinks?.(word, walkCwd)) return true;
-      if (walkCwd === undefined) return false;
+      if (walkCwds.some((cwd) => target.namesThroughLinks?.(word, cwd))) return true;
       // A relative word lands where the shell stands: `settings.json` after
       // `cd ~/.claude`, `opencode` after `cd ~/.config`. Only words that could
       // be one of the target's names, or `.`/`..` steps, are resolved: the
       // rest cannot land on it, and resolving every word of a long line cost
       // more than the whole walk.
-      const cwdHinted = target.hint === undefined || target.hint.test(walkCwd);
-      for (const form of word.includes("=") ? [word, word.slice(word.indexOf("=") + 1)] : [word]) {
-        if (!isRelativeShellWord(form)) continue;
-        if (!cwdHinted && !target.hint!.test(form) && !/^\.{1,2}(?:\/\.{1,2})*\/?$/.test(form)) continue;
-        if (target.namesLiteral(resolve(walkCwd, form))) return true;
+      for (const cwd of here) {
+        const cwdHinted = target.hint === undefined || target.hint.test(cwd);
+        for (const form of word.includes("=") ? [word, word.slice(word.indexOf("=") + 1)] : [word]) {
+          if (!isRelativeShellWord(form)) continue;
+          if (!cwdHinted && !target.hint!.test(form) && !/^\.{1,2}(?:\/\.{1,2})*\/?$/.test(form)) continue;
+          if (target.namesLiteral(resolve(cwd, form))) return true;
+        }
+        if (GLOB_METACHAR_RE.test(word) && !/^[-/~$]/.test(word) && globNames(resolve(cwd, word))) return true;
       }
-      return GLOB_METACHAR_RE.test(word) && !/^[-/~$]/.test(word) && globNames(resolve(walkCwd, word));
+      return false;
     });
   };
 
@@ -2807,7 +2981,13 @@ function destroysProtectedPath(command: string, target: ProtectedPathTarget, dep
   // directory, and `(cd /tmp; pushd /tmp); popd` handed the parent a stack
   // entry it never had.
   let parenDepth = 0;
-  const cwdScopes: Array<{ depth: number; cwd: string | undefined; inState: boolean; dirs: DirStack }> = [];
+  const cwdScopes: Array<{
+    depth: number;
+    cwds: ReadonlyArray<string | undefined>;
+    olds: ReadonlyArray<string | undefined>;
+    inState: boolean;
+    dirs: DirStack;
+  }> = [];
   // A loop header hands its word list to the body, and the body is a separate
   // pipeline that names nothing. Without this, `for f in ~/.failproofai/*; do
   // rm -rf $f; done` is a header that only expands and a body that only deletes
@@ -2817,7 +2997,7 @@ function destroysProtectedPath(command: string, target: ProtectedPathTarget, dep
   // when the walk has lost track of where the shell stands, every relative
   // destination counts: `cd $D && cp x policies-config.json`.
   const namesHere = (text: string): boolean =>
-    namesState(text) || (cwdInState && walkCwd === undefined && isRelativeShellWord(bareToken(text)));
+    namesState(text) || (cwdInState && walkCwds.includes(undefined) && isRelativeShellWord(bareToken(text)));
   // The walk SPLITS the splittable text and READS the readable one: both keep
   // every offset, so each piece of one is the same piece of the other. Comments
   // and stored heredoc bodies are blank in both; separators inside a quoted
@@ -2859,12 +3039,13 @@ function destroysProtectedPath(command: string, target: ProtectedPathTarget, dep
         // Every command of a pipeline runs in a subshell, so one before a `|`
         // moves nothing: `cd ~/.claude | cat; cp x settings.json` copies into
         // the directory the shell already stood in. zsh runs the LAST command
-        // in the shell itself and bash does not, so after that one the walk no
-        // longer knows where the shell stands, and counts it inside the target
-        // when either place is.
+        // in the shell itself and bash does not, so after that one the shell
+        // may stand in either place.
         if (simpleIndex === simples.length - 1) {
-          if (parenDepth > 0) cwdScopes.push({ depth: parenDepth, cwd: walkCwd, inState: cwdInState, dirs: dirStack });
-          const before = walkCwd;
+          if (parenDepth > 0) cwdScopes.push({ depth: parenDepth, cwds: walkCwds, olds: oldCwds, inState: cwdInState, dirs: dirStack });
+          const before = walkCwds;
+          let after: ReadonlyArray<string | undefined> = before;
+          let mayFail = false;
           if (head === "popd") {
             // `popd` returns to wherever the shell was before `pushd`, which
             // ends the window as surely as a `cd` out does. Without it every
@@ -2873,19 +3054,38 @@ function destroysProtectedPath(command: string, target: ProtectedPathTarget, dep
             // stays where it is.
             if (dirStack !== null) {
               cwdInState = false;
-              walkCwd = dirStack.dir;
+              after = dirStack.dirs;
               dirStack = dirStack.below;
             }
           } else {
-            // Quote-aware, so `cd "$(dirname ~/.claude/settings.json)"` is one operand.
-            const operand = quoteAwareCommandWords(simple).words.slice(1).find((w) => !w.startsWith("-"));
-            cwdInState = operand !== undefined && namesState(operand);
-            if (head === "pushd") dirStack = { dir: walkCwd, below: dirStack };
-            walkCwd = cdDestination(walkCwd, operand);
+            const operands = quoteAwareCommandWords(simple).words.slice(1);
+            // Quote-aware, so `cd "$(dirname ~/.claude/settings.json)"` is one
+            // operand. A bare `-` is OLDPWD.
+            const operand = operands.find((w) => w === "-" || !w.startsWith("-"));
+            // `cd -P` follows links before `..`, the way the kernel walks:
+            // with `link -> ~/.claude/x`, `cd -P link/..` lands in ~/.claude.
+            const physical = head === "cd" && operands.some((w) => /^-[A-Za-z@]*P/.test(w));
+            if (operand === "-") {
+              after = oldCwds;
+              // An OLDPWD from before this command could be anywhere, the target included.
+              cwdInState = oldCwds.includes(undefined) || oldCwds.some((dir) => dir !== undefined && namesState(dir));
+            } else {
+              cwdInState = operand !== undefined && namesState(operand);
+              after = before.map((cwd) =>
+                physical && operand !== undefined && !/[$`]/.test(operand)
+                  ? physicalAgentPath(operand, cwd) ?? cdDestination(cwd, operand)
+                  : cdDestination(cwd, operand),
+              );
+              mayFail = after.some((dir) => dir === undefined || !isDirectoryNow(dir));
+            }
+            if (head === "pushd") dirStack = { dirs: before, below: dirStack };
           }
-          if (simples.length > 1) {
-            cwdInState ||= (before !== undefined && namesState(before)) || (walkCwd !== undefined && namesState(walkCwd));
-            walkCwd = undefined;
+          oldCwds = before;
+          walkCwds = [...new Set(mayFail || simples.length > 1 ? [...after, ...before] : after)];
+          // A handful of places is plenty; past that, the walk stops naming them.
+          if (walkCwds.length > 4) {
+            cwdInState ||= walkCwds.some((dir) => dir !== undefined && namesState(dir));
+            walkCwds = [undefined];
           }
         }
       } else if (reachesState && simpleIndex > 0 && quoteAwareCommandWords(simple).readsStdinProgram) {
@@ -2901,12 +3101,13 @@ function destroysProtectedPath(command: string, target: ProtectedPathTarget, dep
         if (quoteAwareCommandWords(simple).viaXargs && !SAFE_EXEC_COMMANDS.has(head)) return true;
         // Judged BEFORE the closing parenthesis is counted: a `rm -rf ./*)`
         // still runs inside the subshell it closes.
-        if (simpleCommandDestroys(words, namesHere, target, simple, cwdInState)) return true;
+        if (simpleCommandDestroys(words, namesHere, target, simple, cwdInState, walkCwds)) return true;
       }
       parenDepth -= (splitSimple.match(/\)/g) ?? []).length;
       while (cwdScopes.length > 0 && parenDepth < cwdScopes[cwdScopes.length - 1].depth) {
         const scope = cwdScopes.pop()!;
-        walkCwd = scope.cwd;
+        walkCwds = scope.cwds;
+        oldCwds = scope.olds;
         cwdInState = scope.inState;
         dirStack = scope.dirs;
       }
@@ -4037,7 +4238,11 @@ function blockFailproofaiCommands(ctx: PolicyContext): PolicyResult {
   // Text piped into a shell is a command too: `echo 'codex features disable hooks' | sh`.
   const pipesIntoShell = /\|\s*(?:[^\s;&|()`<>]*\/)?(?:sh|bash|zsh|dash|ksh|ash|fish)(?=[\s;&|)]|$)/.test(lexed.commandsOnly);
   const cliText = pipesIntoShell ? cmd : lexed.commandsOnly;
-  if (agentCliSwitchesHooksOff(cliText) || agentCliSwitchesHooksOff(stripShellQuoting(cliText))) {
+  if (
+    agentCliSwitchesHooksOff(cliText) ||
+    agentCliSwitchesHooksOff(stripShellQuoting(cliText)) ||
+    agentCliSwitchesHooksOff(agentCliArgvLines(lexed))
+  ) {
     return deny(
       "Turning an agent's hooks off would switch failproofai's enforcement off. " +
         "If this change is needed, say so and let the user make it.",
@@ -4060,6 +4265,33 @@ function blockFailproofaiCommands(ctx: PolicyContext): PolicyResult {
     );
   }
   return allow();
+}
+
+/**
+ * Each command of a line as its argv reads, one per line, for the agent-CLI
+ * checks: quotes and `$'…'` escapes undone (`codex features disable
+ * $'\x68ooks'`), `$NAME` and `${NAME}` replaced by a value the line assigns
+ * (`F=hooks; codex features disable "$F"`), and an argument holding a blank —
+ * a message — replaced by `_`, so its words never read as a command.
+ */
+function agentCliArgvLines(lexed: ShellLex): string {
+  const values = new Map<string, string>();
+  for (const [, name, value] of lexed.readable.matchAll(/(?:^|[\s;&|(])(?:export\s+)?([A-Za-z_][A-Za-z0-9_]*)=("[^"]*"|'[^']*'|[^\s;&|)]*)/g)) {
+    values.set(name, value.replace(/^["']|["']$/g, ""));
+  }
+  const expand = (text: string): string =>
+    values.size === 0
+      ? text
+      : text.replace(/\$\{([A-Za-z_][A-Za-z0-9_]*)\}|\$([A-Za-z_][A-Za-z0-9_]*)/g, (whole, braced?: string, bare?: string) => values.get(braced ?? bare ?? "") ?? whole);
+  const lines: string[] = [];
+  for (const [start, end] of cutRanges(lexed.splittable, PIPELINE_SEPARATORS)) {
+    const splitPipeline = lexed.splittable.slice(start, end);
+    for (const [simpleStart, simpleEnd] of cutRanges(splitPipeline, /\|/)) {
+      const simple = lexed.readable.slice(start + simpleStart, start + simpleEnd);
+      lines.push(quoteAwareWords(expand(simple)).map((word) => (/\s/.test(word) ? "_" : word)).join(" "));
+    }
+  }
+  return lines.join("\n");
 }
 
 /**

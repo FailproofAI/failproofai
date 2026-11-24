@@ -30,7 +30,7 @@
  * bundler rename that local (config-status.ts explains why that matters: the
  * audit cache in src/audit/cache.ts keys on each policy's source).
  */
-import { existsSync, lstatSync, readlinkSync, realpathSync } from "node:fs";
+import { existsSync, lstatSync, readdirSync, readlinkSync, realpathSync } from "node:fs";
 import { homedir } from "node:os";
 import { basename, dirname, isAbsolute, join, normalize, relative, resolve } from "node:path";
 
@@ -329,9 +329,79 @@ function agentSettingsRealTargets(cwd: string | undefined, extraPaths: readonly 
   const home = homedir();
   return realpathsOf([
     ...HOME_AGENT_SETTINGS_FILES.map((path) => join(home, path)),
-    ...(cwd ? PROJECT_AGENT_SETTINGS_FILES.map((path) => join(cwd, path)) : []),
+    ...agentProjectRoots(cwd).flatMap((root) => PROJECT_AGENT_SETTINGS_FILES.map((path) => join(root, path))),
     ...extraPaths,
   ]);
+}
+
+/**
+ * The directories whose project settings apply to a session in `cwd`: `cwd`
+ * itself and each directory above it up to the repository root. Agents read
+ * project and local settings at the root from a subdirectory (Claude Code
+ * keeps `settings.local.json` there), so a root file's link target is theirs
+ * too. Outside a repository, `cwd` alone.
+ */
+function agentProjectRoots(cwd: string | undefined): string[] {
+  if (!cwd) return [];
+  const roots: string[] = [];
+  let dir = resolve(cwd);
+  for (let depth = 0; depth < 32; depth++) {
+    roots.push(dir);
+    if (existsSync(join(dir, ".git"))) return roots;
+    const parent = dirname(dir);
+    if (parent === dir) break;
+    dir = parent;
+  }
+  return [resolve(cwd)];
+}
+
+/**
+ * Directories whose every file is part of an agent's hooks, wherever they
+ * live: what Hermes' `plugins/failproofai` links to (the package's
+ * `hermes-plugin/`, or a copy), in every profile, and the package's own plugin
+ * directories, which OpenClaw and Pi load in place. Editing one of their
+ * files changes what the hook does without touching any settings file.
+ */
+function agentPluginTrees(): string[] {
+  const home = homedir();
+  const hermesHomes = [join(home, ".hermes")];
+  try {
+    for (const name of readdirSync(join(home, ".hermes", "profiles"))) hermesHomes.push(join(home, ".hermes", "profiles", name));
+  } catch {
+    // No profiles.
+  }
+  try {
+    for (const name of readdirSync(home)) if (name.startsWith(".hermes-")) hermesHomes.push(join(home, name));
+  } catch {
+    // Unreadable home: the default profile alone.
+  }
+  const trees = new Set<string>();
+  for (const hermes of hermesHomes) {
+    const link = join(hermes, "plugins", "failproofai");
+    try {
+      const real = realpathSync(link);
+      if (real !== link) trees.add(real);
+    } catch {
+      // Not installed for this profile.
+    }
+  }
+  const packageRoot = process.env.FAILPROOFAI_PACKAGE_ROOT;
+  if (packageRoot) {
+    for (const name of ["hermes-plugin", "openclaw-plugin", "pi-extension"]) {
+      const dir = join(packageRoot, name);
+      try {
+        trees.add(realpathSync(dir));
+      } catch {
+        // Not in this package.
+      }
+    }
+  }
+  return [...trees];
+}
+
+/** Whether `path` is one of `trees` or lies inside one. */
+function insideAgentPluginTree(path: string, trees: readonly string[]): boolean {
+  return trees.some((tree) => path === tree || path.startsWith(`${tree}/`));
 }
 
 /** The string values of a tool input, a few levels deep (Codex wraps a patch in an array). */
@@ -401,6 +471,7 @@ export function agentSettingsWriteTarget(
 ): string | null {
   const extras = new Set([...extraPaths.map((path) => resolve(path)), ...relocatedAgentSettings(extraPaths)]);
   let realTargets: Set<string> | undefined;
+  let trees: string[] | undefined;
   for (const raw of agentToolWritePaths(toolInput)) {
     const lexical = resolveAgentSettingsCandidate(raw, cwd);
     if (isAgentSettingsPath(lexical) || extras.has(lexical)) return lexical;
@@ -417,6 +488,8 @@ export function agentSettingsWriteTarget(
     if (physical !== null && physical !== real && (isAgentSettingsPath(physical) || extras.has(physical) || realTargets.has(physical))) {
       return lexical;
     }
+    trees ??= agentPluginTrees();
+    if ([lexical, real, physical].some((path) => path !== null && insideAgentPluginTree(path, trees!))) return lexical;
   }
   return null;
 }
@@ -440,6 +513,13 @@ function agentSettingsPathInTextRe(path: string, isDirectory: boolean): RegExp {
   return new RegExp(`${start}${escaped}${isDirectory ? "[\\\\/]?" : ""}(?=$|[\\s'"\`;&|()<>])`, "i");
 }
 
+/** A directory as a regex literal that matches it and every path inside it, from where a word starts. */
+function agentSettingsTreeInTextRe(path: string): RegExp {
+  const escaped = path.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const start = `(?<=^|[${PATH_START_EDGE}]|(?:^|[${PATH_START_EDGE}])-[A-Za-z])`;
+  return new RegExp(`${start}${escaped}(?=$|[\\/\\s'"\`;&|()<>])`, "i");
+}
+
 /**
  * A word as each form the shell may hand it over in: the word itself, and the
  * value after `=` for `--output=<path>`, `of=<path>` and `FOO=<path>`.
@@ -459,7 +539,7 @@ function agentSettingsWordForms(raw: string): string[] {
 function agentSettingsShellExtras(
   extraPaths: readonly string[],
   cwd: string | undefined,
-): { files: Set<string>; dirs: Set<string> } {
+): { files: Set<string>; dirs: Set<string>; trees: string[] } {
   const files = new Set<string>();
   const dirs = new Set<string>();
   const home = homedir();
@@ -469,10 +549,14 @@ function agentSettingsShellExtras(
   }
   // `.github/hooks/` is protected as a directory only in a project that keeps
   // failproofai's Copilot hooks there; elsewhere it is where git hooks live.
-  if (cwd && existsSync(join(cwd, ".github", "hooks", "failproofai.json"))) dirs.add(join(resolve(cwd), ".github", "hooks"));
+  const roots = agentProjectRoots(cwd);
+  for (const root of roots) {
+    if (existsSync(join(root, ".github", "hooks", "failproofai.json"))) dirs.add(join(root, ".github", "hooks"));
+  }
   // A project's settings linked elsewhere (`.claude/settings.json ->
-  // ../config/claude.json`) are written through the target's own name.
-  const projectFiles = cwd ? PROJECT_AGENT_SETTINGS_FILES.map((path) => join(resolve(cwd), path)) : [];
+  // ../config/claude.json`) are written through the target's own name, from
+  // the root's subdirectories too.
+  const projectFiles = roots.flatMap((root) => PROJECT_AGENT_SETTINGS_FILES.map((path) => join(root, path)));
   for (const lexical of [...HOME_AGENT_SETTINGS_FILES.map((path) => join(home, path)), ...projectFiles]) {
     try {
       const real = realpathSync(lexical);
@@ -490,7 +574,7 @@ function agentSettingsShellExtras(
       // Not on this machine.
     }
   }
-  return { files, dirs };
+  return { files, dirs, trees: agentPluginTrees() };
 }
 
 /**
@@ -530,8 +614,8 @@ const AGENT_SETTINGS_HINT_SOURCE =
  * session's extra settings files and the real locations behind the home
  * directory's links, so a word that could reach one is never skipped.
  */
-function agentSettingsHintFrom(extras: { files: Set<string>; dirs: Set<string> }): RegExp {
-  const names = [...extras.files, ...extras.dirs]
+function agentSettingsHintFrom(extras: { files: Set<string>; dirs: Set<string>; trees: readonly string[] }): RegExp {
+  const names = [...extras.files, ...extras.dirs, ...extras.trees]
     .flatMap((path) => path.split(/[\\/]/))
     .filter((segment) => segment.length > 2)
     .map((segment) => segment.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
@@ -558,6 +642,8 @@ export function agentSettingsShellMatcher(
   const textForms = [
     ...[...extras.files].flatMap((path) => withAgentSettingsHomeForm(path).map((form) => agentSettingsPathInTextRe(form, false))),
     ...[...extras.dirs].flatMap((path) => withAgentSettingsHomeForm(path).map((form) => agentSettingsPathInTextRe(form, true))),
+    // A plugin tree is reached by any path inside it, not only by its own name.
+    ...extras.trees.flatMap((path) => withAgentSettingsHomeForm(path).map((form) => agentSettingsTreeInTextRe(form))),
   ];
   const names = (text: string): boolean => {
     if (AGENT_SETTINGS_IN_TEXT_RE.test(text) || AGENT_CONFIG_DIR_IN_TEXT_RE.test(text)) return true;
@@ -574,6 +660,7 @@ export function agentSettingsShellMatcher(
         const path = resolveAgentSettingsCandidate(word, undefined);
         if (isAgentSettingsPath(path) || isAgentConfigDirPath(path)) return true;
         if (isAbsolute(path) && (extras.files.has(path) || extras.dirs.has(path.replace(/[\\/]+$/, "")))) return true;
+        if (isAbsolute(path) && insideAgentPluginTree(path.replace(/[\\/]+$/, ""), extras.trees)) return true;
       }
     }
     return false;

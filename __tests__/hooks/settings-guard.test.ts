@@ -1067,6 +1067,120 @@ describe("block-failproofai-commands — review round six", () => {
   }, 60_000);
 });
 
+/**
+ * hermes's second review: a link name with a space, a root settings link's
+ * target from a subdirectory, the real files behind an installed plugin link,
+ * escaped and variable CLI words, a glued copy target, a relative `git -C`,
+ * and where the shell stands after `cd -`, a failing `cd` or `cd -P`.
+ */
+describe("block-failproofai-commands — review round seven", () => {
+  let h7: string;
+  let p7: string;
+  let pkg7: string;
+  let outerHome: string | undefined;
+  let outerPackageRoot: string | undefined;
+  const settings = () => join(h7, ".claude", "settings.json");
+
+  beforeAll(() => {
+    h7 = join(root, "home7");
+    p7 = join(root, "proj7");
+    pkg7 = join(root, "pkg7");
+    mkdirSync(join(h7, ".claude", "subdir"), { recursive: true });
+    mkdirSync(join(h7, ".hermes", "plugins"), { recursive: true });
+    writeFileSync(settings(), "{}");
+    mkdirSync(join(p7, ".git"), { recursive: true });
+    mkdirSync(join(p7, ".claude"), { recursive: true });
+    mkdirSync(join(p7, "config"), { recursive: true });
+    mkdirSync(join(p7, "src"), { recursive: true });
+    writeFileSync(join(p7, "config", "claude.json"), "{}");
+    mkdirSync(join(pkg7, "hermes-plugin"), { recursive: true });
+    mkdirSync(join(pkg7, "openclaw-plugin"), { recursive: true });
+    writeFileSync(join(pkg7, "hermes-plugin", "__init__.py"), "");
+    symlinkSync(join("..", "config", "claude.json"), join(p7, ".claude", "settings.local.json"));
+    symlinkSync(settings(), join(p7, "my cfg.json"));
+    symlinkSync(join(h7, ".claude", "subdir"), join(p7, "clink"));
+    symlinkSync(join(pkg7, "hermes-plugin"), join(h7, ".hermes", "plugins", "failproofai"));
+    outerHome = process.env.HOME;
+    outerPackageRoot = process.env.FAILPROOFAI_PACKAGE_ROOT;
+    process.env.HOME = h7;
+  });
+
+  afterAll(() => {
+    if (outerHome === undefined) delete process.env.HOME;
+    else process.env.HOME = outerHome;
+    if (outerPackageRoot === undefined) delete process.env.FAILPROOFAI_PACKAGE_ROOT;
+    else process.env.FAILPROOFAI_PACKAGE_ROOT = outerPackageRoot;
+  });
+
+  it.each([
+    `printf '{}' > "my cfg.json"`,
+    `printf '{}' > my\\ cfg.json`,
+    `cp /tmp/x "my cfg.json"`,
+  ])("follows a link whose name has a space in it: %s", async (command) => {
+    expect(await bash(command, p7)).toBe(true);
+  });
+
+  it("protects a root settings link's target from a subdirectory session", async () => {
+    expect(await bash(`printf '{}' > ../config/claude.json`, join(p7, "src"))).toBe(true);
+    expect(await write(join(p7, "config", "claude.json"), join(p7, "src"))).toBe(true);
+    expect(await bashDecision(`printf '{}' > ../config/other.json`, join(p7, "src"))).toBe("allow");
+  });
+
+  it("protects every file behind an installed plugin link, and the package's plugin directories", async () => {
+    expect(await write(join(pkg7, "hermes-plugin", "__init__.py"), p7)).toBe(true);
+    expect(await bash(`printf x > ${join(pkg7, "hermes-plugin", "evil.py")}`, p7)).toBe(true);
+    process.env.FAILPROOFAI_PACKAGE_ROOT = pkg7;
+    expect(await write(join(pkg7, "openclaw-plugin", "index.js"), p7)).toBe(true);
+    expect(await decision("Write", { file_path: join(pkg7, "README.md"), content: "x" }, p7)).toBe("allow");
+  });
+
+  it.each([
+    `codex features disable $'\\x68ooks'`,
+    `F=hooks; codex features disable $F`,
+    `F=hooks; codex features disable "$F"`,
+  ])("reads an escaped or variable word in a hooks-off command: %s", async (command) => {
+    const result = await run("Bash", { command });
+    expect(result.decision).toBe("deny");
+    expect(result.reason).toMatch(/Turning an agent's hooks off/);
+  });
+
+  it.each([
+    `cp -t"$HOME/.claude" /tmp/settings.json`,
+    `cp -vt ~/.claude /tmp/settings.json`,
+    `cp --target-directory=$HOME/.claude /tmp/settings.json`,
+    `install -m 644 -t ~/.claude /tmp/settings.json`,
+  ])("judges each source where a target directory puts it: %s", async (command) => {
+    expect(await bash(command, p7)).toBe(true);
+  });
+
+  it("leaves other files copied into or out of an agent directory alone", async () => {
+    expect(await bashDecision(`cp -t ~/.claude /tmp/notes.md`, p7)).toBe("allow");
+    expect(await bashDecision(`cp -t /tmp/backup ~/.claude/settings.json`, p7)).toBe("allow");
+  });
+
+  it("resolves git's relative -C chain before its output path", async () => {
+    expect(await bash(`git -C .claude log -1 --format='format:{"disableAllHooks":true}' --output=settings.json`, p7)).toBe(true);
+    expect(await bash(`git -C . -C .claude log -1 --output=settings.json`, p7)).toBe(true);
+    expect(await bashDecision(`git -C .claude log -1 --output=/tmp/log.txt`, p7)).toBe("allow");
+  });
+
+  it("knows where the shell may stand after cd -, a failing cd and cd -P", async () => {
+    expect(await bash(`cd ~/.claude && cd /tmp && cd - && cp /tmp/x settings.json`, p7)).toBe(true);
+    // An OLDPWD from before the command could be any directory, so the state
+    // guard refuses this first, with its own reason.
+    expect(await bashDecision(`cd - && cp /tmp/x settings.json`, p7)).toBe("deny");
+    expect(await bash(`cd /nonexistent-r7; cp /tmp/x settings.json`, join(h7, ".claude"))).toBe(true);
+    expect(await bash(`cd -P clink/.. && cp /tmp/x settings.json`, p7)).toBe(true);
+    expect(await bashDecision(`cd clink/.. && cp /tmp/x settings.json`, p7)).toBe("allow");
+    expect(await bashDecision(`mkdir -p build && cd build && cp /tmp/x settings.json`, p7)).toBe("allow");
+  });
+
+  it("reads an empty heredoc delimiter the way bash does", async () => {
+    expect(await bash(`cat > /tmp/notes <<''\ncat > /tmp/y <<EOF\n\ncp /tmp/evil ${settings()}\nEOF\n`, p7)).toBe(true);
+    expect(await bashDecision(`cat > /tmp/notes <<''\nrm -rf ~/.claude\n\necho done\n`, p7)).toBe("allow");
+  });
+});
+
 describe("agent-settings-guard helpers", () => {
   it("matches settings files anchored at the end, and config directories exactly", () => {
     expect(isAgentSettingsPath("/h/.claude/settings.json")).toBe(true);

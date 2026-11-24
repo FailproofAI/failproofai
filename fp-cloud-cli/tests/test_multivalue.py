@@ -14,7 +14,7 @@ import respx
 from fp_cli._context import collect_multi
 from fp_cli.app import app
 
-BASE = "http://dash.test"
+BASE = "https://dash.test"
 
 
 # --- the pure normalizer ----------------------------------------------------

@@ -10,7 +10,7 @@ import respx
 
 from fp_cli.app import app
 
-BASE = "http://dash.test"
+BASE = "https://dash.test"
 CHECKS = [{"name": "prod-db", "question": "Does this touch the production database?"}]
 
 

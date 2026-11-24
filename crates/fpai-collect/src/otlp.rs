@@ -26,7 +26,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::config::{Ingest, OtlpSettings};
 use crate::supervisor::{Shutdown, TaskError, TaskSpec};
-use crate::uploader::{ParkedName, new_request_id};
+use crate::uploader::{ParkedName, cleartext_refusal, new_request_id};
 
 pub const MAX_BODY_BYTES: usize = 8 * 1024 * 1024;
 /// The local OTLP paths: what the relay listens on and what the SDK spool
@@ -90,6 +90,11 @@ const OFFLINE_BACKOFF_MAX: Duration = Duration::from_secs(300);
 
 impl Relay {
     fn new(home: &Path, ingest: &Ingest) -> Result<Self, TaskError> {
+        // The relay forwards with the same key to the same origin as the
+        // uploader, so it refuses the same URLs (see `cleartext_refusal`).
+        if let Some(reason) = cleartext_refusal(&ingest.url) {
+            return Err(TaskError(reason));
+        }
         let url = reqwest::Url::parse(&ingest.url).map_err(|e| TaskError(e.to_string()))?;
         let cloud_base = format!("{}{CLOUD_OTLP_PREFIX}", url.origin().ascii_serialization());
         let health_file = home.join("state/otlp-health.json");
@@ -997,5 +1002,31 @@ mod tests {
         assert!(settings.sessions_for("codex"));
         assert!(!settings.otlp.enabled);
         assert_eq!(settings.otlp.port, 4318);
+    }
+
+    /// The relay forwards with the ingest key to the ingest origin, so it
+    /// refuses the plain-http URLs the uploader does (FailproofAI/agenteye#1799).
+    #[test]
+    fn a_plain_http_ingest_url_to_another_host_starts_no_relay() {
+        let home = temp();
+        let ingest = |url: &str| Ingest {
+            url: url.into(),
+            key: "secret-ingest-key".into(),
+        };
+        let refused = Relay::new(&home, &ingest("http://10.0.0.5:8080/v1/events"));
+        let reason = refused.err().expect("plain http to another host").0;
+        assert!(reason.contains("plain http"), "{reason}");
+        assert!(!reason.contains("secret-ingest-key"), "{reason}");
+        assert!(
+            tasks(
+                home.clone(),
+                ingest("http://ingest.example"),
+                &OtlpSettings::default()
+            )
+            .is_empty()
+        );
+        assert!(Relay::new(&home, &ingest("http://127.0.0.1:9/v1/events")).is_ok());
+        assert!(Relay::new(&home, &ingest("https://ingest.example/v1/events")).is_ok());
+        fs::remove_dir_all(home).unwrap();
     }
 }

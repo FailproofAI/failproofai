@@ -7,6 +7,10 @@ moved the version here automatically; nothing has landed against `0.0.4b0` yet.
 Add entries as changes merge — this section becomes the GitHub Release body when
 it ships.
 
+### Fixed
+
+- Plain `http://` is refused for a dashboard URL on any host but `localhost` and loopback addresses, whether it comes from `--base-url`, `FP_DASHBOARD_URL` or the saved config: every request carries your session, an API key or a sign-in code, and over plain http anyone on the network path could read them. `fp logout` still clears a session saved against such a URL, without sending it to the server. (#1057)
+
 ## 0.0.3 — 2026-11-16
 
 **Stable release.** The `0.0.3b1` line the `bump` job opened after `0.0.3b0` is cut stable

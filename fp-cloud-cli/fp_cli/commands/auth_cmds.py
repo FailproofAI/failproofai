@@ -22,6 +22,7 @@ from .._context import (
     AuthMode,
     build_context,
     deny_in_key_mode,
+    plain_http_destination,
     resolved_base_url,
 )
 from ..client import ClientContext, get_session_user, org_is_accessible
@@ -561,7 +562,17 @@ def logout(ctx: typer.Context) -> None:
         else:
             output.already_signed_out()
         return
-    if state.base_url:
+    # A base URL saved by an older CLI may be plain http to another host. Revoking the
+    # session there would send it in clear one last time, so only this machine's copy is
+    # cleared; the server-side session expires on its own.
+    cleartext = plain_http_destination(state.base_url)
+    if cleartext:
+        output.cli_warn(
+            f"⚠ not revoking the session on {cleartext}: this CLI no longer sends "
+            "credentials over plain http. It is cleared from this machine and expires "
+            "on the server on its own."
+        )
+    elif state.base_url:
         auth.logout(state.base_url, state.token, timeout=state.timeout, verify=not state.insecure)
     analytics.capture("logged_out")  # name-only; fire before reset() rotates the anon id
     cfgmod.clear_token(state.config)

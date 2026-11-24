@@ -482,20 +482,28 @@ const LOCAL_NSS_SOURCES = new Set(["files", "compat", "systemd"]);
  * Whether /etc/nsswitch.conf resolves accounts and groups only from local
  * sources. No file, or any other source, is not local: a directory service
  * can then give an account this group without /etc/passwd or /etc/group
- * knowing.
+ * knowing. `initgroups` (supplementary groups) falls back to `group` when it
+ * has no line of its own.
  */
 function identityIsLocal(): boolean {
-  let conf: string;
   try {
-    conf = readFileSync("/etc/nsswitch.conf", "utf8");
+    return nsswitchIsLocal(readFileSync("/etc/nsswitch.conf", "utf8"));
   } catch {
     return false;
   }
-  for (const db of ["passwd", "group"]) {
+}
+
+/** {@link identityIsLocal} for the text of an nsswitch.conf. */
+export function nsswitchIsLocal(conf: string): boolean {
+  for (const db of ["passwd", "group", "initgroups"]) {
     const line = conf.split("\n").find((l) => new RegExp(`^\\s*${db}\\s*:`).test(l));
-    if (!line) return false;
+    if (!line) {
+      if (db === "initgroups") continue;
+      return false;
+    }
     const sources = line
       .slice(line.indexOf(":") + 1)
+      .replace(/#.*$/, "")
       .replace(/\[[^\]]*\]/g, " ")
       .split(/\s+/)
       .filter(Boolean);
@@ -1032,8 +1040,14 @@ function applySystemState(
     const before = runnerProblem(runner, programs, trusted, false);
     if (before) return unsafe(before);
     if (runnerChanged) writeSystemFile(runner, runnerText, "0755", direct, true);
-    // Read back: what Codex will run is what was meant, and only root can change it.
-    const after = untrustedPathReason(runner, trusted) ?? (readFileOr(runner) === runnerText ? null : `${runner} does not hold what failproofai wrote`);
+    // Read back: what Codex will run is what was meant, every account can run it, and only root can change it.
+    const after =
+      untrustedPathReason(runner, trusted) ??
+      (readFileOr(runner) !== runnerText
+        ? `${runner} does not hold what failproofai wrote`
+        : ((statSafe(runner)?.mode ?? 0) & 0o7777) !== 0o755
+          ? `${runner} is not mode 0755`
+          : null);
     if (after) {
       takeOut();
       // Written by this call, so it is ours to remove even when it was not before.

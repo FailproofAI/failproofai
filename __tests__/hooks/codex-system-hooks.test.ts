@@ -49,6 +49,7 @@ import {
   renderCodexHookRunner,
   renderCodexManagedBlock,
   codexTrustedOwners,
+  nsswitchIsLocal,
   untrustedPathReason,
 } from "../../src/hooks/codex-system-hooks";
 import { codex, codexSystemHookEntries } from "../../src/hooks/integrations";
@@ -989,6 +990,18 @@ describe("a block in the earlier format", () => {
     expect(refreshCodexSystemHooks({ path: path(), direct: false, canElevate: () => false })).toMatchObject({
       status: "needs-root",
     });
+  });
+});
+
+describe("nsswitchIsLocal", () => {
+  it("is local only when accounts, groups and supplementary groups come from local sources", () => {
+    expect(nsswitchIsLocal("passwd: files systemd\ngroup: files systemd\n")).toBe(true);
+    expect(nsswitchIsLocal("passwd: compat [NOTFOUND=return] files # comment\ngroup: files\n")).toBe(true);
+    expect(nsswitchIsLocal("passwd: files systemd sss\ngroup: files systemd sss\n")).toBe(false);
+    expect(nsswitchIsLocal("passwd: files\ngroup: files ldap\n")).toBe(false);
+    expect(nsswitchIsLocal("passwd: files\ngroup: files\ninitgroups: files sss\n")).toBe(false);
+    expect(nsswitchIsLocal("group: files\n")).toBe(false);
+    expect(nsswitchIsLocal("")).toBe(false);
   });
 });
 

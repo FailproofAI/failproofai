@@ -97,6 +97,8 @@ afterEach(() => {
 
 describe("E2E: Codex hooks in the system config", () => {
   it("installs into the system config, keeps what was there, and moves hooks out of hooks.json", () => {
+    // As root, the line also names its interpreter, and the files here are root's: unit tests cover that.
+    if (process.getuid?.() === 0) return;
     mkdir755(dirname(systemConfig));
     const original = '# set by the admin\napproval_policy = "never"\n';
     writeFileSync(systemConfig, original);
@@ -166,6 +168,8 @@ describe("E2E: Codex hooks in the system config", () => {
   });
 
   it("update rewrites hooks that run failproofai itself to run the hook runner", () => {
+    // As root, every file here is root's, so the earlier block is root's alone and stays as it is.
+    if (process.getuid?.() === 0) return;
     // A block in the format earlier versions wrote: every hook runs failproofai itself.
     mkdir755(dirname(systemConfig));
     const command = (event: string) => JSON.stringify(`"${cliPath}" --hook ${event} --cli codex --agent-scope user`);

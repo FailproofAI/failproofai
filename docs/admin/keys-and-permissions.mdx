@@ -69,6 +69,8 @@ Key secrets are shown when created or regenerated. Store them in a secret manage
 | Usage | `usage:read`; `billing:manage` is human-session only |
 | Jev | `jev:evaluate` (requires `events:add` and `policies:pull`) |
 
+`policies:write` publishes, deploys, rolls back and disables policies. A policy's JavaScript runs, unsandboxed, as the agent's user on every machine it is deployed to, so this grant amounts to running code on the organization's connected machines: give it only to people and automation you would trust with that. See [What a deployment runs on a machine](/policies/deploy#what-a-deployment-runs-on-a-machine).
+
 `orgs:admin` is reserved for the instance operator and cannot be granted to an organization key or ordinary member. Retired `incidents:*` and `alerts:ack` tokens are accepted for compatibility and normalize to current `issues:*` permissions.
 
 Builtin permission sets are `read-only`, `standard`, and `admin`. `standard` adds evaluation triggering, query execution, insight response, and failproof agent use to read permissions. Key creation strips human-only grants even when a permission set contains them.

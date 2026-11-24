@@ -15,6 +15,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { mkdtempSync, rmSync, existsSync, writeFileSync, mkdirSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { sudoCommandLine } from "../../src/hooks/system-command";
 
 /** Call order across the mocked modules, which is the actual thing under test. */
 const calls: string[] = [];
@@ -224,8 +225,9 @@ describe("hooks/uninstall-cli", () => {
     expect(res.exitCode).toBe(1);
     const out = res.lines.join("\n");
     expect(out).toMatch(/still there/);
-    expect(out).toMatch(/sudo systemctl disable --now failproofaid@tester\.service/);
-    expect(out).toMatch(/sudo rm -f/);
+    // sudo and each program by absolute path, as failproofai runs them itself.
+    expect(out).toContain(sudoCommandLine("systemctl", "disable", "--now", "failproofaid@tester.service"));
+    expect(out).toContain(sudoCommandLine("rm", "-f"));
     // Enforcement is still off even though cleanup was incomplete.
     expect(calls[0]).toBe("setDaemonConfigured(false)");
   });
@@ -417,11 +419,11 @@ describe("hooks/uninstall-cli — who decides the daemon's fate", () => {
     expect(at).toBeGreaterThanOrEqual(0);
     expect(res.lines.slice(at + 1, at + 7)).toEqual([
       "  Remove it as root:",
-      "    sudo systemctl disable --now failproofaid@tester.service",
-      `    sudo rm -f '${servicePath}'`,
-      "    sudo systemctl daemon-reload",
+      `    ${sudoCommandLine("systemctl", "disable", "--now", "failproofaid@tester.service")}`,
+      `    ${sudoCommandLine("rm", "-f", `'${servicePath}'`)}`,
+      `    ${sudoCommandLine("systemctl", "daemon-reload")}`,
       // The root-owned copy the unit ran, outside HOME for SELinux.
-      `    sudo rm -rf '${stagedDir}'`,
+      `    ${sudoCommandLine("rm", "-rf", `'${stagedDir}'`)}`,
       "  Check it with  systemctl status failproofaid@tester",
     ]);
   });
@@ -480,7 +482,7 @@ describe("hooks/uninstall-cli — a staged daemon binary with no unit", () => {
     const res = await runUninstallCommand({ yes: true });
 
     expect(res.exitCode).toBe(1);
-    expect(res.lines.join("\n")).toContain(`sudo rm -rf '${stagedDir}'`);
+    expect(res.lines.join("\n")).toContain(sudoCommandLine("rm", "-rf", `'${stagedDir}'`));
     expect(res.lines.join("\n")).not.toContain("Removed the failproofaid binary");
   });
 });

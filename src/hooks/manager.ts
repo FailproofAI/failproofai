@@ -41,6 +41,7 @@ import type { ResolvedPack } from "./pack-manifest";
 import { hasInstalledRegexPacks, readInstalledPacks } from "./pack-manifest";
 import { packPolicyParamKey } from "./policy-evaluator";
 import { probeDaemonPolicyEvaluation } from "./daemon-service";
+import { sudoPath } from "./system-command";
 import { keepAgentSelectionTrue } from "./agent-selection";
 import { INDENT, colorsEnabled, optsFor, printBlock, screenKit, type ScreenKitOpts } from "./tui";
 
@@ -1144,7 +1145,7 @@ export async function removeHooks(policyNames?: string[], scope: HookScope | "al
           for (const line of screenKit(optsFor(process.stdout)).notice(
             "caution",
             `failproofai's Codex hooks are still in ${system.path}: ${system.reason}.\n` +
-              "Run  `sudo -v`,  then this command again.",
+              `Run  \`${sudoPath()} -v\`,  then this command again.`,
           )) {
             say(line);
           }

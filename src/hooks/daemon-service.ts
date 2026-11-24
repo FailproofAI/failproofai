@@ -8,25 +8,35 @@
  * relationship it already has with `manager.ts`'s `installHooks()`.
  */
 import { HEALTH_PROBE_SOURCE } from "./health-probe";
+import { createHash } from "node:crypto";
 import {
+  closeSync,
+  constants as fsConstants,
   existsSync,
+  fstatSync,
   mkdirSync,
-  mkdtempSync,
+  openSync,
   readFileSync,
   readdirSync,
   realpathSync,
   statSync,
-  writeFileSync,
   unlinkSync,
-  rmSync,
 } from "node:fs";
-import { homedir, tmpdir, userInfo } from "node:os";
+import { homedir, userInfo } from "node:os";
 import { dirname, resolve } from "node:path";
 import { execFileSync } from "node:child_process";
 import { hookLogWarn } from "./hook-logger";
 import { downloadFailproofaidBinary, installFromNpmPackage, installedBinaryPath } from "./daemon-download";
 import { logsDir } from "./fp-home";
 import { shellQuote, shellQuotedWords } from "./shell-quote";
+import {
+  SYSTEM_PATH,
+  privilegedEnv,
+  requireSystemCommand,
+  sudoCommandLine,
+  sudoPath,
+  systemCommandPath,
+} from "./system-command";
 import { version } from "../../package.json";
 import { readVersionFile, updateConfig, writeVersionFile } from "./fp-config";
 
@@ -564,8 +574,16 @@ function selinuxEnabled(): boolean {
  * unit should start. Privileged; throws when the copy fails, which the caller
  * reports as a failed install before any unit is written.
  *
- * Staged under a temp name and renamed into place, so a reinstall of the same
- * version never writes into the file a running daemon was started from.
+ * The bytes are read here, as the user, and handed to root on stdin by
+ * {@link writePrivilegedFile}; root is never given the binary's path, which is
+ * in a directory the user owns. Root installs exactly the bytes read here, and
+ * reading them as the user reaches nothing the user could not read anyway.
+ * O_NOFOLLOW refuses a link outright: the managed binary is a regular file
+ * failproofai wrote itself.
+ *
+ * Staged under a temp name and renamed into place by the privileged write, so
+ * a reinstall of the same version never writes into the file a running daemon
+ * was started from.
  *
  * `restorecon` afterwards, because a new file inherits the label of the
  * directory it is created in, not the one the policy assigns to its path: the
@@ -575,20 +593,9 @@ function selinuxEnabled(): boolean {
 function stageSystemBinary(binaryPath: string): string {
   const target = systemBinaryTarget(binaryPath);
   if (!target) return binaryPath;
-  const dir = systemBinaryDir();
-  const staging = `${target}.${process.pid}.tmp`;
-  runPrivileged("install", ["-d", "-m", "0755", dir]);
-  try {
-    runPrivileged("install", ["-m", "0755", binaryPath, staging]);
-    runPrivileged("mv", ["-f", staging, target]);
-  } catch (err) {
-    try {
-      runPrivileged("rm", ["-f", staging]);
-    } catch {
-      /* best-effort */
-    }
-    throw err;
-  }
+  const bytes = readRegularFileNoFollow(binaryPath);
+  runPrivileged("install", ["-d", "-m", "0755", systemBinaryDir()]);
+  writePrivilegedFile(target, bytes, "0755");
   if (selinuxEnabled()) {
     const root = systemBinaryRoot();
     try {
@@ -645,8 +652,17 @@ function launchdLabel(user: string = serviceUser()): string {
   return `ai.failproof.failproofaid.${user}`;
 }
 
+/**
+ * `/Library/LaunchDaemons`, redirectable for tests ONLY, like the systemd unit
+ * directory: it lets a Linux runner drive the macOS install end to end against
+ * a scratch directory, with launchctl stubbed, instead of not at all.
+ */
+function launchdDaemonDir(): string {
+  return process.env.FAILPROOFAI_LAUNCHD_DIR || "/Library/LaunchDaemons";
+}
+
 function launchdPlistPath(user: string = serviceUser()): string {
-  return `/Library/LaunchDaemons/${launchdLabel(user)}.plist`;
+  return resolve(launchdDaemonDir(), `${launchdLabel(user)}.plist`);
 }
 
 /** The pre-1.0.0-beta.1 LaunchAgent. */
@@ -660,7 +676,7 @@ function legacyLaunchAgentPlistPath(): string {
  * leaving it would leave two daemons racing for one socket.
  */
 function legacySharedLaunchDaemonPath(): string {
-  return "/Library/LaunchDaemons/ai.failproof.failproofaid.plist";
+  return resolve(launchdDaemonDir(), "ai.failproof.failproofaid.plist");
 }
 
 /**
@@ -683,7 +699,7 @@ export function daemonStatusCommand(): string | null {
   if (!isDaemonSupportedPlatform()) return null;
   return process.platform === "linux"
     ? `systemctl status ${systemdUnitName()}`
-    : `sudo launchctl print system/${launchdLabel()}`;
+    : sudoCommandLine("launchctl", "print", `system/${launchdLabel()}`);
 }
 
 /**
@@ -698,8 +714,8 @@ export function daemonStatusCommand(): string | null {
 export function daemonRestartCommand(): string | null {
   if (!isDaemonSupportedPlatform()) return null;
   return process.platform === "linux"
-    ? `sudo systemctl restart ${systemdUnitName()}`
-    : `sudo launchctl kickstart -k system/${launchdLabel()}`;
+    ? sudoCommandLine("systemctl", "restart", systemdUnitName())
+    : sudoCommandLine("launchctl", "kickstart", "-k", `system/${launchdLabel()}`);
 }
 
 /**
@@ -719,12 +735,20 @@ export function daemonRestartCommand(): string | null {
  *
  * `stdio: "inherit"` so the prompt and the typed password go straight to the
  * real terminal. The timeout is generous because a human is typing.
+ *
+ * sudo by absolute path, like every privileged command here (see
+ * `system-command.ts`): this is where the user types their password, so it is
+ * the system's own sudo, whatever PATH says.
  */
 export function primeElevation(): boolean {
   if (typeof process.getuid === "function" && process.getuid() === 0) return true;
   if (canElevate()) return true; // NOPASSWD, or already primed
   try {
-    execFileSync("sudo", ["-v"], { stdio: "inherit", timeout: SUDO_PROMPT_TIMEOUT_MS });
+    execFileSync(requireSystemCommand("sudo"), ["-v"], {
+      stdio: "inherit",
+      timeout: SUDO_PROMPT_TIMEOUT_MS,
+      env: privilegedEnv(),
+    });
     return canElevate();
   } catch {
     // Wrong password, no sudo rights, or the user pressed ctrl-C. All of them
@@ -745,11 +769,27 @@ export function primeElevation(): boolean {
 export function canElevate(): boolean {
   if (typeof process.getuid === "function" && process.getuid() === 0) return true;
   try {
-    execFileSync("sudo", ["-n", "true"], { stdio: "ignore", timeout: SERVICE_CMD_TIMEOUT_MS });
+    execFileSync(requireSystemCommand("sudo"), ["-n", requireSystemCommand("true")], {
+      stdio: "ignore",
+      timeout: SERVICE_CMD_TIMEOUT_MS,
+      env: privilegedEnv(),
+    });
     return true;
   } catch {
     return false;
   }
+}
+
+/**
+ * The command and arguments that run `command args` as root: the program
+ * itself when this process already is root, through `sudo -n` otherwise. Both
+ * by absolute path from root's own directories, never through PATH (see
+ * `system-command.ts`). Throws when either cannot be found there.
+ */
+function elevatedCommand(command: string, args: string[]): [string, string[]] {
+  const program = command.startsWith("/") ? command : requireSystemCommand(command);
+  if (typeof process.getuid === "function" && process.getuid() === 0) return [program, args];
+  return [requireSystemCommand("sudo"), ["-n", program, ...args]];
 }
 
 /**
@@ -761,36 +801,133 @@ export function canElevate(): boolean {
  * instead — it keeps working exactly as it did, on the in-process path.
  */
 export function runPrivileged(command: string, args: string[]): void {
-  const root = typeof process.getuid === "function" && process.getuid() === 0;
-  const [cmd, argv] = root ? [command, args] : ["sudo", ["-n", command, ...args]];
-  execFileSync(cmd, argv, { stdio: "ignore", timeout: SERVICE_CMD_TIMEOUT_MS });
+  const [cmd, argv] = elevatedCommand(command, args);
+  execFileSync(cmd, argv, { stdio: "ignore", timeout: SERVICE_CMD_TIMEOUT_MS, env: privilegedEnv() });
+}
+
+/** The shell root runs the install script with. Absolute: no PATH lookup picks it. */
+const SYSTEM_SH = "/bin/sh";
+
+/**
+ * How long one privileged write may take. Bounded like every other privileged
+ * call, but well above SERVICE_CMD_TIMEOUT_MS: the daemon binary is tens of
+ * megabytes, streamed through sudo.
+ */
+const PRIVILEGED_WRITE_TIMEOUT_MS = 60_000;
+
+/**
+ * What root runs to put a file in place:
+ * `sh -c SCRIPT failproofai-install <destination> <sha256> <mode>`, with the
+ * file's bytes on stdin. Exported so tests can run it.
+ *
+ * The rules it exists for: root installs only bytes it has verified, and never
+ * opens a path the user can write. The bytes arrive on stdin, not as a file
+ * staged where the user could reach it. A pipe is not a private channel either,
+ * so root hashes what it received, in a file only root can reach, against the
+ * digest on its own command line, and only then sets the mode and renames the
+ * file over the destination.
+ *
+ * - PATH is fixed, like every privileged command's (see `system-command.ts`):
+ *   the programs root runs here are root's own.
+ * - The temp file comes from `mktemp`, which creates it exclusively and never
+ *   through an existing link, beside the destination in a directory only root
+ *   can write, so the rename that publishes it is atomic. It is hidden, so a
+ *   leftover is never read as a unit by systemd or as a job by launchd.
+ * - The digest tool is whichever the OS has: coreutils `sha256sum` on Linux,
+ *   `shasum -a 256` on macOS, `openssl` as a last resort.
+ * - There is no single quote in it, so the manual recipe quotes it verbatim.
+ */
+export const PRIVILEGED_INSTALL_SCRIPT = [
+  "set -eu",
+  `PATH=${SYSTEM_PATH}`,
+  "export PATH",
+  "umask 077",
+  "dest=$1 want=$2 mode=$3 tmp=",
+  'cleanup() { [ -z "$tmp" ] || rm -f "$tmp"; }',
+  "trap cleanup EXIT",
+  'trap "exit 1" HUP INT TERM',
+  'tmp=$(mktemp "${dest%/*}/.${dest##*/}.XXXXXX")',
+  'cat >"$tmp"',
+  'if command -v sha256sum >/dev/null 2>&1; then got=$(sha256sum <"$tmp")',
+  'elif command -v shasum >/dev/null 2>&1; then got=$(shasum -a 256 <"$tmp")',
+  'else got=$(openssl dgst -sha256 -r <"$tmp")',
+  "fi",
+  'if [ "${got%% *}" != "$want" ]; then',
+  '  echo "refusing to install $dest: the bytes received do not match sha256 $want" >&2',
+  "  exit 1",
+  "fi",
+  'chmod "$mode" "$tmp"',
+  'mv -f "$tmp" "$dest"',
+  "tmp=",
+  "",
+].join("\n");
+
+function sha256Hex(bytes: Buffer): string {
+  return createHash("sha256").update(bytes).digest("hex");
 }
 
 /**
- * Installs a file into a root-owned location via a temp file, because the
- * caller is not root and cannot write there directly. `install -m` sets the
- * mode in the same step, so the file is never briefly world-writable.
+ * Installs a file into a root-owned location with `mode`, because the caller
+ * is not root and cannot write there directly. The bytes go to root on stdin
+ * and are checked against their digest before they land; see
+ * {@link PRIVILEGED_INSTALL_SCRIPT}. The file is renamed over `destination`
+ * only once its mode is set, so it is never briefly world-writable and never
+ * half-written: a failed write leaves the previous file in place.
  */
-export function writePrivilegedFile(destination: string, contents: string, mode = "0644"): void {
-  // mkdtempSync, not a name built from pid + timestamp in the shared tmpdir.
-  // That name is guessable, and `writeFileSync` follows a symlink already
-  // sitting at the path — so on a multi-user box another local user could
-  // pre-create it and have `install` copy content they control into
-  // /etc/systemd/system as root. mkdtemp gives a 0700 directory with a name
-  // they cannot predict, so there is nothing to pre-create.
-  const stagingDir = mkdtempSync(resolve(tmpdir(), "failproofaid-stage-"));
-  const staging = resolve(stagingDir, "service-definition");
+export function writePrivilegedFile(destination: string, contents: string | Buffer, mode = "0644"): void {
+  // Both are command-line words for root, never shell text, but a relative
+  // path would land somewhere unintended and chmod also takes symbolic modes.
+  if (!destination.startsWith("/")) throw new Error(`refusing to write a relative path as root: ${destination}`);
+  if (!/^[0-7]{3,4}$/.test(mode)) throw new Error(`refusing to write ${destination} with mode ${JSON.stringify(mode)}`);
+  const bytes = typeof contents === "string" ? Buffer.from(contents, "utf8") : contents;
+  const args = ["-c", PRIVILEGED_INSTALL_SCRIPT, "failproofai-install", destination, sha256Hex(bytes), mode];
   try {
-    writeFileSync(staging, contents, "utf8");
-    // Installed beside the destination and renamed over it: `install` onto
-    // the destination unlinks the old file before copying, so a copy that
-    // failed part-way left no definition (launchd then cannot load the job
-    // at boot). A rename within one directory is atomic.
-    const sibling = `${destination}.failproofai-new`;
-    runPrivileged("install", ["-m", mode, staging, sibling]);
-    runPrivileged("mv", ["-f", sibling, destination]);
+    const [cmd, argv] = elevatedCommand(SYSTEM_SH, args);
+    execFileSync(cmd, argv, {
+      input: bytes,
+      stdio: ["pipe", "ignore", "pipe"],
+      timeout: PRIVILEGED_WRITE_TIMEOUT_MS,
+      env: privilegedEnv(),
+    });
+  } catch (err) {
+    // The script's own refusal, or sudo's, is on stderr. The error's message
+    // would otherwise lead with the whole script.
+    const e = err as { stderr?: Buffer | string; code?: string; status?: number | null };
+    const why =
+      e.stderr?.toString().trim() ||
+      e.code ||
+      (typeof e.status === "number" ? `exit status ${e.status}` : err instanceof Error ? err.message : String(err));
+    throw new Error(`could not write ${destination} as root: ${why}`);
+  }
+}
+
+/**
+ * Reads a regular file, refusing a symbolic link or anything else in its
+ * place. Used for the one file whose bytes go to root: what root installs is
+ * then exactly what this process read, as the user.
+ */
+function readRegularFileNoFollow(path: string): Buffer {
+  let fd: number;
+  try {
+    // O_NONBLOCK so that a FIFO in its place is opened and refused below,
+    // rather than blocking this process until something writes to it.
+    fd = openSync(path, fsConstants.O_RDONLY | fsConstants.O_NOFOLLOW | fsConstants.O_NONBLOCK);
+  } catch (err) {
+    const code = (err as NodeJS.ErrnoException).code;
+    // ELOOP is how O_NOFOLLOW reports a link (EMLINK on FreeBSD).
+    if (code === "ELOOP" || code === "EMLINK") {
+      throw new Error(
+        `refusing to copy ${path}: it is a symbolic link. To run a binary of your own, ` +
+          "set FAILPROOFAI_DAEMON_BINARY to its real path",
+      );
+    }
+    throw err;
+  }
+  try {
+    if (!fstatSync(fd).isFile()) throw new Error(`refusing to copy ${path}: it is not a regular file`);
+    return readFileSync(fd);
   } finally {
-    rmSync(stagingDir, { recursive: true, force: true });
+    closeSync(fd);
   }
 }
 
@@ -1009,45 +1146,98 @@ export interface DaemonInstallResult {
   reason?: string;
 }
 
+/** The shell function the manual recipe defines once and sends every root write through. */
+const RECIPE_WRITE_FN = "failproofai_install";
+
 /**
- * The privileged commands an install performs — returned verbatim so a
- * machine that cannot elevate can be told exactly what to run rather than
- * just that something failed.
+ * The recipe step that writes `contents` to `destination` as root, carried
+ * inline and checked against its digest by the same script the automatic
+ * install runs.
+ *
+ * A single-quoted `printf`, not a here-document: an interactive shell expands
+ * history (`!`) in a here-document's body (zsh, the macOS default, does) but
+ * never inside single quotes, and the plist's `<!DOCTYPE` would otherwise turn
+ * the pasted recipe into "event not found". `printf '%s'` also hands over the
+ * bytes exactly, final newline or not.
  */
-function daemonInstallCommands(
-  binaryPath: string,
-  workerCmd: string | null,
-  cliCmd: string | null,
-): string[] {
+function recipeWriteInline(destination: string, contents: string, mode: string): string {
+  const digest = sha256Hex(Buffer.from(contents, "utf8"));
+  return `printf '%s' ${shellQuote(contents)} | ${RECIPE_WRITE_FN} ${shellQuote(destination)} ${digest} ${mode}`;
+}
+
+/**
+ * The recipe as text to paste: the write function, then every step chained
+ * with `&&`, so the first failure (a digest that does not match, say) stops it
+ * before any service is started.
+ */
+function renderRecipe(steps: string[]): string {
+  const define = `${RECIPE_WRITE_FN}() { ${sudoPath()} ${SYSTEM_SH} -c ${shellQuote(PRIVILEGED_INSTALL_SCRIPT)} failproofai-install "$@"; }`;
+  return [define, steps.join(" &&\n")].join("\n");
+}
+
+/**
+ * The privileged steps an install performs, as a recipe to paste, so a
+ * machine that cannot elevate can be told exactly what to run rather than just
+ * that something failed.
+ *
+ * It keeps the rules the automatic install keeps: every file reaches root on
+ * stdin through the same script and the same digest check, the daemon binary
+ * through a `<` that the user's own shell opens as the user, and sudo and
+ * every program it runs are named by absolute path (`sudoCommandLine`). The
+ * digest is taken now, from the bytes this process read; root installs
+ * nothing else, however long the recipe waits to be pasted.
+ */
+function daemonInstallRecipe(binaryPath: string, workerCmd: string | null, cliCmd: string | null): string {
   if (process.platform === "linux") {
     const target = systemBinaryTarget(binaryPath);
-    const dir = systemBinaryDir();
-    const stage = target
-      ? [
-          // Quoted: a home directory may hold a space, and an unquoted path
-          // splits into words that stop this `&&`-joined recipe before the
-          // unit is ever written.
-          `sudo install -d -m 0755 ${shellQuote(dir)}`,
-          `sudo install -m 0755 ${shellQuote(binaryPath)} ${shellQuote(target)}`,
-          `{ sudo restorecon -R ${shellQuote(systemBinaryRoot())} 2>/dev/null || true; }`,
-        ]
-      : [];
-    return [
-      ...stage,
-      `sudo tee ${systemdUnitPath()} <<'EOF'\n${systemdUnitContents(target ?? binaryPath, workerCmd, cliCmd)}EOF`,
-      "sudo systemctl daemon-reload",
-      `sudo systemctl enable ${systemdUnitName()}`,
+    const steps: string[] = [];
+    if (target) {
+      const digest = sha256Hex(readRegularFileNoFollow(binaryPath));
+      steps.push(
+        // Quoted: a home directory may hold a space, and an unquoted path
+        // splits into words that stop this `&&`-chained recipe before the
+        // unit is ever written.
+        sudoCommandLine("install", "-d", "-m", "0755", shellQuote(systemBinaryDir())),
+        `${RECIPE_WRITE_FN} ${shellQuote(target)} ${digest} 0755 < ${shellQuote(binaryPath)}`,
+      );
+      // Only where root's directories have it: SELinux systems always do, and a
+      // bare name would leave sudo to find one.
+      if (systemCommandPath("restorecon")) {
+        steps.push(`{ ${sudoCommandLine("restorecon", "-R", shellQuote(systemBinaryRoot()))} 2>/dev/null || true; }`);
+      }
+    }
+    steps.push(
+      recipeWriteInline(systemdUnitPath(), systemdUnitContents(target ?? binaryPath, workerCmd, cliCmd), "0644"),
+      sudoCommandLine("systemctl", "daemon-reload"),
+      sudoCommandLine("systemctl", "enable", systemdUnitName()),
       // `restart`, not `enable --now`, for the reason the install path gives:
       // `--now` does nothing to an already-active unit, and these commands are
       // handed to someone whose daemon may well be running — an upgrade is the
       // most likely reason they are reading them.
-      `sudo systemctl restart ${systemdUnitName()}`,
-    ];
+      sudoCommandLine("systemctl", "restart", systemdUnitName()),
+    );
+    return renderRecipe(steps);
   }
-  return [
-    `sudo tee ${launchdPlistPath()} < the plist failproofai config would write`,
-    `sudo launchctl load -w ${launchdPlistPath()}`,
-  ];
+  // The same order as the install: the log directory the plist names, the
+  // plist, then unload and load, since a plain `load` of a label launchd
+  // already has is a no-op.
+  const plistPath = launchdPlistPath();
+  const logDir = logsDir();
+  return renderRecipe([
+    `mkdir -p ${shellQuote(logDir)}`,
+    recipeWriteInline(plistPath, launchdPlistContents(binaryPath, logDir, workerCmd, cliCmd), "0644"),
+    `{ ${sudoCommandLine("launchctl", "unload", shellQuote(plistPath))} 2>/dev/null || true; }`,
+    sudoCommandLine("launchctl", "load", "-w", shellQuote(plistPath)),
+  ]);
+}
+
+/** The manual-install half of the needs-root reason. Never throws. */
+function manualInstallSteps(binaryPath: string, workerCmd: string | null, cliCmd: string | null): string {
+  try {
+    return `To install by hand, run:\n${daemonInstallRecipe(binaryPath, workerCmd, cliCmd)}`;
+  } catch (err) {
+    return `No manual steps could be prepared: ${err instanceof Error ? err.message : String(err)}.`;
+  }
 }
 
 /**
@@ -1106,8 +1296,8 @@ export async function installDaemonService(): Promise<DaemonInstallResult> {
       reason:
         "root privileges are required to install the failproofaid system service, and sudo credentials were not available. " +
         "Re-run `failproofai config` and approve the sudo prompt — do NOT run the CLI itself under sudo, which would " +
-        "configure root's account instead of yours. To install by hand: " +
-        daemonInstallCommands(binaryPath, workerCmd, cliCmd).join(" && "),
+        "configure root's account instead of yours. " +
+        manualInstallSteps(binaryPath, workerCmd, cliCmd),
     };
   }
 
@@ -1750,9 +1940,9 @@ export async function ensureDaemonServiceCurrent(): Promise<DaemonUpgradeResult>
 
   // What to put back if this goes wrong, and from which point. Set BEFORE the
   // step that can leave the machine changed, not after it succeeds: on Linux
-  // `writePrivilegedFile` is an `install` copy straight onto the unit path, so
-  // a failure part-way through leaves a truncated unit behind, and on macOS
-  // the unload has already stopped the daemon before anything is written.
+  // the new unit is in place the moment `writePrivilegedFile` renames it there,
+  // whatever happens to the reload after it, and on macOS the unload has
+  // already stopped the daemon before anything is written.
   let previous: string | null = null;
 
   try {
@@ -1929,7 +2119,7 @@ export async function refreshDaemonToCliVersion(
       lines: needsRoot
         ? [
             `✕ failproofaid ${version} was not installed: root privileges are required. The previous daemon is untouched.`,
-            "  Run `sudo -v` and then `failproofai update` again.",
+            `  Run \`${sudoPath()} -v\` and then \`failproofai update\` again.`,
           ]
         : [
             `✕ failproofaid ${version} could not be installed: ${(result.reason ?? "unknown reason").replace(/\.$/, "")}. ` +
@@ -2149,16 +2339,12 @@ export function daemonServiceStatus(): DaemonServiceStatus {
     // running daemon read as dead, and the wizard then demanded a password to
     // unload and reload a service that was fine.
     if (!root && !canElevate()) return "unknown";
-    const args = ["print", `system/${launchdLabel()}`];
-    const out = root
-      ? execFileSync("launchctl", args, {
-          stdio: ["ignore", "pipe", "ignore"],
-          timeout: SERVICE_CMD_TIMEOUT_MS,
-        }).toString()
-      : execFileSync("sudo", ["-n", "launchctl", ...args], {
-          stdio: ["ignore", "pipe", "ignore"],
-          timeout: SERVICE_CMD_TIMEOUT_MS,
-        }).toString();
+    const [cmd, argv] = elevatedCommand("launchctl", ["print", `system/${launchdLabel()}`]);
+    const out = execFileSync(cmd, argv, {
+      stdio: ["ignore", "pipe", "ignore"],
+      timeout: SERVICE_CMD_TIMEOUT_MS,
+      env: privilegedEnv(),
+    }).toString();
     // `state = running` is launchd's own wording; a loaded-but-dead job
     // prints `state = not running` and must not read as healthy.
     return /state\s*=\s*running/.test(out) ? "running" : "stopped";

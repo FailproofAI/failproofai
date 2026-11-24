@@ -49,6 +49,7 @@ import { listInstallableIds, getIntegration } from "./integrations";
 import type { IntegrationType } from "./types";
 import { removeHooks } from "./manager";
 import { shellQuote } from "./shell-quote";
+import { sudoCommandLine } from "./system-command";
 import { installedAgentSkillDirs, removeAgentSkill } from "./agent-skill";
 import { CODEX_MANAGED_BEGIN, CODEX_MANAGED_END, codexSystemConfigPath, codexSystemHooksPresent } from "./codex-system-hooks";
 import { optsFor, screenKit, type RenderOpts } from "./tui";
@@ -377,7 +378,7 @@ export async function runUninstallCommand(opts: UninstallOptions = {}): Promise<
       } else if (found.stagedBinaryDir && existsSync(found.stagedBinaryDir)) {
         failures.push(
           `The failproofaid binary in ${found.stagedBinaryDir} is still there, most often because sudo was not available.` +
-            `\nRemove it as root:\n  \`sudo rm -rf ${shellQuote(found.stagedBinaryDir)}\``,
+            `\nRemove it as root:\n  \`${sudoCommandLine("rm", "-rf", shellQuote(found.stagedBinaryDir))}\``,
         );
       } else if (found.serviceInstalled) {
         lines.push(kit.ok("Stopped and removed the failproofaid service."));
@@ -433,16 +434,21 @@ export async function runUninstallCommand(opts: UninstallOptions = {}): Promise<
  *  paths are quoted: these are pasted into a root shell, and an unquoted path
  *  holding a space would make `rm -rf` remove something else. */
 function manualServiceRemoval(servicePath: string): string[] {
+  // sudo and each program by absolute path, as failproofai runs them itself:
+  // see system-command.ts.
   if (process.platform === "darwin") {
-    return [`sudo launchctl unload -w ${shellQuote(servicePath)}`, `sudo rm -f ${shellQuote(servicePath)}`];
+    return [
+      sudoCommandLine("launchctl", "unload", "-w", shellQuote(servicePath)),
+      sudoCommandLine("rm", "-f", shellQuote(servicePath)),
+    ];
   }
   const unit = servicePath.split("/").pop() ?? servicePath;
   const binDir = daemonSystemBinaryDir();
   return [
-    `sudo systemctl disable --now ${unit}`,
-    `sudo rm -f ${shellQuote(servicePath)}`,
-    `sudo systemctl daemon-reload`,
-    ...(binDir ? [`sudo rm -rf ${shellQuote(binDir)}`] : []),
+    sudoCommandLine("systemctl", "disable", "--now", unit),
+    sudoCommandLine("rm", "-f", shellQuote(servicePath)),
+    sudoCommandLine("systemctl", "daemon-reload"),
+    ...(binDir ? [sudoCommandLine("rm", "-rf", shellQuote(binDir))] : []),
   ];
 }
 

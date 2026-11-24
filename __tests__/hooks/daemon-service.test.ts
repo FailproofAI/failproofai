@@ -1,10 +1,12 @@
 // @vitest-environment node
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { execFileSync } from "node:child_process";
+import { createHash } from "node:crypto";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir, userInfo } from "node:os";
-import { dirname, resolve } from "node:path";
+import { basename, dirname, resolve } from "node:path";
 import { binDir } from "../../src/hooks/fp-home";
+import { sudoCommandLine, sudoPath, systemCommandPath } from "../../src/hooks/system-command";
 import { startedAtFromMonotonic, waitForDaemonRunning } from "../../src/hooks/daemon-service";
 import * as svc from "../../src/hooks/daemon-service";
 import { version as pkgVersion } from "../../package.json";
@@ -415,7 +417,8 @@ describe("hooks/daemon-service", () => {
         vi.doMock("node:child_process", async (importOriginal) => ({
           ...(await importOriginal<typeof import("node:child_process")>()),
           execFileSync: (cmd: string) => {
-            if (cmd === "sudo") throw new Error("sudo: a password is required");
+            // By absolute path now (system-command.ts), never a bare `sudo`.
+            if (basename(cmd) === "sudo") throw new Error("sudo: a password is required");
             throw new Error(`nothing else should run before elevation succeeds, but got: ${cmd}`);
           },
         }));
@@ -466,7 +469,8 @@ describe("hooks/daemon-service", () => {
         vi.doMock("node:child_process", async (importOriginal) => ({
           ...(await importOriginal<typeof import("node:child_process")>()),
           execFileSync: (cmd: string, args: string[] = []) => {
-            const line = (cmd === "sudo" ? args.slice(1) : [cmd, ...args]).join(" ");
+            const [program, ...rest] = basename(cmd) === "sudo" ? args.slice(1) : [cmd, ...args];
+            const line = [basename(program), ...rest].join(" ");
             ran.push(line);
             if (opts.failOn && line.startsWith(opts.failOn)) throw new Error("sudo: a password is required");
             return "";
@@ -593,7 +597,8 @@ describe("hooks/daemon-service", () => {
         vi.doMock("node:child_process", async (importOriginal) => ({
           ...(await importOriginal<typeof import("node:child_process")>()),
           execFileSync: (cmd: string) => {
-            if (cmd === "sudo") throw new Error("sudo: a password is required");
+            // By absolute path now (system-command.ts), never a bare `sudo`.
+            if (basename(cmd) === "sudo") throw new Error("sudo: a password is required");
             throw new Error(`nothing else should run before elevation succeeds, but got: ${cmd}`);
           },
         }));
@@ -607,9 +612,15 @@ describe("hooks/daemon-service", () => {
 
           expect(result.installed).toBe(false);
           expect(path).toContain(" ");
-          expect(result.reason).toContain(`sudo install -d -m 0755 '${dirname(target)}'`);
-          expect(result.reason).toContain(`sudo install -m 0755 '${path}' '${target}'`);
-          expect(result.reason).toContain(`sudo restorecon -R '${daemonSystemBinaryDir()}'`);
+          expect(result.reason).toContain(sudoCommandLine("install", "-d", "-m", "0755", `'${dirname(target)}'`));
+          // The binary reaches root on stdin, from a `<` the user's own shell
+          // opens, with the digest root checks it against.
+          const digest = createHash("sha256").update("#!/bin/sh\n").digest("hex");
+          expect(result.reason).toContain(`failproofai_install '${target}' ${digest} 0755 < '${path}'`);
+          // Only where root's own directories have restorecon (every SELinux system).
+          if (systemCommandPath("restorecon")) {
+            expect(result.reason).toContain(sudoCommandLine("restorecon", "-R", `'${daemonSystemBinaryDir()}'`));
+          }
         } finally {
           vi.doUnmock("node:child_process");
           vi.resetModules();
@@ -1523,7 +1534,7 @@ describe("refreshDaemonToCliVersion", () => {
 
     expect(result.lines).toEqual([
       `✕ failproofaid ${version} was not installed: root privileges are required. The previous daemon is untouched.`,
-      "  Run `sudo -v` and then `failproofai update` again.",
+      `  Run \`${sudoPath()} -v\` and then \`failproofai update\` again.`,
     ]);
     expect(result.lines.join("\n")).not.toMatch(/failproofai config|\[Unit\]|sudo tee/);
   });

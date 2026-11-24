@@ -138,7 +138,8 @@ function daemonWarning(status: ReturnType<typeof daemonServiceStatus>): string[]
         ? ["  A daemon is running and policy is being pulled."]
         : ["! No daemon is answering, so nothing is being pulled right now."]),
       "  Its service state needs elevation to read, so it is not shown above.",
-      ...(check ? [`  Check it with: sudo ${check}`] : []),
+      // The command carries its own sudo: a LaunchDaemon cannot be read without it.
+      ...(check ? [`  Check it with: ${check}`] : []),
     ];
   }
   // A daemon started by hand is invisible to the service manager but is

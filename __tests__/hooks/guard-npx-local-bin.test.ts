@@ -251,6 +251,12 @@ describe("block-failproofai-commands — the entry a project-scope npx hook runs
       ["an absolute path", "cp /tmp/stub.sh /work/proj/node_modules/.bin/fail*"],
       // `/home/u/.failproofai` is a candidate itself; another home is not.
       ["the state, by an absolute path", "rm -rf /home/alice/.failproof*"],
+      ["the state, behind `//` and `/./`", "rm -rf ~//./.failproof*"],
+      // A home no candidate spells. A dotfile glob that can match
+      // `.failproofai` counts wherever it stands, as the name itself does:
+      // `rm -rf ~/.cache/.f*` is refused for the same reason.
+      ["the state, in a home outside /home", "rm -rf /var/lib/jenkins/.failproof*"],
+      ["the state's name in another directory", "rm -rf ~/.cache/.f*"],
     ])("denies a glob onto the entry through %s", async (_label, command) => {
       expect(await bash(command)).toBe("deny");
     });
@@ -312,6 +318,36 @@ describe("block-failproofai-commands — the entry a project-scope npx hook runs
       expect(await bash(command)).toBe("deny");
     });
 
+    // Shell moves the walk follows as bash makes them, so that none of them
+    // leaves the walk somewhere safer than the shell really is.
+    it.each([
+      ["slashes after the directory", "cd ~/.failproofai//////////////////// && rm -rf *"],
+      ["slashes after npm's bin directory", "cd node_modules/.bin//////////////////// && printf 'exit 0' > failproofai"],
+      ["a redirect before the cd operand", "cd 2>/dev/null ~/.failproofai && rm -rf *"],
+      ["a popd with nothing to pop", "cd ~/.failproofai; popd; rm -rf *"],
+      ['cd ""', 'cd ~/.failproofai; cd ""; rm -rf *'],
+      ["cd - to an OLDPWD the line sets", "OLDPWD=~/.failproofai; cd -; rm -rf *"],
+      ["~- after a cd away", "cd ~/.failproofai && cd /tmp && rm -rf ~-/*"],
+      ["a bare cd to a HOME the line sets", "HOME=~/.failproofai; cd; rm -rf *"],
+      ["pushd +1 back onto the directory", "cd ~/.failproofai && pushd /tmp && pushd +1 && rm -rf *"],
+      ["a subshell's cd undone", "cd ~/.failproofai && (cd /tmp) && rm -rf *"],
+      ["an escaped parenthesis in a subshell", "cd ~/.failproofai && (echo \\) && cd /tmp) && rm -rf *"],
+      ["a cd into a substitution that names the state", 'cd "$(echo ~/.failproofai)" && rm -rf *'],
+      // An assignment the shell never makes (`:` is a no-op) cannot replace
+      // the value the walk judges: the word is judged as written too.
+      ["a decoy assignment before a copy", "D=~/.failproofai/policies-config.json; : D=x; cp /dev/null $D"],
+      ["a decoy assignment before a redirect", "D=~/.failproofai/policies-config.json; : D=x; echo {} > $D"],
+      // A complete option name is not an abbreviation of a longer one.
+      ["rsync --partial", "rsync --partial /tmp/stage/failproofai node_modules/.bin/"],
+      ["rsync --checksum", "rsync --checksum /tmp/stage/failproofai node_modules/.bin/"],
+      ["rsync -a --compress of a directory's contents", "rsync -a --compress /tmp/stage/ node_modules/.bin/"],
+      ["install --strip", "install --strip /tmp/stage/failproofai node_modules/.bin/"],
+      // A program handed to a shell is judged as the command it is.
+      ["bash -c around a copy", "bash -c 'cp /tmp/stub.sh node_modules/.bin/failproofai'"],
+    ])("denies %s", async (_label, command) => {
+      expect(await bash(command)).toBe("deny");
+    });
+
     // The session's directory is where the command starts: a `cd` in an
     // earlier call persists.
     it.each([
@@ -365,7 +401,6 @@ describe("block-failproofai-commands — the entry a project-scope npx hook runs
       ["a glob ending in ai", "rm -rf models/*ai"],
       ["a glob ending in i", "rm -f out/*i"],
       ["a glob around proof", "rm -rf vendor/*proof*"],
-      ["a dotfile glob in a cache", "rm -rf ~/.cache/.f*"],
       ["a sed program that looks like a glob", "sed -i 's/.*ai/X/' notes.txt"],
       ["a commit message with a #", "git commit -m 'fix #12: cp a b'"],
       ["a loop copying files out", "for f in *.txt; do cp $f /tmp/; done"],
@@ -376,6 +411,13 @@ describe("block-failproofai-commands — the entry a project-scope npx hook runs
       ["a cleanup from the repository root", 'cd "$(git rev-parse --show-toplevel)" && rm -rf dist *.log'],
       ["a note in a temporary directory", 'cd "$(mktemp -d)" && echo hi > notes.txt'],
       ["a listing of home", "cd $HOME && ls -la"],
+      // Redirects and comments are not operands, and a comment line runs nothing.
+      ["a comment line that names the state", "# Look at ~/.failproofai\nls -la ~/.failproofai"],
+      ["reading the state through an input redirect", "uniq -c < ~/.failproofai/x.log | sort -rn"],
+      ["tee fed from the state", "tee -a /tmp/x < ~/.failproofai/policies-config.json"],
+      ["a backup with a comment naming the state", "cp -r ~/.failproofai /tmp/bak  # copy of ~/.failproofai"],
+      ["a find whose comment names -delete", "find ~/.failproofai -name '*.log' -print  # not -delete yet"],
+      ["a read run through bash -c", "bash -c 'cat ~/.failproofai/policies-config.json'"],
     ])("allows %s", async (_label, command) => {
       expect(await bash(command)).not.toBe("deny");
     });
@@ -385,6 +427,11 @@ describe("block-failproofai-commands — the entry a project-scope npx hook runs
       ["a checkout of failproofai itself", "/home/u/src/failproofai", "rm -rf dist"],
       ["node_modules/.bin", "/work/proj/node_modules/.bin", "cp README.md /tmp/"],
       ["node_modules/.bin", "/work/proj/node_modules/.bin", "./vitest run"],
+      // The command word is a program, not a path written to, and an option
+      // is not a path: neither is read from the directory.
+      ["failproofai's own state", "/home/u/.failproofai/logs", "date"],
+      ["failproofai's own state", "/home/u/.failproofai/logs", "uname -a"],
+      ["an installed package", "/home/u/proj/node_modules/failproofai/dist", "uname -a"],
     ])("allows ordinary work from %s", async (_label, cwd, command) => {
       expect(await bashIn(cwd, command)).not.toBe("deny");
     });
@@ -397,6 +444,8 @@ describe("block-failproofai-commands — the entry a project-scope npx hook runs
       ["2,000 relative cds", Array(2000).fill("cd a").join(" && ") + " && ls"],
       ["1,000 cds into globs", Array(1000).fill("cd a*").join(" && ") + " && ls"],
       ["a 2,000-segment glob", "rm -rf " + Array(2000).fill("*").join("/")],
+      // A value that refers to itself grew with every expansion pass.
+      ["a self-referring variable", "A=" + "$A".repeat(100) + "; echo $A"],
     ])("judges %s in bounded time", async (_label, command) => {
       const started = performance.now();
       await bash(command);

@@ -18,7 +18,7 @@ import {
   systemCommandPath,
 } from "../../src/hooks/system-command";
 
-const KEYS = ["PATH", "SUDO_ASKPASS", "BASH_ENV", "LANG", "TERM"] as const;
+const KEYS = ["PATH", "SUDO_ASKPASS", "BASH_ENV", "LANG", "TERM", "SSH_AUTH_SOCK", "KRB5CCNAME"] as const;
 
 describe("system-command", () => {
   const saved = new Map<string, string | undefined>();
@@ -26,7 +26,7 @@ describe("system-command", () => {
 
   beforeEach(() => {
     for (const key of KEYS) saved.set(key, process.env[key]);
-    // Programs a process running as the user put first on PATH.
+    // Programs of the same names first on PATH.
     planted = mkdtempSync(resolve(tmpdir(), "fpai-planted-"));
     for (const name of ["sudo", "sh", "failproofai-only-on-path"]) {
       writeFileSync(resolve(planted, name), "#!/bin/sh\nexit 1\n", { mode: 0o755 });
@@ -61,22 +61,26 @@ describe("system-command", () => {
     expect(systemCommandPath(`${planted}/sudo`)).toBeNull();
   });
 
-  it("starts privileged commands with root's PATH and the caller's locale, nothing else", () => {
+  it("starts privileged commands with root's PATH and what sudo itself uses, nothing else", () => {
     process.env.SUDO_ASKPASS = resolve(planted, "sudo");
     process.env.BASH_ENV = resolve(planted, "sh");
     process.env.LANG = "C.UTF-8";
     process.env.TERM = "xterm-256color";
+    // What PAM modules authenticate sudo with on some fleets.
+    process.env.SSH_AUTH_SOCK = "/run/user/1000/ssh-agent.socket";
+    process.env.KRB5CCNAME = "KCM:";
 
     const env = privilegedEnv();
 
     expect(env.PATH).toBe(SYSTEM_PATH);
     expect(env.LANG).toBe("C.UTF-8");
     expect(env.TERM).toBe("xterm-256color");
+    expect(env.SSH_AUTH_SOCK).toBe("/run/user/1000/ssh-agent.socket");
+    expect(env.KRB5CCNAME).toBe("KCM:");
     expect(env).not.toHaveProperty("SUDO_ASKPASS");
     expect(env).not.toHaveProperty("BASH_ENV");
-    expect(Object.keys(env).every((key) => ["PATH", "TERM", "LANG", "LC_ALL", "LC_CTYPE", "LC_MESSAGES"].includes(key))).toBe(
-      true,
-    );
+    const allowed = ["PATH", "TERM", "LANG", "LC_ALL", "LC_CTYPE", "LC_MESSAGES", "SSH_AUTH_SOCK", "KRB5CCNAME"];
+    expect(Object.keys(env).every((key) => allowed.includes(key))).toBe(true);
   });
 
   it("prints sudo and the program by absolute path, and the bare name where root has none", () => {

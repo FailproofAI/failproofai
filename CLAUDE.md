@@ -965,8 +965,8 @@ Three consequences, all handled explicitly rather than assumed:
   only bytes it has verified. The printed `needs_root` recipe carries the same digests.
 - **Nor a program found through PATH.** `sudo` and everything it runs come from
   `src/hooks/system-command.ts`, which looks only in `/usr/bin`, `/bin`, `/usr/sbin` and
-  `/sbin` and starts them with `privilegedEnv()` (root's PATH, the caller's locale). PATH
-  is the user's, and macOS sudoers sets no `secure_path`. Printed commands use
+  `/sbin` and starts them with `privilegedEnv()` (root's PATH, the caller's locale and the
+  settings sudo authenticates with). PATH is the user's to change. Printed commands use
   `sudoCommandLine()` for the same reason.
 - **A system unit has no login environment.** `resolveWorkerCommand()` uses
   `process.execPath`, not a bare `node`: the single most common Node install is nvm, whose

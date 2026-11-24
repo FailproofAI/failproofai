@@ -27,7 +27,9 @@ import { dirname, resolve } from "node:path";
 import { execFileSync } from "node:child_process";
 import { hookLogWarn } from "./hook-logger";
 import {
+  binaryDigestMismatch,
   downloadFailproofaidBinary,
+  expectedNpmBinaryDigest,
   installFromNpmPackage,
   installedBinaryMismatch,
   installedBinaryPath,
@@ -607,7 +609,7 @@ function selinuxEnabled(): boolean {
 function stageSystemBinary(binaryPath: string): string {
   const target = systemBinaryTarget(binaryPath);
   if (!target) return binaryPath;
-  const bytes = readRegularFileNoFollow(binaryPath);
+  const bytes = readDaemonBinaryForRoot(binaryPath);
   runPrivileged("install", ["-d", "-m", "0755", systemBinaryDir()]);
   writePrivilegedFile(target, bytes, "0755");
   if (selinuxEnabled()) {
@@ -916,6 +918,23 @@ export function writePrivilegedFile(destination: string, contents: string | Buff
 }
 
 /**
+ * The daemon binary's bytes as root will install them: read once, and held to
+ * the digest this build recorded for the managed copy when it carries one
+ * (`expectedNpmBinaryDigest`). `ensureFailproofaidBinary` checks the file
+ * before the install starts, but what reaches root is this read, so the check
+ * is made again on these very bytes.
+ */
+function readDaemonBinaryForRoot(binaryPath: string): Buffer {
+  const bytes = readRegularFileNoFollow(binaryPath);
+  const key = platformKey();
+  if (key && binaryPath === installedBinaryPath()) {
+    const mismatch = binaryDigestMismatch(expectedNpmBinaryDigest(key), bytes, binaryPath);
+    if (mismatch) throw new Error(mismatch);
+  }
+  return bytes;
+}
+
+/**
  * Reads a regular file, refusing a symbolic link or anything else in its
  * place. Used for the one file whose bytes go to root: what root installs is
  * then exactly what this process read, as the user.
@@ -1206,7 +1225,7 @@ function daemonInstallRecipe(binaryPath: string, workerCmd: string | null, cliCm
     const target = systemBinaryTarget(binaryPath);
     const steps: string[] = [];
     if (target) {
-      const digest = sha256Hex(readRegularFileNoFollow(binaryPath));
+      const digest = sha256Hex(readDaemonBinaryForRoot(binaryPath));
       steps.push(
         // Quoted: a home directory may hold a space, and an unquoted path
         // splits into words that stop this `&&`-chained recipe before the

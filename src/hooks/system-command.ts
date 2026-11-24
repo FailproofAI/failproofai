@@ -2,11 +2,9 @@
  * How failproofai names the programs it runs as root: by absolute path, from
  * root's own directories, with a minimal environment. Never through PATH.
  *
- * PATH and the rest of the caller's environment belong to the user: PATH
- * routinely starts with directories the user can write (`~/.local/bin`, nvm's
- * bin, Homebrew's prefix), and where sudoers sets no `secure_path` (macOS by
- * default) sudo looks programs up in it too. Root's programs, and the sudo the
- * user types their password into, come from root's own directories instead.
+ * PATH and the rest of the caller's environment belong to the user, and sudo
+ * may look programs up in that PATH too. Root's programs, and the sudo the user
+ * types their password into, come from root's own directories instead.
  */
 import { accessSync, constants as fsConstants, statSync } from "node:fs";
 
@@ -43,14 +41,19 @@ export function requireSystemCommand(name: string): string {
   return path;
 }
 
-/** The caller's settings that only shape how sudo's prompt and messages look. */
-const PASSED_THROUGH = ["TERM", "LANG", "LC_ALL", "LC_CTYPE", "LC_MESSAGES"] as const;
+/**
+ * The caller's settings sudo itself may need: the terminal type and locale for
+ * its prompt, and the SSH agent socket and Kerberos credential cache that PAM
+ * modules such as pam_ssh_agent_auth and pam_sss_gss authenticate with. None of
+ * them names code to run.
+ */
+const PASSED_THROUGH = ["TERM", "LANG", "LC_ALL", "LC_CTYPE", "LC_MESSAGES", "SSH_AUTH_SOCK", "KRB5CCNAME"] as const;
 
 /**
  * The environment every privileged command starts with: root's PATH, plus the
- * caller's terminal type and locale for sudo's own prompt. Nothing else of the
- * caller's reaches sudo or what it runs: no PATH, no loader or shell variables,
- * no `SUDO_ASKPASS` or `SUDO_PROMPT`.
+ * few settings above that sudo's own prompt and authentication use. Nothing
+ * else of the caller's reaches sudo or what it runs: no PATH, no loader or
+ * shell variables, no `SUDO_ASKPASS` or `SUDO_PROMPT`.
  */
 export function privilegedEnv(): NodeJS.ProcessEnv {
   const env: NodeJS.ProcessEnv = { PATH: SYSTEM_PATH };

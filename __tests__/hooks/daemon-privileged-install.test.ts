@@ -34,6 +34,7 @@ import { basename, dirname, resolve } from "node:path";
 import { installedBinaryPath } from "../../src/hooks/daemon-download";
 import { logsDir } from "../../src/hooks/fp-home";
 import { shellQuote } from "../../src/hooks/shell-quote";
+import packageJson from "../../package.json";
 
 vi.mock("../../src/hooks/hook-logger", () => ({
   hookLogWarn: vi.fn(),
@@ -132,6 +133,7 @@ describe.skipIf(isRoot)("privileged service install: root is handed bytes, never
   afterEach(() => {
     vi.doUnmock("node:child_process");
     vi.doUnmock("../../src/hooks/system-command");
+    vi.doUnmock("../../package.json");
     vi.resetModules();
     setPlatform(originalPlatform);
     for (const [key, value] of saved) {
@@ -169,10 +171,15 @@ describe.skipIf(isRoot)("privileged service install: root is handed bytes, never
    * Stands in for sudo: runs each privileged command as this user, after
    * `beforeRoot` has had its turn. `elevate: false` is a machine where sudo
    * cannot run anything; `warmUp: true` one where it can only after `sudo -v`.
+   * `onElevate` runs at each `sudo -n true`, the check made just before the
+   * install starts copying.
    */
-  function mockSudo(opts: { beforeRoot?: BeforeRoot; elevate?: boolean; warmUp?: boolean } = {}): RootCall[] {
+  function mockSudo(
+    opts: { beforeRoot?: BeforeRoot; elevate?: boolean; warmUp?: boolean; onElevate?: () => void } = {},
+  ): RootCall[] {
     const calls: RootCall[] = [];
     let warm = !opts.warmUp;
+    standInSystemPrograms();
     vi.doMock("node:child_process", async (importOriginal) => {
       const actual = await importOriginal<typeof import("node:child_process")>();
       return {
@@ -193,7 +200,10 @@ describe.skipIf(isRoot)("privileged service install: root is handed bytes, never
               return Buffer.alloc(0);
             }
             if (!warm) throw new Error("sudo: a password is required");
-            if (argv.length === 1 && basename(argv[0]) === "true") return Buffer.alloc(0);
+            if (argv.length === 1 && basename(argv[0]) === "true") {
+              opts.onElevate?.();
+              return Buffer.alloc(0);
+            }
             opts.beforeRoot?.(call, options);
             switch (basename(argv[0])) {
               case "install":
@@ -219,17 +229,20 @@ describe.skipIf(isRoot)("privileged service install: root is handed bytes, never
   }
 
   /**
-   * A Linux runner has no launchctl, and the install looks for it only in
-   * root's own directories: stand one in at its macOS path. It never runs —
-   * the sudo mock answers for it.
+   * The install looks programs up only in root's own directories, and a test
+   * machine may lack some: launchctl on Linux, systemctl on a Mac or in a
+   * container, sudo itself. Each of these the sudo mock answers for without
+   * running it, so where one is missing a path stands in for it. Programs the
+   * mock does run (install, mv, rm, sh) are always the machine's own.
    */
-  function standInLaunchctl(): void {
+  function standInSystemPrograms(): void {
+    const answered = new Set(["sudo", "true", "systemctl", "launchctl", "restorecon"]);
     vi.doMock("../../src/hooks/system-command", async (importOriginal) => {
       const actual = await importOriginal<SystemCommand>();
       return {
         ...actual,
         requireSystemCommand: (name: string) =>
-          name === "launchctl" ? (actual.systemCommandPath(name) ?? "/bin/launchctl") : actual.requireSystemCommand(name),
+          actual.systemCommandPath(name) ?? (answered.has(name) ? `/usr/bin/${name}` : actual.requireSystemCommand(name)),
       };
     });
   }
@@ -287,7 +300,6 @@ describe.skipIf(isRoot)("privileged service install: root is handed bytes, never
     it("macOS: the plist is exactly what failproofai rendered, and launchd loads it after it is in place", async () => {
       setPlatform("darwin");
       const managed = writeManagedBinary();
-      standInLaunchctl();
       const calls = mockSudo({ beforeRoot: changeUserFiles(how) });
       const svc = await loadService();
 
@@ -326,6 +338,24 @@ describe.skipIf(isRoot)("privileged service install: root is handed bytes, never
     expect(existsSync(svc.daemonServiceFilePath()!)).toBe(false);
   });
 
+  it("linux: installs under /opt only the binary bytes this build recorded, even if the file changes once checked", async () => {
+    setPlatform("linux");
+    writeManagedBinary();
+    // The digest a published build records for its own platform binary.
+    const arch = process.arch === "arm64" ? "arm64" : "x64";
+    const manifest = { ...packageJson, failproofaidBinaries: { [`linux-${arch}`]: sha256(BINARY) } };
+    vi.doMock("../../package.json", () => ({ ...manifest, default: manifest }));
+    // Checked once before the install starts copying, then changed.
+    mockSudo({ onElevate: () => writeFileSync(installedBinaryPath(), CHANGED) });
+    const svc = await loadService();
+
+    const result = await svc.installDaemonService();
+
+    expect(result.installed).toBe(false);
+    expect(result.reason).toMatch(/expects [0-9a-f]{64}/);
+    expect(filesUnder(rootDir).filter((p) => p !== otherPath)).toEqual([]);
+  });
+
   it("never runs a sudo or a program that PATH finds first, credential warm-up included, and gives sudo root's PATH", async () => {
     setPlatform("linux");
     writeManagedBinary();
@@ -352,7 +382,7 @@ describe.skipIf(isRoot)("privileged service install: root is handed bytes, never
 
     expect(readdirSync(marks)).toEqual([]);
     for (const call of calls) {
-      expect(call.sudo).toBe(sys.systemCommandPath("sudo"));
+      expect(call.sudo).toBe(sys.requireSystemCommand("sudo"));
       if (call.argv[0] !== "-v") expect(sys.SYSTEM_BIN_DIRS).toContain(dirname(call.argv[0]));
       expect(call.env?.PATH).toBe(sys.SYSTEM_PATH);
       expect(call.env).not.toHaveProperty("SUDO_ASKPASS");

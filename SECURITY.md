@@ -20,6 +20,37 @@ We aim to acknowledge reports within 3 business days and will keep you updated a
 we investigate and ship a fix. Please give us a reasonable window to remediate
 before any public disclosure.
 
+## What an install fetches and runs
+
+An install of failproofai (`npm install -g failproofai`, or `npx failproofai`, which is what
+project-scope hooks run) fetches exactly one third-party package from the registry: the
+runtime dependency in [`package.json`](package.json), today `sql.js`. It is pinned to one exact
+version, has no dependencies of its own and runs no install script, so nothing an install
+resolves can change after a failproofai version is published, whichever package manager
+installs it. Everything else failproofai uses is compiled in when it is built: `bun build`
+writes `dist/cli.mjs`, `dist/worker.mjs` and `dist/index.js`, and `next build` the dashboard,
+from the versions `bun.lock` pins. Those packages are devDependencies, so the `bun.lock` the
+scan below checks is what users run.
+
+The only other packages an install resolves are failproofai's own four
+`@failproofai/failproofaid-<os>-<arch>` daemon packages. They are pinned to the exact
+failproofai version, npm installs only the one matching the machine, and the CLI checks the
+binary inside against the SHA-256 recorded in failproofai's own manifest at publish time before
+installing it as a service.
+
+[`scripts/runtime-deps.mjs`](scripts/runtime-deps.mjs) keeps it that way. It runs first in
+`bun run build`, which CI and both release jobs run before anything is packed, and fails the
+build when a runtime dependency is a range, has dependencies of its own, or has an install
+script or a `binding.gyp`; when a build script leaves a package external that the install would
+not carry; or when `package.json` itself gains an install script, a peer dependency, or any
+optional dependency besides the daemon packages. Installing with scripts disabled
+(`npm install -g failproofai --ignore-scripts`, or `npm config set ignore-scripts true`)
+therefore installs failproofai completely.
+
+The trade-off is that a fix to any of these packages reaches users only in a new failproofai
+release. The daily scan below flags an advisory disclosed after a release against `bun.lock`,
+and that is the signal to cut one.
+
 ## Supply-chain scanning
 
 Every pull request — including automated Dependabot dependency bumps — is scanned
@@ -29,7 +60,8 @@ for supply-chain threats before it can merge, via two complementary layers.
 
 [`.github/workflows/osv-scanner.yml`](.github/workflows/osv-scanner.yml) runs
 [OSV-Scanner](https://google.github.io/osv-scanner/) against the resolved
-dependency tree (`bun.lock`). It checks every direct and transitive package
+dependency tree (`bun.lock`), which pins every package the published bundles are built
+from as well as the one runtime dependency (see above). It checks every direct and transitive package
 against [OSV.dev](https://osv.dev), which aggregates GitHub/npm security
 advisories **and** the [OpenSSF malicious-packages feed](https://github.com/ossf/malicious-packages)
 (confirmed malware: typosquats, account-takeover injections, and the like).

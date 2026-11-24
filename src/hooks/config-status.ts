@@ -24,7 +24,12 @@
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { readCloudCredentials } from "./cloud-enrollment";
-import { claudeHooksSwitchedOffBy, claudeSettingsLayersByPrecedence } from "./claude-hooks-switch";
+import {
+  CLAUDE_MANAGED_SETTINGS_PATHS,
+  claudeHooksSwitchedOffBy,
+  claudeLocalSettingsPaths,
+  claudeSettingsLayersByPrecedence,
+} from "./claude-hooks-switch";
 import { CODEX_UNTRUSTED_NOTICE, codexHookTrust, type CodexHookTrust } from "./codex-system-hooks";
 import { describeMachine } from "./cloud-enrollment-cli";
 import { cloudBaseFor } from "./cloud-connection";
@@ -401,15 +406,21 @@ function readCodexTrust(deps: StatusDeps): CodexHookTrust {
  * Asked only when failproofai's Claude hooks are installed at some scope: the
  * key matters to this screen only because it silences them. Never throws.
  */
-export function claudeHooksSwitchedOff(cwd: string): string | null {
+export function claudeHooksSwitchedOff(
+  cwd: string,
+  managed: string | undefined = CLAUDE_MANAGED_SETTINGS_PATHS[process.platform],
+): string | null {
   const installed = HOOK_SCOPES.some((scope) => claudeCode.hooksInstalledInSettings(scope, cwd));
   if (!installed) return null;
   return claudeHooksSwitchedOffBy(
-    claudeSettingsLayersByPrecedence({
-      user: claudeCode.getSettingsPath("user", cwd),
-      project: claudeCode.getSettingsPath("project", cwd),
-      local: claudeCode.getSettingsPath("local", cwd),
-    }),
+    claudeSettingsLayersByPrecedence(
+      {
+        user: claudeCode.getSettingsPath("user", cwd),
+        project: claudeCode.getSettingsPath("project", cwd),
+        local: claudeLocalSettingsPaths(cwd),
+      },
+      managed,
+    ),
   );
 }
 

@@ -6,6 +6,7 @@ import { dirname, join } from "node:path";
 import {
   CLAUDE_MANAGED_SETTINGS_PATHS,
   claudeHooksSwitchedOffBy,
+  claudeLocalSettingsPaths,
   claudeSettingsLayersByPrecedence,
 } from "../../src/hooks/claude-hooks-switch";
 import {
@@ -62,13 +63,18 @@ describe("claudeHooksSwitchedOffBy — Claude Code's precedence", () => {
   });
 
   it("orders the layers managed, local, project, user", () => {
-    expect(claudeSettingsLayersByPrecedence({ user: "u", project: "p", local: "l" }, "linux")).toEqual([
-      CLAUDE_MANAGED_SETTINGS_PATHS.linux,
-      "l",
-      "p",
-      "u",
-    ]);
-    expect(claudeSettingsLayersByPrecedence({ user: "u", project: "p", local: "l" }, "win32")).toEqual(["l", "p", "u"]);
+    expect(claudeSettingsLayersByPrecedence({ user: "u", project: "p", local: "l" }, "/m.json")).toEqual(["/m.json", "l", "p", "u"]);
+    expect(claudeSettingsLayersByPrecedence({ user: "u", project: "p", local: ["l1", "l2"] }, undefined)).toEqual(["l1", "l2", "p", "u"]);
+  });
+
+  it("reads the managed file where Claude Code keeps it, Windows included", () => {
+    expect(CLAUDE_MANAGED_SETTINGS_PATHS.linux).toBe("/etc/claude-code/managed-settings.json");
+    expect(CLAUDE_MANAGED_SETTINGS_PATHS.darwin).toBe("/Library/Application Support/ClaudeCode/managed-settings.json");
+    const windows = CLAUDE_MANAGED_SETTINGS_PATHS.win32!;
+    expect(windows).toBe("C:\\Program Files\\ClaudeCode\\managed-settings.json");
+    const scopes = { user: "/h/.claude/settings.json", project: "/p/.claude/settings.json", local: "/p/.claude/settings.local.json" };
+    const layers = claudeSettingsLayersByPrecedence(scopes, windows);
+    expect(claudeHooksSwitchedOffBy(layers, files({ [windows]: { disableAllHooks: true } }))).toBe(windows);
   });
 });
 
@@ -98,6 +104,9 @@ describe("config --status — disableAllHooks", () => {
     mkdirSync(dirname(path), { recursive: true });
     writeFileSync(path, JSON.stringify(body));
   };
+  // Never the host's managed file: a machine whose policy sets the key would
+  // decide these assertions.
+  const managed = () => join(dir, "managed-settings.json");
   const ourHooks = {
     hooks: {
       PreToolUse: [{ hooks: [{ type: "command", command: "/bin/failproofai --hook PreToolUse", [FAILPROOFAI_HOOK_MARKER]: true }] }],
@@ -108,19 +117,59 @@ describe("config --status — disableAllHooks", () => {
     const project = join(dir, "project");
     put(join(dir, "home", ".claude", "settings.json"), ourHooks);
     put(join(project, ".claude", "settings.local.json"), { disableAllHooks: true });
-    expect(claudeHooksSwitchedOff(project)).toBe(join(project, ".claude", "settings.local.json"));
+    expect(claudeHooksSwitchedOff(project, managed())).toBe(join(project, ".claude", "settings.local.json"));
   });
 
   it("says nothing when failproofai has no Claude hooks to switch off", () => {
     const project = join(dir, "project");
     put(join(dir, "home", ".claude", "settings.json"), { disableAllHooks: true });
-    expect(claudeHooksSwitchedOff(project)).toBeNull();
+    expect(claudeHooksSwitchedOff(project, managed())).toBeNull();
   });
 
   it("says nothing while the hooks are on", () => {
     const project = join(dir, "project");
     put(join(dir, "home", ".claude", "settings.json"), { ...ourHooks, disableAllHooks: false });
-    expect(claudeHooksSwitchedOff(project)).toBeNull();
+    expect(claudeHooksSwitchedOff(project, managed())).toBeNull();
+  });
+
+  it("lets a managed file decide, in either direction", () => {
+    const project = join(dir, "project");
+    put(join(dir, "home", ".claude", "settings.json"), ourHooks);
+    put(join(project, ".claude", "settings.local.json"), { disableAllHooks: true });
+    put(managed(), { disableAllHooks: false });
+    expect(claudeHooksSwitchedOff(project, managed())).toBeNull();
+    put(managed(), { disableAllHooks: true });
+    expect(claudeHooksSwitchedOff(project, managed())).toBe(managed());
+  });
+
+  it("reads a repository's local settings at its root when run from a subdirectory", () => {
+    const repo = join(dir, "repo");
+    mkdirSync(join(repo, ".git"), { recursive: true });
+    mkdirSync(join(repo, "src"), { recursive: true });
+    put(join(dir, "home", ".claude", "settings.json"), ourHooks);
+    put(join(repo, ".claude", "settings.local.json"), { disableAllHooks: true });
+    expect(claudeHooksSwitchedOff(join(repo, "src"), managed())).toBe(join(repo, ".claude", "settings.local.json"));
+  });
+
+  it("still reads one an older Claude Code left in the starting directory", () => {
+    const repo = join(dir, "repo");
+    mkdirSync(join(repo, ".git"), { recursive: true });
+    put(join(dir, "home", ".claude", "settings.json"), ourHooks);
+    put(join(repo, "src", ".claude", "settings.local.json"), { disableAllHooks: true });
+    expect(claudeHooksSwitchedOff(join(repo, "src"), managed())).toBe(join(repo, "src", ".claude", "settings.local.json"));
+  });
+
+  it("keeps it in the starting directory on Windows and when the repository is the home directory", () => {
+    const home = join(dir, "home");
+    mkdirSync(join(home, ".git"), { recursive: true });
+    mkdirSync(join(home, "notes"), { recursive: true });
+    const here = join(home, "notes", ".claude", "settings.local.json");
+    expect(claudeLocalSettingsPaths(join(home, "notes"), "linux", home)).toEqual([here]);
+    expect(claudeLocalSettingsPaths(join(home, "notes"), "win32", join(dir, "elsewhere"))).toEqual([here]);
+    expect(claudeLocalSettingsPaths(join(home, "notes"), "linux", join(dir, "elsewhere"))).toEqual([
+      join(home, ".claude", "settings.local.json"),
+      here,
+    ]);
   });
 
   it("carries the finding into the status facts through its seam", async () => {

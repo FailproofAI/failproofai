@@ -30,7 +30,7 @@
  * bundler rename that local (config-status.ts explains why that matters: the
  * audit cache in src/audit/cache.ts keys on each policy's source).
  */
-import { existsSync, realpathSync } from "node:fs";
+import { existsSync, lstatSync, readlinkSync, realpathSync } from "node:fs";
 import { homedir } from "node:os";
 import { basename, dirname, isAbsolute, join, normalize, relative, resolve } from "node:path";
 
@@ -176,6 +176,83 @@ function realpathOfAgentSettingsCandidate(path: string): string {
     }
   }
   return path;
+}
+
+/** Linux gives up after this many links in one path (MAXSYMLINKS). */
+const MAX_LINK_HOPS = 40;
+
+/**
+ * `path` walked the way the kernel walks it: one component at a time from
+ * `base`, a symlink replaced by where it points before the walk goes on. So a
+ * `..` after a link climbs out of the link's TARGET: with `link ->
+ * ~/.claude/subdir`, `link/../settings.json` is `~/.claude/settings.json`,
+ * where text normalisation drops `link/..` and lands beside the link. A link
+ * that leads nowhere yet is followed too — a write through it creates its
+ * target. Past the first component that does not exist, the rest is joined as
+ * text. Null on a loop or a link that cannot be read; both fail the write too.
+ */
+function physicalWalk(base: string, path: string): string | null {
+  let parts = path.split("/");
+  let current = base;
+  let hops = 0;
+  for (let k = 0; k < parts.length; k++) {
+    const part = parts[k];
+    if (part === "" || part === ".") continue;
+    if (part === "..") {
+      current = dirname(current);
+      continue;
+    }
+    const next = join(current, part);
+    let stat: ReturnType<typeof lstatSync> | undefined;
+    try {
+      stat = lstatSync(next, { throwIfNoEntry: false });
+    } catch {
+      // ENOTDIR under a file, EACCES, a component too long: nothing to follow.
+      stat = undefined;
+    }
+    if (stat === undefined) return join(next, ...parts.slice(k + 1));
+    if (!stat.isSymbolicLink()) {
+      current = next;
+      continue;
+    }
+    if (++hops > MAX_LINK_HOPS) return null;
+    let target: string;
+    try {
+      target = readlinkSync(next);
+    } catch {
+      return null;
+    }
+    if (target.startsWith("/")) current = "/";
+    parts = [...target.split("/"), ...parts.slice(k + 1)];
+    k = -1;
+  }
+  return current;
+}
+
+/** Paths longer than this cannot be opened (PATH_MAX), so they write nothing. */
+const MAX_PHYSICAL_PATH = 4096;
+
+/**
+ * Where `path` really leads from `cwd`, symlinks and `..` taken in the
+ * kernel's order (see physicalWalk), home expanded. Null when it cannot be
+ * known: a relative path with no cwd, or one too long to open. `bases` keeps
+ * each cwd's own walk for a caller that resolves many words from one.
+ */
+export function physicalAgentPath(
+  path: string,
+  cwd: string | undefined,
+  bases?: Map<string, string | null>,
+): string | null {
+  const expanded = expandAgentSettingsHome(path);
+  if (expanded.length === 0 || expanded.length > MAX_PHYSICAL_PATH) return null;
+  if (isAbsolute(expanded)) return physicalWalk("/", expanded);
+  if (!cwd) return null;
+  let base = bases?.get(cwd);
+  if (base === undefined) {
+    base = physicalWalk("/", resolve(cwd));
+    bases?.set(cwd, base);
+  }
+  return base === null ? null : physicalWalk(base, expanded);
 }
 
 /** Agent settings files under the home directory, relative to it. */
@@ -329,6 +406,13 @@ export function agentSettingsWriteTarget(
     if (real !== lexical && (isAgentSettingsPath(real) || extras.has(real))) return lexical;
     realTargets ??= agentSettingsRealTargets(cwd, [...extras]);
     if (realTargets.has(real)) return lexical;
+    // `lexical` lost its `..` before any link was followed; the filesystem
+    // follows the link first: `link/../settings.json` with `link ->
+    // ~/.claude/subdir` writes `~/.claude/settings.json`.
+    const physical = physicalAgentPath(raw, cwd);
+    if (physical !== null && physical !== real && (isAgentSettingsPath(physical) || extras.has(physical) || realTargets.has(physical))) {
+      return lexical;
+    }
   }
   return null;
 }
@@ -338,10 +422,18 @@ function bareAgentSettingsWord(word: string): string {
   return word.replace(/^[(){}'"`;&|<>]+|[(){}'"`;&|<>]+$/g, "");
 }
 
-/** A path as a regex literal that must end where a shell word or a quoted string would. */
+/** What can stand right before a path that starts a shell word, a quoted string or a value. */
+const PATH_START_EDGE = String.raw`\s'"\x60;&|()<>=,{}\[\]:@/`;
+
+/**
+ * A path as a regex literal that must start and end where a shell word or a
+ * quoted string would — or right after a glued short option (`-C/srv/x`) — so
+ * `/backup/srv/profile/settings.json` is not read as `/srv/profile/settings.json`.
+ */
 function agentSettingsPathInTextRe(path: string, isDirectory: boolean): RegExp {
   const escaped = path.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-  return new RegExp(`${escaped}${isDirectory ? "[\\\\/]?" : ""}(?=$|[\\s'"\`;&|()<>])`, "i");
+  const start = `(?<=^|[${PATH_START_EDGE}]|(?:^|[${PATH_START_EDGE}])-[A-Za-z])`;
+  return new RegExp(`${start}${escaped}${isDirectory ? "[\\\\/]?" : ""}(?=$|[\\s'"\`;&|()<>])`, "i");
 }
 
 /**
@@ -374,8 +466,10 @@ function agentSettingsShellExtras(
   // `.github/hooks/` is protected as a directory only in a project that keeps
   // failproofai's Copilot hooks there; elsewhere it is where git hooks live.
   if (cwd && existsSync(join(cwd, ".github", "hooks", "failproofai.json"))) dirs.add(join(resolve(cwd), ".github", "hooks"));
-  for (const relativePath of HOME_AGENT_SETTINGS_FILES) {
-    const lexical = join(home, relativePath);
+  // A project's settings linked elsewhere (`.claude/settings.json ->
+  // ../config/claude.json`) are written through the target's own name.
+  const projectFiles = cwd ? PROJECT_AGENT_SETTINGS_FILES.map((path) => join(resolve(cwd), path)) : [];
+  for (const lexical of [...HOME_AGENT_SETTINGS_FILES.map((path) => join(home, path)), ...projectFiles]) {
     try {
       const real = realpathSync(lexical);
       if (real !== lexical) files.add(real);
@@ -449,7 +543,12 @@ function agentSettingsHintFrom(extras: { files: Set<string>; dirs: Set<string> }
 export function agentSettingsShellMatcher(
   extraPaths: readonly string[],
   cwd?: string,
-): { names: (text: string) => boolean; hint: RegExp } {
+): {
+  names: (text: string) => boolean;
+  hint: RegExp;
+  /** Whether a word (relative to `cwd` when relative) leads to one of them through a symlink. */
+  throughLinks: (word: string, cwd: string | undefined) => boolean;
+} {
   const extras = agentSettingsShellExtras(extraPaths, cwd);
   const hint = agentSettingsHintFrom(extras);
   const textForms = [
@@ -475,7 +574,27 @@ export function agentSettingsShellMatcher(
     }
     return false;
   };
-  return { names, hint };
+  // A word whose own text names nothing can still lead to a settings file: a
+  // link in the project (`cfg.json -> ~/.claude/settings.json`), a linked
+  // directory (`agent-dir/settings.json`), a `..` after a link. Looked up on
+  // disk, so ahead of the hint, which only reads the text; once per word.
+  const physicalHits = new Map<string, boolean>();
+  const physicalBases = new Map<string, string | null>();
+  const throughLinks = (raw: string, cwd: string | undefined): boolean => {
+    for (const word of agentSettingsWordForms(raw)) {
+      if (!word || word.startsWith("-") || (word.includes("$") && !/^\$\{?HOME\}?(?:[\\/]|$)/.test(word))) continue;
+      const key = `${cwd ?? ""}\0${word}`;
+      let hit = physicalHits.get(key);
+      if (hit === undefined) {
+        const physical = physicalAgentPath(word, cwd, physicalBases);
+        hit = physical !== null && physical !== resolveAgentSettingsCandidate(word, cwd) && names(physical);
+        physicalHits.set(key, hit);
+      }
+      if (hit) return true;
+    }
+    return false;
+  };
+  return { names, hint, throughLinks };
 }
 
 /** Whether a program handed to an interpreter builds an agent settings path. */

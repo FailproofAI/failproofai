@@ -1571,6 +1571,11 @@ interface ProtectedPathTarget {
    * one; the rest of a long command is not worth a path resolution per word.
    */
   hint?: RegExp;
+  /**
+   * Whether a word leads to the target through a symlink (relative to `cwd`
+   * when relative). Asked of every word, ahead of `hint`, which reads only text.
+   */
+  namesThroughLinks?(word: string, cwd: string | undefined): boolean;
 }
 
 /** failproofai's own state. Names, not copies, so widening any of them widens the walk. */
@@ -1602,6 +1607,7 @@ function agentSettingsShellTarget(cwd: string | undefined, extraPaths: readonly 
     harmlessCommands: AGENT_SETTINGS_HARMLESS_COMMANDS,
     cwd,
     hint: matcher.hint,
+    namesThroughLinks: matcher.throughLinks,
   };
 }
 
@@ -1649,6 +1655,9 @@ const MASK_TRANSPARENT_WORDS: ReadonlySet<string> = new Set([
 /** Characters that steer the walk and mean nothing to the shell inside a quoted argument. */
 const MASKABLE_IN_QUOTES = "\n\r;&|<>()";
 
+/** What a quoted message holds and a quoted word does not. */
+const NOT_IN_A_QUOTED_WORD = ` \t\v\f${MASKABLE_IN_QUOTES}`;
+
 /** One command context: the top level, a `$(…)`, a backtick or a `( … )` subshell. */
 interface LexCommandFrame {
   kind: "cmd";
@@ -1667,6 +1676,15 @@ interface LexQuoteFrame {
   kind: "sq" | "dq" | "ansi";
   /** Blank separators inside: the command receiving this argument is not a shell. */
   mask: boolean;
+  /** Where the quoted text starts. */
+  start: number;
+  /**
+   * Nothing inside so far that a message has and a word does not: no blank,
+   * separator, escape or expansion. Such a quote is a quoted WORD, and
+   * `commandsOnly` gives it back when it closes — `codex features disable
+   * "hooks"` is that command whether or not `hooks` is quoted.
+   */
+  plain: boolean;
 }
 
 interface LexArithFrame {
@@ -1791,7 +1809,7 @@ function heredocIsStoredText(
   doc: PendingHeredoc,
   own: LexEndedCommand,
   downstream: LexEndedCommand[],
-  later: { runsText: boolean; names: ReadonlySet<string> },
+  later: { runsText: boolean; names: { has(name: string): boolean } },
   substitutionBody: boolean,
 ): boolean {
   if (later.runsText) return false;
@@ -1936,11 +1954,39 @@ function lexShell(text: string, substitutionBody = false): ShellLex {
     frame.words = [];
   };
   const quoteMask = (frame: LexCommandFrame): boolean => frame.head !== null && !isShellHead(frame.head);
+  const closeQuote = (frame: LexQuoteFrame, end: number): void => {
+    if (!frame.mask || !frame.plain) return;
+    for (let k = frame.start; k < end; k++) blanks[k] &= ~COMMANDS;
+  };
   const blankStored = (start: number, end: number, literal: boolean): void => {
     for (let k = start; k < end; k++) {
       if (text[k] === "\n") continue;
       blankAt(k, READABLE | SPLITTABLE | COMMANDS | (literal ? SUBSTITUTION : 0));
     }
+  };
+  // Whether anything from `pos` on pipes into a shell or `eval`s, and whether
+  // a file name appears from `pos` on. `pos` only grows, and each answer comes
+  // from a scan that never goes back over text: the next match of
+  // RUNS_TEXT_LATER_RE, and the last place each name appears. `pos` follows a
+  // newline, which stands in for the start of the text the regex once saw.
+  let nextRunsText = -2;
+  let lastNamed: Map<string, number> | undefined;
+  const runsTextFrom = (pos: number): boolean => {
+    if (nextRunsText === -1) return false;
+    if (nextRunsText >= pos - 1) return true;
+    const scan = new RegExp(RUNS_TEXT_LATER_RE.source, "g");
+    scan.lastIndex = Math.max(0, pos - 1);
+    nextRunsText = scan.exec(text)?.index ?? -1;
+    return nextRunsText !== -1;
+  };
+  const namedFrom = (name: string, pos: number): boolean => {
+    if (lastNamed === undefined) {
+      lastNamed = new Map();
+      for (const word of text.matchAll(/[^\s;&|<>()'"`=]+/g)) {
+        lastNamed.set(word[0].slice(word[0].lastIndexOf("/") + 1), word.index);
+      }
+    }
+    return (lastNamed.get(name) ?? -1) >= pos;
   };
   /** Read every pending heredoc's body, starting at `at`; return where lexing resumes. */
   const consumeBodies = (at: number): number => {
@@ -1963,13 +2009,11 @@ function lexShell(text: string, substitutionBody = false): ShellLex {
       spans.push({ doc, start: pos, end: bodyEnd });
       pos = next;
     }
-    // What runs after the bodies, read once for every heredoc on the line: a
-    // check per heredoc made thousands of operators on one line quadratic.
-    const rest = text.slice(pos);
-    const later = {
-      runsText: RUNS_TEXT_LATER_RE.test(rest),
-      names: new Set(rest.split(/[\s;&|<>()'"`=]+/).map((word) => word.slice(word.lastIndexOf("/") + 1))),
-    };
+    // What runs after the bodies, once for every heredoc on the line (a check
+    // per heredoc made thousands of operators on one line quadratic), and
+    // looked up rather than read: reading the rest of the text again for each
+    // line of heredocs made a script of them quadratic.
+    const later = { runsText: runsTextFrom(pos), names: { has: (name: string) => namedFrom(name, pos) } };
     for (const { doc, start, end } of spans) {
       const own = lineCommands[doc.commandIndex] ?? { head: null, words: [] };
       const downstream = lineCommands.slice(doc.commandIndex + 1);
@@ -1987,16 +2031,20 @@ function lexShell(text: string, substitutionBody = false): ShellLex {
     const ch = text[i];
     const frame = stack[stack.length - 1];
     if (frame.kind === "sq") {
-      if (ch === "'") stack.pop();
-      else if (frame.mask) {
+      if (ch === "'") {
+        closeQuote(frame, i);
+        stack.pop();
+      } else if (frame.mask) {
         if (MASKABLE_IN_QUOTES.includes(ch)) blankAt(i, SPLITTABLE);
         if (ch !== "\n") blankAt(i, COMMANDS);
+        if (frame.plain && NOT_IN_A_QUOTED_WORD.includes(ch)) frame.plain = false;
       }
       i++;
       continue;
     }
     if (frame.kind === "ansi") {
       if (ch === "\\") {
+        frame.plain = false;
         if (frame.mask) {
           blankAt(i, COMMANDS);
           if (i + 1 < n && text[i + 1] !== "\n") blankAt(i + 1, COMMANDS);
@@ -2004,10 +2052,13 @@ function lexShell(text: string, substitutionBody = false): ShellLex {
         i += 2;
         continue;
       }
-      if (ch === "'") stack.pop();
-      else if (frame.mask) {
+      if (ch === "'") {
+        closeQuote(frame, i);
+        stack.pop();
+      } else if (frame.mask) {
         if (MASKABLE_IN_QUOTES.includes(ch)) blankAt(i, SPLITTABLE);
         if (ch !== "\n") blankAt(i, COMMANDS);
+        if (frame.plain && NOT_IN_A_QUOTED_WORD.includes(ch)) frame.plain = false;
       }
       i++;
       continue;
@@ -2035,7 +2086,7 @@ function lexShell(text: string, substitutionBody = false): ShellLex {
         continue;
       }
       if (ch === "'" || ch === '"') {
-        stack.push({ kind: ch === "'" ? "sq" : "dq", mask: true });
+        stack.push({ kind: ch === "'" ? "sq" : "dq", mask: true, start: i + 1, plain: true });
         i++;
         continue;
       }
@@ -2059,6 +2110,7 @@ function lexShell(text: string, substitutionBody = false): ShellLex {
     }
     if (frame.kind === "dq") {
       if (ch === "\\") {
+        frame.plain = false;
         if (frame.mask) {
           blankAt(i, COMMANDS);
           if (i + 1 < n && text[i + 1] !== "\n") blankAt(i + 1, COMMANDS);
@@ -2067,10 +2119,12 @@ function lexShell(text: string, substitutionBody = false): ShellLex {
         continue;
       }
       if (ch === '"') {
+        closeQuote(frame, i);
         stack.pop();
         i++;
         continue;
       }
+      if (ch === "`" || (ch === "$" && (text[i + 1] === "(" || text[i + 1] === "{"))) frame.plain = false;
       // The parentheses of `$(…)` and `$((…))` open no subshell: blanked where
       // the walk counts subshells, so a `cd "$(dirname …)"` keeps its reach.
       if (ch === "$" && text[i + 1] === "(" && text[i + 2] === "(") {
@@ -2099,6 +2153,7 @@ function lexShell(text: string, substitutionBody = false): ShellLex {
       if (frame.mask) {
         if (MASKABLE_IN_QUOTES.includes(ch)) blankAt(i, SPLITTABLE);
         if (ch !== "\n") blankAt(i, COMMANDS);
+        if (frame.plain && NOT_IN_A_QUOTED_WORD.includes(ch)) frame.plain = false;
       }
       i++;
       continue;
@@ -2120,7 +2175,12 @@ function lexShell(text: string, substitutionBody = false): ShellLex {
       continue;
     }
     if (ch === "'" || ch === '"' || (ch === "$" && text[i + 1] === "'")) {
-      stack.push({ kind: ch === "'" ? "sq" : ch === '"' ? "dq" : "ansi", mask: quoteMask(command) });
+      stack.push({
+        kind: ch === "'" ? "sq" : ch === '"' ? "dq" : "ansi",
+        mask: quoteMask(command),
+        start: i + (ch === "$" ? 2 : 1),
+        plain: true,
+      });
       command.word += "q";
       i += ch === "$" ? 2 : 1;
       continue;
@@ -2612,9 +2672,11 @@ function destroysProtectedPath(command: string, target: ProtectedPathTarget, dep
   }
 
   // The directory the shell stands in, where the text says. Undefined once it
-  // cannot be known; `pushd` keeps the one it left for `popd` to return to.
+  // cannot be known; `pushd` keeps the one it left for `popd` to return to, on
+  // a stack shared by reference, so a subshell can hand the parent's back.
   let walkCwd = target.cwd;
-  const dirStack: Array<string | undefined> = [];
+  type DirStack = { dir: string | undefined; below: DirStack } | null;
+  let dirStack: DirStack = null;
 
   const namesState = (text: string): boolean => {
     if (target.namesLiteral(text)) return true;
@@ -2629,6 +2691,7 @@ function destroysProtectedPath(command: string, target: ProtectedPathTarget, dep
     return spliced.split(/\s+/).some((token) => {
       const word = unquotedToken(token);
       if (globCouldNameTarget(word, target)) return true;
+      if (target.namesThroughLinks?.(word, walkCwd)) return true;
       if (walkCwd === undefined) return false;
       // A relative word lands where the shell stands: `settings.json` after
       // `cd ~/.claude`, `opencode` after `cd ~/.config`. Only words that could
@@ -2646,22 +2709,33 @@ function destroysProtectedPath(command: string, target: ProtectedPathTarget, dep
   };
 
   // Programs handed to an interpreter, judged whole (see INLINE_PROGRAM_RE).
+  // Found where the interpreter really is a command: through the comment and
+  // stored-text masks (`readable`), and only where its name is still there in
+  // `commandsOnly`, which also blanks what a command that is not a shell takes
+  // as a quoted argument — the example in `git commit -m 'Refuse python3 -c
+  // "…"'`. Line continuations become blanks of the same width, so an offset in
+  // one view is the same place in the other.
   const namesProgram = (program: string): boolean => (target.namesProgram ?? target.namesLiteral)(program) || namesState(program);
-  for (const [, program] of command.replace(/\\\r?\n/g, " ").matchAll(INLINE_PROGRAM_RE)) {
-    if (namesProgram(program)) return true;
+  const programText = lexed.readable.replace(/\\\r?\n/g, (joined) => " ".repeat(joined.length));
+  for (const match of programText.matchAll(INLINE_PROGRAM_RE)) {
+    const at = match.index + (/^[\s;&|(\x60]/.test(match[0]) ? 1 : 0);
+    if (lexed.commandsOnly[at] !== programText[at]) continue;
+    if (namesProgram(match[1])) return true;
   }
   for (const body of lexed.programBodies) {
     if (namesProgram(body)) return true;
   }
 
   let cwdInState = false;
-  // How deep in `( … )` the walk is, and how deep it was when the `cd` fired.
-  // A `cd` inside a subshell moves the subshell only, so the window closes when
-  // the parenthesis does: `(cd ~/.failproofai && cat x); rm -rf node_modules`
-  // was denying a cleanup in an entirely unrelated directory.
+  // How deep in `( … )` the walk is. A `cd`, `pushd` or `popd` inside a
+  // subshell moves the subshell only, so where the shell stood — its
+  // directory, its `pushd` stack, and whether that was inside the target —
+  // comes back when the parenthesis closes: `(cd ~/.failproofai && cat x); rm
+  // -rf node_modules` was denying a cleanup in an entirely unrelated
+  // directory, and `(cd /tmp; pushd /tmp); popd` handed the parent a stack
+  // entry it never had.
   let parenDepth = 0;
-  let cdParenDepth: number | null = null;
-  const cwdScopes: Array<{ depth: number; cwd: string | undefined }> = [];
+  const cwdScopes: Array<{ depth: number; cwd: string | undefined; inState: boolean; dirs: DirStack }> = [];
   // A loop header hands its word list to the body, and the body is a separate
   // pipeline that names nothing. Without this, `for f in ~/.failproofai/*; do
   // rm -rf $f; done` is a header that only expands and a body that only deletes
@@ -2698,7 +2772,8 @@ function destroysProtectedPath(command: string, target: ProtectedPathTarget, dep
       }
     }
 
-    for (const [simpleIndex, [simpleStart, simpleEnd]] of cutRanges(splitPipeline, /\|/).entries()) {
+    const simples = cutRanges(splitPipeline, /\|/);
+    for (const [simpleIndex, [simpleStart, simpleEnd]] of simples.entries()) {
       const simple = pipeline.slice(simpleStart, simpleEnd);
       const splitSimple = splitPipeline.slice(simpleStart, simpleEnd);
       parenDepth += (splitSimple.match(/\(/g) ?? []).length;
@@ -2708,21 +2783,39 @@ function destroysProtectedPath(command: string, target: ProtectedPathTarget, dep
       const head = words.length > 0 ? commandBasename(words[0]) : "";
       // Track the shell's position before judging: a `cd` INTO the state makes
       // every later relative path a state path, and a `cd` back out ends that.
-      if (head === "cd" || head === "pushd") {
-        // Quote-aware, so `cd "$(dirname ~/.claude/settings.json)"` is one operand.
-        const operand = quoteAwareCommandWords(simple).words.slice(1).find((w) => !w.startsWith("-"));
-        cwdInState = operand !== undefined && namesState(operand);
-        cdParenDepth = cwdInState ? parenDepth : null;
-        if (head === "pushd") dirStack.push(walkCwd);
-        if (parenDepth > 0) cwdScopes.push({ depth: parenDepth, cwd: walkCwd });
-        walkCwd = cdDestination(walkCwd, operand);
-      } else if (head === "popd") {
-        // `popd` returns to wherever the shell was before `pushd`, which ends
-        // the window as surely as a `cd` out does. Without it every command for
-        // the rest of the line was judged as if it stood in the state directory.
-        cwdInState = false;
-        cdParenDepth = null;
-        walkCwd = dirStack.length > 0 ? dirStack.pop() : undefined;
+      if (head === "cd" || head === "pushd" || head === "popd") {
+        // Every command of a pipeline runs in a subshell, so one before a `|`
+        // moves nothing: `cd ~/.claude | cat; cp x settings.json` copies into
+        // the directory the shell already stood in. zsh runs the LAST command
+        // in the shell itself and bash does not, so after that one the walk no
+        // longer knows where the shell stands, and counts it inside the target
+        // when either place is.
+        if (simpleIndex === simples.length - 1) {
+          if (parenDepth > 0) cwdScopes.push({ depth: parenDepth, cwd: walkCwd, inState: cwdInState, dirs: dirStack });
+          const before = walkCwd;
+          if (head === "popd") {
+            // `popd` returns to wherever the shell was before `pushd`, which
+            // ends the window as surely as a `cd` out does. Without it every
+            // command for the rest of the line was judged as if it stood in
+            // the state directory. On an empty stack it fails and the shell
+            // stays where it is.
+            if (dirStack !== null) {
+              cwdInState = false;
+              walkCwd = dirStack.dir;
+              dirStack = dirStack.below;
+            }
+          } else {
+            // Quote-aware, so `cd "$(dirname ~/.claude/settings.json)"` is one operand.
+            const operand = quoteAwareCommandWords(simple).words.slice(1).find((w) => !w.startsWith("-"));
+            cwdInState = operand !== undefined && namesState(operand);
+            if (head === "pushd") dirStack = { dir: walkCwd, below: dirStack };
+            walkCwd = cdDestination(walkCwd, operand);
+          }
+          if (simples.length > 1) {
+            cwdInState ||= (before !== undefined && namesState(before)) || (walkCwd !== undefined && namesState(walkCwd));
+            walkCwd = undefined;
+          }
+        }
       } else if (reachesState && simpleIndex > 0 && quoteAwareCommandWords(simple).readsStdinProgram) {
         // A bare shell or interpreter after a pipe runs the text piped into it:
         // `echo 'rm -rf ~/.claude' | sh`. Whatever names the target upstream is
@@ -2739,12 +2832,11 @@ function destroysProtectedPath(command: string, target: ProtectedPathTarget, dep
         if (simpleCommandDestroys(words, namesHere, target, simple, cwdInState)) return true;
       }
       parenDepth -= (splitSimple.match(/\)/g) ?? []).length;
-      if (cdParenDepth !== null && parenDepth < cdParenDepth) {
-        cwdInState = false;
-        cdParenDepth = null;
-      }
       while (cwdScopes.length > 0 && parenDepth < cwdScopes[cwdScopes.length - 1].depth) {
-        walkCwd = cwdScopes.pop()!.cwd;
+        const scope = cwdScopes.pop()!;
+        walkCwd = scope.cwd;
+        cwdInState = scope.inState;
+        dirStack = scope.dirs;
       }
     }
   }

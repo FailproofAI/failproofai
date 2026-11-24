@@ -180,7 +180,7 @@ Agent-specific home variables such as `CLAUDE_PROJECTS_PATH`, `CURSOR_HOME`, `HE
 
 ## Agent hook settings
 
-Agents cannot edit the files their CLI loads failproofai's hooks from: Claude Code's `settings*.json` in `~/.claude/` and in any project's `.claude/`, Codex's `hooks.json` and `config.toml`, and the hook and plugin files of the other supported agents. One line there switches every policy off — `"disableAllHooks": true` in any Claude Code settings file does — so `block-failproofai-commands` refuses those writes, from file tools and from the shell alike. Reading them stays allowed. Change them yourself, or with `failproofai policies --install` and `--uninstall`.
+Agents cannot edit the files their CLI loads failproofai's hooks from: Claude Code's `settings*.json` in `~/.claude/` and in any project's `.claude/`, Codex's `hooks.json` and `config.toml`, and the hook and plugin files of the other supported agents, also when they reach them through a symlink. One line there can switch every policy off — in Claude Code, `"disableAllHooks": true` in the highest-precedence settings file that sets the key, though only managed settings can switch off hooks that managed settings install — so `block-failproofai-commands` refuses those writes, from file tools and from the shell alike. It judges a shell command by its text, so a script written earlier and run later is not seen. This guard does not restrict reading these files; if a read is denied, the opt-in `block-read-outside-cwd` policy denied it. Change them yourself, or with `failproofai policies --install` and `--uninstall`.
 
 `failproofai config --status` reports a `disableAllHooks` that is switching failproofai's Claude Code hooks off, and names the file that sets it.
 

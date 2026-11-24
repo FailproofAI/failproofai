@@ -275,10 +275,13 @@ describe("block-failproofai-commands — agent settings and hook files", () => {
       `${PROJ}/.github/workflows/ci.yml`,
       `${PROJ}/.cursor/rules/style.mdc`,
       `${PROJ}/.codex/AGENTS.md`,
-      `${home}/.claude/skills/review/SKILL.md`,
-      `${home}/.claude/CLAUDE.md`,
     ])("allows writing %s", async (file) => {
       expect(await decision("Write", { file_path: file, content: "x" })).toBe("allow");
+    });
+    // Joined inside the test: `home` exists only once beforeAll has run, and a
+    // table built before then wrote `undefined/.claude/…`.
+    it.each([".claude/skills/review/SKILL.md", ".claude/CLAUDE.md"])("allows writing ~/%s", async (file) => {
+      expect(await decision("Write", { file_path: join(home, file), content: "x" })).toBe("allow");
     });
   });
 
@@ -844,6 +847,155 @@ describe("block-failproofai-commands — review round five", () => {
     const startedSpread = performance.now();
     await bashDecision(spread);
     expect(performance.now() - startedSpread).toBeLessThan(3000);
+  }, 60_000);
+});
+
+/**
+ * hermes's first review and CodeRabbit's: a write through a link, a `..` after
+ * one, a quoted word in a hooks-off command, interpreter examples nothing runs,
+ * and where the shell stands through pipelines and subshells.
+ */
+describe("block-failproofai-commands — review round six", () => {
+  let h6: string;
+  let p6: string;
+  let outerHome: string | undefined;
+  const settings = () => join(h6, ".claude", "settings.json");
+  const program = () => `python3 -c "open('${settings()}','w')"`;
+
+  beforeAll(() => {
+    // Its own HOME and project, so the links below reach nothing else in this file.
+    h6 = join(root, "home6");
+    p6 = join(root, "proj6");
+    mkdirSync(join(h6, ".claude", "subdir"), { recursive: true });
+    writeFileSync(settings(), "{}");
+    mkdirSync(join(p6, ".claude"), { recursive: true });
+    mkdirSync(join(p6, "config"), { recursive: true });
+    writeFileSync(join(p6, "config", "claude.json"), "{}");
+    symlinkSync(join("..", "config", "claude.json"), join(p6, ".claude", "settings.json"));
+    symlinkSync(settings(), join(p6, "cfg.json"));
+    symlinkSync(join(h6, ".claude"), join(p6, "agent-dir"));
+    symlinkSync(join(h6, ".claude", "subdir"), join(p6, "link"));
+    symlinkSync(join(h6, ".claude", "settings.local.json"), join(p6, "dangling.json"));
+    outerHome = process.env.HOME;
+    process.env.HOME = h6;
+  });
+
+  afterAll(() => {
+    if (outerHome === undefined) delete process.env.HOME;
+    else process.env.HOME = outerHome;
+  });
+
+  describe("a shell write through a link (hermes F1)", () => {
+    it.each([
+      `printf '{"disableAllHooks":true}' > cfg.json`,
+      `cp /tmp/x cfg.json`,
+      `printf '{}' > agent-dir/settings.json`,
+      `cd agent-dir && cp /tmp/x settings.json`,
+      `printf '{}' > config/claude.json`,
+      `printf '{}' > link/../settings.json`,
+      `printf '{}' > dangling.json`,
+    ])("denies %s", async (command) => {
+      expect(await bash(command, p6)).toBe(true);
+    });
+
+    it("leaves an ordinary file beside them alone", async () => {
+      expect(await bashDecision(`printf '{}' > config/other.json`, p6)).toBe("allow");
+      expect(await bashDecision(`cat cfg.json && ls agent-dir/`, p6)).toBe("allow");
+    });
+  });
+
+  describe("a file tool's path through a link (hermes F2)", () => {
+    it("denies a .. that follows a link, relative and absolute", async () => {
+      expect(await write("link/../settings.json", p6)).toBe(true);
+      expect(await write(`${p6}/link/../settings.json`, p6)).toBe(true);
+    });
+
+    it("follows a link that leads nowhere yet: writing it creates the target", async () => {
+      expect(await write("dangling.json", p6)).toBe(true);
+    });
+
+    it("allows an ordinary .. path", async () => {
+      expect(await decision("Write", { file_path: "config/../notes.md", content: "x" }, p6)).toBe("allow");
+    });
+  });
+
+  describe("a quoted word in an agent CLI's hooks-off command (hermes F3)", () => {
+    it.each([
+      `codex features disable "hooks"`,
+      `codex features disable 'hooks'`,
+      `codex features disable ho"oks"`,
+      `codex "features" disable hooks`,
+      `echo $(codex features disable "hooks")`,
+    ])("denies %s", async (command) => {
+      const result = await run("Bash", { command });
+      expect(result.decision).toBe("deny");
+      expect(result.reason).toMatch(/Turning an agent's hooks off/);
+    });
+
+    it("still reads a message that quotes one as a message", async () => {
+      expect(await bashDecision(`git commit -m "codex features disable hooks is now refused"`)).toBe("allow");
+    });
+  });
+
+  describe("an interpreter example nothing runs (hermes F4, CodeRabbit)", () => {
+    it("allows one in a comment, a stored heredoc or a commit message", async () => {
+      expect(await bashDecision(`echo ok # ${program()}`, p6)).toBe("allow");
+      expect(await bashDecision(`cat > docs/x.md <<'EOF'\n${program()}\nEOF`, p6)).toBe("allow");
+      expect(await bashDecision(`git commit -F - <<'EOF'\nRefuse ${program()} from agents\nEOF`, p6)).toBe("allow");
+      const quoted = `python3 -c "open(\\"${settings()}\\",\\"w\\")"`;
+      expect(await bashDecision(`git commit -m 'Refuse ${quoted} from agents'`, p6)).toBe("allow");
+    });
+
+    it("denies one that runs", async () => {
+      expect(await bash(program(), p6)).toBe(true);
+      expect(await bash(`echo ok; ${program()}`, p6)).toBe(true);
+      expect(await bash(`env -i ${program()}`, p6)).toBe(true);
+      expect(await bash(`sh -c "python3 -c \\"open('${settings()}','w')\\""`, p6)).toBe(true);
+    });
+  });
+
+  describe("where the shell stands (CodeRabbit)", () => {
+    it("lets a cd before a | move nothing", async () => {
+      expect(await bashDecision(`cd ~/.claude | cat; cp /tmp/example.json settings.json`)).toBe("allow");
+      expect(await bash(`cd /tmp | cat; cp /tmp/example.json settings.json`, join(h6, ".claude"))).toBe(true);
+    });
+
+    it("counts a cd that ends a pipeline both ways: zsh runs it, bash does not", async () => {
+      expect(await bash(`true | cd /tmp; cp /tmp/example.json settings.json`, join(h6, ".claude"))).toBe(true);
+      expect(await bash(`true | cd ~/.claude; cp /tmp/example.json settings.json`)).toBe(true);
+    });
+
+    it("gives the parent back its directory stack when a subshell closes", async () => {
+      expect(await bash(`cd ~/.claude; (cd /tmp; pushd /tmp); popd; cp /tmp/x settings.json`)).toBe(true);
+      expect(await bashDecision(`cd ~/.claude; pushd /tmp; (popd); cp /tmp/x settings.json`)).toBe("allow");
+      expect(await bash(`cd ~/.claude && (cd /tmp && ls) && cp /tmp/x settings.json`)).toBe(true);
+    });
+
+    it("stays where it is on a popd with nothing pushed", async () => {
+      expect(await bash(`cd ~/.claude; popd; cp /tmp/x settings.json`)).toBe(true);
+    });
+  });
+
+  describe("a relocated settings path inside a longer one (CodeRabbit)", () => {
+    const session = { cwd: PROJ, agentSettingsPath: "/srv/profile/settings.json" };
+    const decide = async (command: string) => (await policy.fn({ eventType: "PreToolUse", payload: {}, toolName: "Bash", toolInput: { command }, session })).decision;
+
+    it("is not the relocated file", async () => {
+      expect(await decide(`cp /tmp/x /backup/srv/profile/settings.json`)).toBe("allow");
+    });
+
+    it("still reads the file itself, its directory after a glued option, and an --output= value", async () => {
+      expect(await decide(`cp /tmp/x /srv/profile/settings.json`)).toBe("deny");
+      expect(await decide(`tar -xf /tmp/a.tar -C/srv/profile`)).toBe("deny");
+      expect(await decide(`sort --output=/srv/profile/settings.json /tmp/x`)).toBe("deny");
+    });
+  });
+
+  it("stays linear in a script of file-writing heredocs on separate lines (CodeRabbit)", async () => {
+    const script = Array.from({ length: 4000 }, (_, i) => `cat > /tmp/out/f${i}.txt <<EOF\nline ${i}\nEOF`).join("\n");
+    const started = performance.now();
+    expect(await bashDecision(script)).toBe("allow");
+    expect(performance.now() - started).toBeLessThan(3000);
   }, 60_000);
 });
 

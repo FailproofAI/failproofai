@@ -12,21 +12,70 @@
  * Pure apart from the reads, which go through a seam: `config --status` passes
  * the real files, tests pass their own.
  */
-import { readFileSync } from "node:fs";
+import { existsSync, lstatSync, readFileSync } from "node:fs";
+import { homedir } from "node:os";
+import { dirname, join, resolve } from "node:path";
 
-/** Where Claude Code looks for the managed (enterprise) settings file. */
+/**
+ * Where Claude Code looks for the managed (enterprise) settings file. It no
+ * longer reads the old Windows location, `C:\ProgramData\ClaudeCode`.
+ */
 export const CLAUDE_MANAGED_SETTINGS_PATHS: Readonly<Partial<Record<NodeJS.Platform, string>>> = {
   linux: "/etc/claude-code/managed-settings.json",
   darwin: "/Library/Application Support/ClaudeCode/managed-settings.json",
+  win32: "C:\\Program Files\\ClaudeCode\\managed-settings.json",
 };
 
 /** The settings files that can decide `disableAllHooks`, highest precedence first. */
 export function claudeSettingsLayersByPrecedence(
-  scopes: { user: string; project: string; local: string },
-  platform: NodeJS.Platform = process.platform,
+  scopes: { user: string; project: string; local: string | readonly string[] },
+  managed: string | undefined = CLAUDE_MANAGED_SETTINGS_PATHS[process.platform],
 ): string[] {
-  const managed = CLAUDE_MANAGED_SETTINGS_PATHS[platform];
-  return [...(managed ? [managed] : []), scopes.local, scopes.project, scopes.user];
+  const local = typeof scopes.local === "string" ? [scopes.local] : scopes.local;
+  return [...(managed ? [managed] : []), ...local, scopes.project, scopes.user];
+}
+
+/** The nearest directory at or above `cwd` holding a `.git` (a worktree's is a file). */
+function gitRepositoryRoot(cwd: string): string | null {
+  let dir = resolve(cwd);
+  for (let depth = 0; depth < 256; depth++) {
+    if (existsSync(join(dir, ".git"))) return dir;
+    const parent = dirname(dir);
+    if (parent === dir) return null;
+    dir = parent;
+  }
+  return null;
+}
+
+/** Whether the repository root, its `.git` and its `.claude` (where present) are the user's own. */
+function ownedByCurrentUser(root: string): boolean {
+  const uid = process.getuid?.();
+  if (uid === undefined) return true;
+  return [root, join(root, ".git"), join(root, ".claude")].every((path) => {
+    const stat = lstatSync(path, { throwIfNoEntry: false });
+    return stat === undefined || stat.uid === uid;
+  });
+}
+
+/**
+ * Where Claude Code reads a project's `settings.local.json`, current place
+ * first. Since v2.1.211 a session started in a subdirectory of a git
+ * repository keeps it at the repository root — except outside a repository,
+ * when that root is the home directory, on Windows, or when the root, its
+ * `.git` or its `.claude` is not the user's — and it still reads one an older
+ * version left in the starting directory.
+ */
+export function claudeLocalSettingsPaths(
+  cwd: string,
+  platform: NodeJS.Platform = process.platform,
+  home: string = homedir(),
+): string[] {
+  const here = join(resolve(cwd), ".claude", "settings.local.json");
+  if (platform === "win32") return [here];
+  const root = gitRepositoryRoot(cwd);
+  if (root === null || root === resolve(home) || !ownedByCurrentUser(root)) return [here];
+  const atRoot = join(root, ".claude", "settings.local.json");
+  return atRoot === here ? [here] : [atRoot, here];
 }
 
 /**

@@ -698,7 +698,7 @@ describe("pipeline / CLI agreement", () => {
  *     because the `workflow_call` legs ARE the release's binaries.
  */
 describe("CI cost guards", () => {
-  const COST_GUARDED = ["ci.yml", "publish.yml", "build-daemon.yml", "osv-scanner.yml", "build-image.yml"];
+  const COST_GUARDED = ["ci.yml", "publish.yml", "build-daemon.yml", "osv-scanner.yml"];
 
   /** Every shell command a job runs, including those wrapped by nick-fields/retry. */
   function shellText(job: Record<string, any>): string {

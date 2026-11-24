@@ -12,17 +12,20 @@
  *
  * Nothing had run it since July, but `build-image.yml` still rebuilt the image
  * and pushed it, publicly, to ghcr.io every day. It was retired rather than
- * rebuilt: the daily integration-suite canary already catches the drift it
- * looked for, by driving every CLI @latest and asserting the deny.
+ * rebuilt.
  *
  * What this pins:
  *   - the agent's files are gone;
  *   - no workflow builds or pushes its image;
- *   - Claude Code runs with its permission checks off only where that was
- *     reviewed. Today that is the canary's probe alone, which drives fixed test
- *     prompts in a throwaway sandbox WITH failproofai's hooks installed: what it
- *     measures is that the hooks deny when nothing else would. Adding a file to
- *     that list deserves the scrutiny #1797 describes.
+ *   - an agent is launched with its permission checks off only from files
+ *     reviewed for it (REVIEWED_PERMISSION_BYPASS below).
+ *
+ * The last check reads command-line spellings only: the flag, and
+ * `--permission-mode bypassPermissions` written as shell words or as an argv
+ * array. An SDK option or a settings file that sets `bypassPermissions` is not
+ * covered, because in this repo that string is mostly hook-payload data (the
+ * dashboard, the permission-mode resolver, policy fixtures), which a text scan
+ * cannot tell apart from a launch.
  */
 import { describe, it, expect } from "vitest";
 import { spawnSync } from "node:child_process";
@@ -31,18 +34,39 @@ import { resolve } from "node:path";
 
 const ROOT = process.cwd();
 const WORKFLOWS = resolve(ROOT, ".github/workflows");
+const THIS_FILE = "__tests__/ci/hook-sync-retired.test.ts";
 
 /**
- * Committed files matching `pattern` (extended regex), outside prose and tests.
- * Markdown is excluded because docs and the changelog describe the flag; this
- * directory is excluded because this file names it.
+ * Files allowed to launch an agent with its permission checks off, and why.
+ * A new entry deserves the scrutiny #1797 describes: an agent that approves its
+ * own tool calls must not also read text other people control, or hold a token
+ * that writes somewhere that matters.
+ */
+const REVIEWED_PERMISSION_BYPASS: Record<string, string> = {
+  "integration-suite/probe-cli.sh":
+    "the canary drives each CLI with fixed test prompts against a read-only " +
+    "mount of the repo and pushes nothing to GitHub; it checks that failproofai " +
+    "still denies when the CLI's own prompts are off",
+};
+
+/** Command-line ways to tell an agent to approve every tool call itself. */
+const PERMISSION_BYPASS = [
+  "--dangerously-skip-permissions", // Claude Code; Antigravity's `agy` takes the same flag
+  "--permission-mode[= ]+[\"']?bypassPermissions", // shell words
+  "--permission-mode[\"'][[:space:]]*,[[:space:]]*[\"']bypassPermissions", // argv array
+].join("|");
+
+/**
+ * Committed files matching `pattern` (extended regex), outside prose. Markdown
+ * is skipped because the docs and the changelog describe these flags, and this
+ * file because it names them.
  */
 function committedFilesMatching(pattern: string): string[] {
   const r = spawnSync(
     "git",
     [
       "grep", "-l", "-I", "-E", "-e", pattern, "--",
-      ".", ":(exclude)*.md", ":(exclude)*.mdx", ":(exclude)__tests__/**",
+      ".", ":(exclude)*.md", ":(exclude)*.mdx", `:(exclude)${THIS_FILE}`,
     ],
     { cwd: ROOT, encoding: "utf8" },
   );
@@ -74,9 +98,9 @@ describe("hook-sync agent stays retired (#1797)", () => {
     expect(offenders).toEqual([]);
   });
 
-  it("runs Claude Code with permission checks off only in the reviewed canary probe", () => {
-    // Both spellings Claude Code accepts for "approve every tool call".
-    const bypass = "--dangerously-skip-permissions|--permission-mode[= ]+[\"']?bypassPermissions";
-    expect(committedFilesMatching(bypass)).toEqual(["integration-suite/probe-cli.sh"]);
+  it("launches an agent with its permission checks off only from reviewed files", () => {
+    expect(committedFilesMatching(PERMISSION_BYPASS)).toEqual(
+      Object.keys(REVIEWED_PERMISSION_BYPASS).sort(),
+    );
   });
 });

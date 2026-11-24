@@ -259,9 +259,9 @@ describe.each(PACKAGES)("$workflow — version management", ({ dist, workflow, v
   });
 
   it("keeps the two credentials in separate jobs", () => {
-    // `publish` holds the OIDC identity; `bump` holds a token that bypasses the
-    // ruleset on main. Nothing needs both, and a job holding both would let any
-    // code in it do either.
+    // `publish` holds the OIDC identity; `bump` holds a token that can push a
+    // branch. Nothing needs both, and a job holding both would let any code in
+    // it do either.
     expect(wf.jobs.publish.permissions?.["id-token"]).toBe("write");
     expect(wf.jobs.bump.permissions?.["id-token"]).toBeUndefined();
     expect(wf.jobs.preflight.permissions?.["id-token"]).toBeUndefined();
@@ -285,19 +285,18 @@ describe.each(PACKAGES)("$workflow — version management", ({ dist, workflow, v
     }
   });
 
-  it("never persists the version-bot token into .git/config", () => {
+  it("never persists the job's token into .git/config", () => {
     const bump = wf.jobs.bump;
     const checkout = (bump.steps ?? []).find((s: Record<string, any>) =>
       String(s.uses ?? "").startsWith("actions/checkout"),
     );
     expect(checkout?.with?.["persist-credentials"]).toBe(false);
     const text = scripts(bump);
-    // Through a header on the one command that needs it — a token in the remote
-    // URL is echoed back by git's own error output, which ::add-mask:: does not reach.
-    expect(text).toContain("http.https://github.com/.extraheader=$AUTH_HEADER");
-    expect(text).not.toMatch(/https:\/\/[^\s"']*\$APP_TOKEN/);
-    expect(text).toContain("::add-mask::$APP_TOKEN");
-    expect(source).not.toContain("${{ secrets.VERSION_BOT_PRIVATE_KEY }}\n          run:"); // env/with, never inlined into a script
+    // Handed to the one command that pushes. scripts/push-version-bump.sh sends
+    // it as a header — a token in the remote URL is echoed back by git's own
+    // error output, which ::add-mask:: does not reach (version-bump.test.ts).
+    expect(text).not.toMatch(/https:\/\/[^\s"']*\$GITHUB_TOKEN/);
+    expect(source).not.toContain("${{ github.token }}\n          run:"); // env, never inlined into a script
   });
 
   it("bumps onto main's current tip, not the SHA the run was dispatched at", () => {
@@ -306,15 +305,21 @@ describe.each(PACKAGES)("$workflow — version management", ({ dist, workflow, v
     expect(scripts(wf.jobs.bump)).toContain("git checkout -B main origin/main");
   });
 
-  it("keeps the bump commit out of CI", () => {
-    expect(scripts(wf.jobs.bump)).toContain("[skip ci]");
+  it("lands the bump through review, never a push to main", () => {
+    // Nothing in CI can push to main, so the bump goes to a branch and a person
+    // opens the pull request. A reviewed bump also runs CI on itself, which the
+    // old direct push with `[skip ci]` never did.
+    const bump = scripts(wf.jobs.bump);
+    expect(bump).toMatch(/bash scripts\/push-version-bump\.sh "version-bump\/[a-z-]+-\$\{NEXT_VERSION\}"/);
+    expect(bump).not.toContain("HEAD:main");
+    expect(bump).not.toContain("[skip ci]");
   });
 
   it("opens the changelog section in the same commit that moves the version", () => {
-    // The two halves must land together. `bump` carries a skip-ci marker, so a
-    // commit that moves the version alone goes red not on itself but on the next
-    // unrelated PR to run CI — which is how this recurred at two consecutive
-    // publishes before the opener existed.
+    // The two halves must land together. When bump commits went straight to
+    // main with a skip-ci marker, a commit that moved the version alone went
+    // red not on itself but on the next unrelated PR to run CI — which is how
+    // this recurred at two consecutive publishes before the opener existed.
     const bump = scripts(wf.jobs.bump);
     expect(bump).toContain(`python3 scripts/changelog-open.py ${changelog}`);
     expect(bump).toContain(`git add ${versionFile} ${changelog}`);
@@ -371,9 +376,8 @@ describe("release tags cannot be confused with the npm package's", () => {
     const tag = /^tag=(.*)$/m.exec(out)?.[1];
     // Derived from the committed version, never a literal. `bump` moves that
     // version on `main` after every successful publish, so a pinned `0.0.1bN`
-    // here goes stale the moment one ships — and those bump commits carry
-    // `[skip ci]`, so nothing notices until the next unrelated PR runs CI and
-    // comes back red for a reason that has nothing to do with it.
+    // here goes stale the moment one ships, and turns the bump's own pull
+    // request red for a reason that has nothing to do with it.
     expect(tag).toBe(`${dist}-v${resolveFile(versionFile).version}`);
     // The property, not just this value: it must not match the npm tag grammar.
     expect(tag).not.toMatch(/^v\d/);

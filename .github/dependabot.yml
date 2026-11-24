@@ -23,6 +23,17 @@ updates:
       day: monday
     open-pull-requests-limit: 5
 
+  # The `skills` submodule. Its own repository used to push gitlink bumps
+  # straight to this `main` as the version-bot App; that App is gone, and nothing
+  # in CI may push to `main`. Dependabot opens a pull request instead, which
+  # lands through review like any other change. `skills` is public, so reading
+  # it needs no credential.
+  - package-ecosystem: gitsubmodule
+    directory: /
+    schedule:
+      interval: daily
+    open-pull-requests-limit: 2
+
   # The Rust workspace. Absent until the daemon shipped, so `Cargo.lock` was
   # updated only by hand — for a dependency tree that includes the TLS stack
   # compiled into a root-installed system service.

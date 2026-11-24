@@ -19,7 +19,8 @@
  *     which is the exact way the first attempt at this shipped broken;
  *   - the CLI tarball is built and attached on every release, daemon or not;
  *   - the main-version bump only runs for a release or a dispatch from main
- *     (it checks main out and pushes to it, regardless of the dispatched ref);
+ *     (it checks main out and proposes the bump from it, regardless of the
+ *     dispatched ref);
  *   - build-daemon.yml stays callable and is not also triggered standalone on
  *     a release (that would build the matrix twice per release);
  *   - a stable release stays restricted to the maintainer allowlist while
@@ -326,14 +327,13 @@ describe("publish.yml", () => {
     const bump = wf.jobs.publish.steps.find(
       (s: Record<string, any>) => s.name === "Bump version for next development cycle",
     );
-    // Pushes to main — but with the app token supplied to this one command
-    // rather than persisted into `.git/config` by the checkout, where it would
-    // sit readable through `bun install`'s `prepare` build and every dependency
-    // lifecycle script. It is a ruleset-bypass credential; its exposure window
-    // should be one `git push`, not the whole job.
-    expect(bump.run).toContain("HEAD:main");
-    expect(bump.run).toContain("APP_TOKEN");
-    expect(bump.env?.APP_TOKEN).toContain("app-token");
+    // Proposes the bump on a branch for review; nothing in CI can push to main.
+    // The job's token goes to this one step rather than being persisted into
+    // `.git/config` by the checkout, where it would sit readable through
+    // `bun install`'s lifecycle scripts and the build.
+    expect(bump.run).toContain('bash scripts/push-version-bump.sh "version-bump/failproofai-$NEXT_VERSION"');
+    expect(bump.run).not.toContain("HEAD:main");
+    expect(bump.env?.GITHUB_TOKEN).toBe("${{ github.token }}");
     expect(bump.if).toContain("github.event_name == 'release'");
     expect(bump.if).toContain("github.ref_name == 'main'");
     expect(bump.if).toContain("dry_run != 'true'");
@@ -341,11 +341,11 @@ describe("publish.yml", () => {
 
   it("bumps the Cargo workspace version alongside package.json", () => {
     // `ci.yml`'s version-consistency job compares Cargo.toml's
-    // [workspace.package] version against root package.json, and this commit
-    // carries `[skip ci]` — so a bump that moved only package.json left main
-    // red, and the failure surfaced on the NEXT, unrelated PR as
-    // "Version mismatch: Cargo.toml has <old>, expected <new>". Every release
-    // did it.
+    // [workspace.package] version against root package.json. When bump commits
+    // went straight to main with `[skip ci]`, a bump that moved only
+    // package.json left main red, and the failure surfaced on the NEXT,
+    // unrelated PR as "Version mismatch: Cargo.toml has <old>, expected <new>".
+    // Every release did it.
     const bump = wf.jobs.publish.steps.find(
       (s: Record<string, any>) => s.name === "Bump version for next development cycle",
     );
@@ -402,14 +402,12 @@ describe("publish.yml", () => {
     expect(wf.concurrency?.["cancel-in-progress"]).toBe(false);
   });
 
-  it("never leaves the ruleset-bypass token on disk while build scripts run", () => {
-    // The publish job checks out with the version-bot App token, which bypasses
-    // the org ruleset's PR-and-review requirement on `main`. Persisting it
-    // writes it into `.git/config` for the whole job — and the very next step
-    // is `bun install`, which runs `prepare` (a full Next build) plus every
-    // dependency lifecycle script, all long before the one step at the end that
-    // needs the token. `ci.yml` and `build-daemon.yml` were hardened for the
-    // identical risk with the WEAKER default token; this job was missed.
+  it("never leaves a write token on disk while build scripts run", () => {
+    // The publish job's token can push branches and tags. Persisting it writes
+    // it into `.git/config` for the whole job, and the next steps are
+    // `bun install` plus every dependency lifecycle script and a full build,
+    // all long before the one step at the end that needs it. (It once checked
+    // out with the version-bot App token, which could push to `main` itself.)
     const checkout = wf.jobs.publish.steps.find((s: Record<string, any>) =>
       String(s.uses ?? "").startsWith("actions/checkout"),
     );

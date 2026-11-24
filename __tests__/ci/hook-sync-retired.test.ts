@@ -49,12 +49,28 @@ const REVIEWED_PERMISSION_BYPASS: Record<string, string> = {
     "still denies when the CLI's own prompts are off",
 };
 
-/** Command-line ways to tell an agent to approve every tool call itself. */
-const PERMISSION_BYPASS = [
-  "--dangerously-skip-permissions", // Claude Code; Antigravity's `agy` takes the same flag
-  "--permission-mode[= ]+[\"']?bypassPermissions", // shell words
-  "--permission-mode[\"'][[:space:]]*,[[:space:]]*[\"']bypassPermissions", // argv array
-].join("|");
+/**
+ * Command-line ways to tell an agent to approve every tool call itself, as
+ * shell words: the flag Claude Code takes (Antigravity's `agy` takes it too),
+ * and `--permission-mode bypassPermissions` with a space or `=`.
+ */
+const BYPASS_SHELL_WORDS =
+  "--dangerously-skip-permissions|--permission-mode[= ]+[\"']?bypassPermissions";
+
+/**
+ * The same mode as an argv array, `["--permission-mode", "bypassPermissions"]`.
+ * A formatter puts each element on its own line, and `git grep` matches one line
+ * at a time, so this one is matched against the whole file.
+ */
+const BYPASS_ARGV = /--permission-mode["']\s*,\s*["']bypassPermissions/;
+
+function filesLaunchingWithBypass(): string[] {
+  const words = committedFilesMatching(BYPASS_SHELL_WORDS);
+  const argv = committedFilesMatching("--permission-mode").filter((f) =>
+    BYPASS_ARGV.test(readFileSync(resolve(ROOT, f), "utf8")),
+  );
+  return [...new Set([...words, ...argv])].sort();
+}
 
 /**
  * Committed files matching `pattern` (extended regex), outside prose. Markdown
@@ -99,8 +115,6 @@ describe("hook-sync agent stays retired (#1797)", () => {
   });
 
   it("launches an agent with its permission checks off only from reviewed files", () => {
-    expect(committedFilesMatching(PERMISSION_BYPASS)).toEqual(
-      Object.keys(REVIEWED_PERMISSION_BYPASS).sort(),
-    );
+    expect(filesLaunchingWithBypass()).toEqual(Object.keys(REVIEWED_PERMISSION_BYPASS).sort());
   });
 });

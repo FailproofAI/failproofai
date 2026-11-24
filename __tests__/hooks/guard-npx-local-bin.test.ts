@@ -291,6 +291,8 @@ describe("block-failproofai-commands — the entry a project-scope npx hook runs
       ["a parent directory", "cp /tmp/stub.sh ../node_modules/.bin/fail*"],
       ["home", "cp /tmp/stub.sh ~/node_modules/.bin/fail*"],
       ["an absolute path", "cp /tmp/stub.sh /work/proj/node_modules/.bin/fail*"],
+      // A default macOS volume resolves the literal parent whatever its case.
+      ["an upper-case parent", "rm -rf NODE_MODULES/.BIN/f*"],
       // `/home/u/.failproofai` is a candidate itself; another home is not.
       ["the state, by an absolute path", "rm -rf /home/alice/.failproof*"],
       ["the state, behind `//` and `/./`", "rm -rf ~//./.failproof*"],
@@ -502,6 +504,7 @@ describe("block-failproofai-commands — the entry a project-scope npx hook runs
       ["resolving the entry", "readlink -f node_modules/.bin/failproofai"],
       ["a clean reinstall", "rm -rf node_modules && npm ci"],
       ["clearing every entry", "rm -rf node_modules/.bin/*"],
+      ["clearing every entry under an upper-case parent", "rm -rf NODE_MODULES/.BIN/*"],
       ["installing dependencies", "npm install"],
       ["adding a dev dependency", "npm i -D vitest"],
       ["copying another tool into the directory", "cp /tmp/stage/my-tool node_modules/.bin/"],

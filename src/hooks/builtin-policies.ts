@@ -491,11 +491,12 @@ const FAILPROOFAI_CODE_PATH_RE = new RegExp(
   [
     // The package, in every layout a package manager uses, and the daemon's
     // platform package, which `failproofai config` and `update` copy into place
-    // (on Linux as root, under `/opt`).
-    String.raw`node_modules[\\/](?:\.?[\\/])*(?:failproofai(?![\w.@-])|@failproofai[\\/](?:\.?[\\/])*failproofaid\b)`,
+    // (on Linux as root, under `/opt`). `node_modules` as a whole path
+    // component: `cached_node_modules/failproofai` is somebody's fixture.
+    String.raw`(?<![\w.-])node_modules[\\/](?:\.?[\\/])*(?:failproofai(?![\w.@-])|@failproofai[\\/](?:\.?[\\/])*failproofaid\b)`,
     // pnpm's virtual store, which holds each package one directory above its
     // own `node_modules/failproofai`.
-    String.raw`\.pnpm[\\/](?:\.?[\\/])*(?:failproofai|@failproofai\+failproofaid[\w.-]*)@`,
+    String.raw`(?<![\w.-])\.pnpm[\\/](?:\.?[\\/])*(?:failproofai|@failproofai\+failproofaid[\w.-]*)@`,
     // The entry a hook command names: `…/bin/failproofai` for npm, nvm,
     // Homebrew, bun, Volta and yarn, `…/pnpm/failproofai` for pnpm's home, and
     // the variables nvm and pnpm export for those directories. A FILE, so a

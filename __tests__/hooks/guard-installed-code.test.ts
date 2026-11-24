@@ -205,6 +205,10 @@ describe("block-failproofai-commands — failproofai's installed code", () => {
       ["the TypeScript SDK", "/work/proj/node_modules/@failproofai/sdk/dist/index.js"],
       ["a project file named after the product", "/work/proj/src/failproofai.ts"],
       ["a project in a directory of that name under bin/", "/home/u/bin/failproofai/src/index.ts"],
+      // `node_modules` and `.pnpm` count only as whole path components.
+      ["a fixture under a directory that merely ends in node_modules", "/work/proj/cached_node_modules/failproofai/index.js"],
+      ["a fixture under a hyphenated node_modules", "/work/proj/my-node_modules/failproofai/index.js"],
+      ["a fixture under a directory that merely ends in .pnpm", "/work/proj/foo.pnpm/failproofai@1.0.0/x.js"],
     ])("allows writing %s", async (_label, path) => {
       expect((await write(path)).decision).toBe("allow");
     });
@@ -250,6 +254,7 @@ describe("block-failproofai-commands — failproofai's installed code", () => {
       ["clearing every dependency", "rm -rf node_modules/*"],
       ["clearing pnpm's whole store", "rm -rf node_modules/.pnpm/*"],
       ["clearing pnpm's whole store, dotted", "rm -rf ./node_modules/.pnpm/*"],
+      ["removing a fixture under cached_node_modules", "rm -rf cached_node_modules/failproofai"],
       ["a test run inside a directory of that name under bin/", "vitest run --root /home/u/bin/failproofai/web"],
       ["clearing a build cache", "rm -rf node_modules/.cache"],
       ["removing a checkout of the repo", "rm -rf /home/u/src/failproofai"],

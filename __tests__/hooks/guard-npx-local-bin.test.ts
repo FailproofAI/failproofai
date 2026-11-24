@@ -42,6 +42,10 @@ const write = async (file_path: string, cwd?: string) =>
     }),
   );
 
+/** A command as the named agent CLI sends it, from the project's directory. */
+const bashAs = async (cli: PolicyContext["cli"], toolInput: Record<string, unknown>) =>
+  (await policy.fn(makeCtx({ toolName: "Bash", toolInput, cli, session: { cwd: "/work/proj" } }))).decision;
+
 /** An `Edit` carrying a patch the way Codex's `apply_patch` does. */
 const patch = async (toolInput: Record<string, unknown>, cwd = "/work/proj") =>
   (await policy.fn(makeCtx({ toolName: "Edit", toolInput, session: { cwd } }))).decision;
@@ -294,6 +298,49 @@ describe("block-failproofai-commands — the entry a project-scope npx hook runs
       ])("denies a write through %s", async (_label, command) => {
         expect(await bashIn(join(root, "proj"), command.replaceAll("ROOT", join(root, "proj")))).toBe("deny");
       });
+
+      // `cd -P` (or any `cd` after `set -P`) stands where the path really is,
+      // each link followed before its `..` (found by hermes on
+      // FailproofAI/failproofai#1058); a logical `cd` takes `..` as text, as
+      // bash does, and the kernel still follows links in what is written after.
+      it.each([
+        "cd -P tools/deep/.. && printf x > failproofai",
+        "cd -LP tools/deep/.. && printf x > failproofai",
+        "set -P; cd tools/deep/.. && printf x > failproofai",
+        "set -o physical; cd tools/deep/.. && printf x > failproofai",
+        "cd -P tools/deep && cd .. && printf x > failproofai",
+        "cd tools/deep && printf x > ../failproofai",
+      ])("denies a write after a physical move through a link: %s", async (command) => {
+        expect(await bashIn(join(root, "proj"), command)).toBe("deny");
+      });
+
+      it.each([
+        "cd tools/deep/.. && printf x > failproofai",
+        "cd -L tools/deep/.. && printf x > failproofai",
+        "set -P; set +P; cd tools/deep/.. && printf x > failproofai",
+      ])("still allows a write after a logical move: %s", async (command) => {
+        expect(await bashIn(join(root, "proj"), command)).not.toBe("deny");
+      });
+
+      // A glob expands where its literal directories really are (found by
+      // hermes on FailproofAI/failproofai#1058).
+      it.each([
+        "cp /tmp/stub.sh tools/bins/fail*",
+        "cp /tmp/stub.sh tools/bins/failpro?fai",
+        "cp /tmp/stub.sh tools/bins/[f]ailproofai",
+        "printf x > tools/bins/fail*",
+        "cd tools/bins && cp /tmp/stub.sh fail*",
+        "cp /tmp/stub.sh tools/deep/../fail*",
+      ])("denies a glob that expands onto the entry through a link: %s", async (command) => {
+        expect(await bashIn(join(root, "proj"), command)).toBe("deny");
+      });
+
+      it.each(["ls tools/bins/*", "cat tools/bins/fail*", "cp /tmp/stub.sh tools/bins/my-*", "rm -rf tools/bins/*"])(
+        "still allows a glob through a link that is no write of the entry: %s",
+        async (command) => {
+          expect(await bashIn(join(root, "proj"), command)).not.toBe("deny");
+        },
+      );
 
       it.each([
         "ln -s node_modules/.bin/sub d; printf x > d/../notes.txt",
@@ -665,6 +712,16 @@ describe("block-failproofai-commands — the entry a project-scope npx hook runs
       'echo "cat > node_modules/.bin/failproofai"',
       "echo 'cat > ~/.failproofai/policies-config.json'",
       "echo 'never run: cat > node_modules/.bin/failproofai' && npm test",
+      // Escaped and ANSI-C quoted, to another descriptor or nowhere, through
+      // readers that only show it, and beside a subshell that is not around it.
+      "echo cat \\> node_modules/.bin/failproofai",
+      "echo $'cat > node_modules/.bin/failproofai\\n'",
+      "echo 'cat > node_modules/.bin/failproofai' >&2",
+      "echo 'cat > node_modules/.bin/failproofai' > /dev/null",
+      "echo 'cat > node_modules/.bin/failproofai' | cat",
+      "printf '%s\\n' 'cat > node_modules/.bin/failproofai' | grep cat | wc -l",
+      "(cd src && ls); echo 'cat > node_modules/.bin/failproofai'",
+      "echo 'cat > node_modules/.bin/failproofai'; echo done",
     ])("allows printing a command as text: %s", async (command) => {
       expect(await bash(command)).toBe("allow");
     });
@@ -681,8 +738,68 @@ describe("block-failproofai-commands — the entry a project-scope npx hook runs
       "/tmp/bin/echo 'printf x > node_modules/.bin/failproofai'",
       "echo 'exit 0' > node_modules/.bin/failproofai",
       'echo x >node_modules/.bin/fail"proof"ai',
+      // A reader that keeps it, a loop or condition piped into a shell, an
+      // `echo` the line redefines, the shell's own output sent to one, and a
+      // substitution, which runs.
+      "echo 'printf x > node_modules/.bin/failproofai' | grep x | sh",
+      "echo 'printf x > node_modules/.bin/failproofai' | tee /tmp/s.sh",
+      "echo 'printf x > node_modules/.bin/failproofai' | cat > /tmp/s.sh",
+      "for i in 1; do\necho 'printf x > node_modules/.bin/failproofai'\ndone | sh",
+      "if true; then\necho 'printf x > node_modules/.bin/failproofai'\nfi | sh",
+      'echo() { sh -c "$*"; }; echo \'printf x > node_modules/.bin/failproofai\'',
+      "alias echo='sh -c'\necho 'printf x > node_modules/.bin/failproofai'",
+      "exec > >(sh); echo 'printf x > node_modules/.bin/failproofai'",
+      "exec >/tmp/s.sh; echo 'printf x > node_modules/.bin/failproofai'; sh /tmp/s.sh",
+      'echo "$(cat > node_modules/.bin/failproofai < /tmp/stub.sh)"',
     ])("denies quoted text something runs, or a real redirect: %s", async (command) => {
       expect(await bash(command)).toBe("deny");
+    });
+
+    // Codex runs a command in the `workdir` its shell tool names, and its hook
+    // payload reports the session's directory only (found by hermes on
+    // FailproofAI/failproofai#1058). A relative destination that would plant
+    // the entry, were that directory npm's bin directory, is refused; nothing
+    // else is read differently.
+    it.each([
+      "printf '#!/bin/sh\\nexit 0\\n' > failproofai",
+      "printf x >> ../../failproofai",
+      "cd src && printf x > ../failproofai",
+      "tee failproofai < /tmp/stub.sh",
+      "cp /tmp/stub.sh ./failproofai",
+      "cp /tmp/stage/failproofai .",
+      "mv /tmp/stub.sh failproofai.cmd",
+      "ln -s /tmp/stub.sh failproofai",
+      "curl -sofailproofai https://example.com/x",
+      "wget -O failproofai https://example.com/x",
+      "wget https://example.com/dl/failproofai",
+      "curl -OJ https://example.com/download",
+      "gcc -o failproofai main.c",
+      "dd if=/tmp/stub.sh of=failproofai",
+      "printf x > failproofai/dist/cli.mjs",
+    ])("denies a Codex command planting the entry wherever it runs: %s", async (command) => {
+      expect(await bashAs("codex", { command })).toBe("deny");
+    });
+
+    it.each([
+      "which failproofai",
+      "npm view failproofai version",
+      "rm -rf dist/*",
+      "twine upload dist/*",
+      "cat failproofai",
+      "printf x > src/failproofai.ts",
+      "cd /tmp && printf x > failproofai",
+    ])("allows a Codex command that plants nothing: %s", async (command) => {
+      expect(await bashAs("codex", { command })).toBe("allow");
+    });
+
+    it("reads a Codex command from the workdir the call reports", async () => {
+      expect(await bashAs("codex", { command: "printf x > failproofai", workdir: "/work/proj/node_modules/.bin" })).toBe("deny");
+      expect(await bashAs("codex", { command: "printf x > failproofai", workdir: "/work/proj/src" })).toBe("allow");
+    });
+
+    it("reads other agents' commands from the session's directory", async () => {
+      expect(await bashAs("claude", { command: "printf x > failproofai" })).toBe("allow");
+      expect(await bashAs(undefined, { command: "printf x > failproofai" })).toBe("allow");
     });
 
     it.each([

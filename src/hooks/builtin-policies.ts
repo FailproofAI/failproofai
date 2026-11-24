@@ -1621,6 +1621,7 @@ function landsInDirectoryAs(
   inShell: (word: string) => string = (word) => word,
   lost = false,
   landsOnState: (written: string) => boolean = () => false,
+  isBinDir: (written: string) => boolean = () => false,
 ): boolean {
   if (words.length === 0) return false;
   const head = commandBasename(words[0]);
@@ -1701,7 +1702,9 @@ function landsInDirectoryAs(
     !(head === "ln" && /[\\/]$/.test(written)) &&
     (head === "mv" || head === "ln" || (recursive && head !== "rsync"));
   const copiesContents = recursive && (ontoItself || sources.some((s) => /[\\/]\.?$/.test(s)));
-  if (NPM_BIN_DIRECTORY_RE.test(into) && (createsDirectory || copiesContents)) return true;
+  // The destination as written, or wherever a link there points.
+  const intoBin = NPM_BIN_DIRECTORY_RE.test(into) || isBinDir(written);
+  if (intoBin && (createsDirectory || copiesContents)) return true;
   if (into === "" || ontoItself) return false;
   return sources.some((source) => {
     // A trailing separator keeps the directory's own name everywhere but rsync,
@@ -1714,9 +1717,15 @@ function landsInDirectoryAs(
     if (lost && relativeWord(into) && couldBeEntryName(name)) return true;
     const landing = `${into}/${name}`;
     // A directory named `.bin` landing in a `node_modules` is the same swap.
-    if (NPM_BIN_DIRECTORY_RE.test(landing) && (head === "mv" || head === "ln" || recursive)) return true;
+    const writtenLanding = `${written.replace(/[\\/]+$/, "")}/${name}`;
+    if (
+      (NPM_BIN_DIRECTORY_RE.test(landing) || isBinDir(writtenLanding)) &&
+      (head === "mv" || head === "ln" || recursive)
+    ) {
+      return true;
+    }
     // A glob source puts names the line does not spell into the directory.
-    if (NPM_BIN_DIRECTORY_RE.test(into) && GLOB_METACHAR_RE.test(name) && globCouldBeEntry(name)) return true;
+    if (intoBin && GLOB_METACHAR_RE.test(name) && globCouldBeEntry(name)) return true;
     if (!namesState(landing) && !landsOnState(`${written.replace(/[\\/]+$/, "")}/${name}`)) return false;
     return !namesState(inShell(source)) || FAILPROOFAI_CODE_PATH_RE.test(landing) || landsOnState(`${written.replace(/[\\/]+$/, "")}/${name}`);
   });
@@ -2083,16 +2092,20 @@ function destroysFailproofaiState(command: string, depth = 0, startDir?: string)
     pending: Where[];
   }> = [];
   const sameWhere = (x: Where, y: Where) => x.dir === y.dir && x.full === y.full && x.lost === y.lost;
-  // Each place once, not where the shell certainly is, and only the latest few.
-  const possible = (list: Where[], limit = MAX_ALTERNATE_DIRS): Where[] => {
+  // A directory the walk cannot name: where the shell may be once there are
+  // more possibilities than it tracks.
+  const UNKNOWN: Where = { dir: undefined, full: undefined, deep: false, lost: true, inState: false };
+  // Each place once. Past the limit the oldest are not dropped, since the
+  // shell may still be in any of them: the newest few are kept and the rest
+  // read as a directory the walk lost.
+  const fold = (list: Where[], limit: number): Where[] => {
     const kept: Where[] = [];
-    for (const where of list.slice().reverse()) {
-      if (kept.length < limit && !sameWhere(where, at) && !kept.some((other) => sameWhere(other, where))) {
-        kept.unshift(where);
-      }
-    }
-    return kept;
+    for (const where of list) if (!kept.some((other) => sameWhere(other, where))) kept.push(where);
+    if (kept.length <= limit) return kept;
+    return [...kept.filter((where) => !sameWhere(where, UNKNOWN)).slice(-(limit - 1)), UNKNOWN];
   };
+  // Where else the shell may stand: not where it certainly is.
+  const possible = (list: Where[]): Where[] => fold(list.filter((where) => !sameWhere(where, at)), MAX_ALTERNATE_DIRS);
   // Symlinks this line makes (`ln -s <target> <link>`), which no `lstat` sees
   // yet, followed the way the kernel does: the first component that is one is
   // replaced by where it points, and the result is walked again.
@@ -2125,6 +2138,9 @@ function destroysFailproofaiState(command: string, depth = 0, startDir?: string)
     if (text.startsWith("-")) return false;
     if (base.lost && relativeWord(text)) {
       if (AS_IF_INSTALLED.some((dir) => namesState(dir + text))) return true;
+      // From a directory the walk cannot see, `bins/failproofai` may go
+      // through a link to npm's bin directory.
+      if (text.includes("/") && couldBeEntryName(text.slice(text.lastIndexOf("/") + 1))) return true;
     }
     // A `..` can climb above `dir`. Then it is read from the whole path, cut
     // the same way, or when even that was too long to keep, as if from an
@@ -2161,39 +2177,52 @@ function destroysFailproofaiState(command: string, depth = 0, startDir?: string)
   // line has already been judged as written.
   const resolvesOntoState = (text: string): boolean =>
     resolvesFrom(at, text) || alts.some((base) => resolvesFrom(base, text));
-  // A written path as the absolute path it spells from `base`: `plain` as
-  // text, `linked` with the symlinks this line made applied.
-  const absoluteFrom = (base: Where, written: string): { plain: string; linked: string } | undefined => {
+  // A written path as the absolute path it spells from `base`: `raw` as the
+  // kernel walks it, each `..` taken after any link before it; `plain` as
+  // text; `linked` with the symlinks this line made applied.
+  const absoluteFrom = (base: Where, written: string): { raw: string; plain: string; linked: string } | undefined => {
     if (written === "" || written.startsWith("-") || written.includes("$") || GLOB_METACHAR_RE.test(written)) {
       return undefined;
     }
-    const plain = written.startsWith("/")
-      ? shellPath(undefined, written)
+    const raw = written.startsWith("/")
+      ? written
       : written === "~" || written.startsWith("~/")
-        ? shellPath(undefined, homedir() + written.slice(1))
+        ? homedir() + written.slice(1)
         : relativeWord(written) && !base.lost && base.full?.startsWith("/")
-          ? shellPath(base.full, written)
+          ? `${base.full}/${written}`
           : undefined;
-    return plain === undefined ? undefined : { plain, linked: followLinks(plain) };
+    if (raw === undefined) return undefined;
+    const plain = shellPath(undefined, raw);
+    return { raw, plain, linked: followLinks(plain) };
   };
   const realPaths = new Map<string, string>();
   const realPath = (path: string): string => {
     let real = realPaths.get(path);
-    if (real === undefined) realPaths.set(path, (real = resolveWriteTarget(path, undefined) || path));
+    if (real === undefined) realPaths.set(path, (real = resolveWriteTarget(path, undefined) || shellPath(undefined, path)));
     return real;
   };
+  // Where a written path really is, from each place the shell may stand: on
+  // disk as the kernel resolves it, and with this line's own links applied.
+  const realPathsOf = (written: string): Array<{ plain: string; real: string }> => {
+    const out: Array<{ plain: string; real: string }> = [];
+    for (const base of [at, ...alts]) {
+      const path = absoluteFrom(base, written);
+      if (path === undefined) continue;
+      out.push({ plain: path.plain, real: realPath(path.raw) });
+      if (path.linked !== path.plain) out.push({ plain: path.plain, real: realPath(path.linked) });
+    }
+    return out;
+  };
+  // Whether a written directory really is npm's bin directory, through links.
+  const isBinDir = (written: string): boolean =>
+    realPathsOf(written.replace(/[\\/]+$/, "") || written).some(({ real }) => NPM_BIN_DIRECTORY_RE.test(real));
   // Whether a path really lands on what `namesState` protects once symlinks
   // are followed — those on disk, as the file tools already follow them, and
   // those this line makes: `printf x > bins/failproofai` where `bins` links to
   // `node_modules/.bin`. Only a link counts, so a backup that merely carries a
   // protected name somewhere else (`/tmp/backup/.failproofai`) does not.
   const landsOnState = (written: string): boolean =>
-    [at, ...alts].some((base) => {
-      const path = absoluteFrom(base, written);
-      if (path === undefined) return false;
-      const real = realPath(path.linked);
-      return real !== path.plain && namesState(real);
-    });
+    realPathsOf(written).some(({ plain, real }) => real !== plain && namesState(real));
   const namesHere = (text: string): boolean => namesState(text) || resolvesOntoState(text) || landsOnState(text);
   // What the line has assigned by the point the walk reaches, so a word built
   // from it is judged as the path it spells: `B=~/node_modules/.bin; ln -s
@@ -2204,19 +2233,27 @@ function destroysFailproofaiState(command: string, depth = 0, startDir?: string)
   // `cd` the walk cannot follow. Every word is judged as written as well, so an
   // assignment the shell never makes (`: D=x`) cannot hide one.
   const values = new Map<string, string>(LOOP_HEADER_RE.test(command) ? assignments : []);
-  const expand = (word: string): string => {
+  const expandAt = (word: string, here: Where): string => {
     let out = word;
-    if (out.startsWith("~+") && at.dir !== undefined && !at.lost) out = at.dir + out.slice(2);
+    if (out.startsWith("~+") && here.dir !== undefined && !here.lost) out = here.dir + out.slice(2);
     else if (out.startsWith("~-") && previous?.dir !== undefined && !previous.lost) out = previous.dir + out.slice(2);
     for (let pass = 0; pass < 3 && out.includes("$"); pass++) {
       out = out.replace(VAR_REFERENCE_RE, (reference, name: string) =>
-        name === "PWD" && at.dir !== undefined && !at.lost ? at.dir : values.get(name) ?? (name === "HOME" ? "~" : reference),
+        name === "PWD" && here.dir !== undefined && !here.lost
+          ? here.dir
+          : values.get(name) ?? (name === "HOME" ? "~" : reference),
       );
       // A value that refers to itself grows with every pass.
       if (out.length > 4096) return word;
     }
     return out;
   };
+  const expand = (word: string): string => expandAt(word, at);
+  // `$PWD` and `~+` name wherever the shell stands, which after a move that
+  // may have failed is any of the places it may be.
+  const NAMES_PWD_RE = /\$\{?PWD\b|^~\+/;
+  const expandEverywhere = (word: string): string[] =>
+    NAMES_PWD_RE.test(word) ? alts.map((alt) => expandAt(word, alt)) : [];
   // `named` is the operand as written, judged when the walk cannot follow it.
   const whereAfter = (base: Where, target: string, named: string): Where => {
     if (/\$|`/.test(target)) return { dir: undefined, full: undefined, deep: false, lost: true, inState: namesState(named) };
@@ -2260,7 +2297,7 @@ function destroysFailproofaiState(command: string, depth = 0, startDir?: string)
   const moveTo = (to: Where, others: Where[] = [], certain = false) => {
     if (sameWhere(to, at) && alts.length === 0) return;
     previous = at;
-    if (!certain) pending = [...pending, at, ...alts].slice(-2 * MAX_ALTERNATE_DIRS);
+    if (!certain) pending = fold([...pending, at, ...alts], 2 * MAX_ALTERNATE_DIRS);
     at = to;
     alts = possible(others);
     cwdInState = at.inState;
@@ -2378,7 +2415,7 @@ function destroysFailproofaiState(command: string, depth = 0, startDir?: string)
     // exactly the diagnosis this guard must not block.
     for (const [, target] of pipeline.matchAll(REDIRECT_TARGET_RE)) {
       const written = target.replace(/^["']|["']$/g, "");
-      if (namesHere(written) || namesHere(expand(written))) return true;
+      if (namesHere(written) || namesHere(expand(written)) || expandEverywhere(written).some(namesHere)) return true;
     }
 
     for (const simple of simpleCommands) {
@@ -2389,6 +2426,9 @@ function destroysFailproofaiState(command: string, depth = 0, startDir?: string)
       const words = commandWordList(simple);
       const expanded = words.map(expand);
       const lists = expanded.some((word, k) => word !== words[k]) ? [words, expanded] : [words];
+      if (alts.length > 0 && words.some((word) => NAMES_PWD_RE.test(word))) {
+        for (const alt of alts) lists.push(words.map((word) => expandAt(word, alt)));
+      }
       const head = words.length > 0 ? commandBasename(words[0]) : "";
       if (head === "cd" || head === "pushd" || head === "popd") {
         // Every stage of a pipeline runs in a subshell of its own, so a `cd`
@@ -2403,10 +2443,10 @@ function destroysFailproofaiState(command: string, depth = 0, startDir?: string)
         [at, ...alts].some((base) =>
           lists.some(
             (list) =>
-              landsInDirectoryAs(list, namesState, (word) => fromBase(base, word), base.lost, landsOnState) ||
+              landsInDirectoryAs(list, namesState, (word) => fromBase(base, word), base.lost, landsOnState, isBinDir) ||
               downloadLandings(list).some(({ dir, name }) => {
                 const into = fromBase(base, dir).replace(/(?:[\\/]+\.?)+$/, "");
-                if (name === null) return NPM_BIN_DIRECTORY_RE.test(into);
+                if (name === null) return NPM_BIN_DIRECTORY_RE.test(into) || isBinDir(dir);
                 const landing = `${dir.replace(/[\\/]+$/, "")}/${name}`;
                 return (
                   namesState(fromBase(base, landing)) ||

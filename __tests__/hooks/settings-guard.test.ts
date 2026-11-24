@@ -876,6 +876,7 @@ describe("block-failproofai-commands — review round six", () => {
     symlinkSync(join(h6, ".claude"), join(p6, "agent-dir"));
     symlinkSync(join(h6, ".claude", "subdir"), join(p6, "link"));
     symlinkSync(join(h6, ".claude", "settings.local.json"), join(p6, "dangling.json"));
+    symlinkSync(join(h6, ".claude", "subdir"), join(h6, "hlink"));
     outerHome = process.env.HOME;
     process.env.HOME = h6;
   });
@@ -974,6 +975,45 @@ describe("block-failproofai-commands — review round six", () => {
       expect(await bashDecision("cp ~/.claude/settings.json /tmp/backup.json 2>/dev/null")).toBe("allow");
       expect(await bashDecision("cp /tmp/a /tmp/b 2>/dev/null")).toBe("allow");
     });
+  });
+
+  describe("CodeRabbit's later reviews", () => {
+    it("follows a link before a .. in a home path, from the shell and from a file tool", async () => {
+      expect(await bash(`printf '{}' > ~/hlink/../settings.json`)).toBe(true);
+      expect(await write("~/hlink/../settings.json")).toBe(true);
+    });
+
+    it.each([
+      `cp /dev/null ~/.claude/settings.json 2> '/tmp/build log'`,
+      `cp /dev/null ~/.claude/settings.json > "/tmp/a b"`,
+      `cp /dev/null ~/.claude/settings.json 2>/tmp/a\\ b`,
+      `cp /dev/null ~/.claude/settings.json 2>'/tmp/a b'`,
+    ])("takes a redirect's whole target out of the copy's operands: %s", async (command) => {
+      expect(await bash(command)).toBe(true);
+    });
+
+    it("leaves a quoted > inside an argument where it is", async () => {
+      expect(await bashDecision(`cp "/tmp/a > b" /tmp/out`)).toBe("allow");
+    });
+
+    it("ends a heredoc only at a line that is its delimiter", async () => {
+      expect(await bashDecision(`cat > notes.md <<'EOF'\nEOF \nrm -rf ~/.claude\nEOF\n`)).toBe("allow");
+      expect(await bashDecision(`cat > notes.md <<'EOF'\n  EOF\nrm -rf ~/.claude\nEOF\n`)).toBe("allow");
+      expect(await bashDecision(`cat > notes.md <<-'EOF'\n\trm -rf ~/.claude\n\tEOF\n`)).toBe("allow");
+      expect(await bash(`cat <<EOF | sh\nrm -rf ~/.claude\nEOF\n`)).toBe(true);
+      expect(await bash(`cat > notes.md <<'EOF'\nhello\nEOF\nrm -rf ~/.claude\n`)).toBe(true);
+    });
+
+    it("stays linear on long runs of parentheses, pipes and variables", async () => {
+      for (const command of [
+        "echo " + "(".repeat(40000) + " $A".repeat(40000),
+        "echo x " + "|".repeat(40000) + " sh",
+      ]) {
+        const started = performance.now();
+        await bashDecision(command);
+        expect(performance.now() - started).toBeLessThan(3000);
+      }
+    }, 60_000);
   });
 
   describe("where the shell stands (CodeRabbit)", () => {

@@ -12,7 +12,7 @@
  * Pure apart from the reads, which go through a seam: `config --status` passes
  * the real files, tests pass their own.
  */
-import { existsSync, lstatSync, readFileSync } from "node:fs";
+import { existsSync, lstatSync, readdirSync, readFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 
@@ -26,6 +26,25 @@ export const CLAUDE_MANAGED_SETTINGS_PATHS: Readonly<Partial<Record<NodeJS.Platf
   win32: "C:\\Program Files\\ClaudeCode\\managed-settings.json",
 };
 
+/**
+ * The managed layer, highest precedence first. Claude Code merges
+ * `managed-settings.json` and then every `*.json` in `managed-settings.d/`
+ * beside it, in alphabetical order, a later file's value replacing an earlier
+ * one's: the last fragment that sets the key decides, and the base file only
+ * when none does. Hidden files and other extensions are skipped.
+ */
+export function claudeManagedSettingsLayers(managed: string | null): string[] {
+  if (!managed) return [];
+  const dir = join(dirname(managed), "managed-settings.d");
+  let fragments: string[] = [];
+  try {
+    fragments = readdirSync(dir).filter((name) => name.endsWith(".json") && !name.startsWith(".")).sort();
+  } catch {
+    // No directory: the base file alone.
+  }
+  return [...fragments.reverse().map((name) => join(dir, name)), managed];
+}
+
 /** The settings files that can decide `disableAllHooks`, highest precedence first. */
 export function claudeSettingsLayersByPrecedence(
   scopes: { user: string; project: string; local: string | readonly string[] },
@@ -33,7 +52,7 @@ export function claudeSettingsLayersByPrecedence(
   managed: string | null = CLAUDE_MANAGED_SETTINGS_PATHS[process.platform] ?? null,
 ): string[] {
   const local = typeof scopes.local === "string" ? [scopes.local] : scopes.local;
-  return [...(managed ? [managed] : []), ...local, scopes.project, scopes.user];
+  return [...claudeManagedSettingsLayers(managed), ...local, scopes.project, scopes.user];
 }
 
 /** The nearest directory at or above `cwd` holding a `.git` (a worktree's is a file). */
@@ -46,6 +65,26 @@ function gitRepositoryRoot(cwd: string): string | null {
     dir = parent;
   }
   return null;
+}
+
+/**
+ * The checkout whose root keeps the local settings. A linked worktree's `.git`
+ * is a file naming its git directory under the main checkout's
+ * `.git/worktrees/`, and Claude Code keeps a worktree's local settings at the
+ * main checkout's root. Anything else, a submodule included, is its own root.
+ */
+function mainCheckoutRoot(root: string): string {
+  try {
+    const dotGit = join(root, ".git");
+    if (!lstatSync(dotGit).isFile()) return root;
+    const gitdir = /^gitdir:\s*(.+?)\s*$/m.exec(readFileSync(dotGit, "utf8"))?.[1];
+    if (!gitdir) return root;
+    const worktreeGitDir = resolve(root, gitdir);
+    const common = readFileSync(join(worktreeGitDir, "commondir"), "utf8").trim();
+    return dirname(resolve(worktreeGitDir, common));
+  } catch {
+    return root;
+  }
 }
 
 /** Whether the repository root, its `.git` and its `.claude` (where present) are the user's own. */
@@ -61,10 +100,11 @@ function ownedByCurrentUser(root: string): boolean {
 /**
  * Where Claude Code reads a project's `settings.local.json`, current place
  * first. Since v2.1.211 a session started in a subdirectory of a git
- * repository keeps it at the repository root — except outside a repository,
- * when that root is the home directory, on Windows, or when the root, its
- * `.git` or its `.claude` is not the user's — and it still reads one an older
- * version left in the starting directory.
+ * repository keeps it at the repository root (a worktree's: the main
+ * checkout's) — except outside a repository, when that root is the home
+ * directory, on Windows, or when the root, its `.git` or its `.claude` is not
+ * the user's — and it still reads one an older version left in the starting
+ * directory.
  */
 export function claudeLocalSettingsPaths(
   cwd: string,
@@ -73,8 +113,10 @@ export function claudeLocalSettingsPaths(
 ): string[] {
   const here = join(resolve(cwd), ".claude", "settings.local.json");
   if (platform === "win32") return [here];
-  const root = gitRepositoryRoot(cwd);
-  if (root === null || root === resolve(home) || !ownedByCurrentUser(root)) return [here];
+  const top = gitRepositoryRoot(cwd);
+  if (top === null) return [here];
+  const root = mainCheckoutRoot(top);
+  if (root === resolve(home) || !ownedByCurrentUser(root)) return [here];
   const atRoot = join(root, ".claude", "settings.local.json");
   return atRoot === here ? [here] : [atRoot, here];
 }

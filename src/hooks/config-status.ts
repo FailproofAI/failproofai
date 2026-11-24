@@ -22,7 +22,7 @@
  * history is rescanned at upgrade.
  */
 import { readFileSync } from "node:fs";
-import { resolve } from "node:path";
+import { dirname, resolve } from "node:path";
 import { readCloudCredentials } from "./cloud-enrollment";
 import {
   CLAUDE_MANAGED_SETTINGS_PATHS,
@@ -410,14 +410,19 @@ export function claudeHooksSwitchedOff(
   cwd: string,
   managed: string | null = CLAUDE_MANAGED_SETTINGS_PATHS[process.platform] ?? null,
 ): string | null {
-  const installed = HOOK_SCOPES.some((scope) => claudeCode.hooksInstalledInSettings(scope, cwd));
+  const local = claudeLocalSettingsPaths(cwd);
+  // Installed hooks are looked for where Claude Code reads the local file too:
+  // from a subdirectory, that is the repository root's.
+  const installed =
+    HOOK_SCOPES.some((scope) => claudeCode.hooksInstalledInSettings(scope, cwd)) ||
+    local.some((path) => claudeCode.hooksInstalledInSettings("local", dirname(dirname(path))));
   if (!installed) return null;
   return claudeHooksSwitchedOffBy(
     claudeSettingsLayersByPrecedence(
       {
         user: claudeCode.getSettingsPath("user", cwd),
         project: claudeCode.getSettingsPath("project", cwd),
-        local: claudeLocalSettingsPaths(cwd),
+        local,
       },
       managed,
     ),

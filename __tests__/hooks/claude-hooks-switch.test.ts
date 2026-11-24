@@ -142,7 +142,8 @@ describe("config --status — disableAllHooks", () => {
     expect(claudeHooksSwitchedOff(project, managed())).toBe(managed());
   });
 
-  it("reads a repository's local settings at its root when run from a subdirectory", () => {
+  // Windows keeps the file where the session started; that case injects "win32" below.
+  it.skipIf(process.platform === "win32")("reads a repository's local settings at its root when run from a subdirectory", () => {
     const repo = join(dir, "repo");
     mkdirSync(join(repo, ".git"), { recursive: true });
     mkdirSync(join(repo, "src"), { recursive: true });
@@ -157,6 +158,38 @@ describe("config --status — disableAllHooks", () => {
     put(join(dir, "home", ".claude", "settings.json"), ourHooks);
     put(join(repo, "src", ".claude", "settings.local.json"), { disableAllHooks: true });
     expect(claudeHooksSwitchedOff(join(repo, "src"), managed())).toBe(join(repo, "src", ".claude", "settings.local.json"));
+  });
+
+  it.skipIf(process.platform === "win32")("finds hooks installed only in the repository root's local file", () => {
+    const repo = join(dir, "repo");
+    mkdirSync(join(repo, ".git"), { recursive: true });
+    mkdirSync(join(repo, "src"), { recursive: true });
+    put(join(repo, ".claude", "settings.local.json"), { ...ourHooks, disableAllHooks: true });
+    expect(claudeHooksSwitchedOff(join(repo, "src"), managed())).toBe(join(repo, ".claude", "settings.local.json"));
+  });
+
+  it.skipIf(process.platform === "win32")("reads a worktree's local settings at the main checkout's root", () => {
+    const main = join(dir, "main");
+    const worktree = join(dir, "wt");
+    mkdirSync(join(main, ".git", "worktrees", "wt"), { recursive: true });
+    writeFileSync(join(main, ".git", "worktrees", "wt", "commondir"), "../..\n");
+    mkdirSync(join(worktree, "src"), { recursive: true });
+    writeFileSync(join(worktree, ".git"), `gitdir: ${join(main, ".git", "worktrees", "wt")}\n`);
+    put(join(dir, "home", ".claude", "settings.json"), ourHooks);
+    put(join(main, ".claude", "settings.local.json"), { disableAllHooks: true });
+    expect(claudeHooksSwitchedOff(join(worktree, "src"), managed())).toBe(join(main, ".claude", "settings.local.json"));
+  });
+
+  it("lets the last managed-settings.d fragment decide over the base file", () => {
+    const project = join(dir, "project");
+    const fragments = join(dir, "managed-settings.d");
+    put(join(dir, "home", ".claude", "settings.json"), ourHooks);
+    put(managed(), { disableAllHooks: false });
+    put(join(fragments, "10-hooks.json"), { disableAllHooks: true });
+    expect(claudeHooksSwitchedOff(project, managed())).toBe(join(fragments, "10-hooks.json"));
+    put(join(fragments, "20-later.json"), { disableAllHooks: false });
+    put(join(fragments, ".hidden.json"), { disableAllHooks: true });
+    expect(claudeHooksSwitchedOff(project, managed())).toBeNull();
   });
 
   it("keeps it in the starting directory on Windows and when the repository is the home directory", () => {

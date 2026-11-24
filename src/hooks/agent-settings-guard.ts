@@ -243,7 +243,11 @@ export function physicalAgentPath(
   cwd: string | undefined,
   bases?: Map<string, string | null>,
 ): string | null {
-  const expanded = expandAgentSettingsHome(path);
+  // Only the home prefix: `join` would also drop `link/..` before the walk
+  // could follow `link` (`~/link/../settings.json`).
+  const home = homedir();
+  const prefixed = /^(?:~|\$HOME|\$\{HOME\})(\/.*)?$/.exec(path);
+  const expanded = prefixed ? `${home}${prefixed[1] ?? ""}` : path;
   if (expanded.length === 0 || expanded.length > MAX_PHYSICAL_PATH) return null;
   if (isAbsolute(expanded)) return physicalWalk("/", expanded);
   if (!cwd) return null;
@@ -624,9 +628,9 @@ export function agentSettingsShellCwd(toolInput: Record<string, unknown> | undef
  * not matched.
  */
 const AGENT_CLI_HOOKS_OFF_RES: readonly RegExp[] = [
-  /(?:^|[\s;&|(`])(?:\S*\/)?codex\s+(?:[^\n;&|]*\s)?features\s+disable\s+[^\n;&|]*\b(?:codex_)?hooks\b/i,
-  /(?:^|[\s;&|(`])(?:\S*\/)?pi\s+(?:remove|uninstall|rm)\s+[^\n;&|]*(?:failproofai|pi-extension)/i,
-  /(?:^|[\s;&|(`])(?:\S*\/)?(?:hermes|openclaw)\s+plugins?\s+(?:disable|remove|uninstall|rm|delete)\s+[^\n;&|]*failproofai/i,
+  /(?:^|[\s;&|(`])(?:[^\s;&|()`<>]*\/)?codex\s+(?:[^\n;&|]*\s)?features\s+disable\s+[^\n;&|]*\b(?:codex_)?hooks\b/i,
+  /(?:^|[\s;&|(`])(?:[^\s;&|()`<>]*\/)?pi\s+(?:remove|uninstall|rm)\s+[^\n;&|]*(?:failproofai|pi-extension)/i,
+  /(?:^|[\s;&|(`])(?:[^\s;&|()`<>]*\/)?(?:hermes|openclaw)\s+plugins?\s+(?:disable|remove|uninstall|rm|delete)\s+[^\n;&|]*failproofai/i,
 ];
 
 export function agentCliSwitchesHooksOff(command: string): boolean {

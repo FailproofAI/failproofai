@@ -76,8 +76,10 @@ Protocol v2 carries the originating agent's settings path for both `hook` and
 native `policyEvaluation` requests. A missing path is unresolved, never
 inferred from the long-lived daemon's environment. A v1 daemon cannot be
 trusted with a v2 scoped request: it may discard this field and evaluate for
-the wrong profile. The v2 client rejects every v1 response and tells the
-operator to reinstall/restart the daemon before evaluation resumes.
+the wrong profile. So a v2 client never uses a v1 daemon's answer to a v2
+request; it asks again in v1, without the field (see "Protocol versioning"),
+except where the machine's Cloud deployment targets policies at agents, which
+an unnamed agent would escape: there it fails closed.
 
 ### Daemon → client (`ServerMessage`)
 
@@ -102,11 +104,28 @@ operator to reinstall/restart the daemon before evaluation resumes.
 
 ## Protocol versioning
 
-`protocolVersion` is carried on every message in both directions. A mismatch
-gets an explicit `error` response from the daemon. A daemon-configured client
-fails closed on every missing or unusable verdict; it preserves the mismatch
-category only to print the correct repair instructions. There is no protocol
-negotiation: the CLI and daemon must agree exactly.
+`protocolVersion` is carried on every message in both directions. The daemon
+answers every version from `MIN_PROTOCOL_VERSION` (1) to `PROTOCOL_VERSION` (2)
+and stamps its reply with the version the client sent. A request older than the
+field it carries is read without it: a v1 request's `agentSettingsPath` is
+dropped, so its profile is unknown, never trusted.
+
+A client that gets a reply stamped with an older version still inside that range
+asks once more in that version, without the fields that version predates. The
+answer to the original request is never used. Anything outside the range gets an
+explicit `error`, and a daemon-configured client fails closed on it.
+
+Neither fallback runs where the active Cloud deployment targets policies at
+agents (`active.json` schema 3), or cannot be read: an older request names no
+agent, and a targeted policy does not apply to an unknown one. There the daemon
+refuses a v1 request (stamped v1, so the old client's own fail-closed path
+blocks it) and a current client does not re-ask an older daemon.
+
+This exists because a long-lived host (a Hermes or OpenClaw gateway) keeps the
+plugin it loaded at start: after an upgrade it speaks the previous version until
+it restarts, and refusing it denied every call it made. Versions only add
+optional fields; raise `MIN_PROTOCOL_VERSION` only when an older request can no
+longer be answered safely.
 
 ## Peer verification
 
@@ -126,3 +145,24 @@ there.
 
 None of these crash the daemon or the connection-handling thread — a bad
 frame from one connection has no effect on any other connection.
+
+## Machine logs (HTTP, not this socket)
+
+Not part of the socket protocol: the daemon's cloud maintenance lane sends its
+own log to FailproofAI Cloud, only when something is wrong
+(`crates/failproofaid/src/logship.rs`). `POST /enforcement/v1/machine-logs`,
+bearer = the machine key, body ≤ 256 KiB:
+
+```json
+{ "machineId": "…", "daemonVersion": "1.0.16-beta.0",
+  "kind": "errors | incident | requested",
+  "trigger": "incident only, ≤ 200 chars", "requestId": "requested only",
+  "entries": [{ "ts": "…", "level": "ERROR|WARN|INFO|DEBUG", "target": "…",
+                "message": "≤ 2 KiB", "count": 1, "lastTs": "errors only" }] }
+```
+
+- `errors`: distinct warnings/errors (digits folded), counted; ≤ every 5 min, only when there is one.
+- `incident`: the last 5 min of INFO-and-up lines around an ERROR, or the previous run's log tail when it ended without a clean shutdown (`logs/daemon.running` still present at start); ≤ 1 per 15 min (stamped in `logs/.incident-sent`, so a crash loop does not resend), ≤ 10 per day.
+- `requested`: the `daemon.log` tail, answering `logRequest: {id}` on the desired-state response.
+- One body per poll. `2xx` stored; `404` → no uploads for 24 h; `429` → wait `Retry-After`; other `4xx` → dropped; network/`5xx` → kept for the next poll.
+- Home directory → `~`, machine token → `[redacted]`. `FAILPROOFAI_NO_LOG_UPLOAD=1` turns uploads off.

@@ -599,6 +599,14 @@ fn read_credential_doc(home: &Path) -> Result<Option<serde_json::Value>, ConfigE
     }
 }
 
+/// The ingest key a collector built from `home` right now would use, or `None`
+/// when there is none. Read fresh on every call: it is how a running uploader
+/// learns that the key it holds was replaced since it was built.
+pub fn current_ingest_key(home: &Path) -> Option<String> {
+    let doc = read_credential_doc(home).ok().flatten();
+    load_ingest(doc.as_ref()).map(|ingest| ingest.key)
+}
+
 fn load_ingest(doc: Option<&serde_json::Value>) -> Option<Ingest> {
     let from_file = doc.and_then(|doc| doc.get("ingest")).and_then(|t| {
         let key = t.get("key")?.as_str()?.to_string();

@@ -322,3 +322,41 @@ fn a_slow_stop_hands_the_handle_back_and_a_later_wait_completes_it() {
     assert!(handle.stop_within(Duration::from_secs(2)).is_ok());
     assert!(finished.load(Ordering::SeqCst));
 }
+
+#[test]
+fn a_handle_dropped_by_a_panic_stops_its_collector() {
+    // The daemon restarts a panicked collector manager; a handle that only
+    // detached left the old collector running beside the new one.
+    let shutdown = Arc::new(AtomicBool::new(false));
+    let running = Arc::new(AtomicUsize::new(0));
+    let alive = running.clone();
+    let handle = spawn_supervised(
+        vec![TaskSpec::new("source", move |sd| {
+            let alive = alive.clone();
+            async move {
+                alive.fetch_add(1, Ordering::SeqCst);
+                while !sd.is_set() {
+                    sd.sleep(Duration::from_millis(10)).await;
+                }
+                alive.fetch_sub(1, Ordering::SeqCst);
+                Ok(())
+            }
+        })],
+        shutdown.clone(),
+    )
+    .expect("supervisor should start");
+    assert!(wait_until(Duration::from_secs(5), || running
+        .load(Ordering::SeqCst)
+        == 1));
+
+    let owner = std::thread::spawn(move || {
+        let _held = handle;
+        panic!("collector manager bug");
+    });
+    assert!(owner.join().is_err());
+    assert_eq!(
+        running.load(Ordering::SeqCst),
+        0,
+        "the unwind stopped the collector"
+    );
+}

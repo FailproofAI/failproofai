@@ -259,6 +259,153 @@ async fn decisions_verbosity_keeps_denies_exact_and_rolls_up_allows() {
     fs::remove_dir_all(&spool).ok();
 }
 
+fn allow_row_with(ts: i64, started: i64, tool: &str, event: &str, id: Option<&str>) -> String {
+    let mut v: Value = serde_json::from_str(&allow_row(ts, tool)).unwrap();
+    v["startedAt"] = serde_json::json!(started);
+    v["eventType"] = serde_json::json!(event);
+    if let Some(id) = id {
+        v["toolCallId"] = serde_json::json!(id);
+    }
+    v.to_string()
+}
+
+/// A roll-up is stamped where its first hook ARRIVED, not at the top of the
+/// minute: the minute stamp put every allow bucket before the tool calls it
+/// covered on the session timeline. It names the calls it covers, and a
+/// bucket of one call carries that call's id like a per-row leg does.
+#[tokio::test(flavor = "multi_thread")]
+async fn an_allow_rollup_is_stamped_at_its_first_hook_and_names_its_calls() {
+    let store = tmpdir("agg-ids-store");
+    let state = tmpdir("agg-ids-state");
+    let spool = tmpdir("agg-ids-spool");
+    let minute = 1785740940000; // a minute boundary
+    let mut lines = vec![
+        // Arrived 2.1 s into the minute; ended at 2.3 s.
+        allow_row_with(
+            minute + 2300,
+            minute + 2100,
+            "Bash",
+            "PreToolUse",
+            Some("toolu_a"),
+        ),
+        allow_row_with(
+            minute + 5000,
+            minute + 4900,
+            "Bash",
+            "PreToolUse",
+            Some("toolu_b"),
+        ),
+        // The same call again (a retry) is listed once.
+        allow_row_with(
+            minute + 6000,
+            minute + 5900,
+            "Bash",
+            "PreToolUse",
+            Some("toolu_b"),
+        ),
+        // A startedAt after its own end is not believed.
+        allow_row_with(
+            minute + 7000,
+            minute + 9000,
+            "Read",
+            "PreToolUse",
+            Some("toolu_c"),
+        ),
+    ];
+    // 70 more calls in another bucket: the list is capped.
+    for i in 0..70 {
+        lines.push(allow_row_with(
+            minute + 10_000 + i,
+            minute + 10_000 + i,
+            "Edit",
+            "PostToolUse",
+            Some(&format!("toolu_e{i}")),
+        ));
+    }
+    fs::write(store.join("current.jsonl"), lines.join("\n") + "\n").unwrap();
+
+    run_once(&store, &state, &spool, HooksVerbosity::Decisions).await;
+    let events = spooled(&spool);
+    let bucket = |tool: &str| {
+        events
+            .iter()
+            .find(|e| e["tool_name"] == tool && e["outcome"] == "allow")
+            .unwrap_or_else(|| panic!("no {tool} bucket in {events:?}"))
+            .clone()
+    };
+
+    let bash = bucket("Bash");
+    assert_eq!(bash["failproofai_allow_count"], 3);
+    assert_eq!(bash["timestamp"], "2026-08-03T07:09:02.100000Z");
+    assert_eq!(
+        bash["tool_call_ids"],
+        serde_json::json!(["toolu_a", "toolu_b"])
+    );
+    assert!(
+        bash.get("tool_call_id").is_none(),
+        "a bucket of several calls is no single call's hook"
+    );
+    // The id still names the minute, so it is unchanged from earlier builds.
+    assert!(
+        bash["hook_id"]
+            .as_str()
+            .unwrap()
+            .contains(&format!(":{minute}:"))
+    );
+
+    let read = bucket("Read");
+    assert_eq!(read["timestamp"], "2026-08-03T07:09:07.000000Z");
+    assert_eq!(read["tool_call_id"], "toolu_c");
+    assert_eq!(read["tool_call_ids"], serde_json::json!(["toolu_c"]));
+
+    let edit = bucket("Edit");
+    assert_eq!(edit["failproofai_allow_count"], 70);
+    assert_eq!(
+        edit["tool_call_ids"].as_array().unwrap().len(),
+        transform::MAX_BUCKET_TOOL_CALL_IDS
+    );
+
+    fs::remove_dir_all(&store).ok();
+    fs::remove_dir_all(&state).ok();
+    fs::remove_dir_all(&spool).ok();
+}
+
+/// Rows written before `startedAt` existed roll up exactly as they always
+/// did: stamped at the top of their minute, byte for byte. A backfill or a
+/// lost cursor re-reads them, and the server dedups on what was shipped.
+#[tokio::test(flavor = "multi_thread")]
+async fn a_legacy_allow_rollup_keeps_its_minute_stamp() {
+    let store = tmpdir("agg-legacy-store");
+    let state = tmpdir("agg-legacy-state");
+    let spool = tmpdir("agg-legacy-spool");
+    let minute = 1785740940000;
+    let mut lines: Vec<String> = (0..3)
+        .map(|i| allow_row(minute + 2000 + i * 100, "Bash"))
+        .collect();
+    // One new-format row in the same bucket does not restamp the old ones.
+    lines.push(allow_row_with(
+        minute + 9000,
+        minute + 8900,
+        "Bash",
+        "PreToolUse",
+        Some("toolu_new"),
+    ));
+    fs::write(store.join("current.jsonl"), lines.join("\n") + "\n").unwrap();
+
+    run_once(&store, &state, &spool, HooksVerbosity::Decisions).await;
+    let events = spooled(&spool);
+    let agg = events
+        .iter()
+        .find(|e| e["outcome"] == "allow")
+        .expect("a roll-up");
+    assert_eq!(agg["failproofai_allow_count"], 4);
+    assert_eq!(agg["timestamp"], "2026-08-03T07:09:00.000000Z");
+
+    fs::remove_dir_all(&store).ok();
+    fs::remove_dir_all(&state).ok();
+    fs::remove_dir_all(&spool).ok();
+}
+
 #[tokio::test(flavor = "multi_thread")]
 async fn all_verbosity_emits_a_pair_for_every_row() {
     let store = tmpdir("all-store");
@@ -637,4 +784,69 @@ async fn an_observed_verdict_survives_the_allow_rollup() {
     fs::remove_dir_all(&store).ok();
     fs::remove_dir_all(&state).ok();
     fs::remove_dir_all(&spool).ok();
+}
+
+#[test]
+fn a_row_with_a_tool_call_id_and_start_time_joins_its_tool_call() {
+    let mut v: Value = serde_json::from_str(&deny_row()).unwrap();
+    let ts = v["timestamp"].as_i64().unwrap();
+    v["startedAt"] = serde_json::json!(ts - 1500);
+    v["toolCallId"] = serde_json::json!("toolu_01ABC");
+    let events = transform::to_events(&serde_json::from_value(v).unwrap(), 0, "local");
+    let (start, end) = (&events[0], &events[1]);
+    // The start leg is stamped when the hook arrived, 1.5 s before the end.
+    assert_eq!(
+        start["timestamp"],
+        transform::to_rfc3339_micros(ts - 1500, 0).unwrap()
+    );
+    assert_eq!(
+        end["timestamp"],
+        transform::to_rfc3339_micros(ts, 1).unwrap()
+    );
+    // The field and place the transcript sources use, on both legs.
+    assert_eq!(start["tool_call_id"], "toolu_01ABC");
+    assert_eq!(end["tool_call_id"], "toolu_01ABC");
+}
+
+#[test]
+fn an_older_row_converts_exactly_as_before() {
+    // The server dedups on content: a re-read (a backfill) of a row written
+    // before these fields existed must produce byte-identical events.
+    let row = parse(&deny_row());
+    let ts = row.timestamp;
+    let events = transform::to_events(&row, 0, "local");
+    assert_eq!(
+        events[0]["timestamp"],
+        transform::to_rfc3339_micros(ts, 0).unwrap()
+    );
+    assert!(events[0].get("tool_call_id").is_none());
+    assert!(events[1].get("tool_call_id").is_none());
+}
+
+#[test]
+fn a_start_time_after_the_end_is_ignored() {
+    let mut v: Value = serde_json::from_str(&deny_row()).unwrap();
+    let ts = v["timestamp"].as_i64().unwrap();
+    v["startedAt"] = serde_json::json!(ts + 60_000);
+    let events = transform::to_events(&serde_json::from_value(v).unwrap(), 0, "local");
+    assert_eq!(
+        events[0]["timestamp"],
+        transform::to_rfc3339_micros(ts, 0).unwrap()
+    );
+}
+
+#[test]
+fn a_malformed_start_time_or_tool_call_id_never_drops_the_decision() {
+    for (key, bad) in [
+        ("startedAt", serde_json::json!(1785740912183.5)),
+        ("startedAt", serde_json::json!(i64::MIN)),
+        ("toolCallId", serde_json::json!(42)),
+    ] {
+        let mut v: Value = serde_json::from_str(&deny_row()).unwrap();
+        v[key] = bad.clone();
+        let row: HookRow = serde_json::from_value(v).unwrap_or_else(|e| panic!("{key}={bad}: {e}"));
+        let events = transform::to_events(&row, 0, "local");
+        assert_eq!(events.len(), 2, "{key}={bad}");
+        assert_eq!(events[1]["outcome"], "deny");
+    }
 }

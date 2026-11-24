@@ -33,6 +33,7 @@ vi.mock("../../src/hooks/manager", () => ({
   installHooks: vi.fn(async () => {}),
   notEnforcingReason: vi.fn(() => "no-policies"),
   enforcingPolicyCount: vi.fn(() => ({ count: 0, custom: false })),
+  cloudDashboardUrl: vi.fn(() => undefined),
 }));
 // The apply path resolves project-scoped config from `process.cwd()` — this
 // repository, under test. A run that wrote there once committed custom policies
@@ -523,6 +524,20 @@ describe("doneLines", () => {
     expect(lines).toContain("▲ Policies are not enforcing yet.");
     expect(lines).toContain("  Turn on ours:  failproofai policies add FailproofAI/policies");
     expect(lines).toContain("  Connect to cloud any time:  failproofai config");
+  });
+
+  it("points a Cloud-managed machine at Cloud, not at installing a pack", () => {
+    const lines = doneLines(kit, {
+      elapsedMs: 1,
+      done: [],
+      cwd: "/tmp/x",
+      agents: 1,
+      connected: true,
+      cloudDashboard: "https://app.example",
+    });
+    expect(lines).toContain("▲ Policies are not enforcing yet.");
+    expect(lines).toContain("  Deploy from Cloud:  https://app.example");
+    expect(lines.join("\n")).not.toContain("policies add");
   });
 
   it("counts what enforces, on how many agents", () => {

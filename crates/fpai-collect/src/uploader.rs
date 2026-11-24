@@ -108,6 +108,12 @@ pub enum UploadError {
         skipped: u64,
     },
     Io(std::io::Error),
+    /// Refused with a key the machine has since replaced. Not parked: the
+    /// batch stays where it is for the uploader built with the new key, and
+    /// this one sends nothing more.
+    KeySuperseded,
+    /// 413 on a body that can still be halved. Internal: the caller splits it.
+    TooLarge,
 }
 
 impl std::fmt::Display for UploadError {
@@ -134,6 +140,11 @@ impl std::fmt::Display for UploadError {
                 write!(f, "network error after {attempts} attempt(s): {detail}")
             }
             UploadError::Io(e) => write!(f, "io error: {e}"),
+            UploadError::KeySuperseded => write!(
+                f,
+                "refused with a key this machine has since replaced; left for the new key"
+            ),
+            UploadError::TooLarge => write!(f, "too large for the server; split and re-sent"),
         }
     }
 }
@@ -195,6 +206,13 @@ pub struct Uploader {
     /// this uploader parks one. Taken by `Delivery` after a delivery the
     /// server accepted, which proves the key in use now works.
     credential_refusals: std::sync::atomic::AtomicBool,
+    /// Where the key it was built with came from. A credential refusal is
+    /// checked against it: a key replaced since (a reconnect) means the
+    /// refusal is about the old key, not the batch.
+    key_source: Option<PathBuf>,
+    /// Set once a refusal proved the key replaced. From then on this uploader
+    /// sends nothing: the collector built with the new key delivers instead.
+    superseded: std::sync::atomic::AtomicBool,
 }
 
 /// Credential-refusal policy. Both variants preserve the entire source batch.
@@ -216,6 +234,7 @@ pub fn is_credential_status(status: u16) -> bool {
 impl Uploader {
     pub fn new(url: String, key: String, failed_dir: PathBuf) -> Result<Self, String> {
         let client = reqwest::Client::builder()
+            .user_agent(concat!("failproofaid/", env!("CARGO_PKG_VERSION")))
             .connect_timeout(Duration::from_secs(10))
             .read_timeout(DEFAULT_READ_TIMEOUT)
             // Backstop only — see the module docs. Large multiple of the read
@@ -247,7 +266,23 @@ impl Uploader {
             metrics: Arc::new(UploadMetrics::default()),
             since_ms: None,
             credential_refusals: std::sync::atomic::AtomicBool::new(true),
+            key_source: None,
+            superseded: std::sync::atomic::AtomicBool::new(false),
         })
+    }
+
+    /// The failproofai home this uploader's key was read from.
+    pub fn with_key_source(mut self, home: PathBuf) -> Self {
+        self.key_source = Some(home);
+        self
+    }
+
+    /// Whether the key on disk is no longer the one this uploader sends.
+    fn key_replaced(&self) -> bool {
+        self.key_source
+            .as_deref()
+            .and_then(crate::config::current_ingest_key)
+            .is_some_and(|current| current != self.key)
     }
 
     pub fn with_boundary(mut self, since_ms: Option<u64>) -> Self {
@@ -328,8 +363,11 @@ impl Uploader {
         // preserving the exact retained bytes for server-side deduplication.
         let bytes = filter_boundary(&bytes, self.since_ms, crate::org_boundary::mtime_ms(path));
         let bytes = redact_batch(&bytes, self.redact);
+        // A file holding one event parks itself on a 413, exactly as before;
+        // in any other file only the refused event is set aside.
+        let sole_event = bytes.split_inclusive(|b| *b == b'\n').count() <= 1;
         for chunk in split_lines(&bytes, self.max_upload_bytes) {
-            self.post_batch(path, chunk).await?;
+            self.post_splitting(path, chunk, sole_event).await?;
         }
 
         match tokio::fs::remove_file(path).await {
@@ -339,13 +377,102 @@ impl Uploader {
         }
     }
 
+    /// POST one chunk, halving it on a 413 until each piece fits or is a
+    /// single line. A server whose body limit is below ours otherwise refused
+    /// the batch for good, though every event in it was within its limit.
+    /// Pieces go in their original order; a later failure leaves the whole
+    /// batch for a byte-identical resend, which the server dedups.
+    ///
+    /// A single event the server still refuses is parked on its own (`.c413`)
+    /// and the rest of the batch carries on: parking the whole file there left
+    /// every event after it unsent, though each fit.
+    async fn post_splitting(
+        &self,
+        path: &Path,
+        chunk: Vec<u8>,
+        sole_event: bool,
+    ) -> Result<(), UploadError> {
+        let mut pending = vec![chunk];
+        while let Some(piece) = pending.pop() {
+            let lines = piece.split_inclusive(|b| *b == b'\n').count();
+            match self
+                .post_batch(path, piece.clone(), !sole_event || lines > 1)
+                .await
+            {
+                Err(UploadError::TooLarge) if lines > 1 => {
+                    let (first, second) = halve_lines(&piece);
+                    pending.push(second);
+                    pending.push(first);
+                }
+                Err(UploadError::TooLarge) => {
+                    self.park_event(path, &piece).await?;
+                }
+                other => other?,
+            }
+        }
+        Ok(())
+    }
+
+    /// Set one event the server refused as too large aside in `failed/`, as
+    /// its own definitive `.c413` file, so the batch it came from can finish.
+    async fn park_event(&self, path: &Path, event: &[u8]) -> Result<(), UploadError> {
+        tokio::fs::create_dir_all(&self.failed_dir).await?;
+        let name = path
+            .file_name()
+            .and_then(|n| n.to_str())
+            .unwrap_or("batch.jsonl");
+        let mut parked = ParkedName::parse(name);
+        parked.base = format!("{}-oversize", parked.base);
+        parked.attempt = 1;
+        parked.client_attempts = 1;
+        parked.client_status = Some(413);
+        let dest = unique_destination(&self.failed_dir, &parked.render()).await;
+        // Written under a dotfile and renamed, so no sweep sees half of it, and
+        // durable before returning: the caller then deletes the source batch,
+        // and the server has already refused this event, so this file is its
+        // only copy.
+        let tmp = self
+            .failed_dir
+            .join(format!(".{}.partial", new_request_id()));
+        {
+            use tokio::io::AsyncWriteExt;
+            let mut file = tokio::fs::File::create(&tmp).await?;
+            file.write_all(event).await?;
+            file.sync_all().await?;
+        }
+        tokio::fs::rename(&tmp, &dest).await?;
+        sync_dir(&self.failed_dir).await?;
+        tracing::warn!(
+            file = %path.display(),
+            dest = %dest.display(),
+            bytes = event.len(),
+            "the server refused one event as too large; parked it alone"
+        );
+        Ok(())
+    }
+
     /// POST one body, retrying per policy. `path` is used only for parking and
-    /// log context — this never deletes it.
-    async fn post_batch(&self, path: &Path, bytes: Vec<u8>) -> Result<(), UploadError> {
+    /// log context — this never deletes it. `can_split` answers a 413 with
+    /// [`UploadError::TooLarge`] instead of parking.
+    async fn post_batch(
+        &self,
+        path: &Path,
+        bytes: Vec<u8>,
+        can_split: bool,
+    ) -> Result<(), UploadError> {
         let mut attempt: u32 = 0;
         let batch_id = batch_id(path);
 
         loop {
+            // Before EVERY attempt, not once: a retry waiting out a 429 must
+            // not wake and send on a key another upload found replaced. Re-read
+            // rather than latched, so a key that changes back resumes.
+            if self.superseded.load(Ordering::SeqCst) {
+                if self.key_replaced() {
+                    return Err(UploadError::KeySuperseded);
+                }
+                self.superseded.store(false, Ordering::SeqCst);
+            }
             // New per attempt: one attempt is one server request.
             let request_id = new_request_id();
             let result = self
@@ -434,6 +561,23 @@ impl Uploader {
                     // than "you are wrong". Treating them as definitive would
                     // park a batch the server explicitly asked us to resend.
                     let retryable = status.is_server_error() || code == 408 || code == 429;
+                    if code == 413 && can_split {
+                        return Err(UploadError::TooLarge);
+                    }
+                    if !retryable && is_credential_status(code) && self.key_replaced() {
+                        // The machine reconnected with a new key while this
+                        // uploader was still running on the old one. Parking it
+                        // read as "the cloud is refusing this machine's key"
+                        // right after a successful connect.
+                        self.superseded.store(true, Ordering::SeqCst);
+                        tracing::info!(
+                            file = %path.display(),
+                            request_id = %request_id,
+                            batch_id = %batch_id,
+                            "refused with a replaced key; leaving the batch for the new one"
+                        );
+                        return Err(UploadError::KeySuperseded);
+                    }
                     if !retryable {
                         if is_credential_status(code) {
                             self.credential_refusals.store(true, Ordering::SeqCst);
@@ -968,6 +1112,14 @@ fn split_lines(bytes: &[u8], max: u64) -> Vec<Vec<u8>> {
         out.push(cur);
     }
     out
+}
+
+/// Two halves of a body, split on the line boundary nearest its middle line.
+/// Called only on a body with more than one line, so neither half is empty.
+fn halve_lines(bytes: &[u8]) -> (Vec<u8>, Vec<u8>) {
+    let lines: Vec<&[u8]> = bytes.split_inclusive(|b| *b == b'\n').collect();
+    let mid = lines.len().div_ceil(2);
+    (lines[..mid].concat(), lines[mid..].concat())
 }
 
 /// A `Retry-After` in seconds, capped so a bad header cannot stall delivery.

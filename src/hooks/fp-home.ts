@@ -474,6 +474,13 @@ export const onboardingAttemptFile = (home?: string) =>
  * "failproofai reorganised … Removed 1 item(s) from the old layout."
  */
 export const lastVersionFile = (home?: string) => resolve(stateDir(home), "last-version");
+/**
+ * The CLI version whose upgrade steps (`failproofai update`: Hermes profiles,
+ * gateway restarts) last finished on this machine. `config` runs them when it
+ * differs, so the first setup after an `npm i -g` leaves no gateway on the plugin
+ * it loaded before. Separate from `last-version`, which any first command writes.
+ */
+export const updatedVersionFile = (home?: string) => resolve(stateDir(home), "updated-version");
 export const onboardingLockFile = (home?: string) => resolve(stateDir(home), "onboarding.lock");
 export const codexSessionPathsFile = (home?: string) => resolve(stateDir(home), "codex-session-paths.json");
 
@@ -684,6 +691,7 @@ export const HOME_CLASSES: readonly { path: (home?: string) => string; class: Da
   { path: semanticDir, class: "derived" },
   { path: logsDir, class: "derived" },
   { path: lastVersionFile, class: "derived" },
+  { path: updatedVersionFile, class: "derived" },
   { path: launcherMarker, class: "derived" },
   { path: onboardingLockFile, class: "derived" },
   { path: onboardingAttemptFile, class: "derived" },

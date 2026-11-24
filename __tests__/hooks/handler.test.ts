@@ -195,6 +195,31 @@ describe("hooks/handler", () => {
     );
   });
 
+  it("records when the hook arrived and the agent's id for the tool call", async () => {
+    // The collector stamps a hook's start leg from startedAt (the row's own
+    // timestamp is the END of evaluation) and joins it to the transcript's
+    // tool call by toolCallId.
+    mockStdin(JSON.stringify({ tool_name: "Bash", tool_input: { command: "ls" }, tool_use_id: "toolu_01ABC" }));
+    const { persistHookActivity } = await import("../../src/hooks/hook-activity-store");
+    await handleHookEvent("PreToolUse");
+    const entry = vi.mocked(persistHookActivity).mock.calls.at(-1)![0];
+    expect(entry.toolCallId).toBe("toolu_01ABC");
+    expect(entry.startedAt).toBeLessThanOrEqual(entry.timestamp);
+    // Two clocks (wall and monotonic), each rounded: within a millisecond.
+    expect(entry.timestamp - entry.startedAt!).toBeGreaterThanOrEqual((entry.durationMs ?? 0) - 1);
+  });
+
+  it("finds the tool call id in each agent's payload shape", async () => {
+    const { toolCallIdOf } = await import("../../src/hooks/handler");
+    expect(toolCallIdOf({ tool_use_id: "toolu_1" })).toBe("toolu_1"); // Claude, Factory, Pi
+    expect(toolCallIdOf({ tool_call_id: "call_1" })).toBe("call_1"); // Devin
+    expect(toolCallIdOf({ hermes: { tool_call_id: "call_h" } })).toBe("call_h"); // Hermes plugin
+    expect(toolCallIdOf({ tool_use_id: "" })).toBeUndefined();
+    expect(toolCallIdOf({ tool_use_id: "x".repeat(257) })).toBeUndefined();
+    expect(toolCallIdOf({ tool_use_id: 7 })).toBeUndefined();
+    expect(toolCallIdOf({})).toBeUndefined();
+  });
+
   it("normalizes Copilot's camelCase permissionRequest payload (verified 1.0.71 capture)", async () => {
     // Copilot's snake_case events are Claude-shaped, but permissionRequest
     // alone pipes camelCase with a lowercase tool name. Without normalization

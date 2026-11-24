@@ -1366,6 +1366,16 @@ describe("the banners printed before a command", () => {
     ]);
   });
 
+  it("says nothing about the daemon to setup, which updates it itself", async () => {
+    installedDaemon("0.0.1-old");
+    writeVersionFile({ daemon: "0.0.1-old" });
+    updateConfig({ daemon: { configured: true } });
+
+    const { lines } = await checkLayoutForCli({ daemonStatus: () => "stopped" as const, daemonUpdatedByCommand: true });
+    expect(lines.join("\n")).not.toContain("does not match this CLI");
+    expect(lines.join("\n")).not.toContain("failproofai update");
+  });
+
   it("the self-heal: what was repaired, with the phrase on one line, then how to reinstall", async () => {
     writeVersionFile();
     updateConfig({ daemon: { configured: true } });

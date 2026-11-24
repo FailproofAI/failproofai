@@ -5,6 +5,7 @@ import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { enforcingPolicyCount, listHooks, notEnforcingReason } from "../../src/hooks/manager";
+import { summarizePolicySources } from "../../src/hooks/config-status";
 
 const ARTIFACT = "throw new Error('status must not import Cloud policy code');\n";
 const DIGEST = createHash("sha256").update(ARTIFACT).digest("hex");
@@ -70,6 +71,17 @@ describe("manager Cloud Jev enforcement status", () => {
       { id: "watch-jev", version: 1, effect: "observe" },
     ]);
     expectStatus(null, 2);
+  });
+
+  it("counts a Jev-only deployment in config --status's policies row, as the line beside it does", () => {
+    // The row counted JS policies only: "None installed" beside a deployment
+    // the "not enforcing" line correctly called enforcing.
+    deploy("enforce", [
+      { id: "jev-only", version: 1, effect: "enforce" },
+      { id: "watch-jev", version: 1, effect: "observe" },
+    ]);
+    expect(notEnforcingReason(project)).toBeNull();
+    expect(summarizePolicySources(project)).toMatchObject({ cloudOn: 1, observing: 1 });
   });
 
   it("keeps observe-effect Jev-only assignments watching in enforce mode", () => {

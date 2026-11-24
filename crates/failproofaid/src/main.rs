@@ -4,7 +4,10 @@ mod audit_lane;
 mod backfill;
 mod cloud_client;
 pub mod cloud_policies;
+mod hook_watch;
 mod lock;
+mod logfile;
+mod logship;
 mod paths;
 mod server;
 mod telemetry;
@@ -111,21 +114,77 @@ fn main() {
 /// Writes to stderr, which is where the daemon's existing `eprintln!` output
 /// already goes and what systemd/launchd capture. `RUST_LOG` overrides the
 /// default level.
+///
+/// Also to `~/.failproofai/logs/daemon.log` (see `logfile.rs`). On macOS that
+/// file then carries everything and stderr only WARN and above: launchd's
+/// `failproofaid.err.log` is a file nothing rotates during uptime, and a copy
+/// of every INFO line grew it without bound.
 fn init_logging() {
     use tracing_subscriber::EnvFilter;
+    use tracing_subscriber::fmt::writer::MakeWriterExt;
     let filter = EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("info"));
-    let _ = tracing_subscriber::fmt()
-        .with_env_filter(filter)
-        .with_writer(std::io::stderr)
-        .try_init();
+    let file = paths::failproofai_home().ok().and_then(|home| {
+        logfile::RotatingFile::open(
+            home.join("logs").join("daemon.log"),
+            logfile::MAX_BYTES,
+            logfile::KEEP,
+        )
+    });
+    let builder = tracing_subscriber::fmt().with_env_filter(filter);
+    // Only under launchd (which sets XPC_SERVICE_NAME): a hand-run daemon or a
+    // test reading stderr keeps every line.
+    #[cfg(target_os = "macos")]
+    let stderr = std::io::stderr.with_max_level(
+        if file.is_some() && std::env::var_os("XPC_SERVICE_NAME").is_some() {
+            tracing::Level::WARN
+        } else {
+            tracing::Level::TRACE
+        },
+    );
+    #[cfg(not(target_os = "macos"))]
+    let stderr = std::io::stderr;
+    // `logship::Capture` keeps a bounded in-memory copy for the upload that
+    // happens only when something goes wrong (see logship.rs).
+    let _ = match file {
+        Some(file) => builder
+            .with_writer(stderr.and(file).and(logship::Capture))
+            .try_init(),
+        None => builder.with_writer(stderr.and(logship::Capture)).try_init(),
+    };
 }
 
 fn run() -> Result<(), Box<dyn std::error::Error>> {
+    let logs_dir = paths::failproofai_home().ok().map(|home| home.join("logs"));
+    // Where the previous run's lines end, read before this run appends any.
+    let prior_log_len = logs_dir
+        .as_deref()
+        .and_then(|dir| logship::log_len_before_start(&dir.join("daemon.log")));
     init_logging();
     refuse_foreign_layout()?;
     let lock_path = paths::lock_path()?;
     paths::ensure_run_dir()?;
     let _singleton = lock::acquire(&lock_path)?;
+    // After the lock: the run marker belongs to the daemon that owns the machine.
+    if let Some(dir) = logs_dir.as_deref().filter(|dir| dir.is_dir()) {
+        logship::init(dir, prior_log_len);
+    }
+    // Only the instance holding the lock may rotate the log launchd gives the
+    // running service: a second invocation copying and truncating it could
+    // cut out lines the live daemon appended in between.
+    // Off the startup path: copying a log that grew large must not delay the
+    // socket bind, before which every hook call on the machine is denied.
+    #[cfg(target_os = "macos")]
+    if let Ok(home) = paths::failproofai_home() {
+        let _ = std::thread::Builder::new()
+            .name("fpai-log-bound".to_string())
+            .spawn(move || {
+                logfile::bound_inherited_log(
+                    &home.join("logs").join("failproofaid.err.log"),
+                    logfile::MAX_BYTES,
+                    logfile::KEEP,
+                )
+            });
+    }
 
     // The shutdown flag and its signal handler are installed BEFORE anything
     // long-running starts, so every lane below observes the same flag the socket
@@ -233,7 +292,7 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
             return Err(err.into());
         }
     };
-    eprintln!("[failproofaid] listening on {}", socket_path.display());
+    tracing::info!("listening on {}", socket_path.display());
 
     let run_result = srv.run_until(shutdown);
 
@@ -272,6 +331,13 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
     );
     telemetry::shutdown_flush();
 
+    // A signal is a clean stop; a server error leaves the marker, so the next
+    // start reports this run's last lines (logship.rs).
+    if run_result.is_ok()
+        && let Some(dir) = logs_dir.as_deref()
+    {
+        logship::mark_clean_shutdown(dir);
+    }
     run_result?;
     Ok(())
 }
@@ -377,6 +443,23 @@ fn spawn_collector_manager(
     std::thread::Builder::new()
         .name("fpai-collect-mgr".to_string())
         .spawn(move || {
+        // Held OUTSIDE the supervised body, like the cloud lane's state: a
+        // panic unwinds the body, not these, so a restart still owns the
+        // deployments the last run started and stops them before anything new
+        // runs over the same queues and cursors. Dropped by the unwind, a
+        // handle mid-upload outlived its flush budget, detached, and kept
+        // running beside its replacement.
+        let mut collector_slot: Option<fpai_collect::CollectorHandle> = None;
+        let mut draining_slot: Option<fpai_collect::CollectorHandle> = None;
+        supervised("the collector manager", &daemon_shutdown, || {
+            let collector = &mut collector_slot;
+            let draining = &mut draining_slot;
+            let stop_budget = collector_stop_budget();
+            // What a run before a panic left running. Waited for, however long
+            // its in-flight upload takes: nothing starts beside it.
+            if !stop_inherited_collectors(collector, draining, stop_budget, &daemon_shutdown) {
+                return;
+            }
             // Wait until collection is enabled. A cheap config read each tick,
             // not the full task build, so an incomplete config waits quietly
             // rather than logging on every interval.
@@ -416,7 +499,7 @@ fn spawn_collector_manager(
             // flipped back to disabled between the check and the build, or the
             // runtime failed to start.
             let mut running_cfg = current_collector_config();
-            let Some(collector) =
+            let Some(first) =
                 fpai_collect::spawn_supervised(collector_tasks(running_cfg.clone()), daemon_shutdown.clone())
             else {
                 return;
@@ -427,11 +510,11 @@ fn spawn_collector_manager(
             // no telemetry code enters `fpai-collect`, and a task quietly
             // restarting in a loop stops being invisible from outside the
             // machine.
-            telemetry::set_collector_metrics(collector.metrics());
+            telemetry::set_collector_metrics(first.metrics());
             // `Option` because `join_with_flush` CONSUMES the handle: the loop
             // has to be able to give a deployment away and hold nothing until it
             // has a replacement.
-            let mut collector = Some(collector);
+            *collector = Some(first);
             // The config this deployment was built from. Comparing the whole
             // `CollectorConfig` rather than just the credential is deliberate:
             // it also covers a stream being switched off, a verbosity change and
@@ -443,11 +526,9 @@ fn spawn_collector_manager(
             // new starts over its queues, and no cursor is rewound under it,
             // until it has stopped. Giving up here used to end this thread and
             // with it all collection until the daemon restarted.
-            let mut draining: Option<fpai_collect::CollectorHandle> = None;
             // A backfill request already taken off disk while a deployment was
             // still draining. Applied once it has stopped, never dropped.
             let mut pending_backfill: Option<backfill::Request> = None;
-            let stop_budget = collector_stop_budget();
 
             loop {
                 if daemon_shutdown.load(Ordering::Relaxed) {
@@ -468,7 +549,7 @@ fn spawn_collector_manager(
                     match old.stop_within(Duration::from_millis(200)) {
                         Ok(()) => tracing::info!("previous collector stopped; starting its replacement"),
                         Err(still) => {
-                            draining = Some(still);
+                            *draining = Some(still);
                             continue;
                         }
                     }
@@ -485,7 +566,7 @@ fn spawn_collector_manager(
                         && let Err(still) = running.stop_within(stop_budget)
                     {
                         tracing::warn!("previous collector is still draining; the new one starts once it stops");
-                        draining = Some(still);
+                        *draining = Some(still);
                         pending_backfill = Some(request);
                         continue;
                     }
@@ -506,7 +587,7 @@ fn spawn_collector_manager(
                     {
                         Some(next_collector) => {
                             telemetry::set_collector_metrics(next_collector.metrics());
-                            collector = Some(next_collector);
+                            *collector = Some(next_collector);
                         }
                         None => tracing::warn!(
                             "backfill rewound cursors but the collector could not be restarted"
@@ -554,7 +635,7 @@ fn spawn_collector_manager(
                     // Next ticks keep waiting for it; once it stops, the
                     // compare above sees no collector and starts this config.
                     tracing::warn!("previous collector is still draining; the new one starts once it stops");
-                    draining = Some(still);
+                    *draining = Some(still);
                     continue;
                 }
 
@@ -603,7 +684,7 @@ fn spawn_collector_manager(
                 // slot left telemetry polling a collector that had been joined,
                 // reporting a dead deployment's totals as current.
                 telemetry::set_collector_metrics(next_collector.metrics());
-                collector = Some(next_collector);
+                *collector = Some(next_collector);
                 // What was BUILT FROM, not a fresh read. Re-reading here loses
                 // any edit that landed between the spawn and this line: it would
                 // be recorded as the running config and therefore never seen as
@@ -618,11 +699,86 @@ fn spawn_collector_manager(
             if let Some(old) = draining.take() {
                 old.join_with_flush(fpai_collect::DEFAULT_FLUSH_BUDGET);
             }
+        });
+        // Shut down while waiting on an inherited deployment: give it the same
+        // flush budget the normal exit path gives a running one.
+        for handle in [collector_slot.take(), draining_slot.take()].into_iter().flatten() {
+            handle.join_with_flush(fpai_collect::DEFAULT_FLUSH_BUDGET);
+        }
         })
         .inspect_err(|err| {
-            eprintln!("[failproofaid] could not start the collector manager: {err}; nothing is collected this run");
+            tracing::warn!("could not start the collector manager: {err}; nothing is collected this run");
         })
         .ok()
+}
+
+/// Stop the deployments a collector-manager run left behind when it panicked,
+/// and wait until they HAVE stopped: a replacement started beside one that is
+/// still uploading would claim the same spooled batches and rewrite the same
+/// cursors. `false` when shutdown came first; the handle stays in `draining`
+/// for the exit path to flush.
+fn stop_inherited_collectors(
+    collector: &mut Option<fpai_collect::CollectorHandle>,
+    draining: &mut Option<fpai_collect::CollectorHandle>,
+    budget: Duration,
+    shutdown: &AtomicBool,
+) -> bool {
+    while let Some(old) = collector.take().or_else(|| draining.take()) {
+        match old.stop_within(budget) {
+            Ok(()) => tracing::info!("the collector a restarted manager inherited has stopped"),
+            Err(still) => {
+                *draining = Some(still);
+                if shutdown.load(Ordering::Relaxed) {
+                    return false;
+                }
+                std::thread::sleep(Duration::from_millis(200));
+            }
+        }
+    }
+    true
+}
+
+/// Run a long-lived lane's body until it returns, starting it again after a
+/// panic.
+///
+/// A panic on a plain thread ends that thread and nothing else: the daemon kept
+/// answering hooks while collection or cloud policy sync had silently stopped,
+/// and nothing short of a daemon restart brought it back. The panic message
+/// itself is still printed by the default hook.
+pub(crate) fn supervised(name: &str, shutdown: &AtomicBool, body: impl FnMut()) {
+    supervised_with_backoff(name, shutdown, Duration::from_secs(5), body);
+}
+
+fn supervised_with_backoff(
+    name: &str,
+    shutdown: &AtomicBool,
+    backoff: Duration,
+    mut body: impl FnMut(),
+) {
+    loop {
+        match std::panic::catch_unwind(std::panic::AssertUnwindSafe(&mut body)) {
+            Ok(()) => return,
+            Err(_) => {
+                // Not `eprintln!`, which panics when stderr cannot be written,
+                // outside the catch: that ended the very loop meant to survive.
+                tracing::error!(
+                    "{name} panicked; starting it again in {}s",
+                    backoff.as_secs()
+                );
+                let deadline = std::time::Instant::now() + backoff;
+                while std::time::Instant::now() < deadline {
+                    if shutdown.load(Ordering::Relaxed) {
+                        return;
+                    }
+                    std::thread::sleep(Duration::from_millis(20).min(backoff));
+                }
+                // A shutdown during the last sleep must not start the lane again.
+                if shutdown.load(Ordering::Relaxed) {
+                    return;
+                }
+            }
+        }
+    }
 }
 
 /// Join a lane that may never have started.
@@ -945,7 +1101,7 @@ fn collector_tasks(config: Option<fpai_collect::CollectorConfig>) -> Vec<fpai_co
     let home = match paths::failproofai_home() {
         Ok(home) => home,
         Err(err) => {
-            eprintln!("[failproofaid] collector disabled: {err}");
+            tracing::warn!("collector disabled: {err}");
             return Vec::new();
         }
     };
@@ -953,7 +1109,7 @@ fn collector_tasks(config: Option<fpai_collect::CollectorConfig>) -> Vec<fpai_co
     let cfg = match config {
         Some(cfg) => cfg,
         None => {
-            eprintln!("[failproofaid] collector disabled: unreadable configuration");
+            tracing::warn!("collector disabled: unreadable configuration");
             return Vec::new();
         }
     };
@@ -966,9 +1122,7 @@ fn collector_tasks(config: Option<fpai_collect::CollectorConfig>) -> Vec<fpai_co
     // between the manager's prepare and this read must not pair a new key with
     // a queue the manager prepared for the previous boundary.
     if let Err(err) = fpai_collect::org_boundary::prepare(&cfg) {
-        eprintln!(
-            "[failproofaid] collector disabled: previous-org queues could not be isolated: {err}"
-        );
+        tracing::warn!("collector disabled: previous-org queues could not be isolated: {err}");
         return Vec::new();
     }
 
@@ -986,10 +1140,11 @@ fn collector_tasks(config: Option<fpai_collect::CollectorConfig>) -> Vec<fpai_co
         u.with_redact(cfg.settings.redact)
             .with_boundary(cfg.boundary.as_ref().map(|b| b.since))
             .with_machine_id(cfg.settings.machine_id.as_deref())
+            .with_key_source(home.clone())
     }) {
         Ok(u) => std::sync::Arc::new(u),
         Err(err) => {
-            eprintln!("[failproofaid] collector disabled: {err}");
+            tracing::warn!("collector disabled: {err}");
             return Vec::new();
         }
     };
@@ -999,16 +1154,19 @@ fn collector_tasks(config: Option<fpai_collect::CollectorConfig>) -> Vec<fpai_co
     // widens the config-snapshot race for a credential rotated at startup.
     let otlp_tasks = fpai_collect::otlp::tasks(home.clone(), ingest.clone(), &cfg.settings.otlp);
 
-    eprintln!(
-        "[failproofaid] collector enabled: sessions={} hooks={} ({:?}) -> {}",
-        cfg.settings.sessions, cfg.settings.hooks, cfg.settings.hooks_verbosity, ingest.url,
+    tracing::info!(
+        "collector enabled: sessions={} hooks={} ({:?}) -> {}",
+        cfg.settings.sessions,
+        cfg.settings.hooks,
+        cfg.settings.hooks_verbosity,
+        ingest.url,
     );
 
     // Said on every build, and OUTSIDE the `sessions` block: the selection also
     // scopes every backfill, so a misspelt id matters on a decisions-only
     // machine too, and each of these is otherwise mentioned nowhere.
     if let Some(line) = selection_warning(&cfg.agents) {
-        eprintln!("{line}");
+        tracing::warn!("{line}");
     }
 
     // One `Delivery` shared by both tasks, so they share an upload semaphore
@@ -1042,6 +1200,7 @@ fn collector_tasks(config: Option<fpai_collect::CollectorConfig>) -> Vec<fpai_co
     // whether ingest was storing every event or discarding all of them.
     health.attach_delivery(upload_metrics);
     fpai_collect::health::install(health.clone());
+    let health_for_watch = health.clone();
     let health_file = fpai_collect::health_path(&home);
     tasks.push(fpai_collect::TaskSpec::new("health", move |sd| {
         fpai_collect::health::writer_task(
@@ -1091,6 +1250,23 @@ fn collector_tasks(config: Option<fpai_collect::CollectorConfig>) -> Vec<fpai_co
                 sd,
             )
         }));
+        // Says so in daemon.log when hook data stops reaching Cloud while the
+        // rest of the collector works (hook_watch.rs). Not when verbosity is
+        // off: the source then produces nothing on purpose.
+        let watch = cfg.settings.hooks_verbosity != fpai_collect::config::HooksVerbosity::Off;
+        let watch_health = health_for_watch.clone();
+        let watch_spool = cfg.own_spool_dir.clone();
+        let watch_failed = cfg.failed_dir.clone();
+        if watch {
+            tasks.push(fpai_collect::TaskSpec::new("hook-watch", move |sd| {
+                hook_watch::run(
+                    watch_health.clone(),
+                    watch_spool.clone(),
+                    watch_failed.clone(),
+                    sd,
+                )
+            }));
+        }
     }
 
     if cfg.settings.sessions
@@ -1121,8 +1297,8 @@ fn collector_tasks(config: Option<fpai_collect::CollectorConfig>) -> Vec<fpai_co
         // A configured table naming no real source captures nothing and is
         // mentioned nowhere else in the pipeline, so say so once at startup.
         for unknown in settings.unknown_sources(HARNESS_KEYS) {
-            eprintln!(
-                "[failproofaid] config.toml has [collector.sources.{unknown}], which is not a \
+            tracing::warn!(
+                "config.toml has [collector.sources.{unknown}], which is not a \
                  known harness; nothing will be captured from it. Known: {}",
                 HARNESS_KEYS.join(", ")
             );
@@ -1136,7 +1312,7 @@ fn collector_tasks(config: Option<fpai_collect::CollectorConfig>) -> Vec<fpai_co
             windows: backfill::current_windows(),
         };
         if let Some(line) = selection_summary(&cfg.agents) {
-            eprintln!("{line}");
+            tracing::info!("{line}");
         }
         // Gated off BEFORE its extra paths are resolved, so the journal never
         // says "also capturing" for a task that does not start — and so the
@@ -1151,7 +1327,7 @@ fn collector_tasks(config: Option<fpai_collect::CollectorConfig>) -> Vec<fpai_co
                 .filter(|entry| !entry.trim().is_empty())
                 .count();
             if let Some(line) = idle_extra_paths_line(harness, configured) {
-                eprintln!("{line}");
+                tracing::info!("{line}");
             }
         }
 
@@ -1177,14 +1353,15 @@ fn collector_tasks(config: Option<fpai_collect::CollectorConfig>) -> Vec<fpai_co
                 home_dir.as_deref(),
             );
             for bad in &resolved.rejected {
-                eprintln!(
-                    "[failproofaid] ignoring extra path {:?} for {harness}: {}",
-                    bad.entry, bad.reason
+                tracing::warn!(
+                    "ignoring extra path {:?} for {harness}: {}",
+                    bad.entry,
+                    bad.reason
                 );
             }
             for ok in &resolved.accepted {
-                eprintln!(
-                    "[failproofaid] {harness}: also capturing {} as {:?} (agent ids namespaced {}-*)",
+                tracing::info!(
+                    "{harness}: also capturing {} as {:?} (agent ids namespaced {}-*)",
                     ok.path.display(),
                     ok.label,
                     ok.label
@@ -2161,6 +2338,97 @@ fn install_signal_handler(shutdown: Arc<AtomicBool>) {
 mod tests {
     use super::{Invocation, parse_args};
 
+    mod supervision {
+        use super::super::supervised_with_backoff;
+        use std::sync::atomic::{AtomicBool, Ordering};
+        use std::time::Duration;
+
+        #[test]
+        fn a_lane_that_panics_is_started_again() {
+            let shutdown = AtomicBool::new(false);
+            let mut runs = 0;
+            supervised_with_backoff("test lane", &shutdown, Duration::from_millis(1), || {
+                runs += 1;
+                if runs < 3 {
+                    panic!("lane bug");
+                }
+            });
+            assert_eq!(runs, 3, "ran until it returned normally");
+        }
+
+        #[test]
+        fn shutdown_during_the_backoff_ends_it() {
+            let shutdown = AtomicBool::new(false);
+            let mut runs = 0;
+            supervised_with_backoff("test lane", &shutdown, Duration::from_secs(60), || {
+                runs += 1;
+                shutdown.store(true, Ordering::Relaxed);
+                panic!("lane bug");
+            });
+            assert_eq!(runs, 1);
+        }
+
+        /// F2: a manager that panics while its collector is mid-upload. The
+        /// handle lives outside the supervised body, so the restart owns it
+        /// and starts nothing until the old collector has really stopped.
+        #[test]
+        fn a_restart_waits_for_the_collector_a_panicked_run_left_uploading() {
+            use super::super::stop_inherited_collectors;
+            use fpai_collect::{CollectorHandle, TaskSpec, spawn_supervised};
+            use std::sync::Arc;
+
+            let daemon_shutdown = Arc::new(AtomicBool::new(false));
+            let finished = Arc::new(AtomicBool::new(false));
+            let mut collector: Option<CollectorHandle> = None;
+            let mut draining: Option<CollectorHandle> = None;
+            let mut runs = 0;
+            let mut old_was_done_at_restart = None;
+            supervised_with_backoff(
+                "collector manager",
+                &daemon_shutdown,
+                Duration::from_millis(1),
+                || {
+                    runs += 1;
+                    if runs == 1 {
+                        let done = finished.clone();
+                        collector = spawn_supervised(
+                            vec![TaskSpec::new("uploading", move |sd| {
+                                let done = done.clone();
+                                async move {
+                                    while !sd.is_set() {
+                                        sd.sleep(Duration::from_millis(10)).await;
+                                    }
+                                    // An upload in flight outlasts the stop budget.
+                                    tokio::time::sleep(Duration::from_millis(600)).await;
+                                    done.store(true, Ordering::SeqCst);
+                                    Ok(())
+                                }
+                            })],
+                            daemon_shutdown.clone(),
+                        );
+                        assert!(collector.is_some());
+                        std::thread::sleep(Duration::from_millis(50));
+                        panic!("manager bug after the collector started");
+                    }
+                    assert!(stop_inherited_collectors(
+                        &mut collector,
+                        &mut draining,
+                        Duration::from_millis(50),
+                        &daemon_shutdown,
+                    ));
+                    old_was_done_at_restart = Some(finished.load(Ordering::SeqCst));
+                    assert!(collector.is_none() && draining.is_none());
+                },
+            );
+            assert_eq!(runs, 2);
+            assert_eq!(
+                old_was_done_at_restart,
+                Some(true),
+                "the replacement may start only once the old collector has stopped"
+            );
+        }
+    }
+
     fn argv(rest: &[&str]) -> Vec<String> {
         std::iter::once("failproofaid".to_string())
             .chain(rest.iter().map(|s| s.to_string()))
@@ -2426,6 +2694,7 @@ mod tests {
         let mut expected: Vec<String> = [
             "health",
             "hook-activity",
+            "hook-watch",
             "claude",
             "claude:work",
             "claude-subagent",
@@ -2484,6 +2753,7 @@ mod tests {
                 "codex:box",
                 "health",
                 "hook-activity",
+                "hook-watch",
                 "otlp-delivery",
                 "spool-sweeper",
                 "spool-watcher",
@@ -2541,6 +2811,7 @@ mod tests {
             [
                 "health",
                 "hook-activity",
+                "hook-watch",
                 "otlp-delivery",
                 "spool-sweeper",
                 "spool-watcher"
@@ -2567,6 +2838,7 @@ mod tests {
         let infrastructure = [
             "health",
             "hook-activity",
+            "hook-watch",
             "spool-watcher",
             "spool-sweeper",
             "otlp-delivery",

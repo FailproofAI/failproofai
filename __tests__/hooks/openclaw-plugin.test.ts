@@ -1,7 +1,7 @@
 // @vitest-environment node
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createServer, type Server, type Socket } from "node:net";
-import { cpSync, mkdtempSync, readdirSync, readFileSync, rmSync } from "node:fs";
+import { cpSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
@@ -70,6 +70,9 @@ let socketPath: string;
 beforeEach(() => {
   dir = mkdtempSync(join(tmpdir(), "fpoc-"));
   socketPath = join(dir, "d.sock");
+  // The fallback to an older daemon reads the Cloud deployment; never the
+  // developer's own.
+  vi.stubEnv("FAILPROOFAI_CLOUD_POLICY_DIR", join(dir, "no-cloud"));
 });
 
 afterEach(() => {
@@ -222,7 +225,7 @@ describe("openclaw-plugin daemon-client: requestHookVerdict", () => {
 
   it.each([
     ["an error frame", { type: "error", protocolVersion: 2, message: "worker is down" }, "evaluation"],
-    ["another protocol version", { type: "hookResult", protocolVersion: 1, exitCode: 0, stdout: "" }, "protocol-mismatch"],
+    ["a newer protocol version", { type: "hookResult", protocolVersion: 999, exitCode: 0, stdout: "", stderr: "" }, "protocol-mismatch"],
     ["an unknown message type", { type: "pong", protocolVersion: 2 }, "invalid"],
     ["a non-zero exit", hookResult("", 1), "evaluation"],
     ["stdout that is not JSON", hookResult("not json"), "invalid"],
@@ -241,6 +244,74 @@ describe("openclaw-plugin daemon-client: requestHookVerdict", () => {
       const result = await requestHookVerdict({ event: "before_tool_call", payload: {}, socketPath });
       expect(result).toMatchObject({ ok: false, failure });
       expect((result as { message: string }).message).toBeTruthy();
+    } finally {
+      await daemon.close();
+    }
+  });
+
+  it("re-asks an older daemon in its own version, without agentSettingsPath", async () => {
+    const daemon = await fakeDaemon(socketPath, (request) =>
+      request.protocolVersion === 1
+        ? { ...hookResult(JSON.stringify({ permission: "deny", reason: "no" })), protocolVersion: 1 }
+        : { type: "error", protocolVersion: 1, message: "protocol version mismatch" },
+    );
+    try {
+      const result = await requestHookVerdict({
+        event: "before_tool_call",
+        payload: {},
+        socketPath,
+        agentSettingsPath: "/home/a/.openclaw/openclaw.json",
+      });
+      expect(result).toEqual({ ok: true, verdict: { permission: "deny", reason: "no" } });
+      expect(daemon.requests.map((r) => r.protocolVersion)).toEqual([2, 1]);
+      expect(daemon.requests[0]).toHaveProperty("agentSettingsPath");
+      expect(daemon.requests[1]).not.toHaveProperty("agentSettingsPath");
+    } finally {
+      await daemon.close();
+    }
+  });
+
+  it("does not fall back to an older daemon where the deployment targets agents", async () => {
+    const policies = join(dir, "cloud-policies");
+    mkdirSync(policies, { recursive: true });
+    writeFileSync(join(policies, "active.json"), JSON.stringify({ schemaVersion: 3, deployment: 4, policies: [] }));
+    vi.stubEnv("FAILPROOFAI_CLOUD_POLICY_DIR", policies);
+    const daemon = await fakeDaemon(socketPath, () => ({ type: "error", protocolVersion: 1, message: "mismatch" }));
+    try {
+      const result = await requestHookVerdict({ event: "before_tool_call", payload: {}, socketPath });
+      expect(result).toMatchObject({ ok: false, failure: "protocol-mismatch" });
+      expect(daemon.requests).toHaveLength(1);
+    } finally {
+      await daemon.close();
+    }
+  });
+
+  it("discards the older daemon's answer when a targeted deployment arrives during the retry", async () => {
+    const policies = join(dir, "cloud-policies-inflight");
+    mkdirSync(policies, { recursive: true });
+    vi.stubEnv("FAILPROOFAI_CLOUD_POLICY_DIR", policies);
+    const daemon = await fakeDaemon(socketPath, (request) => {
+      if (request.protocolVersion !== 1) return { type: "error", protocolVersion: 1, message: "mismatch" };
+      writeFileSync(join(policies, "active.json"), JSON.stringify({ schemaVersion: 3, deployment: 5, policies: [] }));
+      return { type: "hookResult", protocolVersion: 1, exitCode: 0, stdout: "", stderr: "" };
+    });
+    try {
+      const result = await requestHookVerdict({ event: "before_tool_call", payload: {}, socketPath });
+      expect(daemon.requests.map((r) => r.protocolVersion)).toEqual([2, 1]);
+      expect(result).toMatchObject({ ok: false, failure: "protocol-mismatch" });
+      expect(result).not.toHaveProperty("daemonVersion");
+    } finally {
+      await daemon.close();
+    }
+  });
+
+  it("does not retry below the oldest supported version", async () => {
+    const daemon = await fakeDaemon(socketPath, () => ({ type: "error", protocolVersion: 0, message: "x" }));
+    try {
+      const result = await requestHookVerdict({ event: "before_tool_call", payload: {}, socketPath });
+      expect(result).toMatchObject({ ok: false, failure: "protocol-mismatch" });
+      expect(result).not.toHaveProperty("daemonVersion");
+      expect(daemon.requests).toHaveLength(1);
     } finally {
       await daemon.close();
     }
@@ -458,6 +529,17 @@ describe("openclaw-plugin hooks", () => {
         hook_event_name: "before_tool_call",
       }),
     );
+  });
+
+  it("names the tool call it checks, from the event or the tool context", async () => {
+    const { api, handlers } = fakeApi();
+    const evaluate = vi.fn(async () => ({ ok: true, verdict: { permission: "allow" } }));
+    registerFailproofaiHooks(api, { evaluate });
+    await handlers.get("before_tool_call")!({ ...toolCall, toolCallId: "call_evt" }, { ...ctx, toolCallId: "call_ctx" });
+    await handlers.get("after_tool_call")!({ ...toolCall, result: "ok" }, { ...ctx, toolCallId: "call_ctx" });
+    await handlers.get("before_tool_call")!(toolCall, ctx);
+    const sent = evaluate.mock.calls.map((call) => (call as unknown as [string, Record<string, unknown>])[1].tool_use_id);
+    expect(sent).toEqual(["call_evt", "call_ctx", undefined]);
   });
 
   it("maps a deny to each gate's native shape", async () => {

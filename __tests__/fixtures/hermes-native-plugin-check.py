@@ -3,6 +3,7 @@ from __future__ import annotations
 import contextvars
 import importlib.util
 import json
+import os
 import socket
 import struct
 import sys
@@ -110,6 +111,11 @@ def serve_verdicts(socket_path: Path, responses: list[dict[str, object]], receiv
                     deadline = time.monotonic() + 2
                     length = struct.unpack(">I", client._read_exact(connection, 4, deadline))[0]
                     received.append(json.loads(client._read_exact(connection, length, deadline)))
+                    # A response may run a side effect before it is sent (a
+                    # deployment changing while the daemon evaluates).
+                    before = response.pop("_before_reply", None) if isinstance(response, dict) else None
+                    if callable(before):
+                        before()
                     body = json.dumps({"type": "policyResult", "protocolVersion": client.PROTOCOL_VERSION, **response}).encode()
                     connection.sendall(struct.pack(">I", len(body)) + body)
 
@@ -1631,7 +1637,10 @@ class ClientTests(unittest.TestCase):
             thread.start()
             self.assertTrue(ready.wait(timeout=2))
             with patch.dict("os.environ", {"FAILPROOFAI_DAEMON_SOCKET": str(socket_path)}):
-                with self.assertRaisesRegex(client.EvaluationError, "version mismatch"):
+                # The v1 allow answers a v2 request it may have read without
+                # agentSettingsPath, so it is never taken as the verdict: the
+                # client re-asks in v1, which this one-shot server never answers.
+                with self.assertRaises(client.EvaluationError):
                     client.evaluate_policy(event="pre_tool_call", payload={}, cwd="/tmp")
             thread.join(timeout=2)
 
@@ -1697,6 +1706,95 @@ class ClientTests(unittest.TestCase):
             self.assertLess(time.monotonic() - started, 0.14)
             thread.join(timeout=2)
 
+
+
+class ProtocolCompatibilityTests(unittest.TestCase):
+    """Files on disk can be newer than the daemon still running. An older daemon
+    inside the supported range is asked again in its own version, not refused."""
+
+    def _evaluate(
+        self, responses: list[dict[str, object]], schema: int | None = None, raw: str | None = None
+    ) -> tuple[object, list]:
+        with tempfile.TemporaryDirectory() as tmp:
+            socket_path = Path(tmp) / "d.sock"
+            policies = Path(tmp) / "cloud-policies"
+            policies.mkdir()
+            if schema is not None:
+                (policies / "active.json").write_text(
+                    json.dumps({"schemaVersion": schema, "deployment": 4, "policies": []})
+                )
+            if raw is not None:
+                (policies / "active.json").write_text(raw)
+            received: list = []
+            thread = serve_verdicts(socket_path, responses, received)
+            env = {"FAILPROOFAI_DAEMON_SOCKET": str(socket_path), "FAILPROOFAI_CLOUD_POLICY_DIR": str(policies)}
+            with patch.dict("os.environ", env):
+                try:
+                    result: object = client.evaluate_policy(
+                        event="pre_tool_call",
+                        payload={},
+                        cwd="/tmp",
+                        agent_settings_path="/home/a/.hermes/config.yaml",
+                        evaluation_timeout_ms=2_000,
+                    )
+                except client.EvaluationError as exc:
+                    result = exc
+            thread.join(timeout=2)
+            return result, received
+
+    def test_an_older_daemon_is_asked_again_in_its_version(self) -> None:
+        result, received = self._evaluate([
+            {"type": "error", "protocolVersion": 1, "message": "protocol version mismatch"},
+            {"protocolVersion": 1, "decision": "deny", "policyNames": ["p"], "reason": "no",
+             "matchedPolicies": ["p"], "durationMs": 1, "toolName": "Bash"},
+        ])
+        self.assertIsInstance(result, client.PolicyVerdict)
+        self.assertEqual(result.decision, "deny")
+        self.assertEqual([r["protocolVersion"] for r in received], [2, 1])
+        self.assertIn("agentSettingsPath", received[0])
+        # The answer accepted is the one to a request that never claimed a profile.
+        self.assertNotIn("agentSettingsPath", received[1])
+
+    def test_no_fallback_where_the_deployment_targets_agents(self) -> None:
+        # The older daemon evaluates with the agent unknown, and an
+        # agent-targeted policy does not apply to an unknown agent.
+        result, received = self._evaluate(
+            [{"type": "error", "protocolVersion": 1, "message": "protocol version mismatch"}], schema=3
+        )
+        self.assertIsInstance(result, client.EvaluationError)
+        self.assertEqual(len(received), 1)
+
+    def test_a_targeted_deployment_during_the_retry_discards_its_answer(self) -> None:
+        # Cloud activated agent-targeted policies while the v1 daemon was
+        # evaluating: its allow was made without this agent.
+        def install_schema_3() -> None:
+            policy_dir = Path(os.environ["FAILPROOFAI_CLOUD_POLICY_DIR"])
+            (policy_dir / "active.json").write_text(
+                json.dumps({"schemaVersion": 3, "deployment": 5, "policies": []})
+            )
+
+        result, received = self._evaluate([
+            {"type": "error", "protocolVersion": 1, "message": "protocol version mismatch"},
+            {"protocolVersion": 1, "decision": "allow", "policyNames": [], "reason": None,
+             "matchedPolicies": [], "durationMs": 1, "toolName": "Bash", "_before_reply": install_schema_3},
+        ])
+        self.assertIsInstance(result, client.EvaluationError)
+        self.assertEqual([r["protocolVersion"] for r in received], [2, 1])
+
+    def test_no_fallback_where_the_deployment_cannot_be_read(self) -> None:
+        result, received = self._evaluate(
+            [{"type": "error", "protocolVersion": 1, "message": "protocol version mismatch"}], raw="{"
+        )
+        self.assertIsInstance(result, client.EvaluationError)
+        self.assertEqual(len(received), 1)
+
+    def test_no_retry_below_the_oldest_supported_version(self) -> None:
+        result, received = self._evaluate([
+            {"type": "error", "protocolVersion": 0, "message": "protocol version mismatch"},
+        ])
+        self.assertIsInstance(result, client.EvaluationError)
+        self.assertIn("protocol version mismatch", str(result))
+        self.assertEqual(len(received), 1)
 
 if __name__ == "__main__":
     unittest.main()

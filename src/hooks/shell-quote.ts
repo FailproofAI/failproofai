@@ -7,3 +7,22 @@
 export function shellQuote(value: string): string {
   return `'${value.replace(/'/g, `'\\''`)}'`;
 }
+
+/**
+ * The words of a command built from {@link shellQuote}d parts, unquoted. Only
+ * that shape is understood; anything else (an operator's own
+ * `FAILPROOFAI_WORKER_CMD`) returns null, and callers leave it alone.
+ */
+export function shellQuotedWords(command: string): string[] | null {
+  const words: string[] = [];
+  const re = /\s*'((?:[^']|'\\'')*)'(?=\s|$)/y;
+  // Kept apart from `re.lastIndex`, which a failed sticky match resets to 0:
+  // a trailing space after the last word then read as "nothing matched".
+  let end = 0;
+  let match: RegExpExecArray | null;
+  while (end < command.length && (match = re.exec(command))) {
+    words.push(match[1].replace(/'\\''/g, "'"));
+    end = re.lastIndex;
+  }
+  return words.length > 0 && command.slice(end).trim() === "" ? words : null;
+}

@@ -54,7 +54,12 @@ let rotateSeq = 0;
 // ── Types ──
 
 export interface HookActivityEntry {
+  /** When the row was written: the END of the hook's evaluation. */
   timestamp: number;
+  /** When the hook arrived (`timestamp - durationMs`). Absent on older rows. */
+  startedAt?: number;
+  /** The agent's own id for the tool call this hook governed, when it sent one. */
+  toolCallId?: string;
   eventType: string;
   /** Which agent CLI fired the hook (claude | codex). */
   integration?: string;

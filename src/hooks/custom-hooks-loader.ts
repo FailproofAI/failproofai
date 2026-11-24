@@ -22,6 +22,7 @@ import {
   findDistIndex,
   rewriteFileTree,
   TMP_SUFFIX,
+  commonJsTmpSuffix,
   cleanupTmpFiles,
   isTmpArtifact,
   sweepStaleTmpArtifacts,
@@ -182,9 +183,82 @@ export interface PolicyLoadFailure {
 
 const warnedSemanticOutsidePack = new Set<string>();
 
+/**
+ * Node's own words when a file it loaded as an ES module is CommonJS: a
+ * CommonJS binding used at run time, or, when an ES module imports a
+ * `module.exports` helper, the link failing for want of that export, or, on
+ * Node before 22.12 (`require(esm)`), a CommonJS file `require()`-ing a helper
+ * still written as `.mjs` (`ERR_REQUIRE_ESM`, which names the required file
+ * first). Only these retry a load as CommonJS (see `loadSingleFile`). A genuine
+ * ES-module mistake that happens to read the same fails the retry the same way,
+ * and that is what is reported.
+ */
+const COMMONJS_IN_ESM_RE =
+  /\b(?:require|module|exports|__filename|__dirname) is not defined in ES module scope|does not provide an export named|require\(\) of ES Module|ERR_REQUIRE_ESM/;
+
+/** A failed attempt that names the files Node refused for being CommonJS. */
+interface RetryAsCommonJs {
+  retryAsCommonJs: string[];
+}
+
+/** At most this many retries, one per CommonJS file in the tree. */
+const MAX_COMMONJS_RETRIES = 32;
+
+/**
+ * The source files a "this is CommonJS" error names: the requested module of a
+ * link error, or the file whose code used `require`. Both appear as a
+ * temporary copy's path; its source is that path less the suffix. A file is
+ * matched by its full path first, then, for a link error's relative
+ * specifier, by its copy's file name.
+ */
+function blamedSources(err: unknown, tmpFiles: readonly string[], tmpSuffix: string): string[] {
+  const message = err instanceof Error ? err.message : String(err);
+  const stack = err instanceof Error ? (err.stack ?? "") : "";
+  const copies = tmpFiles.filter((f) => f.endsWith(tmpSuffix) || f.endsWith(commonJsTmpSuffix(tmpSuffix)));
+  const source = (f: string) => f.slice(0, f.length - (f.endsWith(tmpSuffix) ? tmpSuffix.length : commonJsTmpSuffix(tmpSuffix).length));
+  for (const text of [message, stack]) {
+    let best: { at: number; files: string[] } | null = null;
+    for (const f of copies) {
+      for (const form of [pathToFileURL(f).href, f]) {
+        const at = text.indexOf(form);
+        if (at >= 0 && (!best || at < best.at)) best = { at, files: [source(f)] };
+      }
+    }
+    if (best) return best.files;
+    const byName = copies.filter((f) => text.includes(`/${basename(f)}`) || text.includes(`'${basename(f)}`));
+    if (byName.length > 0) return byName.map(source);
+  }
+  return [];
+}
+
+/**
+ * Load one policy file, as ES modules first, which is what every policy was
+ * loaded as before CommonJS support. Only when Node refuses a file for being
+ * CommonJS (it uses `require`, `module` or `exports`, or an ES module imports
+ * its `module.exports`) is the tree loaded again with THAT file written as
+ * `.cjs`, and so on for the next one Node names. A file Node loaded as an ES
+ * module is never reinterpreted, whatever its comments or strings say. (Bun,
+ * which the test suite runs under, defines `require` in ES modules, so it
+ * never refuses.) Whatever a failed attempt registered before it threw is
+ * taken back first, so nothing is registered twice.
+ */
 async function loadSingleFile(
   absPath: string,
-  opts?: {
+  opts?: LoadOptions,
+): Promise<PolicyLoadFailure | null> {
+  const hooksBefore = getCustomHooks().length;
+  const semanticBefore = getSemanticRegistrations().length;
+  const commonJs = new Set<string>();
+  for (let attempt = 0; ; attempt++) {
+    const result = await loadSingleFileAs(absPath, opts, commonJs, attempt < MAX_COMMONJS_RETRIES);
+    if (!result || !("retryAsCommonJs" in result)) return result;
+    getCustomHooks().splice(hooksBefore);
+    getSemanticRegistrations().splice(semanticBefore);
+    for (const f of result.retryAsCommonJs) commonJs.add(f);
+  }
+}
+
+interface LoadOptions {
     strict?: boolean;
     conventionScope?: "project" | "user";
     /** Cloud-managed policies pass their pinned digest for load-time re-verification. */
@@ -195,12 +269,20 @@ async function loadSingleFile(
      * file, whether or not Jev is configured — the declaration is dead either way.
      */
     outsidePack?: boolean;
-  },
-): Promise<PolicyLoadFailure | null> {
+}
+
+async function loadSingleFileAs(
+  absPath: string,
+  opts: LoadOptions | undefined,
+  commonJs: ReadonlySet<string>,
+  mayRetry: boolean,
+): Promise<PolicyLoadFailure | null | RetryAsCommonJs> {
   const g = globalThis as Record<string, unknown>;
   g[LOADING_KEY] = true;
 
   let tmpFiles: string[] = [];
+  // Out here so a failed load can name the files it blames (`blamedSources`).
+  let tmpSuffix = "";
   try {
     const distIndex = await findDistIndex();
     const distUrl = distIndex ? pathToFileURL(distIndex).href : null;
@@ -211,13 +293,14 @@ async function loadSingleFile(
     // fallback path a collision means EEXIST, which fails the load OPEN. A
     // random id removes the class. It costs nothing: `fingerprintTemporaryTree`
     // normalises the whole suffix away, so the module cache still hits.
-    const tmpSuffix = `${TMP_SUFFIX}.${process.pid}.${sequence}.${randomUUID()}.mjs`;
+    tmpSuffix = `${TMP_SUFFIX}.${process.pid}.${sequence}.${randomUUID()}.mjs`;
     tmpFiles = await rewriteFileTree(
       absPath,
       distUrl,
       distIndex,
       tmpSuffix,
       opts?.verifyEntrySha,
+      commonJs,
     );
 
     const fingerprint = await fingerprintTemporaryTree(tmpFiles, tmpSuffix);
@@ -227,7 +310,9 @@ async function loadSingleFile(
       return null;
     }
 
-    const entryTmp = absPath + tmpSuffix;
+    // `.cjs` when the policy is CommonJS (see `isCommonJsSource`).
+    const entryTmp =
+      tmpFiles.find((f) => f === absPath + commonJsTmpSuffix(tmpSuffix)) ?? absPath + tmpSuffix;
     const fileUrl = pathToFileURL(entryTmp).href;
     const hooksBefore = getCustomHooks().length;
     const semanticBefore = getSemanticRegistrations().length;
@@ -250,6 +335,11 @@ async function loadSingleFile(
     return null;
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
+    const code = (err as { code?: unknown } | null)?.code;
+    if (mayRetry && (COMMONJS_IN_ESM_RE.test(msg) || code === "ERR_REQUIRE_ESM")) {
+      const blamed = blamedSources(err, tmpFiles, tmpSuffix).filter((f) => !commonJs.has(f));
+      if (blamed.length > 0) return { retryAsCommonJs: blamed };
+    }
     // An import that names no module, apart from a file the policy itself
     // reads at load (a `readFileSync` of its data): both are ENOENT underneath,
     // but "module not found" sent people looking for a missing package (B13).
@@ -282,9 +372,13 @@ async function fingerprintTemporaryTree(tmpFiles: string[], tmpSuffix: string): 
   for (const tmpFile of [...tmpFiles].sort()) {
     // The generated filenames change per load. Normalize both the logical path
     // and rewritten import specifiers so identical source graphs hash equally.
-    hash.update(tmpFile.replaceAll(tmpSuffix, TMP_SUFFIX));
+    // A CommonJS source's copy ends `.cjs` (see `isCommonJsSource`).
+    const cjsSuffix = commonJsTmpSuffix(tmpSuffix);
+    const normalize = (text: string) =>
+      text.replaceAll(tmpSuffix, TMP_SUFFIX).replaceAll(cjsSuffix, commonJsTmpSuffix(TMP_SUFFIX));
+    hash.update(normalize(tmpFile));
     const contents = await readFile(tmpFile, "utf8");
-    hash.update(contents.replaceAll(tmpSuffix, TMP_SUFFIX));
+    hash.update(normalize(contents));
   }
   return hash.digest("hex");
 }

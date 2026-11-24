@@ -581,7 +581,7 @@ wheels = [
 
 [[package]]
 name = "crewai"
-version = "1.15.42"
+version = "1.15.44"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "aiofiles" },
@@ -617,14 +617,14 @@ dependencies = [
     { name = "tomli" },
     { name = "tomli-w" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/9d/d6/e3707811ad1103f0e91508a668790e99020c475160f558f9b4b03a0bbb77/crewai-1.15.42.tar.gz", hash = "sha256:15bee5ddd8d677150b3cdacfe77b9455c9f274d56079f681ca28f55ebea74bc4", size = 8525757, upload-time = "2026-11-18T16:39:15.021Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/ed/09/8b67ef1f74fd0fafae81b56323e1c7ad57b938d4c9d7e8f54fda69c98a47/crewai-1.15.44.tar.gz", hash = "sha256:c1ca558e8d4fe885e88cf4ab582fd928f56f7e6a92acb597acf734273b77d98d", size = 8549087, upload-time = "2026-11-19T18:00:35.334Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/c7/13/024b8161e4196f5976457516ba53a767748104c76904e31a6939f3642bca/crewai-1.15.42-py3-none-any.whl", hash = "sha256:6de39049875d082fc8b940dde0271965a36e9063c15cae57155da7d9f6b6183e", size = 1535606, upload-time = "2026-11-18T16:39:12.653Z" },
+    { url = "https://files.pythonhosted.org/packages/75/28/f6e83dfe3c5831d77473e63af4ef38c35443dd5a0fa97b37dbf511015404/crewai-1.15.44-py3-none-any.whl", hash = "sha256:bf38b740334b1020afcffe46e35bff48dc41fd348663bc8cb25020bd53af6571", size = 1550278, upload-time = "2026-11-19T18:00:31.716Z" },
 ]
 
 [[package]]
 name = "crewai-cli"
-version = "1.15.42"
+version = "1.15.44"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "appdirs" },
@@ -644,14 +644,14 @@ dependencies = [
     { name = "tomli-w" },
     { name = "uv" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/16/c0/ee7c231ae5bcf3dc0c8e0f14c9a99fac10d180bdd135d2af769a23b58f10/crewai_cli-1.15.42.tar.gz", hash = "sha256:023cce78782566aa97a32dc533ad3bc4f47e5be04c0a50a896321a6139d5d8d0", size = 469144, upload-time = "2026-11-18T16:39:18.232Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/e1/61/5e02e2fd2257fc56c52a914684417a4e837f1b49b5011d1a3d23be087d1b/crewai_cli-1.15.44.tar.gz", hash = "sha256:3de851f3e924af6c257cd11286dfef0b6ae317299790b2df7c7e5dd3f026213e", size = 470368, upload-time = "2026-11-19T18:00:40.109Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/8c/12/c73c823fa006e05dfdf6240be846e7667cfbaab36d3326fc5faacd61c967/crewai_cli-1.15.42-py3-none-any.whl", hash = "sha256:ba62e914ebab42876b389c8c8abb049485e16f10377046b0f97ad4ea781ebec2", size = 296946, upload-time = "2026-11-18T16:39:17.005Z" },
+    { url = "https://files.pythonhosted.org/packages/2c/14/40bc538e4a197b57ff1548ebc125ac53eea2121c3f34e26b297e1f20963c/crewai_cli-1.15.44-py3-none-any.whl", hash = "sha256:dfb9e9ab1040e807d47575098ce73217261d4465ee75b5f47cc6fd41dfe5d110", size = 297717, upload-time = "2026-11-19T18:00:37.705Z" },
 ]
 
 [[package]]
 name = "crewai-core"
-version = "1.15.42"
+version = "1.15.44"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "appdirs" },
@@ -667,9 +667,9 @@ dependencies = [
     { name = "rich" },
     { name = "tomli" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/c6/55/0f11333d428b57c3a415fd18abc76266dfdb27f90d2c0c09fed12a8ada0f/crewai_core-1.15.42.tar.gz", hash = "sha256:6aa0e05777fecca5335f9ab341374a7b019ad142ea61bb86eebcae93d3dc48a9", size = 1308034, upload-time = "2026-11-18T16:39:21.208Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/74/ff/d96b106ec57857d3e5ab5e2f6f04427fa1c75faec5f9e1652297e2b3f1e4/crewai_core-1.15.44.tar.gz", hash = "sha256:70e83ac319af2db6f28e5e933b0c408a6ea0e1e1479050efbbfc39f1c8a1de4c", size = 1308035, upload-time = "2026-11-19T18:00:43.616Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/2a/d2/a800ef2e364387b1bd1641ed297b8cdd5f490bccf94c41f52c6176e5c47e/crewai_core-1.15.42-py3-none-any.whl", hash = "sha256:51764cc52784affddadc24ce9804ecb58b4f2fc54c1e550fa306936a0ade6bcf", size = 1313262, upload-time = "2026-11-18T16:39:19.456Z" },
+    { url = "https://files.pythonhosted.org/packages/b7/15/ca68d18c1f498071da60404a53a550ca236dd944b42fc0e6d7c3fb504481/crewai_core-1.15.44-py3-none-any.whl", hash = "sha256:757d75b043c64b96b769503e47b610b679c2856515e028b21eb0982a8ce5950d", size = 1313261, upload-time = "2026-11-19T18:00:41.69Z" },
 ]
 
 [[package]]
@@ -1702,7 +1702,7 @@ wheels = [
 
 [[package]]
 name = "langchain-core"
-version = "1.8.0"
+version = "1.8.4"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "certifi" },
@@ -1717,26 +1717,26 @@ dependencies = [
     { name = "typing-extensions" },
     { name = "uuid-utils" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/de/1e/ce7b06cecfc41a8f179571f9e228ae9d2f7d090492d2c312322fd4f4380f/langchain_core-1.8.0.tar.gz", hash = "sha256:8c571299ae83acec89599cbbb6890018f54225da336a6e315c9e882dd5da6502", size = 1016937, upload-time = "2026-11-11T15:21:53.683Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/75/ba/281e953ec491deda5c9ef8633b47647c41836c6b6fe1395e9d99567dbb44/langchain_core-1.8.4.tar.gz", hash = "sha256:af8976d6df0b3338dc7c830ebf1c505c0fc05a0e3eb564f4901ed7546a418ab6", size = 1025230, upload-time = "2026-11-19T22:35:43.367Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/2f/1a/39e377548fdbe63f5956ed88a53c6f22070f4cf5f484ccdfebad9538503f/langchain_core-1.8.0-py3-none-any.whl", hash = "sha256:89732f9e7d311de9913ba22caf921c72520145a829f05ec1d9c85013e904213c", size = 587077, upload-time = "2026-11-11T15:21:52.351Z" },
+    { url = "https://files.pythonhosted.org/packages/16/6d/35b048329e70492ca0d7561431627ac3b7da1a2dedc99870ca188902529c/langchain_core-1.8.4-py3-none-any.whl", hash = "sha256:5755dee8f8b0c709cd22436dea3689c74a3f6e9dc4251590797dcd66bcd1ef67", size = 591065, upload-time = "2026-11-19T22:35:41.819Z" },
 ]
 
 [[package]]
 name = "langchain-protocol"
-version = "0.0.20"
+version = "0.0.22"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "typing-extensions" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/cb/8b/d908d082c3cf5368ddd1816ed114de79c873f979ba7f98b95fab0e841643/langchain_protocol-0.0.20.tar.gz", hash = "sha256:0f5bd002474265648e91161771a9e0438fe9480bd55a416e51af0f60070637ec", size = 6280, upload-time = "2026-10-20T11:13:50.84Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/a2/5c/94ffa0c0b9445ac284bf7c0aebf2fa3a32bdf27c20aaf2f061746375b670/langchain_protocol-0.0.22.tar.gz", hash = "sha256:61267bc9f478c9df35ccdafd9fdf556b2698435232d59def54b3809bb02585bb", size = 6508, upload-time = "2026-11-19T15:47:56.068Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/02/4b/f1c99a0b27c5ff8b4b131c0d6e62012c17cc424089efe213767db927afd2/langchain_protocol-0.0.20-py3-none-any.whl", hash = "sha256:3c935e5e46b0f6f9cb52f45ba7cfa53d1b9fa80c82c4a277d47f03e07f7385b1", size = 7347, upload-time = "2026-10-20T11:13:49.566Z" },
+    { url = "https://files.pythonhosted.org/packages/71/0a/e96b6ca3b5a7d91af31fd82aee42e65beb6bbe884587e27df5460feee486/langchain_protocol-0.0.22-py3-none-any.whl", hash = "sha256:d264998a507b735320c15a7b366051cbf41e21f771bea1b03a911f2c58af02e7", size = 7579, upload-time = "2026-11-19T15:47:55.109Z" },
 ]
 
 [[package]]
 name = "langgraph"
-version = "1.2.21"
+version = "1.2.24"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "langchain-core" },
@@ -1746,9 +1746,9 @@ dependencies = [
     { name = "pydantic" },
     { name = "xxhash" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/4a/01/399abb21ff4f6be75de46ea9a342dacdc3ccb8e745eb2e4875f1f27f42c5/langgraph-1.2.21.tar.gz", hash = "sha256:382b657eaf3cd568245de4bf264db94d514e2a6d0916046b3125a228aee1c307", size = 798394, upload-time = "2026-11-12T18:06:32.025Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/dd/78/cfe1c6601ae7f6c95c29faae1f884b7eaa5eb1ae624d2d89f4b57ac91dfb/langgraph-1.2.24.tar.gz", hash = "sha256:86b0dd611b7201cb393da2de0e064029c1bef520f11a5e6ee04be53c2a815bc7", size = 801064, upload-time = "2026-11-20T01:10:14.129Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/50/d3/dbd2d986e2fa9e142cdc8d4865896a321146ea12f315abe8705ef5ec660a/langgraph-1.2.21-py3-none-any.whl", hash = "sha256:e3e8ed606cbf577ee394d0e4bba0ba723de18c2ecd2f51529fc2ef4051fbca93", size = 263844, upload-time = "2026-11-12T18:06:30.205Z" },
+    { url = "https://files.pythonhosted.org/packages/2d/67/087148694ea5daeb4ebdbf6c02ad642fff0c48ed7c0a189a9fe5e980f221/langgraph-1.2.24-py3-none-any.whl", hash = "sha256:312f9a75c1aa0dde5571da32c5c24b891e726fa9781b835b956ec6d9746fa943", size = 264578, upload-time = "2026-11-20T01:10:12.83Z" },
 ]
 
 [[package]]
@@ -1766,15 +1766,15 @@ wheels = [
 
 [[package]]
 name = "langgraph-prebuilt"
-version = "1.1.0"
+version = "1.1.3"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "langchain-core" },
     { name = "langgraph-checkpoint" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/29/66/ed9b93f56bc17ef22d551892f0ac2b225a97fe0fcf23a511b857f70d590b/langgraph_prebuilt-1.1.0.tar.gz", hash = "sha256:3c579cf6eed2d17f9c157c2d0fcaddcd8688524e7022d3b22b37a3bf4589d528", size = 178833, upload-time = "2026-05-12T03:37:49.332Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/b5/51/e44110cba9383391e5fd41ff3a5832712f988bb9152a95f6ccb8e7b89bba/langgraph_prebuilt-1.1.3.tar.gz", hash = "sha256:7ee72332e925000e3d24d2d491dd0ebb9d3a44dbffe650185943b730a832cf6d", size = 183612, upload-time = "2026-11-19T05:26:06.632Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/e9/43/3fe1a700b8490ed02679cdbbc8c915eb23a092faf496c9c1118abcd10be3/langgraph_prebuilt-1.1.0-py3-none-any.whl", hash = "sha256:51e311747d755b751d5c6b39b0c1446124d3a7643d2515017e6714b323508fc9", size = 41043, upload-time = "2026-05-12T03:37:48.007Z" },
+    { url = "https://files.pythonhosted.org/packages/bc/f3/f1d3426c239dc7eca37e1e49586f7559cc224d3a12933e22e0070a4e8e13/langgraph_prebuilt-1.1.3-py3-none-any.whl", hash = "sha256:7b55eb1c2004348b73b9af9e2f81e5f3eda47dcf13d885ccb4195538426c55ce", size = 42512, upload-time = "2026-11-19T05:26:05.396Z" },
 ]
 
 [[package]]
@@ -1841,7 +1841,7 @@ wheels = [
 
 [[package]]
 name = "llama-index-core"
-version = "0.14.25"
+version = "0.14.26"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "aiohttp" },
@@ -1874,9 +1874,9 @@ dependencies = [
     { name = "typing-inspect" },
     { name = "wrapt" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/d8/70/fe1f0a92459c3692075875c1e09fc51494602daaeb71734045e1d9d815d3/llama_index_core-0.14.25.tar.gz", hash = "sha256:4ebfdc5317f0382501fa80262d7a7382715f80741cf41a7b11a52d4335e6f696", size = 11591384, upload-time = "2026-09-21T16:21:51.975Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/e4/d4/801f69588809d74d351e563c24b0c5c3c693d5736937181d973a1e18646e/llama_index_core-0.14.26.tar.gz", hash = "sha256:dba58bc3fdb4e0a9fb52f8c53123d5a2576b3a8a991b65cd6d19796295f0bcd9", size = 11591489, upload-time = "2026-11-13T22:37:39.586Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/8c/20/60be179aaba858981edbe18eab106ff485967a9d3b198f8c58496cad9e32/llama_index_core-0.14.25-py3-none-any.whl", hash = "sha256:caa7d9c5ac9b13dc33400cf8d5e92e689b6d1e4497eb9bfa50d6f52ca2eb22a1", size = 11928254, upload-time = "2026-09-21T16:21:48.626Z" },
+    { url = "https://files.pythonhosted.org/packages/fe/57/3f6fa6e404d6be4b1c21fbe362ca0250200618295b928be1f4325eb0b0fa/llama_index_core-0.14.26-py3-none-any.whl", hash = "sha256:6a7189009644ac3fb11c209d3767d35dfb5eea0c874c7a09778ff5c3839694cc", size = 11928370, upload-time = "2026-11-13T22:37:36.634Z" },
 ]
 
 [[package]]

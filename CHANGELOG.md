@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.0.16-beta.1 — 2026-11-24
+
+### Features
+
+- Bump to 1.0.16-beta.1 for a beta release
+
 ## 1.0.16-beta.0 — 2026-11-24
 
 ### Features

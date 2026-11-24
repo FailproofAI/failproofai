@@ -1,8 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import {
-  DASHBOARD_TOKEN_COOKIE,
   DASHBOARD_TOKEN_PARAM,
   dashboardToken,
+  dashboardTokenCookie,
   hostnameFromHostHeader,
   isLoopbackHostname,
   resolveDashboardHost,
@@ -19,6 +19,19 @@ const MUTATING_METHODS = new Set(["POST", "PUT", "PATCH", "DELETE"]);
  */
 function forbid(): NextResponse {
   return new NextResponse("Forbidden", { status: 403, headers: { "cache-control": "no-store" } });
+}
+
+/**
+ * The token gate's refusal says how to get in. Unlike the checks `forbid()`
+ * keeps quiet about, naming it helps no prober: a 256-bit token cannot be
+ * guessed. A relaunch makes a new token, so an open tab or bookmark lands here.
+ */
+function forbidWithoutToken(): NextResponse {
+  return new NextResponse(
+    "Forbidden: open the dashboard at the address it printed when it started. " +
+      "That address carries this launch's access token.",
+    { status: 403, headers: { "cache-control": "no-store" } },
+  );
 }
 
 /**
@@ -48,8 +61,11 @@ function requireAccessToken(request: NextRequest, bindHost: string): NextRespons
       `[failproofai] refused a request: the dashboard is bound to ${bindHost}, not loopback, ` +
         "and was started without an access token",
     );
-    return forbid();
+    return forbidWithoutToken();
   }
+  // One cookie per port the browser reached, so two dashboards on one host
+  // keep separate tokens (see `dashboardTokenCookie`).
+  const cookieName = dashboardTokenCookie(request.nextUrl.port || (request.nextUrl.protocol === "https:" ? "443" : "80"));
   const presented = request.nextUrl.searchParams.get(DASHBOARD_TOKEN_PARAM);
   if (
     presented !== null &&
@@ -63,16 +79,16 @@ function requireAccessToken(request: NextRequest, bindHost: string): NextRespons
     // host matches the request's.
     const res = NextResponse.redirect(clean, 303);
     res.headers.set("cache-control", "no-store");
-    res.cookies.set(DASHBOARD_TOKEN_COOKIE, expected, { httpOnly: true, sameSite: "lax", path: "/" });
+    res.cookies.set(cookieName, expected, { httpOnly: true, sameSite: "lax", path: "/" });
     return res;
   }
-  const cookie = request.cookies.get(DASHBOARD_TOKEN_COOKIE)?.value;
+  const cookie = request.cookies.get(cookieName)?.value;
   if (!cookie || !sameDashboardToken(cookie, expected)) {
     console.warn(
       `[failproofai] refused a ${request.method} without this launch's access token ` +
         `(the dashboard is bound to ${bindHost}, not loopback)`,
     );
-    return forbid();
+    return forbidWithoutToken();
   }
   return null;
 }

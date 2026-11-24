@@ -374,20 +374,9 @@ def main(
             f"'{resolved_base}' must start with http:// or https://.",
             param_hint="--base-url",
         )
-    # Plain http only to this machine. Every command that reaches the network sends a
-    # credential, and `login` receives one, so http to another host hands them to anyone
-    # on the path. The URL may come from FP_DASHBOARD_URL or the saved config as easily
-    # as from a flag, and both used to be accepted with no check at all. `version` and
-    # `help` send nothing; `logout` clears this machine's copy without contacting the
-    # server (see auth_cmds.logout).
-    cleartext = _context.plain_http_destination(resolved_base)
-    if cleartext and ctx.invoked_subcommand not in ("version", "help", "logout", None):
-        raise click.BadParameter(
-            f"refusing to send credentials to {cleartext} over plain http. Use https "
-            "(with --insecure for a self-signed certificate), or plain http only for "
-            "localhost.",
-            param_hint="--base-url",
-        )
+    # Plain http to another host is refused where a request is built, in
+    # `_context.resolved_base_url`, not here: this callback runs before Click parses
+    # a subcommand's `--help`, so refusing here would break `fp <command> --help`.
     # TLS verification, resolved AFTER the base URL because the saved preference
     # is only honoured for the URL it was granted for.
     #

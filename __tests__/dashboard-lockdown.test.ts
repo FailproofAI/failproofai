@@ -11,9 +11,9 @@ import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { NextRequest } from "next/server";
 import { proxy } from "@/proxy";
 import {
-  DASHBOARD_TOKEN_COOKIE,
   DEFAULT_DASHBOARD_HOST,
   dashboardToken,
+  dashboardTokenCookie,
   ensureDashboardToken,
   hostnameFromHostHeader,
   hostnameFromOrigin,
@@ -28,8 +28,10 @@ const ORIGINAL_TOKEN = process.env.FAILPROOFAI_DASHBOARD_TOKEN;
 
 /** This launch's access token in the tests that bind off loopback. */
 const TOKEN = "a".repeat(64);
+/** The cookie name for a dashboard the browser reached on port 8020, as every request here does. */
+const COOKIE_8020 = dashboardTokenCookie("8020");
 /** The cookie the browser carries once it has presented TOKEN. */
-const TOKEN_COOKIE = `${DASHBOARD_TOKEN_COOKIE}=${TOKEN}`;
+const TOKEN_COOKIE = `${COOKIE_8020}=${TOKEN}`;
 
 beforeEach(() => {
   // The launcher exports this; default the tests to the shipped posture.
@@ -289,7 +291,7 @@ describe("access token — the network-peer defence on a non-loopback bind", () 
   it("REFUSES a wrong token, in the cookie or the address", async () => {
     const wrong = "b".repeat(64);
     for (const request of [
-      req(`http://${box}/policies`, { host: box, extra: { cookie: `${DASHBOARD_TOKEN_COOKIE}=${wrong}` } }),
+      req(`http://${box}/policies`, { host: box, extra: { cookie: `${COOKIE_8020}=${wrong}` } }),
       req(`http://${box}/policies?token=${wrong}`, { host: box }),
       req(`http://${box}/policies?token=${TOKEN.slice(1)}`, { host: box }),
     ]) {
@@ -303,7 +305,7 @@ describe("access token — the network-peer defence on a non-loopback bind", () 
     expect(res.headers.get("location")).toBe(`http://${box}/audit?p=demo`);
     expect(res.headers.get("cache-control")).toBe("no-store");
     const cookie = res.headers.get("set-cookie") ?? "";
-    expect(cookie).toContain(`${DASHBOARD_TOKEN_COOKIE}=${TOKEN}`);
+    expect(cookie).toContain(`${COOKIE_8020}=${TOKEN}`);
     expect(cookie).toMatch(/HttpOnly/i);
     expect(cookie).toMatch(/SameSite=lax/i);
     expect(cookie).toMatch(/Path=\//i);
@@ -337,11 +339,26 @@ describe("access token — the network-peer defence on a non-loopback bind", () 
       const res = await proxy(
         req(`http://${box}/policies?token=${configured ?? ""}`, {
           host: box,
-          extra: { cookie: `${DASHBOARD_TOKEN_COOKIE}=${configured ?? ""}` },
+          extra: { cookie: `${COOKIE_8020}=${configured ?? ""}` },
         }),
       );
       expect(res.status, String(configured)).toBe(403);
     }
+  });
+
+  it("keeps each port's token apart: a cookie set on :8020 does not open :8021", async () => {
+    // Browsers send a host's cookies to every port on it. Under one name, a
+    // second dashboard's token would overwrite the first's and each would 403.
+    const other = "192.168.1.5:8021";
+    const res = await proxy(req(`http://${other}/policies`, { host: other, extra: { cookie: TOKEN_COOKIE } }));
+    expect(res.status).toBe(403);
+    expect(dashboardTokenCookie("8021")).not.toBe(COOKIE_8020);
+  });
+
+  it("tells a browser without the token where to get in", async () => {
+    const res = await proxy(req(`http://${box}/policies`, { host: box }));
+    expect(res.status).toBe(403);
+    expect(await res.text()).toContain("address it printed when it started");
   });
 
   it("asks nothing of a loopback bind, which has no network peers", async () => {
@@ -430,6 +447,14 @@ describe("dashboard-host helpers", () => {
     expect(withDashboardToken("http://127.0.0.1:8020", undefined)).toBe("http://127.0.0.1:8020");
     expect(withDashboardToken("http://127.0.0.1:8020", TOKEN)).toBe(`http://127.0.0.1:8020/?token=${TOKEN}`);
     expect(withDashboardToken("http://localhost:8020/audit", TOKEN)).toBe(`http://localhost:8020/audit?token=${TOKEN}`);
+  });
+
+  it("does not crash on an address URL cannot parse, such as an IPv6 bind with a zone id", () => {
+    expect(withDashboardToken("http://[fe80::1%eth0]:8020", TOKEN)).toBe(`http://[fe80::1%eth0]:8020?token=${TOKEN}`);
+  });
+
+  it("names the token cookie after the port the browser reached", () => {
+    expect(dashboardTokenCookie("8020")).toBe("failproofai_dashboard_token_8020");
   });
 
   it("compares tokens exactly", () => {

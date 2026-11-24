@@ -298,6 +298,22 @@ describe("api-server base URL", () => {
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
+  it("never follows a redirect, which would re-send the code or refresh token elsewhere", async () => {
+    // fetch follows 307/308 by default and re-sends the body, so an https
+    // api-server answering with `Location: http://…` would put the refresh
+    // token on the wire in clear despite the base-URL check.
+    const fetchMock = vi.fn(
+      async () => new Response(null, { status: 307, headers: { location: "http://api.example.com/v0/auth/token/refresh" } }),
+    );
+    globalThis.fetch = fetchMock as unknown as typeof fetch;
+    const err = await refreshAccessToken("refresh-secret").then(() => null, (e: unknown) => e);
+    expect(err).toBeInstanceOf(AuthApiError);
+    expect((err as AuthApiError).status).toBe(307);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    const [, init] = (fetchMock as unknown as { mock: { calls: [string, RequestInit][] } }).mock.calls[0];
+    expect(init.redirect).toBe("manual");
+  });
+
   it("names the origin it refused, never the path or credentials in the URL", () => {
     process.env.FAILPROOF_API_URL = "http://user:pw@api.example.com:8080/base";
     let message = "";

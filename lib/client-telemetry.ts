@@ -41,8 +41,8 @@ export function telemetryRoute(pathname: string): string {
  */
 const FREE_TEXT_PROPERTIES = new Set(["error_message"]);
 
-/** A script URL reduced to something that names our code and nothing of the user's. */
-function scriptLocation(value: unknown): string | undefined {
+/** A location in the app (a path, a page or a script URL) reduced to its route; never the user's part. */
+function locationRoute(value: unknown): string | undefined {
   if (typeof value !== "string" || !value) return undefined;
   try {
     const { pathname } = new URL(value, window.location.href);
@@ -53,11 +53,18 @@ function scriptLocation(value: unknown): string | undefined {
   }
 }
 
+/** A string that names a place in this app: a path, or an address on this origin. */
+function isAppLocation(value: unknown): value is string {
+  return typeof value === "string" && (value.startsWith("/") || value.startsWith(`${window.location.origin}/`));
+}
+
 function scrubbed(properties: Record<string, unknown> | undefined): Record<string, unknown> {
   const out: Record<string, unknown> = {};
   for (const [key, value] of Object.entries(properties ?? {})) {
     if (FREE_TEXT_PROPERTIES.has(key)) continue;
-    out[key] = key === "error_filename" ? scriptLocation(value) : value;
+    // `error_filename`, and any value a caller passes that is a location in the
+    // app (the navbar's `from_path` was one), goes as its route.
+    out[key] = key === "error_filename" || isAppLocation(value) ? locationRoute(value) : value;
   }
   return out;
 }

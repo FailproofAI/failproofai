@@ -170,7 +170,11 @@ function pathFromUrl(url: string): string {
 
 async function fetchWithTimeout(url: string, init: RequestInit): Promise<Response> {
   try {
-    return await fetch(url, { ...init, signal: timeoutSignal(init.signal ?? undefined) });
+    // Never follow a redirect. `fetch` follows 307/308 by default and re-sends the
+    // body, which is the emailed code or a refresh token, so a redirect to plain
+    // http would undo the check in `getApiBase()`. The api-server's routes answer
+    // directly; a 3xx comes back as an `AuthApiError` with its status.
+    return await fetch(url, { ...init, redirect: "manual", signal: timeoutSignal(init.signal ?? undefined) });
   } catch (err) {
     const isTimeout = isAbortError(err);
     // Low-cardinality "api-server is down" counter. We only attach the

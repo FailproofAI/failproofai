@@ -421,9 +421,10 @@ describe("failproofai audit, piped", () => {
   });
 
   // FailproofAI/agenteye#1799: on a routable bind proxy.ts refuses every
-  // request without this launch's access token, so the address printed and
-  // opened here has to carry the one launch() then hands the server.
-  it("prints and opens the access-token address when the dashboard is bound off loopback", async () => {
+  // request without this launch's access token, so the address printed here
+  // has to carry the one launch() then hands the server. It is not handed to a
+  // browser opener, whose command line any local user can read.
+  it("prints the access-token address, and opens nothing, when the dashboard is bound off loopback", async () => {
     delete stdout.isTTY;
     h.runAudit.mockImplementation(scanReporting());
     await withEnvAsync(
@@ -433,7 +434,7 @@ describe("failproofai audit, piped", () => {
         const token = process.env.FAILPROOFAI_DASHBOARD_TOKEN ?? "";
         expect(token).toMatch(/^[0-9a-f]{64}$/);
         expect(output()).toContain(`✓ The audit is ready:  http://localhost:8020/audit?token=${token}\n`);
-        expect(h.openWhenReady).toHaveBeenCalledWith(8020, `/audit?token=${token}`);
+        expect(h.openWhenReady).not.toHaveBeenCalled();
         expect(h.launch).toHaveBeenCalledWith("start", { screen: false });
       },
     );

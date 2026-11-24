@@ -114,8 +114,19 @@ export function resolveDashboardHost(flagHost?: string, envHost?: string): strin
 export const DASHBOARD_TOKEN_ENV = "FAILPROOFAI_DASHBOARD_TOKEN";
 /** The query parameter the printed address presents the token in, once. */
 export const DASHBOARD_TOKEN_PARAM = "token";
-/** The HttpOnly cookie the browser keeps the token in after that first request. */
+/** Prefix of the HttpOnly cookie the browser keeps the token in after that first request. */
 export const DASHBOARD_TOKEN_COOKIE = "failproofai_dashboard_token";
+
+/**
+ * The cookie name for the dashboard the browser reached on `port`.
+ *
+ * Browsers send a host's cookies to every port on it, so two dashboards on one
+ * host (say `failproofai` on :8020 and `bun run dev` on :3000) would overwrite
+ * each other's token under one name and each answer 403 in turn.
+ */
+export function dashboardTokenCookie(port: string): string {
+  return `${DASHBOARD_TOKEN_COOKIE}_${port}`;
+}
 /** A generated token is 64 hex characters. A shorter value is not accepted as one. */
 const MIN_TOKEN_LENGTH = 32;
 
@@ -148,9 +159,16 @@ export function dashboardToken(): string | null {
 /** `url` with the token added for the browser to present, or `url` unchanged when there is none. */
 export function withDashboardToken(url: string, token: string | undefined): string {
   if (!token) return url;
-  const parsed = new URL(url);
-  parsed.searchParams.set(DASHBOARD_TOKEN_PARAM, token);
-  return parsed.toString();
+  try {
+    const parsed = new URL(url);
+    parsed.searchParams.set(DASHBOARD_TOKEN_PARAM, token);
+    return parsed.toString();
+  } catch {
+    // An address URL cannot parse, such as an IPv6 bind with a zone id
+    // (`fe80::1%eth0`). The launcher printed those as-is before and must not
+    // crash on them now. The token is hex, so it needs no escaping.
+    return `${url}${url.includes("?") ? "&" : "?"}${DASHBOARD_TOKEN_PARAM}=${token}`;
+  }
 }
 
 /** Compares a presented token in time that does not depend on where it first differs. */

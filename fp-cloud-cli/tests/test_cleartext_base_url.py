@@ -64,21 +64,41 @@ def test_an_unparseable_http_url_is_refused_rather_than_guessed():
     assert plain_http_destination("http://[::1:3000") is not None
 
 
+def _session(base_url: str) -> config.CliConfig:
+    return config.CliConfig(base_url=base_url, session_token="tok", expires_at="2999-01-01T00:00:00Z")
+
+
 @pytest.mark.parametrize("url", REMOTE_HTTP)
-def test_flag_env_and_saved_config_are_all_refused_before_a_request(url, home, runner, monkeypatch):
-    config.save_config(
-        config.CliConfig(base_url=url, session_token="tok", expires_at="2999-01-01T00:00:00Z")
-    )
+def test_flag_env_and_saved_config_are_each_refused_before_a_request(url, home, runner, monkeypatch):
+    """Each source on its own: the flag and env cases run over an https saved config."""
     with respx.mock(assert_all_called=False) as router:
         anything = router.route().respond(200, json={})
+        config.save_config(_session("https://dash.example.com"))
         via_flag = runner.invoke(app, ["--base-url", url, "sessions"])
         monkeypatch.setenv("FP_DASHBOARD_URL", url)
         via_env = runner.invoke(app, ["sessions"])
         monkeypatch.delenv("FP_DASHBOARD_URL")
+        config.save_config(_session(url))
         via_saved = runner.invoke(app, ["whoami"])
     for result in (via_flag, via_env, via_saved):
         assert result.exit_code == 2, _said(result)
         assert "over plain http" in _said(result)
+    assert not anything.called
+
+
+@pytest.mark.parametrize(
+    "argv",
+    [["sessions", "--help"], ["keys", "--help"], ["keys", "list", "--help"], ["help"], ["version"]],
+)
+def test_help_and_version_still_work_with_a_saved_plain_http_url(argv, home, runner):
+    """Click runs the app callback before a subcommand parses `--help`, so the refusal
+    lives where requests are built; nothing here sends anything."""
+    config.save_config(_session("http://dash.example.com"))
+    with respx.mock(assert_all_called=False) as router:
+        anything = router.route().respond(200, json={})
+        result = runner.invoke(app, argv)
+    assert result.exit_code == 0, _said(result)
+    assert "over plain http" not in _said(result)
     assert not anything.called
 
 
@@ -102,11 +122,6 @@ def test_loopback_http_still_reaches_a_local_stack(url, home, runner):
         result = runner.invoke(app, ["--base-url", url, "--token", "tok", "sessions"])
     assert result.exit_code == 3, _said(result)  # the request went out, and found nothing
     assert sessions.called
-
-
-def test_version_needs_no_network_and_is_not_refused(home, runner):
-    result = runner.invoke(app, ["--base-url", "http://dash.example.com", "version"])
-    assert result.exit_code == 0, _said(result)
 
 
 def test_logout_clears_an_old_plain_http_session_without_sending_it(home, runner):

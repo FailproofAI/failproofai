@@ -163,6 +163,22 @@ describe("client-telemetry sends nothing of the user's", () => {
     expect(sent().properties.error_filename).toBe("/project/[name]/session/[sessionId]");
   });
 
+  it("sends any location a caller passes (the navbar's from_path) as its route", () => {
+    captureClientEvent("audit_nav_clicked", {
+      from_path: `/project/${PROJECT}/session/${SESSION}`,
+      back_to: `${window.location.origin}/project/${PROJECT}?cli=codex`,
+      docs: "https://docs.example.com/home/alice",
+      is_active_tab: false,
+    });
+    const { properties } = sent();
+    expect(properties.from_path).toBe("/project/[name]/session/[sessionId]");
+    expect(properties.back_to).toBe("/project/[name]");
+    // Not a location in this app: passed through as the caller wrote it.
+    expect(properties.docs).toBe("https://docs.example.com/home/alice");
+    expect(properties.is_active_tab).toBe(false);
+    expect(fetchSpy.mock.calls[0][1].body).not.toContain(SESSION);
+  });
+
   it("keeps the structured properties callers send", () => {
     captureClientEvent("activity_filter_changed", { has_session: true, active_filter_count: 2, cli: "codex" });
     expect(sent().properties).toMatchObject({ has_session: true, active_filter_count: 2, cli: "codex" });

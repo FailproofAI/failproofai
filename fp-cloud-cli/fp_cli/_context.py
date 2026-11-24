@@ -160,14 +160,32 @@ def plain_http_destination(url: Optional[str]) -> Optional[str]:
 
 
 def resolved_base_url(state: AppState) -> str:
-    """The effective dashboard URL.
+    """The effective dashboard URL, refused if a request to it would travel in clear.
 
     The app callback already resolves flag/env > saved config > the public
     default (`config.DEFAULT_BASE_URL`), so `state.base_url` is normally set.
     This falls back to the same default for any AppState built by another path
     (tests, embedders), so the CLI always has a URL to talk to.
+
+    Every request goes to the URL this returns: `build_context` and `require_auth`
+    call it, and so does `login`. That makes it the place to refuse plain http to
+    another host (see `plain_http_destination`). The URL can come from
+    `FP_DASHBOARD_URL` or the saved config as easily as from `--base-url`, and none
+    was checked. Refusing here rather than in the app callback keeps `--help` working
+    for every command, because Click runs the callback before it parses a
+    subcommand's own `--help`. `logout` reads `state.base_url` itself, and clears
+    the local session without contacting such a host.
     """
-    return state.base_url or cfgmod.DEFAULT_BASE_URL
+    base = state.base_url or cfgmod.DEFAULT_BASE_URL
+    cleartext = plain_http_destination(base)
+    if cleartext:
+        raise click.BadParameter(
+            f"refusing to send credentials to {cleartext} over plain http. Use https "
+            "(with --insecure for a self-signed certificate), or plain http only for "
+            "localhost.",
+            param_hint="--base-url",
+        )
+    return base
 
 
 def _org_header(state: AppState) -> Optional[str]:

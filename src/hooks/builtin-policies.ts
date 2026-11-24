@@ -542,11 +542,12 @@ const FAILPROOFAI_CODE_PATH_RE = new RegExp(
     // relative `.bin/failproofai` a command run from inside `node_modules`
     // names is the same file. `.bin` must start a path component, so
     // `firmware.bin/failproofai` is not it, but anything that is not part of a
-    // name may stand before it (`>.bin/…`), and so may a glued short option
-    // (`-O.bin/…`). A FILE, like the entry above: the rest of
+    // name may stand before it (`>.bin/…`), and so may a short option the
+    // path is glued to, alone or at the end of a cluster (`-O.bin/…`,
+    // `-so.bin/…`). A FILE, like the entry above: the rest of
     // `node_modules/.bin` (every other package's binary, run by path all the
     // time) stays out of it.
-    String.raw`(?:(?<![\w.-])|(?<=(?:^|\s)-[A-Za-z]))\.bin[\\/](?:\.?[\\/])*failproofai(?:\.(?:cmd|ps1|exe|bunx))?(?![\w.@\\/-])`,
+    String.raw`(?:(?<![\w.-])|(?<=(?:^|\s)-[A-Za-z]+))\.bin[\\/](?:\.?[\\/])*failproofai(?:\.(?:cmd|ps1|exe|bunx))?(?![\w.@\\/-])`,
   ].join("|"),
   "i",
 );
@@ -734,7 +735,8 @@ const COPY_COMMANDS = new Set(["cp", "rsync", "install"]);
  * judged as well as the operands as written (FailproofAI/agenteye#1795).
  * A value is not a source: `install -o failproofai -m 0755 agentd /usr/local/bin/`
  * installs `agentd`. `t` is the target directory for all but rsync, where it
- * is `--times`.
+ * is `--times`, and scp, which has none. scp's `-T` is not `--no-target-directory`
+ * and its `-R` is not recursive.
  */
 type IntoDirectoryOptions = { short: string; values: readonly string[]; flags: readonly string[] };
 
@@ -804,6 +806,8 @@ const INTO_DIRECTORY_OPTIONS = new Map<string, IntoDirectoryOptions>(Object.entr
       "version", "whole-file", "write-devices", "xattrs",
     ],
   },
+  // OpenSSH 9's `scp` synopsis: no long options.
+  scp: { short: "cDFiJloPSX", values: [], flags: [] },
 } satisfies Record<string, IntoDirectoryOptions>));
 
 /**
@@ -1663,8 +1667,8 @@ function landsInDirectoryAs(
           if (flag === "t" && head !== "rsync") directory = value;
           break;
         }
-        if (flag === "r" || flag === "R" || flag === "a") recursive = true;
-        if (flag === "T" && head !== "rsync") ontoItself = true;
+        if (flag === "r" || ((flag === "R" || flag === "a") && head !== "scp")) recursive = true;
+        if (flag === "T" && head !== "rsync" && head !== "scp") ontoItself = true;
         if (flag === "d" && head === "install") createsDirectories = true;
       }
       continue;
@@ -1677,6 +1681,8 @@ function landsInDirectoryAs(
   const sources = directory !== undefined ? operands : head === "ln" && operands.length === 1 ? operands : operands.slice(0, -1);
   const written = directory ?? (head === "ln" && operands.length === 1 ? "." : operands[operands.length - 1]);
   if (written === undefined || sources.length === 0) return false;
+  // `host:path` is somewhere else's disk.
+  if (head === "scp" && /^[^/\\]{2,}:/.test(written)) return false;
   const destination = inShell(written);
   if (directory === undefined && (namesState(destination) || landsOnState(written))) return true;
   const baseName = (path: string) => path.slice(Math.max(path.lastIndexOf("/"), path.lastIndexOf("\\")) + 1);
@@ -1701,7 +1707,9 @@ function landsInDirectoryAs(
     // A trailing separator keeps the directory's own name everywhere but rsync,
     // where `src/` means what is in it.
     if (head === "rsync" && /[\\/]$/.test(source)) return false;
-    const name = baseName(source.replace(/[\\/]+$/, ""));
+    // A remote source (`host:path`) lands under the name after the host.
+    const local = head === "scp" || head === "rsync" ? source.replace(/^[^/\\]{2,}:/, "") : source;
+    const name = baseName(local.replace(/[\\/]+$/, ""));
     if (name === "" || name === "." || name === "..") return false;
     if (lost && relativeWord(into) && couldBeEntryName(name)) return true;
     const landing = `${into}/${name}`;
@@ -1836,8 +1844,105 @@ function writesViaOutputFlag(head: string, args: string[], namesState: (text: st
     if (long && namesState(arg)) return true;
     const bundled = /^-[A-Za-z]*[oD]$/.test(arg) && flags.includes(`-${arg[arg.length - 1]}`);
     if ((flags.includes(arg) || bundled) && namesState(args[i + 1] ?? "")) return true;
+    // Or the value glued on, after the option alone or at the end of a
+    // cluster: `curl -o<file>`, `curl -so<file>`.
+    if (/^-[A-Za-z]/.test(arg)) {
+      for (let c = 1; c < arg.length - 1 && /[A-Za-z]/.test(arg[c]); c++) {
+        if (flags.includes(`-${arg[c]}`) && namesState(arg.slice(c + 1))) return true;
+      }
+    }
   }
   return false;
+}
+
+/** wget's short options that take a value (`wget --help`, GNU Wget 1.21). */
+const WGET_VALUE_OPTIONS = "eoaiBtOTwQPlARDIXU";
+
+/** curl's short options that take a value (`curl --help all`, curl 8). */
+const CURL_VALUE_OPTIONS = "AbcCdDEeFHKmoPQrTtuUwxXyYz";
+
+/**
+ * The files a download names after its URL rather than on the line, as
+ * `{dir, name}`: `wget <url>`, and `curl -O` / `--remote-name`, save the URL's
+ * last segment into `-P` / `--directory-prefix` (wget), `--output-dir` (curl)
+ * or the current directory. So `cd node_modules/.bin && wget https://…/failproofai`
+ * writes the entry with `.bin/failproofai` nowhere on the line
+ * (FailproofAI/agenteye#1795). `name` is `null` when the server picks it
+ * (`--content-disposition`, `-J`), or the URLs come from a file (`-i`): then
+ * it could be anything, the entry's included. A name the line gives (`-O`
+ * for wget, `-o` for curl) is judged with the other operands, and a recursive
+ * wget puts what it fetches under a directory named after the host.
+ */
+function downloadLandings(words: string[]): Array<{ dir: string; name: string | null }> {
+  const head = words.length > 0 ? commandBasename(words[0]) : "";
+  if (head !== "wget" && head !== "curl") return [];
+  const valueOptions = head === "wget" ? WGET_VALUE_OPTIONS : CURL_VALUE_OPTIONS;
+  let dir = ".";
+  let urlNamed = head === "wget";
+  let serverNamed = false;
+  let named = false;
+  let recursive = false;
+  let flat = false;
+  const urls: string[] = [];
+  const args = words.slice(1);
+  for (let i = 0; i < args.length; i++) {
+    const arg = args[i];
+    if (arg === "--") {
+      urls.push(...args.slice(i + 1));
+      break;
+    }
+    if (arg.startsWith("--")) {
+      const eq = arg.indexOf("=");
+      const name = arg.slice(2, eq === -1 ? undefined : eq);
+      const value = eq === -1 ? undefined : arg.slice(eq + 1);
+      if (name === "directory-prefix" || name === "output-dir") dir = value ?? args[++i] ?? dir;
+      else if (name === "output-document" || name === "spider") named = true;
+      else if (name === "remote-name" || name === "remote-name-all") urlNamed = true;
+      else if (name === "content-disposition" || name === "remote-header-name" || name === "input-file") serverNamed = true;
+      else if (name === "recursive" || name === "mirror" || name === "page-requisites" || name === "force-directories") recursive = true;
+      else if (name === "no-directories") flat = true;
+      continue;
+    }
+    if (arg.startsWith("-") && arg.length > 1) {
+      // wget's two-letter `-n?` options (`-nd`, `-nH`, `-nc`, `-np`, `-nv`).
+      if (head === "wget" && /^-n[A-Za-z]$/.test(arg)) {
+        if (arg === "-nd") flat = true;
+        continue;
+      }
+      for (let c = 1; c < arg.length; c++) {
+        const flag = arg[c];
+        if (valueOptions.includes(flag)) {
+          const value = c + 1 < arg.length ? arg.slice(c + 1) : args[++i];
+          if (head === "wget" && flag === "P") dir = value ?? dir;
+          if (head === "wget" && flag === "O") named = true;
+          if (head === "wget" && flag === "i") serverNamed = true;
+          break;
+        }
+        if (head === "curl" && flag === "O") urlNamed = true;
+        if (head === "curl" && flag === "J") serverNamed = true;
+        if (head === "wget" && "rmpx".includes(flag)) recursive = true;
+      }
+      continue;
+    }
+    urls.push(arg);
+  }
+  if (!urlNamed || named || (recursive && !flat)) return [];
+  if (serverNamed || recursive) return [{ dir, name: null }];
+  const landings: Array<{ dir: string; name: string | null }> = [];
+  for (const url of urls) {
+    // The last segment of the path, without the scheme, host, query or
+    // fragment, as written and percent-decoded.
+    const path = url.replace(/^[A-Za-z][\w+.-]*:\/\/[^/?#]*/, "").replace(/[?#][\s\S]*$/, "");
+    const last = path.slice(path.lastIndexOf("/") + 1);
+    let decoded = last;
+    try {
+      decoded = decodeURIComponent(last);
+    } catch {
+      // Not valid percent-encoding: the name as written is what lands.
+    }
+    for (const name of new Set([last, decoded])) if (name !== "") landings.push({ dir, name });
+  }
+  return landings;
 }
 
 /**
@@ -2296,7 +2401,20 @@ function destroysFailproofaiState(command: string, depth = 0, startDir?: string)
         }
       } else if (
         [at, ...alts].some((base) =>
-          lists.some((list) => landsInDirectoryAs(list, namesState, (word) => fromBase(base, word), base.lost, landsOnState)),
+          lists.some(
+            (list) =>
+              landsInDirectoryAs(list, namesState, (word) => fromBase(base, word), base.lost, landsOnState) ||
+              downloadLandings(list).some(({ dir, name }) => {
+                const into = fromBase(base, dir).replace(/(?:[\\/]+\.?)+$/, "");
+                if (name === null) return NPM_BIN_DIRECTORY_RE.test(into);
+                const landing = `${dir.replace(/[\\/]+$/, "")}/${name}`;
+                return (
+                  namesState(fromBase(base, landing)) ||
+                  landsOnState(landing) ||
+                  (base.lost && relativeWord(dir) && couldBeEntryName(name))
+                );
+              }),
+          ),
         )
       ) {
         // Before the `reachesState` gate, because the point is that nothing on

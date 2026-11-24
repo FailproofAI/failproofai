@@ -141,6 +141,7 @@ describe("block-failproofai-commands — the entry a project-scope npx hook runs
       ["a name npx never runs for `failproofai`", "/work/proj/node_modules/.bin/failproofai.sh"],
       ["a project file named after the product", "/work/proj/scripts/failproofai.sh"],
       ["a directory of that name under .bin", "/work/proj/.bin/failproofai/README.md"],
+      ["a file under a directory whose name ends in .bin", "/data/firmware.bin/failproofai"],
     ])("allows writing %s", async (_label, path) => {
       expect((await write(path)).decision).toBe("allow");
     });
@@ -187,6 +188,84 @@ describe("block-failproofai-commands — the entry a project-scope npx hook runs
       expect(await bash("mv /tmp/build/failproofai /home/u/.nvm/versions/node/v22.11.0/lib/node_modules/")).toBe("deny");
     });
 
+    // Every GNU spelling of the target directory, which puts the sources AFTER
+    // it. rsync has no such option: its `-t` is `--times`, and its last operand
+    // is still the destination.
+    it.each([
+      ["-t glued to its value", "cp -tnode_modules/.bin /tmp/stage/failproofai"],
+      ["-t at the end of a cluster", "cp -vt node_modules/.bin /tmp/stage/failproofai"],
+      ["-t inside install's cluster", "install -Dt node_modules/.bin /tmp/stage/failproofai"],
+      ["-t on ln", "ln -st node_modules/.bin /tmp/stage/failproofai"],
+      ["an abbreviated --target=", "cp --target=node_modules/.bin /tmp/stage/failproofai"],
+      ["an abbreviated --target with its value apart", "cp --target node_modules/.bin /tmp/stage/failproofai"],
+      ["rsync's -t, which is --times", "rsync -t /tmp/stage/failproofai node_modules/.bin/"],
+    ])("denies a copy into the .bin directory with %s", async (_label, command) => {
+      expect(await bash(command)).toBe("deny");
+    });
+
+    // A redirect or a comment after the destination was read as the
+    // destination, so every copy check judged `2>/dev/null` or `x`. That let
+    // the state through too, before this file existed.
+    it.each([
+      ["a stderr redirect", "cp /tmp/stub.sh node_modules/.bin/failproofai 2>/dev/null"],
+      ["a stdout redirect", "install -m 755 /tmp/stub.sh node_modules/.bin/failproofai > /dev/null"],
+      ["2>&1", "rsync /tmp/stub.sh node_modules/.bin/failproofai 2>&1"],
+      ["an input redirect", "cp /tmp/stub.sh node_modules/.bin/failproofai < /dev/null"],
+      ["a comment", "cp /tmp/stub.sh node_modules/.bin/failproofai # keep"],
+      ["a redirect after a copy into the directory", "cp /tmp/stage/failproofai node_modules/.bin/ 2>/dev/null"],
+      ["a redirect after a link into the directory", "ln -sf /tmp/stage/failproofai node_modules/.bin 2>/dev/null"],
+      ["the state, emptied the same way", "cp /dev/null ~/.failproofai/policies-config.json 2>/dev/null"],
+    ])("denies a write followed by %s", async (_label, command) => {
+      expect(await bash(command)).toBe("deny");
+    });
+
+    // A source that names a protected path is a copy OUT, except when it lands
+    // on installed code: a link spelled `…/bin/failproofai` is still a stub.
+    it("denies a protected-looking source when it lands on the entry", async () => {
+      expect(await bash("cp /tmp/bin/failproofai node_modules/.bin/")).toBe("deny");
+      expect(await bash("rsync /tmp/bin/failproofai node_modules/.bin/")).toBe("deny");
+    });
+
+    // A protected FILE sits in a directory nothing protects, so the walk has
+    // to read a relative word from where a `cd` left the shell.
+    it.each([
+      ["a redirect after cd", "cd node_modules/.bin && printf 'exit 0' > failproofai"],
+      ["a copy after cd", "cd node_modules/.bin && cp /tmp/stub.sh failproofai"],
+      ["a copy after pushd", "pushd node_modules/.bin && cp /tmp/stub.sh failproofai"],
+      ["chmod after cd", "cd node_modules/.bin && chmod +x failproofai"],
+      ["two relative cds", "cd node_modules && cd .bin && cp /tmp/stub.sh failproofai"],
+      ["a cd outside a subshell that ran its own", "cd node_modules/.bin && (cd /tmp && ls) && cp /tmp/stub.sh failproofai"],
+      ["a copy of a file named failproofai into the directory", "cd node_modules/.bin && cp /tmp/stage/failproofai ."],
+    ])("denies %s", async (_label, command) => {
+      expect(await bash(command)).toBe("deny");
+    });
+
+    // A glob replaces the entry wherever it already exists, whatever path
+    // leads to it, so the candidates are tried against every stretch of it.
+    it.each([
+      ["a parent directory", "cp /tmp/stub.sh ../node_modules/.bin/fail*"],
+      ["home", "cp /tmp/stub.sh ~/node_modules/.bin/fail*"],
+      ["an absolute path", "cp /tmp/stub.sh /work/proj/node_modules/.bin/fail*"],
+      // `/home/u/.failproofai` is a candidate itself; another home is not.
+      ["the state, by an absolute path", "rm -rf /home/alice/.failproof*"],
+    ])("denies a glob onto the entry through %s", async (_label, command) => {
+      expect(await bash(command)).toBe("deny");
+    });
+
+    // npm's bin directory itself: whatever a directory moved, linked or copied
+    // onto it holds becomes an entry, and npx searches every parent's.
+    it.each([
+      ["a link over home's", "ln -s /tmp/stage ~/node_modules/.bin"],
+      ["a move", "mv /tmp/stage node_modules/.bin"],
+      ["a recursive copy", "cp -r /tmp/stage/ node_modules/.bin/"],
+      ["a copy onto it with -T", "cp -rT /tmp/stage node_modules/.bin"],
+      ["a copy of a directory's contents", "cp -a /tmp/stage/. node_modules/.bin/"],
+      ["rsync of a directory's contents", "rsync -a /tmp/stage/ node_modules/.bin/"],
+      ["a build directory, which becomes the directory when it is missing", "cp -r dist/ node_modules/.bin/"],
+    ])("denies %s onto node_modules/.bin", async (_label, command) => {
+      expect(await bash(command)).toBe("deny");
+    });
+
     it.each([
       ["running another package's binary", "./node_modules/.bin/vitest run"],
       ["running a binary through node", "node node_modules/.bin/eslint src"],
@@ -201,9 +280,21 @@ describe("block-failproofai-commands — the entry a project-scope npx hook runs
       ["adding a dev dependency", "npm i -D vitest"],
       ["copying another tool into the directory", "cp /tmp/stage/my-tool node_modules/.bin/"],
       ["copying an entry out", "cp node_modules/.bin/failproofai /tmp/inspect"],
-      ["copying a whole build directory", "cp -r dist/ node_modules/.bin/"],
+      ["copying an entry out into a directory", "cp node_modules/.bin/failproofai /tmp/inspect/"],
       ["moving a source file", "mv src/failproofai.ts src/guard.ts"],
       ["backing a directory up", "cp -r node_modules/.bin /tmp/bin-backup"],
+      ["backing the state up into a directory", "cp -r ~/.failproofai /tmp/backup/"],
+      ["backing the state up with a redirect", "cp ~/.failproofai/config.json /tmp/backup.json 2>/dev/null"],
+      ["reading the state with a redirect", "cat ~/.failproofai/config.json 2>/dev/null"],
+      // A value is not a source.
+      ["installing a binary owned by a user of that name", "install -o failproofai -g failproofai -m 0755 build/agentd /usr/local/bin/"],
+      ["creating directories owned by a user of that name", "install -d -o failproofai /srv/app/bin"],
+      // `.bin` starts a path component, or it is another name.
+      ["copying a file onto one whose name ends in .bin", "cp failproofai release.bin"],
+      ["running a binary after a cd", "cd node_modules/.bin && ./vitest run"],
+      ["a cd that a subshell undoes", "(cd node_modules/.bin && ls) && cp /tmp/stub.sh failproofai"],
+      ["copying a tool after a cd", "cd node_modules/.bin && cp /tmp/stage/my-tool ."],
+      ["clearing a tree's .bin directories", "rm -rf ~/projects/*/node_modules/.bin/*"],
     ])("allows %s", async (_label, command) => {
       expect(await bash(command)).not.toBe("deny");
     });
@@ -215,7 +306,8 @@ describe("block-failproofai-commands — the entry a project-scope npx hook runs
   // file no hook runs.
   it("protects the name every project-scope npx hook command runs", async () => {
     const names = new Set<string>();
-    let shellIntegrations = 0;
+    const viaNpx: string[] = [];
+    const otherwise: string[] = [];
     for (const integration of listIntegrations()) {
       if (!integration.scopes.includes("project")) continue;
       let found = false;
@@ -226,8 +318,14 @@ describe("block-failproofai-commands — the entry a project-scope npx hook runs
           found = true;
         }
       }
-      if (found) shellIntegrations++;
+      (found ? viaNpx : otherwise).push(integration.id);
     }
+    // A new integration, or a new launcher (`npx --yes`, `bunx`), lands in one
+    // of these lists and fails here until the guard is checked against it.
+    expect(viaNpx.sort()).toEqual(["antigravity", "claude", "codex", "copilot", "cursor", "devin", "factory", "goose"]);
+    // OpenCode runs npx from the shim checked below; Pi loads the extension by
+    // a package path, which runs the CLI next to it, not through npx.
+    expect(otherwise.sort()).toEqual(["opencode", "pi"]);
     // OpenCode's entry is a plugin path; the npx call is inside the shim that
     // install writes next to it.
     const dir = mkdtempSync(join(tmpdir(), "fpai-npx-guard-opencode-"));
@@ -244,8 +342,6 @@ describe("block-failproofai-commands — the entry a project-scope npx hook runs
       cwd.mockRestore();
       rmSync(dir, { recursive: true, force: true });
     }
-    // Claude, Codex, Copilot, Cursor, Factory, Devin, Antigravity and Goose.
-    expect(shellIntegrations).toBeGreaterThanOrEqual(8);
     expect([...names]).toEqual(["failproofai"]);
     for (const name of names) {
       expect((await write(`/work/proj/node_modules/.bin/${name}`)).decision).toBe("deny");

@@ -206,6 +206,56 @@ describe("pause state", () => {
     // And it is genuinely inert once the ceiling passes.
     expect(readActivePause("sess-h", start + PAUSE_CEILING_MS + 1)).toBeNull();
   });
+
+  // The clamp above measures the ceiling from `firstPausedAt`, which comes from
+  // the same file. Moving the START out of reach moved the ceiling with it: a
+  // file dated 2100 read as live on every tool call until then — a single forged
+  // write that outlasted every session on the machine (FailproofAI/agenteye#1796).
+  describe("a pause that claims to start in the future", () => {
+    const forge = (fields: Record<string, unknown>) => {
+      writePause({ sessionId: "sess-f", durationMs: 60_000, now: 1_000 });
+      const [file] = readdirSync(pauseStateDir());
+      writeFileSync(
+        resolve(pauseStateDir(), file),
+        JSON.stringify({ schemaVersion: 1, sessionId: "sess-f", setBy: "cli", ...fields }),
+      );
+    };
+    const now = Date.UTC(2026, 10, 24);
+    const year2100 = Date.UTC(2100, 0, 1);
+
+    it("is not a pause at all", () => {
+      forge({ pausedAt: year2100, firstPausedAt: year2100, expiresAt: year2100 });
+      expect(readActivePause("sess-f", now)).toBeNull();
+      expect(readActivePause("sess-f", now + 30 * 24 * 3_600_000)).toBeNull();
+      expect(listActivePauses(now)).toEqual([]);
+    });
+
+    it("is refused when only the start of the run is in the future", () => {
+      forge({ pausedAt: now, firstPausedAt: year2100, expiresAt: now + 60_000 });
+      expect(readActivePause("sess-f", now)).toBeNull();
+    });
+
+    it("is refused when the run starts after its latest renewal", () => {
+      forge({ pausedAt: now - 60_000, firstPausedAt: now - 1_000, expiresAt: now + 60_000 });
+      expect(readActivePause("sess-f", now)).toBeNull();
+    });
+
+    // The writer and the reader share one clock, so a legitimate file is never
+    // ahead of it by more than a clock correction. Refusing would only ever turn
+    // enforcement back ON, but a pause that vanishes after a small clock step
+    // would just be re-issued, so a minute of slack costs nothing.
+    it("tolerates a small clock step backwards", () => {
+      forge({ pausedAt: now + 30_000, firstPausedAt: now + 30_000, expiresAt: now + 90_000 });
+      expect(readActivePause("sess-f", now)?.expiresAt).toBe(now + 90_000);
+    });
+
+    it("never lets a forged start carry into a real renewal", () => {
+      forge({ pausedAt: year2100, firstPausedAt: year2100, expiresAt: year2100 });
+      const renewed = writePause({ sessionId: "sess-f", durationMs: 60_000, now });
+      expect(renewed.firstPausedAt).toBe(now);
+      expect(renewed.expiresAt).toBe(now + 60_000);
+    });
+  });
 });
 
 describe("formatDuration", () => {

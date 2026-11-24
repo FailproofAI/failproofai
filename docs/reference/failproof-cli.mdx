@@ -99,7 +99,7 @@ Run `failproofai` without arguments to open the local policy dashboard.
 | `--session <id>` | Target an explicit session for pause or resume |
 | `--all` | With `--resume`, end every active pause |
 
-Local pauses suspend builtin, custom, convention, and pack policies for one session. They always expire and do not disable Cloud-managed policies. `block-failproofai-commands` — which is always on and cannot itself be disabled or paused — prevents an instrumented agent from using this escape hatch itself.
+Local pauses suspend builtin, custom, convention, and pack policies for one session. They always expire, at most 8 hours after the first pause in a run, and they do not disable Cloud-managed policies or `block-failproofai-commands`, which is always on and cannot itself be disabled or paused. That guard refuses the direct ways an instrumented agent could pause itself: running `failproofai config --pause`, or writing the pause file under `~/.failproofai/state/sessions/`. It reads commands, not what a script does when it runs, so a script the agent writes and then runs can still reach the same state. A pause file is checked for a bounded expiry and a start that is not in the future, not for who wrote it.
 
 ## Policy flags
 

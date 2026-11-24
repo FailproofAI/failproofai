@@ -1,8 +1,8 @@
 /**
  * Built-in security policies for Claude Code hooks.
  */
-import { resolve, join } from "node:path";
-import { statSync } from "node:fs";
+import { resolve, join, dirname, basename, isAbsolute } from "node:path";
+import { realpathSync, statSync } from "node:fs";
 import { readFile, writeFile } from "node:fs/promises";
 import { execSync, execFileSync } from "node:child_process";
 import { homedir } from "node:os";
@@ -462,12 +462,87 @@ const GIT_COMMIT_MERGE_RE = /git\s+(commit|merge|rebase|cherry-pick)\b/;
 
 // blockFailproofaiCommands
 /**
- * A command that removes or moves failproofai's own state.
+ * failproofai's INSTALLED CODE: the package a hook command runs, and the bin
+ * entry that names it.
+ *
+ * User-scope hooks run the absolute path `which failproofai` returned at
+ * install time. Under nvm, Homebrew, Volta, bun, pnpm and the npx cache that is
+ * a package directory the agent's own user can write, and the hook client runs
+ * fresh from it on every tool call — so `process.exit(0)` written over
+ * `dist/cli.mjs` turned every later hook into an allow, for every session on
+ * the machine, with nothing reporting it. The daemon cannot catch that: a
+ * tampered client never asks it. The state pattern below needs a `.` the
+ * package path does not have (FailproofAI/agenteye#1796).
+ *
+ * - `node_modules/failproofai`, in every layout a package manager uses — and
+ *   `node_modules/@failproofai/failproofaid-*`, the daemon's platform package,
+ *   which `failproofai config` and `update` copy into place (on Linux as root,
+ *   under `/opt`).
+ * - `…/bin/failproofai`, the entry npm, nvm, Homebrew, bun, Volta and yarn put
+ *   on PATH, and `…/pnpm/failproofai`, which pnpm puts directly in its home.
+ *
+ * A checkout of this repository matches neither — no `node_modules` above it,
+ * and its entry is `bin/failproofai.mjs` — so the guard does not stand in front
+ * of working on failproofai itself. `node_modules/.bin/failproofai`, the stub
+ * `npx` prefers, is not matched here either (FailproofAI/agenteye#1795).
+ *
+ * Case-insensitive because macOS volumes are by default: every casing of these
+ * paths opens the real file. `(?:\.?[\\/])*` absorbs the `//` and `/./` a path
+ * resolver collapses.
+ */
+const FAILPROOFAI_CODE_PATH_RE =
+  /node_modules[\\/](?:\.?[\\/])*(?:failproofai(?![\w.@-])|@failproofai[\\/](?:\.?[\\/])*failproofaid\b)|[\\/](?:bin|pnpm)[\\/](?:\.?[\\/])*failproofai(?:\.cmd|\.ps1)?(?![\w.@-])/i;
+
+/**
+ * failproofai's own files: its state, and the installed code above.
+ *
+ * Named for the state, which came first. The code joined it because writing
+ * over it switches enforcement off as completely as deleting the state does,
+ * and every use of this pattern — the file tools, the shell walk, the variable
+ * and glob tracking — has to see both.
  *
  * Named separately from the binary walk because it never mentions the binary:
  * the target is a path, and the verb is an ordinary file command.
  */
-const FAILPROOFAI_STATE_PATH_RE = /\.failproofai(?:\/|\b)/;
+const FAILPROOFAI_STATE_PATH_RE = new RegExp(
+  String.raw`\.failproofai(?:\/|\b)|` + FAILPROOFAI_CODE_PATH_RE.source,
+  "i",
+);
+
+/** Which of failproofai's own files `path` names, for a deny message that says which. */
+function failproofaiFileKind(path: string): "state" | "code" | null {
+  if (!path || !FAILPROOFAI_STATE_PATH_RE.test(path)) return null;
+  return FAILPROOFAI_CODE_PATH_RE.test(path) ? "code" : "state";
+}
+
+/**
+ * The file a write to `path` actually changes, every symlink resolved.
+ *
+ * A file tool writes THROUGH a link, so the path it is handed is not
+ * necessarily the one it changes — and npm, nvm and bun install the
+ * `failproofai` bin entry as exactly such a link into the package. A tail that
+ * does not exist yet (a file about to be created) is re-attached to the deepest
+ * ancestor that does, so a new file under a linked directory resolves too. A
+ * relative path is taken from the session's directory, not this process's: the
+ * daemon's worker runs somewhere else entirely.
+ *
+ * "" when nothing resolves. Never throws — this runs for every file write.
+ */
+function resolveWriteTarget(path: string, cwd: string | undefined): string {
+  let current = isAbsolute(path) ? path : path && cwd ? join(cwd, path) : "";
+  const missing: string[] = [];
+  for (let depth = 0; current && depth < 64; depth++) {
+    try {
+      return join(realpathSync(current), ...missing);
+    } catch {
+      const parent = dirname(current);
+      if (parent === current) break;
+      missing.unshift(basename(current));
+      current = parent;
+    }
+  }
+  return "";
+}
 
 /**
  * Everything the state guard is allowed to let PAST, as a list of commands that
@@ -702,6 +777,18 @@ const STATE_GLOB_CANDIDATES = [
   "/root/.failproofai",
   "/home/u/.failproofai",
   "/Users/u/.failproofai",
+  // The installed code (FAILPROOFAI_CODE_PATH_RE): a project install, and the
+  // global locations whose prefix is the same on every machine. nvm's version
+  // directory and the npx cache's hash are not, so a glob under those is not one
+  // this list can anticipate; the literal paths there still match.
+  "node_modules/failproofai",
+  "/usr/local/lib/node_modules/failproofai",
+  "/usr/lib/node_modules/failproofai",
+  "/opt/homebrew/lib/node_modules/failproofai",
+  "/usr/local/bin/failproofai",
+  "/opt/homebrew/bin/failproofai",
+  "~/.bun/bin/failproofai",
+  "~/.volta/bin/failproofai",
 ];
 
 /**
@@ -719,6 +806,11 @@ const GLOB_DECOYS = [
   "~/.config", "~/.cache", "$HOME/.config", "${HOME}/.cache",
   "/home/u/.config", "/Users/u/.config", "/root/.cache", "/tmp/build",
   "a", "foo.txt", "test-failures",
+  // Neighbours of the installed-code candidates, so `rm -rf node_modules/*` and
+  // its global equivalents are read as the sweeps they are.
+  "node_modules/react", "node_modules/.bin",
+  "/usr/local/lib/node_modules/npm", "/usr/lib/node_modules/npm", "/opt/homebrew/lib/node_modules/npm",
+  "/usr/local/bin/node", "/opt/homebrew/bin/node", "~/.bun/bin/bun", "~/.volta/bin/node",
 ];
 
 /**
@@ -2456,7 +2548,17 @@ function blockFailproofaiCommands(ctx: PolicyContext): PolicyResult {
   // so naming the state at all is the whole test.
   if (ctx.toolName === "Write" || ctx.toolName === "Edit" || ctx.toolName === "NotebookEdit") {
     const path = getFilePath(ctx) || ((ctx.toolInput?.notebook_path as string) ?? "");
-    if (FAILPROOFAI_STATE_PATH_RE.test(path)) {
+    // The path as given AND the file it lands on. The bin entry a user-scope
+    // hook runs is usually a symlink into the package, so writing through it
+    // changes the hook's code without the package's path ever being named.
+    const kind = failproofaiFileKind(path) ?? failproofaiFileKind(resolveWriteTarget(path, ctx.session?.cwd));
+    if (kind === "code") {
+      return deny(
+        "Writing to failproofai's installed code would switch enforcement off. " +
+          "If a policy is blocking legitimate work, say so and let the operator decide.",
+      );
+    }
+    if (kind === "state") {
       return deny(
         "Writing to failproofai's own state would switch enforcement off. " +
           "If a policy is blocking legitimate work, say so and let the operator decide.",
@@ -2492,7 +2594,7 @@ function blockFailproofaiCommands(ctx: PolicyContext): PolicyResult {
   // matcher and a real path to the shell.
   if (destroysFailproofaiState(cmd) || destroysFailproofaiState(unescaped)) {
     return deny(
-      "Deleting, moving or overwriting failproofai's own state would switch enforcement off. " +
+      "Deleting, moving or overwriting failproofai's own state or installed code would switch enforcement off. " +
         "If a policy is blocking legitimate work, say so and let the operator decide.",
     );
   }

@@ -20,6 +20,14 @@
  * stale file is therefore inert rather than dangerous — the failure mode worth
  * engineering against is not "the pause didn't work", it is "the pause silently
  * never ended".
+ *
+ * What this file does NOT give is unforgeability. The directory is owner-
+ * writable, and so is everything else that decides enforcement on this machine
+ * — the agent's hook config, the installed CLI, the interpreter that runs it —
+ * so anything running as the user, an agent's own script included, can write a
+ * pause here. The always-on guard refuses the direct routes; what the reader
+ * enforces is that one write buys at most the ceiling, measured from a start
+ * that cannot lie in the future (FailproofAI/agenteye#1796).
  */
 import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync } from "node:fs";
 import { createHash } from "node:crypto";
@@ -126,7 +134,16 @@ export function formatDuration(ms: number): string {
   return rest === 0 ? `${hours}h` : `${hours}h${rest}m`;
 }
 
-function parseStored(raw: unknown): StoredPause | null {
+/**
+ * How far a pause's recorded start may sit ahead of the reader's clock.
+ *
+ * The CLI that writes a pause and the hook that reads it share one clock, so a
+ * genuine file is ahead of it only after a clock correction — a minute covers
+ * that. Anything further was not written by `writePause` on this machine.
+ */
+const CLOCK_STEP_ALLOWANCE_MS = 60_000;
+
+function parseStored(raw: unknown, now: number): StoredPause | null {
   if (!raw || typeof raw !== "object") return null;
   const p = raw as Partial<StoredPause>;
   if (p.schemaVersion !== SCHEMA_VERSION) return null;
@@ -136,6 +153,15 @@ function parseStored(raw: unknown): StoredPause | null {
   // A file written before this field existed measures its ceiling from the
   // only start it recorded. Same meaning for a pause that was never renewed.
   const firstPausedAt = Number.isFinite(p.firstPausedAt) ? (p.firstPausedAt as number) : pausedAt;
+  // The ceiling below is measured from the run's start, and the start comes
+  // from this same owner-writable file — so a start in the future carried the
+  // ceiling with it. A file dated 2100 read as live on every tool call until
+  // 2100 (FailproofAI/agenteye#1796). `writePause` only ever records `now`, and
+  // a renewal keeps the earlier start, so a start after the renewal or ahead of
+  // the clock is not a pause this CLI wrote. Refused rather than clamped:
+  // clamping the start to `now` would restart the ceiling on every read, and
+  // refusing errs toward enforcement.
+  if (firstPausedAt > pausedAt || pausedAt > now + CLOCK_STEP_ALLOWANCE_MS) return null;
   return {
     schemaVersion: SCHEMA_VERSION,
     sessionId: p.sessionId,
@@ -165,7 +191,7 @@ export function readActivePause(sessionId: string | undefined, now = Date.now())
   try {
     const path = pauseFilePath(sessionId);
     if (!existsSync(path)) return null;
-    const stored = parseStored(JSON.parse(readFileSync(path, "utf8")));
+    const stored = parseStored(JSON.parse(readFileSync(path, "utf8")), now);
     if (!stored) return null;
     if (stored.expiresAt <= now) return null; // expired — inert, not dangerous
     const { schemaVersion: _ignored, ...pause } = stored;
@@ -228,7 +254,7 @@ export function listActivePauses(now = Date.now()): ActivePause[] {
   for (const name of names) {
     if (!name.endsWith(".json")) continue;
     try {
-      const stored = parseStored(JSON.parse(readFileSync(join(dir, name), "utf8")));
+      const stored = parseStored(JSON.parse(readFileSync(join(dir, name), "utf8")), now);
       if (!stored || stored.expiresAt <= now) continue;
       const { schemaVersion: _ignored, ...pause } = stored;
       out.push(pause);

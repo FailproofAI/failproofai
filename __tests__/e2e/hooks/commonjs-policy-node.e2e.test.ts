@@ -26,7 +26,7 @@ for (const dir of [join(home, ".failproofai"), dist, policies, proj]) mkdirSync(
 
 const builds = [
   ["build", "--target=node", "--format=esm", `--outfile=${join(dist, "cli.mjs")}`, "bin/failproofai.mjs",
-    "--external", "posthog-node", "--external", "sql.js"],
+    "--external", "sql.js"],
   ["build", "--target=node", "--format=cjs", `--outfile=${join(dist, "index.js")}`, "src/index.ts"],
 ].map((args) => spawnSync("bun", args, { cwd: repo, encoding: "utf8", timeout: 60000 }));
 afterAll(() => rmSync(root, { recursive: true, force: true }));

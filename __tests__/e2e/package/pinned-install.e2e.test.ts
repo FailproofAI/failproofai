@@ -20,6 +20,7 @@ import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import { spawn, spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import { createServer } from "node:http";
+import { isBuiltin } from "node:module";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
@@ -182,6 +183,28 @@ describe("installing the packed failproofai package", () => {
     const allowed = new Set([...RUNTIME.map((name) => `/${name}`), ...tarballs]);
     expect(registry.requests.filter((path) => !allowed.has(path))).toEqual([]);
     for (const name of RUNTIME) expect(registry.requests).toContain(`/${name}`);
+  });
+
+  it("ships bundles that load nothing from node_modules but the pinned runtime dependencies", () => {
+    // Whatever bundler flag leaves a package external (--external, -e,
+    // --packages external), its specifier stays in the bundle as an import,
+    // so the shipped bundles are where to look.
+    const dist = join(prefix, "lib", "node_modules", "failproofai", "dist");
+    const specifier = /(?:\bimport\s*\(\s*|\bfrom\s*|\bimport\s+|\b__require\s*\(\s*|\brequire\s*\(\s*)(["'])([^"'\n]+)\1/g;
+    const packageName = /^(?:@[a-z0-9][a-z0-9._~-]*\/)?[a-z0-9][a-z0-9._~-]*$/;
+    const strays: string[] = [];
+    for (const file of readdirSync(dist).filter((name) => /\.(?:m?js|cjs)$/.test(name))) {
+      for (const match of readFileSync(join(dist, file), "utf8").matchAll(specifier)) {
+        const spec = match[2];
+        if (spec.startsWith(".") || spec.startsWith("/") || isBuiltin(spec)) continue;
+        const name = spec.startsWith("@") ? spec.split("/").slice(0, 2).join("/") : spec.split("/")[0];
+        // Text the CLI writes into policy scaffolds and loader shims, not
+        // imports of its own: `from "failproofai"`, template URLs (`${distUrl}`).
+        if (!packageName.test(name) || name === PKG.name) continue;
+        if (!RUNTIME.includes(name)) strays.push(`${file}: ${spec}`);
+      }
+    }
+    expect(strays).toEqual([]);
   });
 
   it("runs the installed CLI with nothing else installed", async () => {

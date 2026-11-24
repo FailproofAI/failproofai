@@ -47,17 +47,32 @@ describe("parseBunLock", () => {
 });
 
 describe("build-script externals", () => {
-  it("names the package each --external leaves out of a bundle", () => {
+  it("names the package each external flag of a bun build leaves out of the bundle", () => {
     expect(packageOf("sql.js/dist/sql-asm.js")).toBe("sql.js");
     expect(packageOf("@posthog/core/dist/x.js")).toBe("@posthog/core");
     expect(
       externalsOf({
-        "build:cli": "bun build bin/a.mjs --external sql.js --external=@scope/pkg && node -e x",
-        test: "vitest",
+        "build:cli":
+          "bun build bin/a.mjs --external sql.js --external=@scope/pkg -e yaml/dist/x.js && " +
+          `node -e "const fs=require('fs');fs.writeFileSync('dist/a.mjs', 'x')"`,
+        "build:worker": "bun build bin/w.mjs --packages=external",
+        "build:index": "bun build src/index.ts --packages external && bun run build:cli",
+        test: "vitest -e nothing",
       }),
     ).toEqual([
       { name: "sql.js", script: "build:cli" },
       { name: "@scope/pkg", script: "build:cli" },
+      { name: "yaml", script: "build:cli" },
+      { name: "*", script: "build:worker" },
+      { name: "*", script: "build:index" },
+    ]);
+  });
+
+  it("reads this repository's build scripts the way bun does", () => {
+    const pkg = JSON.parse(readFileSync(join(REPO, "package.json"), "utf8"));
+    expect(externalsOf(pkg.scripts)).toEqual([
+      { name: "sql.js", script: "build:cli" },
+      { name: "sql.js", script: "build:worker" },
     ]);
   });
 
@@ -193,6 +208,13 @@ describe("checkRuntimeDependencies", () => {
     const pkg = { scripts: { "build:worker": "bun build bin/w.mjs --external lib --external posthog-node" } };
     expect(() => checkRuntimeDependencies(fixture({ pkg }))).toThrow(
       /"posthog-node" is left external by the build:worker script but is not a runtime dependency/,
+    );
+  });
+
+  it("refuses a build that leaves every package external", () => {
+    const pkg = { scripts: { "build:cli": "bun build bin/cli.mjs --external lib", "build:worker": "bun build w.mjs --packages external" } };
+    expect(() => checkRuntimeDependencies(fixture({ pkg }))).toThrow(
+      /the build:worker script leaves every package external/,
     );
   });
 

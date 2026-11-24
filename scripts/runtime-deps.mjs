@@ -96,15 +96,59 @@ export function packageOf(specifier) {
   return specifier.startsWith("@") ? parts.slice(0, 2).join("/") : parts[0];
 }
 
+/** Splits a shell command into words, keeping quoted strings in one word. */
+export function shellWords(command) {
+  const words = [];
+  let word = "";
+  let started = false;
+  let quote = null;
+  for (const ch of String(command)) {
+    if (quote) {
+      if (ch === quote) quote = null;
+      else word += ch;
+    } else if (ch === '"' || ch === "'") {
+      quote = ch;
+      started = true;
+    } else if (/\s/.test(ch)) {
+      if (started) words.push(word);
+      word = "";
+      started = false;
+    } else {
+      word += ch;
+      started = true;
+    }
+  }
+  if (started) words.push(word);
+  return words;
+}
+
 /**
  * Every package a `bun build` in package.json's scripts leaves external, as
- * { name, script } pairs.
+ * { name, script } pairs. `--external <pkg>`, `--external=<pkg>` and `-e <pkg>`
+ * name one; `--packages external` leaves every package external, reported as
+ * the name "*". Only `bun build` commands are read: the same script also runs
+ * `node -e "<code>"`, whose -e is not bun's.
  */
 export function externalsOf(scripts = {}) {
   const found = [];
   for (const [script, command] of Object.entries(scripts)) {
-    for (const match of String(command).matchAll(/--external(?:=|\s+)(\S+)/g)) {
-      found.push({ name: packageOf(match[1].replace(/^['"]|['"]$/g, "")), script });
+    const segments = [[]];
+    for (const word of shellWords(command)) {
+      if (["&&", "||", ";", "|"].includes(word)) segments.push([]);
+      else segments.at(-1).push(word);
+    }
+    for (const words of segments) {
+      if (words[0] !== "bun" || words[1] !== "build") continue;
+      for (let i = 2; i < words.length; i++) {
+        const word = words[i];
+        if (word === "--external" || word === "-e") {
+          if (words[i + 1]) found.push({ name: packageOf(words[++i]), script });
+        } else if (word.startsWith("--external=")) {
+          found.push({ name: packageOf(word.slice("--external=".length)), script });
+        } else if (word === "--packages=external" || (word === "--packages" && words[i + 1] === "external")) {
+          found.push({ name: "*", script });
+        }
+      }
     }
   }
   return found;
@@ -145,7 +189,12 @@ export function checkRuntimeDependencies(root = REPO_ROOT) {
 
   // What the bundles load from node_modules has to be installed with them.
   for (const { name, script } of externalsOf(pkg.scripts)) {
-    if (!Object.hasOwn(dependencies, name)) {
+    if (name === "*") {
+      problems.push(
+        `the ${script} script leaves every package external (--packages external), so the installed CLI ` +
+          `would load its whole dependency tree from node_modules`,
+      );
+    } else if (!Object.hasOwn(dependencies, name)) {
       problems.push(
         `"${name}" is left external by the ${script} script but is not a runtime dependency, so the ` +
           `installed CLI could not load it — drop --external so bun compiles it in, or pin it in dependencies`,

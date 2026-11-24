@@ -308,13 +308,30 @@ const PROJECT_AGENT_SETTINGS_FILES: readonly string[] = [
 function realpathsOf(paths: readonly string[]): Set<string> {
   const out = new Set<string>();
   for (const path of paths) {
-    try {
-      out.add(realpathSync(path));
-    } catch {
-      // Not on this machine.
-    }
+    const real = settingsLinkTarget(path);
+    if (real !== null) out.add(real);
   }
   return out;
+}
+
+/**
+ * Where a settings path really is: its realpath, or — for a link whose target
+ * does not exist yet — that target, walked the way the kernel would create
+ * it: `.claude/settings.local.json -> ../config/new.json` makes a first
+ * write of config/new.json a write of the settings. Null when there is
+ * neither a file nor a link there.
+ */
+function settingsLinkTarget(path: string): string | null {
+  try {
+    return realpathSync(path);
+  } catch {
+    try {
+      if (!lstatSync(path).isSymbolicLink()) return null;
+    } catch {
+      return null;
+    }
+    return physicalAgentPath(path, undefined);
+  }
 }
 
 /**
@@ -558,12 +575,8 @@ function agentSettingsShellExtras(
   // the root's subdirectories too.
   const projectFiles = roots.flatMap((root) => PROJECT_AGENT_SETTINGS_FILES.map((path) => join(root, path)));
   for (const lexical of [...HOME_AGENT_SETTINGS_FILES.map((path) => join(home, path)), ...projectFiles]) {
-    try {
-      const real = realpathSync(lexical);
-      if (real !== lexical) files.add(real);
-    } catch {
-      // Not on this machine.
-    }
+    const real = settingsLinkTarget(lexical);
+    if (real !== null && real !== lexical) files.add(real);
   }
   for (const relativePath of HOME_AGENT_CONFIG_DIRS) {
     const lexical = join(home, relativePath);

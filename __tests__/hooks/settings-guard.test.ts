@@ -1329,6 +1329,35 @@ describe("block-failproofai-commands — review round seven", () => {
     expect(await bash(`git -C external archive -oarchive/link/../settings.json HEAD`, p7)).toBe(true);
   });
 
+  // hermes round 7.
+  it("resolves a link passed through a second variable", async () => {
+    expect(await bash(`cd sub; A=cfg.json; D=$A; cp /tmp/evil.json "$D"`, p7)).toBe(true);
+  });
+
+  it("reads a -t directory and copy sources held in variables as their values", async () => {
+    expect(await bashDecision(`D=~/.claude; cp -t "$D" README.md`, p7)).toBe("allow");
+    expect(await bashDecision(`S=README.md; cp "$S" ~/.claude`, p7)).toBe("allow");
+    expect(await bash(`S=/tmp/settings.json; cp "$S" ~/.claude`, p7)).toBe(true);
+    expect(await bash(`cp "$S" ~/.claude`, p7)).toBe(true);
+  });
+
+  it("does not trust a variable given more values than are kept", async () => {
+    const backup = join(root, "backup7");
+    mkdirSync(backup, { recursive: true });
+    const decoys = Array.from({ length: 64 }, () => `D=${backup}`).join("; ");
+    expect(await bash(`${decoys}; D=~/.claude; cp /tmp/settings.json "$D"`, p7)).toBe(true);
+  });
+
+  it("protects the target of a settings link that does not exist yet", async () => {
+    const fresh = join(root, "proj7-dangling");
+    mkdirSync(join(fresh, ".claude"), { recursive: true });
+    mkdirSync(join(fresh, "config"), { recursive: true });
+    symlinkSync(join("..", "config", "new.json"), join(fresh, ".claude", "settings.local.json"));
+    expect(await write(join(fresh, "config", "new.json"), fresh)).toBe(true);
+    expect(await bash(`printf '{}' > config/new.json`, fresh)).toBe(true);
+    expect(await bashDecision(`printf '{}' > config/other.json`, fresh)).toBe("allow");
+  });
+
   it("reads an empty heredoc delimiter the way bash does", async () => {
     expect(await bash(`cat > /tmp/notes <<''\ncat > /tmp/y <<EOF\n\ncp /tmp/evil ${settings()}\nEOF\n`, p7)).toBe(true);
     expect(await bashDecision(`cat > /tmp/notes <<''\nrm -rf ~/.claude\n\necho done\n`, p7)).toBe("allow");

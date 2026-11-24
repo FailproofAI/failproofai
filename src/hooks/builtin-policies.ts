@@ -1576,9 +1576,11 @@ function simpleCommandDestroys(
       // Every other operand is a source, and lands in the directory under its
       // own name: `cp -t ~/.claude /tmp/settings.json` writes the settings,
       // `cp -t ~/.claude /tmp/notes.md` and `cp -t /tmp/bak ~/.claude/settings.json` do not.
-      const sources = args.filter((a, i) => !a.startsWith("-") && !target.values.has(i));
-      const dir = stripShellQuoting(target.dir).replace(/\/+$/, "");
-      return sources.some((source) => namesState(landing(dir, source)));
+      const sources = args.filter((a, i) => !a.startsWith("-") && !target.values.has(i)).flatMap((source) => valuesOfWord(source) ?? [source]);
+      return (valuesOfWord(target.dir) ?? [target.dir]).some((dir) => {
+        const plainDir = stripShellQuoting(dir).replace(/\/+$/, "");
+        return sources.some((source) => namesState(landing(plainDir, source)));
+      });
     }
     const operands = args.filter((a) => !a.startsWith("-"));
     const destination = operands[operands.length - 1];
@@ -1587,7 +1589,7 @@ function simpleCommandDestroys(
     // `cp README.md ~/.claude` writes ~/.claude/README.md and nothing else. Not
     // with `-T`, which makes the directory the file; and a source's contents
     // (`dir/.`, rsync's `dir/`) land in the directory itself.
-    const sources = operands.slice(0, -1);
+    const sources = operands.slice(0, -1).flatMap((source) => valuesOfWord(source) ?? [source]);
     const noTarget = args.some((a) => a === "--no-target-directory" || /^-(?!-)[A-Za-z]*T/.test(a));
     // A destination that is just `$D` reads as the directories D is given.
     const dirs = valuesOfWord(destination) ?? [destination];
@@ -2998,17 +3000,45 @@ function destroysProtectedPath(command: string, target: ProtectedPathTarget, dep
   ].map(([, name, value]) => [name, value.replace(/^["']|["']$/g, "")] as const);
   const stateVars = new Set<string>();
   const assignedValues = new Map<string, string[]>();
+  // A variable given more values than are kept is not known: the value that
+  // matters may be one that was dropped.
+  const overflowed = new Set<string>();
   for (const [name, value] of assignments) {
     const list = assignedValues.get(name) ?? [];
     if (list.length < 64) list.push(value);
+    else overflowed.add(name);
     assignedValues.set(name, list);
   }
-  // A word that is just `$NAME` for a variable given only plain values: those
+  // A variable's values with the variables inside them resolved too (`A=cfg.json;
+  // D=$A`), a few levels deep and a few values wide; null where they cannot be
+  // known — an overflow, a value no assignment explains, a substitution.
+  const resolvedValues = (name: string, depth = 0): string[] | null => {
+    const raw = assignedValues.get(name);
+    if (!raw || raw.length === 0 || overflowed.has(name) || depth > 4) return null;
+    const out: string[] = [];
+    for (const value of raw) {
+      if (/`|\$\(/.test(value)) return null;
+      let forms = [""];
+      let pos = 0;
+      for (const ref of value.matchAll(/\$(?:\{([A-Za-z_][A-Za-z0-9_]*)\}|([A-Za-z_][A-Za-z0-9_]*))/g)) {
+        const inner = resolvedValues(ref[1] ?? ref[2], depth + 1);
+        if (inner === null) return null;
+        const literal = value.slice(pos, ref.index);
+        pos = ref.index + ref[0].length;
+        forms = forms.flatMap((form) => inner.map((part) => form + literal + part));
+        if (forms.length > 64) return null;
+      }
+      if (/\$/.test(value.slice(pos))) return null;
+      out.push(...forms.map((form) => form + value.slice(pos)));
+      if (out.length > 64) return null;
+    }
+    return out;
+  };
+  // A word that is just `$NAME` for a variable whose values are known: those
   // values; null for anything else.
   const valuesOfWord = (word: string): string[] | null => {
     const ref = /^\$(?:\{([A-Za-z_][A-Za-z0-9_]*)\}|([A-Za-z_][A-Za-z0-9_]*))$/.exec(stripShellQuoting(word));
-    const values = ref ? assignedValues.get(ref[1] ?? ref[2]) : undefined;
-    return values && values.length > 0 && values.every((value) => !/[$`]/.test(value)) ? values : null;
+    return ref ? resolvedValues(ref[1] ?? ref[2]) : null;
   };
   for (let pass = 0; pass < assignments.length + 1; pass++) {
     const before = stateVars.size;
@@ -3058,12 +3088,11 @@ function destroysProtectedPath(command: string, target: ProtectedPathTarget, dep
       if (stateVars.has(name)) return true;
       // Its value judged from where the shell stands where it is used:
       // `cd sub; D=cfg.json; cp x "$D"` writes through sub/cfg.json.
-      const values = assignedValues.get(name);
+      const values = resolvedValues(name);
       if (
         values &&
         values.some(
           (value) =>
-            !/[$`]/.test(value) &&
             walkCwds.some(
               (cwd) =>
                 (target.namesThroughLinks?.(value, cwd) ?? false) ||

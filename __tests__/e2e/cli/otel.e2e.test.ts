@@ -19,7 +19,7 @@ writeFileSync(join(home, ".failproofai/credentials.json"), JSON.stringify({
 const original = '# original\nmodel = "test"\n[projects."/work"]\ntrust_level = "trusted"\n';
 writeFileSync(join(home, ".codex/config.toml"), original);
 const built = spawnSync("bun", ["build", "--target=node", "--format=esm", `--outfile=${binary}`,
-  "bin/failproofai.mjs", "--external", "posthog-node", "--external", "sql.js"], {
+  "bin/failproofai.mjs", "--external", "sql.js"], {
   cwd: repo, encoding: "utf8", timeout: 30000,
 });
 afterAll(() => rmSync(root, { recursive: true, force: true }));

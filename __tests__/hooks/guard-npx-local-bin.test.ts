@@ -110,11 +110,14 @@ describe("block-failproofai-commands — the entry a project-scope npx hook runs
 
       beforeAll(() => {
         root = mkdtempSync(join(tmpdir(), "fpai-npx-guard-"));
-        mkdirSync(join(root, "proj", "node_modules", ".bin"), { recursive: true });
+        mkdirSync(join(root, "proj", "node_modules", ".bin", "sub"), { recursive: true });
         mkdirSync(join(root, "proj", "tools"), { recursive: true });
         // Neither link's own path says anything about failproofai or `.bin`.
         symlinkSync(join(root, "proj", "node_modules", ".bin"), join(root, "proj", "tools", "bins"));
         symlinkSync(join(root, "proj", "node_modules", ".bin", "failproofai"), join(root, "proj", "tools", "hook"));
+        // A link into a directory below `.bin`, and one to `node_modules`.
+        symlinkSync(join(root, "proj", "node_modules", ".bin", "sub"), join(root, "proj", "tools", "deep"));
+        symlinkSync(join(root, "proj", "node_modules"), join(root, "proj", "nm"));
       });
 
       afterAll(() => {
@@ -143,12 +146,30 @@ describe("block-failproofai-commands — the entry a project-scope npx hook runs
         "cp /tmp/stage/failproofai tools/bins/",
         "tee tools/bins/failproofai < /tmp/stub.sh",
         "printf x > tools/hook",
+        // A `..` after a link steps out of where the link points, as the
+        // kernel resolves it, not out of the link's own directory.
+        "printf x > tools/deep/../failproofai",
+        "cp /tmp/stub.sh tools/deep/../failproofai",
+        // What a copy puts INTO a linked bin directory: contents, a glob, a
+        // name the server picks.
+        "cp -r /tmp/stage/. tools/bins/",
+        "cp -rT /tmp/stage tools/bins",
+        "cp /tmp/stage/* tools/bins/",
+        "curl --output-dir tools/bins -OJ https://example.com/dl",
+        // A directory named `.bin` moved into a linked `node_modules`.
+        "mv /tmp/x/.bin nm/",
       ])("denies a shell write through a link: %s", async (command) => {
         expect(await bashIn(join(root, "proj"), command)).toBe("deny");
-        expect(await bash(`cd ${join(root, "proj")} && ${command}`)).toBe("deny");
+        expect(await bash(`cd '${join(root, "proj")}' && ${command}`)).toBe("deny");
       });
 
-      it.each(["printf x > tools/bins/my-script", "cat tools/bins/failproofai", "ls -la tools/bins/ > listing.txt"])(
+      it.each([
+        "printf x > tools/bins/my-script",
+        "cat tools/bins/failproofai",
+        "ls -la tools/bins/ > listing.txt",
+        "printf x > tools/deep/../my-tool",
+        "cp -r /tmp/stage/. out/",
+      ])(
         "still allows shell work through a link: %s",
         async (command) => {
           expect(await bashIn(join(root, "proj"), command)).not.toBe("deny");
@@ -414,6 +435,14 @@ describe("block-failproofai-commands — the entry a project-scope npx hook runs
       ["/work/proj/node_modules/.bin", "cd a/b/c/d/e/f/g/h/i/j/k/l/m/n/o/p/q && cp /tmp/x ../../../../../../../../../../../../../../../../../failproofai"],
       ["/work/proj", "ln -s node_modules/.bin bins; cp /tmp/stub.sh bins/failproofai"],
       ["/work/proj", "ln -sfn node_modules/.bin bins && cp /tmp/failproofai bins/"],
+      // More possible directories than the walk tracks: the oldest is not
+      // forgotten, so a failed first cd still leaves the shell in .bin.
+      ["/work/proj/node_modules/.bin", "cd /a && cd /b && cd /c && cd /d && cd /e; printf x > failproofai"],
+      ["/work/proj/node_modules/.bin", "cd /a && cd /b && cd /c && cd /d && cd /e && cd /f && cd /g && cd /h && cd /i; printf x > failproofai"],
+      // `$PWD` and `~+` are wherever the shell may stand.
+      ["/work/proj/node_modules/.bin", 'cd /tmp; printf x > "$PWD/failproofai"'],
+      ["/work/proj/node_modules/.bin", "cd /tmp; cp /tmp/stub.sh ${PWD}/failproofai"],
+      ["/work/proj/node_modules/.bin", "cd /tmp; printf x > ~+/failproofai"],
     ])("denies a write where the shell may still stand, from %s: %s", async (cwd, command) => {
       expect(await bashIn(cwd, command)).toBe("deny");
     });
@@ -539,6 +568,10 @@ describe("block-failproofai-commands — the entry a project-scope npx hook runs
       ["/work/proj", "cd /tmp; printf x > notes.txt"],
       ["/work/proj", "cd node_modules/.bin && ls -la && cd ../.. && rm -rf build"],
       ["/work/proj", "pushd /tmp && make && popd && rm -rf out"],
+      ["/work/proj", "cd a && cd b && cd c && cd d && cd e; rm -rf build"],
+      ["/work/proj", "cd a; make; cd ..; cd b; make; cd ..; cd c; make; cd ..; cd d; make; cd ..; cd e; make; cd ..; rm -rf dist"],
+      // After `&&` the cd has succeeded, so `$PWD` is where it went.
+      ["/work/proj/node_modules/.bin", 'cd /tmp && printf x > "$PWD/failproofai"'],
     ])("allows ordinary moves from %s: %s", async (cwd, command) => {
       expect(await bashIn(cwd, command)).not.toBe("deny");
     });
@@ -620,7 +653,11 @@ describe("block-failproofai-commands — the entry a project-scope npx hook runs
         .find((integration) => integration.id === "opencode")!
         .writeHookEntries({}, "/opt/fp/bin/failproofai", "project");
       const shim = readFileSync(join(dir, ".opencode", "plugins", "failproofai.mjs"), "utf8");
-      const spawned = [...shim.matchAll(/\["-y", "([^"]+)"/g)].map(([, name]) => name);
+      // The launcher and its arguments, tied to the same switch, so a shim that
+      // kept these arguments for another program would fail here.
+      expect(shim).toContain("const USE_NPX = true;");
+      expect(shim).toMatch(/const cmd = USE_NPX \? "npx" :/);
+      const spawned = [...shim.matchAll(/USE_NPX\s*\?\s*\["-y", "([^"]+)"/g)].map(([, name]) => name);
       expect(spawned.length).toBeGreaterThan(0);
       for (const name of spawned) names.add(name);
     } finally {

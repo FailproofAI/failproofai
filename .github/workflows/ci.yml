@@ -27,7 +27,7 @@ jobs:
 
       - uses: oven-sh/setup-bun@v2
         with:
-          bun-version: latest
+          bun-version: 1.4.5
 
       # Restore-only here and in every other job; `quality` alone writes, below.
       # All six jobs used to share one read-write `actions/cache@v6` on this key,
@@ -198,7 +198,7 @@ jobs:
       - if: steps.crates.outputs.present == 'true'
         uses: oven-sh/setup-bun@v2
         with:
-          bun-version: latest
+          bun-version: 1.4.5
 
       # …and bun on PATH is not enough on its own. That worker runs the raw
       # TypeScript, so it resolves the handler's real dependency tree at
@@ -770,7 +770,7 @@ jobs:
 
       - uses: oven-sh/setup-bun@v2
         with:
-          bun-version: latest
+          bun-version: 1.4.5
 
       - uses: actions/cache/restore@v6
         with:
@@ -828,7 +828,7 @@ jobs:
 
       - uses: oven-sh/setup-bun@v2
         with:
-          bun-version: latest
+          bun-version: 1.4.5
 
       - uses: actions/cache/restore@v6
         with:
@@ -888,7 +888,7 @@ jobs:
       - if: steps.docs.outputs.present == 'true'
         uses: oven-sh/setup-bun@v2
         with:
-          bun-version: latest
+          bun-version: 1.4.5
 
       - if: steps.docs.outputs.present == 'true'
         uses: actions/cache/restore@v6
@@ -945,7 +945,7 @@ jobs:
 
       - uses: oven-sh/setup-bun@v2
         with:
-          bun-version: latest
+          bun-version: 1.4.5
 
       - uses: actions/cache/restore@v6
         with:

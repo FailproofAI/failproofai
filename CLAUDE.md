@@ -997,7 +997,12 @@ that is optional and absent on three machines out of four at build time.
 
 **2. The GitHub Release asset.** `failproofaid-<os>-<arch>.gz` plus a `SHA256SUMS` manifest,
 which `daemon-download.ts` fetches for this CLI's own version, verifying the SHA-256
-**before** decompressing. Covers installs that skipped optional dependencies, tarballs
+**before** decompressing. `SHA256SUMS` comes from the same release as the binary, so it
+catches corruption but not a replaced asset. A published build also holds the decompressed
+binary to the digest `build-daemon-packages.mjs` recorded in the npm package
+(`failproofaidBinaries`). That digest is the same one the npm channel checks, and the one a
+copy already at `~/.failproofai/bin` must still match before `ensureFailproofaidBinary()`
+reuses it. Covers installs that skipped optional dependencies, tarballs
 installed from disk, and anyone installing the daemon standalone. The URL is *constructed*
 from `package.json`'s version, never discovered — no API call, no `releases/latest`
 redirect, no rate limit, and no way to end up with a daemon built from different source than
@@ -1043,7 +1048,8 @@ binary — so the hook path can never block on the network. Two escape hatches:
 `FAILPROOFAI_NO_DOWNLOAD=1` (air-gapped: fail with a reason instead of reaching out, while
 an already-installed binary keeps working — it gates *fetching*, not the npm copy) and
 `FAILPROOFAI_DAEMON_BASE_URL` (an internal mirror, and what the tests point at a local HTTP
-server).
+server). The mirror must be https. Plain http is accepted only for a loopback address,
+because over http `SHA256SUMS` arrives on the same unauthenticated connection as the binary.
 
 The release also carries `failproofai-<version>.tgz`, the CLI's own npm tarball, packed by
 the `cli-tarball` job at the version being published and covered by the same `SHA256SUMS`.
@@ -1184,7 +1190,9 @@ src/hooks/
                               @failproofai/failproofaid-<os>-<arch> optional dependency
                               (no network — the air-gapped path), and
                               downloadFailproofaidBinary() fetches the release asset for
-                              this version, SHA-256 verified before it is decompressed.
+                              this version, SHA-256 verified before it is decompressed
+                              and, on a published build, against the recorded
+                              failproofaidBinaries digest after.
                               Never throws; FAILPROOFAI_NO_DOWNLOAD /
                               FAILPROOFAI_DAEMON_BASE_URL opt out of or redirect the
                               download only

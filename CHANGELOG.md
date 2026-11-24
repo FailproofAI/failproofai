@@ -1,10 +1,10 @@
 # Changelog
 
-## 1.0.16 — 2026-11-23
+## 1.0.17 — 2026-11-24
 
 ### Fixes
 
-- The daemon no longer aborts with a stack overflow when a policy's `artifactUrl` from Cloud is a deeply nested `blob:` URL: `url` moves to 2.5.9 for RUSTSEC-2026-0592, and such a URL is refused by the origin check (#1032)
+- Release workflows now open the version-bump pull request themselves, using the job's own token, when the repository lets GitHub Actions create pull requests. When it does not, the run prints the pre-filled link as a warning and the release still succeeds. A re-run reuses an open bump pull request instead of opening a second one (#1052)
 - The daemon sends no daemon log while the org has troubleshooting off: when Cloud's policy poll says `machineLogs: false` it drops what was pending (an open log request included) and queues nothing until it is back on, and keeps nothing for context while it is. The off state is kept beside daemon.log, so a daemon restarted while it is off (cleanly or not) sends nothing before its first poll. Turning it back on sets a floor (kept there too): no later upload carries a line older than it, so an incident or a requested tail never delivers what was logged while it was off. A Cloud that sends no such key means on, as before (#1033)
 - The daemon logs an ERROR when hook data stops reaching Cloud while the rest of the collector keeps working: an agent whose sessions show tool calls in the last 10 minutes with none of them reaching failproofai's hooks (its hooks not installed or not firing, so those calls ran unchecked), hook calls answered with nothing recorded by the hook activity source, hook batches waiting 15 minutes while other events deliver, or hook batches Cloud refused. Only tool calls an agent is making now count, so the backfill after setup never raises it. The line reaches Cloud with the daemon's error roll-up. A problem clears only on evidence it is fixed (a hook call from that agent, events from the hook source, the stuck batch gone), never because traffic fell, and its clearing is logged once. Checked every 5 minutes, repeated hourly while it lasts, and not when hook collection is off (#1033)
 - A policy file written with `require()` loads and enforces under Node. Every policy's temporary copy was written as `.mjs`, where Node defines no `require`, `module` or `exports`, so a CommonJS policy (or an ES module policy importing a `module.exports` helper) failed to load and the calls it should have denied were allowed. A CommonJS file's copy is now `.cjs`; which a file is gets decided the way Node decides an ambiguous `.js` file, by compiling it as CommonJS, and only for a file Node itself refused to load as an ES module for being CommonJS, one file at a time: a file Node loaded as an ES module, in a mixed graph included, is never reinterpreted, whatever its comments or strings say. On Node before 22.12, which cannot `require()` an ES module, a CommonJS policy's required `module.exports` helper is converted the same way, from the file Node's `ERR_REQUIRE_ESM` names. A new e2e test runs the bundled CLI under `node`; the rest of the suite runs under Bun, which hid this (#1033)
@@ -31,8 +31,37 @@
 
 ### Dependencies
 
-- OSV gate: the Python SDK's dev/test lockfile moves crewai to 1.15.44, where chromadb is an optional extra, so chromadb and its four advisories with no fixed version leave it. The allow-list is now empty: those four expired entries are removed, along with picomatch GHSA-fc5q-39xc-vjpf, which was withdrawn upstream (#1032)
+- `crewai` 1.15.42 → 1.15.44 in the Python SDK's dev/test lockfile (#1033)
 
+## 1.0.16-beta.0 — 2026-11-24
+
+### Features
+
+- npm releases publish through trusted publishing (OIDC) instead of the `NPM_TOKEN` secret: `publish.yml` for `failproofai`, the four `@failproofai/failproofaid-*` platform packages and the typo aliases, and `publish-failproofai-ts-sdk.yml` for `@failproofai/sdk`. Each publishing job upgrades to npm 11 (Node 22 bundles npm 10, which cannot do the OIDC exchange), checks before anything publishes that npm is new enough and an OIDC token is available, and runs in a GitHub Environment (`npm-failproofai`, `npm-failproofai-ts-sdk`) that the npmjs.com trusted-publisher entries name. The `npm whoami` checks are gone, since they cannot check trusted publishing, and the platform-package publisher's retry after a rejected provenance statement now passes `--provenance=false`, because trusted publishing would otherwise sign it again. Each package needs its trusted-publisher entry on npmjs.com before the next release; the setup is documented at the top of both workflows (#1046)
+
+### Fixes
+
+- Releases no longer depend on the removed version-bot GitHub App. Its absence stopped the 1.0.16 npm publish at its first step and failed every post-release version bump. Nothing in CI pushes to `main` any more: each release workflow pushes its bump commit to a `version-bump/<package>-<version>` branch with the job's own token (`scripts/push-version-bump.sh`) and links a pre-filled pull request, which lands through review. `bump-platform-submodule.yml` is gone; Dependabot's `gitsubmodule` updates now keep `skills` current, and `platform` and `agenteye` need the same entry. `@failproofai/sdk`'s post-publish install check now reads the registry with `--prefer-online` and waits up to about 12 minutes; it had gone red on both releases even though both published. `@failproofai/sdk` opens 0.0.1-beta.3 (#1048)
+
+## 1.0.16-beta.0 — 2026-11-23
+
+### Fixes
+
+- `rust-quality` no longer fails at random on the daemon's org-switch end-to-end test (it went red on `main` on 2026-10-25 and 2026-11-06, and on two Dependabot PRs). Org A's collector re-sends one credential refusal after its first accepted upload, under A's own key, and the test planted the refusal the switch must quarantine at the moment that upload was answered, so now and then A re-sent it first. The test now gives that pass a refusal of its own before A's first upload, and plants the one under test once it is spent (#1015)
+
+### Dependencies
+
+- `notify` 8.2.1 → 8.2.2 and `rusqlite` 0.41.1 → 0.42.0, which bundles SQLite 3.54.1 through `libsqlite3-sys` 0.40.0 (#1015)
+
+## 1.0.16-beta.0 — 2026-11-22
+
+### Fixes
+
+- The daemon no longer aborts with a stack overflow when a policy's `artifactUrl` from Cloud is a deeply nested `blob:` URL: `url` moves to 2.5.9 for RUSTSEC-2026-0592, and such a URL is refused by the origin check (#1032)
+
+### Dependencies
+
+- OSV gate: the Python SDK's dev/test lockfile moves crewai to 1.15.42, where chromadb is an optional extra, so chromadb and its four advisories with no fixed version leave it. The allow-list is now empty: those four expired entries are removed, along with picomatch GHSA-fc5q-39xc-vjpf, which was withdrawn upstream (#1032)
 
 ## 1.0.15 — 2026-11-18
 

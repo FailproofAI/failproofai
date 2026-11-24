@@ -16,6 +16,40 @@ name: Publish to npm
 # Prerelease builds (`beta`, `next`) are open to anyone GitHub already trusts
 # with write access; a STABLE release is restricted to the logins in
 # `STABLE_RELEASE_ACTORS` below. See the "Authorize stable release" step.
+#
+# AUTHENTICATION IS npm TRUSTED PUBLISHING (OIDC) — there is no NPM_TOKEN
+# secret. At each `npm publish` in the `publish` job, npm exchanges that job's
+# GitHub OIDC token for a short-lived token good for that one package, so
+# nothing long-lived exists to leak, expire or rotate. It rests on a one-time
+# setup that CANNOT be done from a PR: one trusted-publisher entry per package
+# on npmjs.com (package -> Settings -> Trusted publishing, or `npm trust github`
+# from npm 11.15+):
+#
+#     Publisher:        GitHub Actions
+#     Organization:     FailproofAI
+#     Repository:       failproofai
+#     Workflow:         publish.yml
+#     Environment:      npm-failproofai
+#     Allowed actions:  npm publish    <- tick it: entries created after
+#                                         2026-09-03 allow only `npm stage publish`
+#
+# for EVERY name this workflow publishes: `failproofai`, the four
+# `@failproofai/failproofaid-<os>-<arch>` packages (scripts/daemon-platforms.mjs)
+# and each alias in scripts/publish-aliases.mjs. A package with no matching
+# entry fails at its own `npm publish`, and three npm rules make that easy to
+# hit: nothing is checked when an entry is saved, a new entry expires unless a
+# publish uses it within 2 days, and an entry can only be created for a package
+# that already exists — so a NEW platform or alias has to be published once by
+# hand before this workflow can publish it.
+#
+# The environment is what a branch edit cannot reach. A dispatch runs the
+# dispatched ref's copy of this file, so every check in it can be deleted on a
+# branch, and npm matches only the workflow's FILENAME. The protection rules on
+# `npm-failproofai` (repo Settings -> Environments) are therefore the real gate
+# on who can publish: required reviewers, and/or deployment branches — which
+# must then admit the `v*` tags a release runs on, and any branch that should
+# still ship `next` builds. GitHub creates a missing environment implicitly,
+# WITHOUT protection rules, so set it up by hand.
 on:
   release:
     types: [published]
@@ -39,10 +73,8 @@ on:
 # `workflow_dispatch` — and this pipeline is not safe to run twice at once.
 # Overlapping runs both pass the preflight's "this version is unpublished"
 # `npm view` check before either has published, and the "Bump version for next
-# development cycle" step then has both racing an unguarded
-# `git fetch → checkout main → commit → push`, where the loser's push simply
-# fails. `ci.yml` and `bump-platform-submodule.yml` both serialize for the same
-# reason; this one was the exception.
+# development cycle" step then has both racing to push the same bump branch.
+# `ci.yml` serializes for the same reason; this one was the exception.
 #
 # NOT `cancel-in-progress`: a half-cancelled publish is the one outcome worse
 # than a queued one — the release assets attach before the npm publish, so a run
@@ -62,9 +94,11 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  # Everything cheap and fail-fast lives here: version resolution, the npm
-  # credential check (so a bad token costs seconds rather than a 20-minute
-  # cross-compile matrix), and whether this ref even carries the daemon.
+  # Everything cheap and fail-fast lives here: version resolution, the checks
+  # that refuse a burned version or an unauthorized stable release, and whether
+  # this ref even carries the daemon. There is no npm credential to check up
+  # front: trusted publishing has none to expire, and the OIDC exchange only
+  # happens inside each `npm publish` in the `publish` job.
   preflight:
     runs-on: ubuntu-latest
     timeout-minutes: 10
@@ -235,8 +269,9 @@ jobs:
       # Scope, honestly stated: on a `workflow_dispatch` GitHub runs the
       # workflow file FROM THE SELECTED REF, so this guard binds every ref that
       # carries it, but a collaborator could push a branch with the step
-      # deleted and dispatch that. Making it tamper-proof means moving
-      # `NPM_TOKEN` into a protected GitHub Environment, which is a repo
+      # deleted and dispatch that. Making it tamper-proof means protection
+      # rules on the `npm-failproofai` environment that npm's trusted-publisher
+      # entries are bound to (see AUTHENTICATION at the top), which is a repo
       # setting rather than a file — the guard here is the fast, legible half.
       - name: Authorize stable release
         if: >-
@@ -283,20 +318,6 @@ jobs:
             echo "has_daemon=false" >> "$GITHUB_OUTPUT"
             echo "::notice::No Rust workspace on this ref — publishing the npm package only."
           fi
-
-      # Both publish steps below authenticate with this token; checking it here
-      # turns a bad or expired secret into a 10-second failure instead of one
-      # that lands after the cross-compile matrix has already run.
-      - name: Verify npm credentials
-        if: ${{ !inputs.dry_run }}
-        run: |
-          if ! WHO=$(npm whoami 2>&1); then
-            echo "::error::NPM_TOKEN cannot authenticate with the registry: $WHO"
-            exit 1
-          fi
-          echo "Authenticated to npm as $WHO"
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 
   # Builds the four platform binaries from this exact commit. Skipped entirely
   # on a ref with no Rust workspace.
@@ -490,35 +511,35 @@ jobs:
       (needs.release-assets.result == 'success' || needs.release-assets.result == 'skipped')
     runs-on: ubuntu-latest
     timeout-minutes: 30
+    # Every trusted-publisher entry for a package this job publishes names this
+    # environment, so an OIDC token minted outside it cannot publish. Who may
+    # run in it is set by its protection rules in the repo settings, not here —
+    # see AUTHENTICATION at the top of this file.
+    environment: npm-failproofai
     permissions:
       contents: write
+      # For the version bump at the end, which opens its own pull request.
+      pull-requests: write
+      # Trusted publishing: each `npm publish` below exchanges this job's OIDC
+      # token for a short-lived token scoped to that one package, and signs the
+      # package's provenance with it. The permission is job-wide — any step can
+      # request a token, `bun run build` below included — which is why
+      # third-party code belongs in jobs without it (publish-failproofai-ts-sdk.yml
+      # publishes a tarball built elsewhere for this reason).
       id-token: write
     steps:
-      # Token for the version-bot GitHub App — a bypass actor on the org-level
-      # `failproofai-rules` ruleset (PR + 1 review required on main). The default
-      # GITHUB_TOKEN is not a bypass actor, so the "Bump version for next
-      # development cycle" push below is rejected with GH013 without this. Same
-      # app and secrets the bump-platform-submodule workflow uses.
-      - name: Mint version-bot app token
-        id: app-token
-        uses: actions/create-github-app-token@v3
-        with:
-          app-id: ${{ secrets.VERSION_BOT_APP_ID }}
-          private-key: ${{ secrets.VERSION_BOT_PRIVATE_KEY }}
-
+      # Nothing before the npm publish needs a write credential. The version-bot
+      # App token minted here once made every release depend on that App: when
+      # it was removed, this job failed at its first step and nothing reached
+      # npm. The bump at the end now uses the job's own token, on a branch.
       - uses: actions/checkout@v7.0.1
         with:
           fetch-depth: 0
-          # NOT persisted. This token bypasses the org ruleset on `main`, and
-          # persisting it writes it into `.git/config` for the whole job — where
-          # it sat, readable, through `bun install` (which runs `prepare`, a full
-          # Next build) and every dependency lifecycle script, long before the
-          # one step at the end that actually needs it. Any compromised
-          # build-time dependency could read it and push to `main` unreviewed.
-          # The version-bump step supplies it directly to the single `git push`
-          # that needs it instead. `ci.yml` and `build-daemon.yml` were hardened
-          # for the identical risk; this job, holding the more dangerous token,
-          # was missed.
+          # NOT persisted. The job's token can push branches and tags, and
+          # persisting it writes it into `.git/config` for the whole job, where
+          # `bun install`'s lifecycle scripts and the build below could read it.
+          # The bump step hands it to the one `git push` that needs it instead.
+          # `ci.yml` and `build-daemon.yml` are hardened the same way.
           persist-credentials: false
 
       - uses: oven-sh/setup-bun@v2
@@ -547,6 +568,37 @@ jobs:
         with:
           node-version: "22"
           registry-url: "https://registry.npmjs.org"
+
+      # Trusted publishing needs npm 11.5.1 or later, and Node 22 bundles npm
+      # 10, which never attempts the OIDC exchange. npm is upgraded in place
+      # rather than moving the job to a newer Node, so the build below keeps
+      # running on the Node it always has.
+      - name: Upgrade npm for trusted publishing
+        uses: nick-fields/retry@v4
+        with:
+          max_attempts: 3
+          timeout_minutes: 3
+          command: npm install -g npm@11
+
+      # Names the two failures trusted publishing would otherwise hide, before
+      # anything is published. An npm too old for the exchange and a job without
+      # `id-token: write` look the same from outside: npm falls back to
+      # setup-node's placeholder token and the registry refuses the publish
+      # without saying why. A missing or mismatched entry on npmjs.com cannot be
+      # checked from here — npm has no way to ask — so that one still surfaces
+      # at the first `npm publish`.
+      - name: Check trusted publishing prerequisites
+        run: |
+          NPM_VERSION=$(npm --version)
+          if ! printf '%s\n%s\n' 11.5.1 "$NPM_VERSION" | sort -V -C; then
+            echo "::error::npm $NPM_VERSION cannot publish through trusted publishing (OIDC); it needs 11.5.1 or later."
+            exit 1
+          fi
+          if [[ -z "${ACTIONS_ID_TOKEN_REQUEST_URL:-}" || -z "${ACTIONS_ID_TOKEN_REQUEST_TOKEN:-}" ]]; then
+            echo "::error::This job cannot request an OIDC token, so npm has no credential to publish with. It needs 'permissions: id-token: write'."
+            exit 1
+          fi
+          echo "npm $NPM_VERSION, OIDC token available: publishing through trusted publishing."
 
       - name: Set publish version in package.json
         if: needs.preflight.outputs.publish_version != needs.preflight.outputs.pkg_version
@@ -582,7 +634,6 @@ jobs:
           DRY_RUN: ${{ needs.preflight.outputs.dry_run }}
           PUBLISH_VERSION: ${{ needs.preflight.outputs.publish_version }}
           ARTIFACTS: ${{ runner.temp }}/daemon-artifacts
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
         run: |
           # --pin-root writes the four pins into package.json for the publish
           # below. It runs in the same step as the publish that makes those
@@ -602,11 +653,11 @@ jobs:
       # `daemon-download.ts` constructs the GitHub Release URL from that
       # version — so a tarball built before the `npm version` step above would
       # ship a CLI that reports the wrong version and downloads its daemon from
-      # the wrong tag. What changes is only WHO holds the npm token while it
-      # runs: `npm publish`'s own `prepare` inherits that step's environment, so
-      # NODE_AUTH_TOKEN was exported into a full Next build and every
-      # dependency it loads. Splitting the build out keeps the token scoped to
-      # the one command that needs a registry credential.
+      # the wrong tag. Running it here rather than through `npm publish`'s own
+      # `prepare` is what once kept NPM_TOKEN out of a full Next build and every
+      # dependency it loads. Trusted publishing has no token to keep out, but
+      # its OIDC permission is job-wide and reaches this step too — see the note
+      # on this job's `permissions`.
       #
       # Order is unchanged — this still runs after `npm version` and after the
       # daemon artifacts land in RUNNER_TEMP (never the checkout, so Next's file
@@ -626,11 +677,10 @@ jobs:
         env:
           DIST_TAG: ${{ needs.preflight.outputs.dist_tag }}
           DRY_RUN: ${{ needs.preflight.outputs.dry_run }}
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
         run: |
           # --ignore-scripts: the build above already produced exactly what
-          # `prepare` would have. Re-running it here is what put the publish
-          # token inside the bundler. The sibling `cli-tarball` job already
+          # `prepare` would have, and re-running it would put a second full
+          # Next build inside the publish. The sibling `cli-tarball` job already
           # packs with --ignore-scripts for this reason.
           if [[ "$DRY_RUN" == "true" ]]; then
             # --provenance is dropped here on purpose: attestation is a
@@ -644,7 +694,6 @@ jobs:
         env:
           DIST_TAG: ${{ needs.preflight.outputs.dist_tag }}
           DRY_RUN: ${{ needs.preflight.outputs.dry_run }}
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
         run: |
           ARGS=(--dist-tag "$DIST_TAG")
           if [[ "$DRY_RUN" == "true" ]]; then ARGS+=(--dry-run); fi
@@ -729,10 +778,14 @@ jobs:
 
           echo "All packages published at $PUBLISH_VERSION."
 
-      # The bump targets main unconditionally — it checks main out and pushes to
-      # it — so it must never run for a build that did not come from main. A
-      # dispatch from a feature branch would otherwise rewrite main's version
-      # line to whatever that branch happens to carry.
+      # The bump targets main unconditionally — it checks main out and branches
+      # from it — so it must never run for a build that did not come from main.
+      # A dispatch from a feature branch would otherwise propose rewriting main's
+      # version line to whatever that branch happens to carry.
+      #
+      # It lands through review: the commit goes to a `version-bump/` branch and
+      # scripts/push-version-bump.sh opens the pull request for it (see that
+      # script for why nothing in CI can push to main).
       - name: Bump version for next development cycle
         if: >-
           needs.preflight.outputs.next_version != '' &&
@@ -742,7 +795,7 @@ jobs:
           NEXT_VERSION: ${{ needs.preflight.outputs.next_version }}
           # Scoped to this step alone rather than persisted in `.git/config` for
           # the whole job — see the checkout above.
-          APP_TOKEN: ${{ steps.app-token.outputs.token }}
+          GITHUB_TOKEN: ${{ github.token }}
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
@@ -756,11 +809,11 @@ jobs:
           npm version "$NEXT_VERSION" --no-git-tag-version
 
           # The Cargo workspace version has to move WITH package.json.
-          # `ci.yml`'s version-consistency job compares the two, and this commit
-          # carries `[skip ci]` — so a bump that touched only package.json left
-          # main red, and the failure surfaced on the next unrelated PR as
-          # "Version mismatch: Cargo.toml has <old>, expected <new>" from a
-          # change that had nothing to do with it. Every release did this.
+          # `ci.yml`'s version-consistency job compares the two. When bump
+          # commits went straight to main with `[skip ci]`, a bump that touched
+          # only package.json left main red, and the failure surfaced on the
+          # next unrelated PR as "Version mismatch: Cargo.toml has <old>,
+          # expected <new>". Every release did this.
           #
           # Anchored to the [workspace.package] table rather than a bare
           # `^version = `: the file has several `version = ` lines and only the
@@ -787,18 +840,11 @@ jobs:
           fi
 
           git add package.json Cargo.toml Cargo.lock hermes-plugin/plugin.yaml
-          git commit -m "chore: bump version to $NEXT_VERSION [skip ci]"
+          git commit -m "chore: bump version to $NEXT_VERSION"
 
-          # Authenticated as the version-bot App, which bypasses the ruleset's
-          # pull-request requirement on main. Passed on this one command rather
-          # than persisted in `.git/config`, so it is never on disk while build
-          # scripts run. `-c http.extraheader` is used because a token in the
-          # remote URL would be echoed by git's own error output on a failed
-          # push; `::add-mask::` covers the log, not the URL git prints.
-          echo "::add-mask::$APP_TOKEN"
-          AUTH_HEADER="Authorization: Basic $(printf 'x-access-token:%s' "$APP_TOKEN" | base64 -w0)"
-          git -c "http.https://github.com/.extraheader=$AUTH_HEADER" \
-              push "https://github.com/${GITHUB_REPOSITORY}.git" HEAD:main
+          bash scripts/push-version-bump.sh "version-bump/failproofai-$NEXT_VERSION" \
+            "chore: bump version to $NEXT_VERSION" \
+            "Opens $NEXT_VERSION on main after a release. Only version lines change: package.json, Cargo.toml, Cargo.lock and hermes-plugin/plugin.yaml."
 
       - name: Note skipped bump
         if: >-

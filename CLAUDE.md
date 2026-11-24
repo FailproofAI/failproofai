@@ -1051,6 +1051,33 @@ It is how you install the CLI without the registry (`npm i -g ./failproofai-<ver
 and it is attached on every release — that job is deliberately **not** gated on
 `has_daemon`.
 
+### How releases authenticate to npm
+
+Both npm workflows publish through **trusted publishing (OIDC)**; there is no `NPM_TOKEN`.
+Each `npm publish` exchanges the publishing job's GitHub OIDC token for a short-lived token
+scoped to that one package, which npm grants only if the package has a trusted-publisher
+entry on npmjs.com matching the repo, the workflow **filename** and the job's
+**environment**: `publish.yml` + `npm-failproofai` for `failproofai`, the four platform
+packages and every alias; `publish-failproofai-ts-sdk.yml` + `npm-failproofai-ts-sdk` for
+`@failproofai/sdk`. The entries are set up by hand from the comment at the top of each
+workflow, and `__tests__/ci/npm-trusted-publishing.test.ts` keeps that comment, the job's
+environment, the npm upgrade and the prerequisite check in agreement. What will bite:
+
+- **A new package cannot publish through this until it exists.** npm only accepts an entry
+  for a package that is already on the registry, so a new daemon platform or alias has to be
+  published once by hand and given its entry before a release includes it — otherwise that
+  package fails at `npm publish`, which for a platform package stops the release.
+- **npm 11.5.1+, not the npm that ships with Node 22.** npm 10 never attempts the exchange;
+  it falls back to setup-node's placeholder token and the registry refuses the publish
+  without saying why. Both publishing jobs upgrade npm and check it first.
+- **No stored token may come back as a fallback.** npm tries OIDC first and quietly uses any
+  token it finds when that fails, so a re-added `NODE_AUTH_TOKEN` would hide a broken entry.
+- **Provenance is automatic.** A retry without provenance must say `--provenance=false`;
+  merely dropping `--provenance` signs again.
+- **`id-token: write` is job-wide.** Every step in a publishing job can mint a publish token,
+  so third-party code belongs in jobs without it. The TS SDK workflow publishes a tarball
+  built elsewhere; `publish.yml`'s `publish` job still runs `bun run build` itself.
+
 ### Always add unit tests for new behaviour
 When you add or change logic, add a corresponding test in `__tests__/`. Never modify
 existing tests just to make them pass — if a test breaks, fix the code, not the test.
@@ -1359,6 +1386,42 @@ line in `sdk/typescript/src/version.ts` and `sdk/typescript/package.json`, which
 `sdk/typescript/scripts/release.mjs` keeps in step and `__tests__/ci/ts-sdk-pipeline.test.ts`
 asserts agree.
 
+### How a post-release bump reaches `main`
+
+**Through a reviewed pull request; nothing in CI pushes to `main`.** Each release workflow
+(`publish.yml`, `publish-failproofai-ts-sdk.yml` and both PyPI workflows) ends by committing
+the next version and handing it to `scripts/push-version-bump.sh`. That script pushes the
+commit to a `version-bump/<package>-<version>` branch with the job's own token and opens the
+pull request for it. If GitHub refuses to open one, it prints a link to a pre-filled pull
+request instead, as a warning, and the release still succeeds. The pull request needs one
+approval like any other change. Until it merges, `main` still carries the version that was
+just released, so the next release from `main` is refused as already published. Merge the
+bump first. A pull request opened by the job's token starts no workflow runs (GitHub drops
+events that token causes), so the bump's checks run on `main` once it merges.
+
+Why not a direct push:
+- `failproofai-rules` rejects the job's `GITHUB_TOKEN` on `main` (GH013), and that token
+  can't go on the bypass list. It is the same identity in every workflow run on every
+  branch, so a bypass for it would be a bypass for anyone with write access.
+- The version-bot App that used to push here *was* such a bypass, readable by any job
+  that asked for its secret. When it was removed, every release broke at its **first**
+  step, because `publish.yml` minted its token before the npm publish. Now nothing before a
+  publish needs a write credential.
+- **Opening the pull request needs "Allow GitHub Actions to create and approve pull
+  requests"** (Settings > Actions > General). It is one switch for both actions: with it on,
+  a workflow on any branch can also *approve* a pull request, and that approval counts as
+  the required review. So turn it on only together with a review requirement a workflow
+  cannot meet: require code owner review (a `CODEOWNERS` file plus the ruleset's "Require
+  review from Code Owners"), or required reviewers from a team in `failproofai-rules`. With
+  the switch off, every bump still pushes its branch and prints the link.
+
+Submodule pointers work the same way. No workflow pushes gitlink bumps into another
+repository any more, and `bump-platform-submodule.yml` is gone. Dependabot's
+`gitsubmodule` updates open the pull requests: here for `skills`, and in `platform` and
+`agenteye` (their own `dependabot.yml`) for `failproofai/oss`. Both upstreams are public,
+so this needs no credential. `__tests__/ci/version-bump.test.ts` runs the script against a
+real git remote and pins every workflow to it.
+
 ### The Python packages' scheme
 
 `scripts/python-version.py` is the single place it is written down, and both PyPI publish
@@ -1374,14 +1437,15 @@ and it is permanent the moment it uploads.
 The same rule `publish.yml` applies to npm (`-beta.N`), spelled in PEP 440.
 
 **You normally edit nothing.** `preflight` resolves the version and refuses one PyPI has
-already taken; `bump` pushes the next one to `main` after a successful upload — the version
-line *and* a stub `## <version> — <date>` section opened by `scripts/changelog-open.py` in
-the same commit — so main is already sitting on the next beta, with a section to write
-entries into, when the previous release finishes. Both halves land together on purpose: a
-version with no section is what `scripts/changelog-section.py` refuses at release time, and
-because bump commits carry a skip-ci marker that state used to go red on the next unrelated
-PR rather than on itself. Hand-edit `<pkg>/_version.py` only to **leave** the current beta
-line — a stable cut (`0.0.1b4` → `0.0.1`), or a minor/major bump.
+already taken; `bump` proposes the next one after a successful upload — the version line
+*and* a stub `## <version> — <date>` section opened by `scripts/changelog-open.py` in the
+same commit, on a `version-bump/` branch (see above) — so once that pull request merges,
+main sits on the next beta with a section to write entries into. Both halves land together
+on purpose: a version with no section is what `scripts/changelog-section.py` refuses at
+release time, and when bump commits went straight to main with a skip-ci marker, that state
+went red on the next unrelated PR rather than on itself. Hand-edit `<pkg>/_version.py` only
+to **leave** the current beta line — a stable cut (`0.0.1b4` → `0.0.1`), or a minor/major
+bump.
 
 Two things that will bite:
 

@@ -10,8 +10,8 @@
  * the manifest shape, the platform filters and the pins are asserted here
  * rather than discovered on the registry.
  */
-import { describe, it, expect, beforeEach, afterEach } from "vitest";
-import { existsSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
+import { chmodSync, existsSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { resolve } from "node:path";
 import { createHash } from "node:crypto";
@@ -26,6 +26,7 @@ import {
   STAGING_DIR,
   pinRootManifest,
   platformPackageManifest,
+  publishPackage,
   stagePlatformPackage,
   stagedBinaryDigest,
 } from "../../scripts/build-daemon-packages.mjs";
@@ -205,6 +206,58 @@ describe("pinRootManifest", () => {
     const pins = pinRootManifest("1.2.3", manifestPath);
     expect(new Set(Object.values(pins))).toEqual(new Set(["1.2.3"]));
     expect(JSON.parse(readFileSync(manifestPath, "utf8")).version).toBe(VERSION);
+  });
+});
+
+describe("publishPackage", () => {
+  // A stand-in `npm` that behaves like npm under trusted publishing whose
+  // provenance the registry rejects: it signs provenance by itself unless told
+  // `--provenance=false`, and it records every argv it was called with.
+  let bin: string;
+  let pkgDir: string;
+  let saved: { PATH?: string; GITHUB_ACTIONS?: string };
+
+  beforeEach(() => {
+    bin = mkdtempSync(resolve(tmpdir(), "fpai-fake-npm-"));
+    pkgDir = mkdtempSync(resolve(tmpdir(), "fpai-pkg-"));
+    const npm = resolve(bin, "npm");
+    writeFileSync(
+      npm,
+      [
+        "#!/usr/bin/env bash",
+        'printf "%s\\n" "$*" >> "$(dirname "$0")/calls.log"',
+        'for arg in "$@"; do [ "$arg" = "--provenance=false" ] && { echo "+ fake@1.0.0"; exit 0; }; done',
+        'echo "npm error 422 Unprocessable Entity - Error verifying sigstore provenance bundle" >&2',
+        "exit 1",
+        "",
+      ].join("\n"),
+    );
+    chmodSync(npm, 0o755);
+    saved = { PATH: process.env.PATH, GITHUB_ACTIONS: process.env.GITHUB_ACTIONS };
+    process.env.PATH = `${bin}:${process.env.PATH}`;
+    process.env.GITHUB_ACTIONS = "true";
+  });
+
+  afterEach(() => {
+    process.env.PATH = saved.PATH;
+    if (saved.GITHUB_ACTIONS === undefined) delete process.env.GITHUB_ACTIONS;
+    else process.env.GITHUB_ACTIONS = saved.GITHUB_ACTIONS;
+    rmSync(bin, { recursive: true, force: true });
+    rmSync(pkgDir, { recursive: true, force: true });
+  });
+
+  it("turns provenance OFF on the retry, because trusted publishing would sign it again", () => {
+    // Dropping `--provenance` used to be enough. Under trusted publishing npm
+    // attaches provenance on its own, so that retry regenerated the rejected
+    // statement and a fallback meant to keep the release going failed it.
+    const log = vi.spyOn(console, "log").mockImplementation(() => {});
+    try {
+      expect(publishPackage(pkgDir, "beta", false)).toContain("+ fake@1.0.0");
+    } finally {
+      log.mockRestore();
+    }
+    const calls = readFileSync(resolve(bin, "calls.log"), "utf8").trim().split("\n");
+    expect(calls).toEqual(["publish --tag beta --provenance", "publish --tag beta --provenance=false"]);
   });
 });
 

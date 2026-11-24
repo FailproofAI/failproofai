@@ -63,18 +63,18 @@ name: Publish fp-cloud-cli to PyPI
 #     stable  X.Y.Z    ->  X.Y.(Z+1)b0
 #
 # The `preflight` job resolves it, refuses a version PyPI has already taken, and
-# computes what `main` moves to; the `bump` job pushes that to `main` after a
-# successful upload — the version line AND a stub CHANGELOG section for it, in one
-# commit, because a version with no section is a release `preflight` refuses.
-# Cutting a release is therefore: edit ONE line only when you want to LEAVE the
-# current beta line (a stable cut, or a minor/major bump), then dispatch. A plain
-# beta needs no edit at all — the previous run already left main on the next one,
-# with a section open to write entries into as they merge.
+# computes what `main` moves to; the `bump` job proposes that after a successful
+# upload — the version line AND a stub CHANGELOG section for it, in one commit,
+# because a version with no section is a release `preflight` refuses. Cutting a
+# release is therefore: edit ONE line only when you want to LEAVE the current beta
+# line (a stable cut, or a minor/major bump), then dispatch. A plain beta needs no
+# edit at all once the previous release's bump pull request has merged, which left
+# main on the next one with a section open to write entries into as they merge.
 #
-# The bump pushes to `main`, which the org ruleset protects, so it authenticates as
-# the version-bot GitHub App — the SAME app and the SAME two secrets
-# (`VERSION_BOT_APP_ID` / `VERSION_BOT_PRIVATE_KEY`) `publish.yml` and
-# `bump-platform-submodule.yml` already use. No new out-of-band setup.
+# The bump reaches `main` through review. `main` is protected by the org ruleset,
+# which nothing in CI can get past, so `bump` pushes its commit to a
+# `version-bump/` branch with the job's own token and opens the pull request for
+# it (scripts/push-version-bump.sh). No App, no secret.
 
 on:
   workflow_dispatch:
@@ -444,9 +444,10 @@ jobs:
   # mode of forgetting is a burned run dying at the upload step weeks later.
   #
   # Its own job rather than a step on `publish`, so the two credentials never
-  # coexist: `publish` holds the OIDC identity, this one holds a token that bypasses
-  # the branch ruleset, and nothing needs both. It runs no repository code beyond
-  # `scripts/python-version.py` and installs nothing.
+  # coexist: `publish` holds the OIDC identity, this one holds a token that can push
+  # a branch, and nothing needs both. It runs no repository code beyond
+  # `scripts/python-version.py`, `scripts/changelog-open.py` and
+  # `scripts/push-version-bump.sh`, and installs nothing.
   #
   # A skipped `publish` (dry run) skips this too — GitHub skips a job whose `needs`
   # were skipped — and the `if` restates it so the intent survives someone changing
@@ -458,31 +459,26 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:
-      # READ, not write. The push below authenticates as the version-bot App, which
-      # is what the ruleset on `main` accepts; GITHUB_TOKEN is not a bypass actor, so
-      # granting it write here would widen the job without enabling anything.
-      contents: read
+      # To push the bump BRANCH. The ruleset on `main` rejects this token, so a
+      # branch is the most it can reach there.
+      contents: write
+      # To open the bump's pull request. GitHub also requires the repository
+      # setting "Allow GitHub Actions to create and approve pull requests";
+      # without it, the script prints a link instead.
+      pull-requests: write
     steps:
-      - name: Mint version-bot app token
-        id: app-token
-        uses: actions/create-github-app-token@v3
-        with:
-          app-id: ${{ secrets.VERSION_BOT_APP_ID }}
-          private-key: ${{ secrets.VERSION_BOT_PRIVATE_KEY }}
-
       - uses: actions/checkout@v7.0.1
         with:
           fetch-depth: 0
-          # NOT persisted. This token bypasses the ruleset on `main`; writing it into
-          # `.git/config` would leave it readable to every later step in the job. The
-          # push below supplies it to the one command that needs it instead.
+          # NOT persisted. The push below supplies the job's token to the one
+          # command that needs it, rather than leaving it in `.git/config`.
           persist-credentials: false
 
-      - name: Open the next development version on main
+      - name: Propose the next development version for main
         env:
           NEXT_VERSION: ${{ needs.preflight.outputs.next_version }}
           PUBLISHED: ${{ needs.preflight.outputs.version }}
-          APP_TOKEN: ${{ steps.app-token.outputs.token }}
+          GITHUB_TOKEN: ${{ github.token }}
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
@@ -498,10 +494,10 @@ jobs:
           # The stub section is opened in the SAME commit, never left for a human.
           # A version with no section is the state `changelog-section.py` refuses at
           # release time and `__tests__/ci/python-version-pipeline.test.ts` asserts
-          # against — and this commit carries a skip-ci marker, so main went red not
-          # here but on the next unrelated PR to run CI. That happened at the first
-          # publish and again at the second; a rule whose commit is written by a
-          # workflow cannot be a rule a maintainer remembers. Idempotent, so a
+          # against. When bump commits went straight to main with a skip-ci marker,
+          # main went red not there but on the next unrelated PR to run CI. That
+          # happened at the first publish and again at the second; a rule whose
+          # commit is written by a workflow cannot be a rule a maintainer remembers. Idempotent, so a
           # re-run against a main that already carries the section is a no-op
           # rather than a second heading (which would silently release only the
           # first one's body).
@@ -519,17 +515,11 @@ jobs:
           fi
 
           git add fp-cloud-cli/fp_cli/_version.py fp-cloud-cli/CHANGELOG.md
-          git commit -m "chore(fp-cloud-cli): open ${NEXT_VERSION} after publishing ${PUBLISHED} [skip ci]"
+          git commit -m "chore(fp-cloud-cli): open ${NEXT_VERSION} after publishing ${PUBLISHED}"
 
-          # Supplied to the single command that needs it rather than persisted, and
-          # through a header rather than the remote URL: git echoes the URL in its own
-          # error output on a failed push, where `::add-mask::` does not reach.
-          printf '%s\n' "::add-mask::$APP_TOKEN"
-          AUTH_HEADER="Authorization: Basic $(printf 'x-access-token:%s' "$APP_TOKEN" | base64 -w0)"
-          git -c "http.https://github.com/.extraheader=$AUTH_HEADER" \
-              push "https://github.com/${GITHUB_REPOSITORY}.git" HEAD:main
-
-          printf '%s\n' "::notice::main now opens ${NEXT_VERSION}."
+          bash scripts/push-version-bump.sh "version-bump/fp-cloud-cli-${NEXT_VERSION}" \
+            "chore(fp-cloud-cli): open ${NEXT_VERSION} after publishing ${PUBLISHED}" \
+            "Opens ${NEXT_VERSION} on main after publishing ${PUBLISHED}: the version in fp-cloud-cli/fp_cli/_version.py and a stub section in fp-cloud-cli/CHANGELOG.md."
 
   # Where a fp-cloud-cli release is announced and where its notes live. Separate from
   # `bump` because that one is skipped for a version outside the beta/stable

@@ -1379,6 +1379,37 @@ line in `sdk/typescript/src/version.ts` and `sdk/typescript/package.json`, which
 `sdk/typescript/scripts/release.mjs` keeps in step and `__tests__/ci/ts-sdk-pipeline.test.ts`
 asserts agree.
 
+### How a post-release bump reaches `main`
+
+**Through a reviewed pull request; nothing in CI pushes to `main`.** Each release workflow
+(`publish.yml`, `publish-failproofai-ts-sdk.yml` and both PyPI workflows) ends by committing
+the next version and handing it to `scripts/push-version-bump.sh`. That script pushes the
+commit to a `version-bump/<package>-<version>` branch with the job's own token, and prints a
+link to a pre-filled pull request in the log and the job summary. Someone opens it, and it
+needs one approval like any other change. Until it merges, `main` still carries the version
+that was just released, so the next release from `main` is refused as already published.
+Merge the bump first.
+
+Why not a direct push:
+- `failproofai-rules` rejects the job's `GITHUB_TOKEN` on `main` (GH013), and that token
+  can't go on the bypass list. It is the same identity in every workflow run on every
+  branch, so a bypass for it would be a bypass for anyone with write access.
+- The version-bot App that used to push here *was* such a bypass, readable by any job
+  that asked for its secret. When it was removed, every release broke at its **first**
+  step, because `publish.yml` minted its token before the npm publish. Now nothing before a
+  publish needs a write credential.
+- **Keep "Allow GitHub Actions to create and approve pull requests" off.** It is one switch
+  for both actions. With it on, a workflow can approve a pull request, and that approval
+  counts as the required review. That is why the workflows link a pull request instead of
+  opening one.
+
+Submodule pointers work the same way. No workflow pushes gitlink bumps into another
+repository any more, and `bump-platform-submodule.yml` is gone. Dependabot's
+`gitsubmodule` updates open the pull requests: here for `skills`, and in `platform` and
+`agenteye` (their own `dependabot.yml`) for `failproofai/oss`. Both upstreams are public,
+so this needs no credential. `__tests__/ci/version-bump.test.ts` runs the script against a
+real git remote and pins every workflow to it.
+
 ### The Python packages' scheme
 
 `scripts/python-version.py` is the single place it is written down, and both PyPI publish
@@ -1394,14 +1425,15 @@ and it is permanent the moment it uploads.
 The same rule `publish.yml` applies to npm (`-beta.N`), spelled in PEP 440.
 
 **You normally edit nothing.** `preflight` resolves the version and refuses one PyPI has
-already taken; `bump` pushes the next one to `main` after a successful upload — the version
-line *and* a stub `## <version> — <date>` section opened by `scripts/changelog-open.py` in
-the same commit — so main is already sitting on the next beta, with a section to write
-entries into, when the previous release finishes. Both halves land together on purpose: a
-version with no section is what `scripts/changelog-section.py` refuses at release time, and
-because bump commits carry a skip-ci marker that state used to go red on the next unrelated
-PR rather than on itself. Hand-edit `<pkg>/_version.py` only to **leave** the current beta
-line — a stable cut (`0.0.1b4` → `0.0.1`), or a minor/major bump.
+already taken; `bump` proposes the next one after a successful upload — the version line
+*and* a stub `## <version> — <date>` section opened by `scripts/changelog-open.py` in the
+same commit, on a `version-bump/` branch (see above) — so once that pull request merges,
+main sits on the next beta with a section to write entries into. Both halves land together
+on purpose: a version with no section is what `scripts/changelog-section.py` refuses at
+release time, and when bump commits went straight to main with a skip-ci marker, that state
+went red on the next unrelated PR rather than on itself. Hand-edit `<pkg>/_version.py` only
+to **leave** the current beta line — a stable cut (`0.0.1b4` → `0.0.1`), or a minor/major
+bump.
 
 Two things that will bite:
 

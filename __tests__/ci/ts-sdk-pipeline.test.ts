@@ -190,15 +190,14 @@ describe("the publish pipeline", () => {
     expect(script).toContain("node_modules/@failproofai/sdk/node_modules");
   });
 
-  it("opens the next version AND its CHANGELOG section in one commit", () => {
-    // A version with no section is what `preflight` refuses at release time,
-    // and a bump commit carries a skip-ci marker — so that state would go red
-    // on the next unrelated PR rather than on itself.
+  it("proposes the next version AND its CHANGELOG section in one commit, for review", () => {
+    // A version with no section is what `preflight` refuses at release time.
+    // The commit lands through a pull request: nothing in CI can push to main.
     const script = JSON.stringify(jobs.bump.steps);
     expect(script).toContain("release.mjs write");
     expect(script).toContain("CHANGELOG.md");
-    expect(script).toContain("[skip ci]");
-    expect(script).toContain("VERSION_BOT_APP_ID");
+    expect(script).toContain("scripts/push-version-bump.sh \\\"version-bump/sdk-typescript-$NEXT\\\"");
+    expect(script).not.toContain("push origin main");
   });
 
   it("does not publish, release, verify or bump on a dry run", () => {

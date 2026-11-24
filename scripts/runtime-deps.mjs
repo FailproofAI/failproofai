@@ -137,7 +137,13 @@ export function externalsOf(scripts = {}) {
       if (["&&", "||", ";", "|"].includes(word)) segments.push([]);
       else segments.at(-1).push(word);
     }
-    for (const words of segments) {
+    for (const segment of segments) {
+      // `NODE_ENV=production bun build …` and `env FOO=1 bun build …` are
+      // still bun builds: skip the environment before naming the command.
+      let start = 0;
+      if (segment[start] === "env") start++;
+      while (start < segment.length && /^[A-Za-z_][A-Za-z0-9_]*=/.test(segment[start])) start++;
+      const words = segment.slice(start);
       if (words[0] !== "bun" || words[1] !== "build") continue;
       for (let i = 2; i < words.length; i++) {
         const word = words[i];

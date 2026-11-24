@@ -301,14 +301,19 @@ runtime exists.
 
 The SHA-256 each artifact is checked against arrives in the desired state,
 from the same Cloud origin and under the same credential the artifact is
-requested with (the artifact request follows redirects, so its bytes may be
-served from elsewhere; the digest is what binds them). It catches corruption
-in transit or on disk, and a cache file changed on the machine; it cannot
-catch a Cloud that serves bad code, because Cloud names both the code and its
-digest. Until the publisher signature above exists, anyone who can change an
-organization's deployments — Cloud itself, or any member or API key holding
-`policies:write` (publish, deploy, rollback, disable) — can run code on every
-machine that organization's deployments reach. The public docs say so in
-`docs/policies/deploy.mdx` and `docs/admin/keys-and-permissions.mdx`.
-Disabling a policy is the fleet-wide emergency stop, so an approval step added
-on the Cloud side must not gate it.
+requested with. The artifact request follows redirects (reqwest's default
+policy) to any host, plain http included: the client checks the origin of the
+artifact URL Cloud names and refuses a plain-http base URL off loopback, but
+checks neither where a redirect leads, so the bytes may be served, in the
+clear, from elsewhere, and the digest is what binds them. It catches
+corruption in transit or on disk, and a cache file changed on the machine; it
+cannot catch a Cloud that serves bad code, because Cloud names both the code
+and its digest. Until the publisher signature above exists, anyone who can
+change an organization's deployments — Cloud itself, or any member or API key
+holding `policies:write` (publish, deploy, rollback, disable) — can run code
+on every machine that organization's deployments reach. The public docs say so
+in `docs/policies/deploy.mdx` and `docs/admin/keys-and-permissions.mdx`.
+Disabling a policy is how an organization stops it across its fleet, but a
+machine applies the disable only at its next successful poll: one that cannot
+reach Cloud keeps running its cached deployment. An approval step added on the
+Cloud side must not gate a disable.

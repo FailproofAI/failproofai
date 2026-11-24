@@ -68,6 +68,18 @@ describe("build-script externals", () => {
     ]);
   });
 
+  it("still reads a bun build that the environment is set for", () => {
+    expect(
+      externalsOf({
+        "build:worker": "NODE_ENV=production bun build bin/w.mjs --external yaml",
+        "build:cli": "env FOO=1 BAR=2 bun build bin/a.mjs -e smol-toml && FOO=1 node -e \"require('x')\"",
+      }),
+    ).toEqual([
+      { name: "yaml", script: "build:worker" },
+      { name: "smol-toml", script: "build:cli" },
+    ]);
+  });
+
   it("reads this repository's build scripts the way bun does", () => {
     const pkg = JSON.parse(readFileSync(join(REPO, "package.json"), "utf8"));
     expect(externalsOf(pkg.scripts)).toEqual([

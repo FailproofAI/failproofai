@@ -13,7 +13,7 @@ A deployment puts published policy versions on a machine, each with one of two e
 
 A policy's JavaScript is code, and in both effects it runs. A deployment downloads it to every machine it targets, where the failproofai policy worker imports it with the permissions of the user the daemon runs as, the same user as the agent. It is not sandboxed.
 
-The machine asks only the Cloud it is connected to for policies, over HTTPS (plain HTTP only to a local loopback address) and with its own organization key. Before importing a policy it checks the code against the SHA-256 digest Cloud's deployment names. That proves the code is what Cloud chose to send. It does not prove who wrote it, because the digest comes from the same Cloud: there is no publisher signature yet.
+The machine asks only the Cloud it is connected to for policies, over HTTPS (plain HTTP only to a local loopback address) and with its own organization key. It follows a redirect Cloud answers with, wherever it points, plain HTTP included. Before importing a policy it checks the code against the SHA-256 digest Cloud's deployment names, so a changed byte is refused wherever it came from. That proves the code is what Cloud chose to send. It does not prove who wrote it, because the digest comes from the same Cloud: there is no publisher signature yet.
 
 <Warning>
   Whoever can change an organization's deployments can run code on its machines. That is any member or API key with `policies:write`, which publishes, deploys, rolls back and disables policies. Grant it as you would grant deploy access to those machines.

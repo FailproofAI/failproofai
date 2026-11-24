@@ -509,6 +509,8 @@ const STATE_READ_COMMANDS = new Set([
   // Contents
   "cat", "bat", "less", "more", "head", "tail", "nl", "strings", "xxd", "od",
   "jq", "yq", "diff", "cmp", "wc", "sort", "uniq", "column", "awk", "cut",
+  // Filters with no output file of their own: `cat … | tr a-z A-Z` reads.
+  "tr", "tac", "rev", "fold", "fmt", "expand", "unexpand", "paste", "comm", "join",
   // Listing and metadata
   "ls", "dir", "tree", "stat", "file", "du", "df", "readlink", "realpath",
   "basename", "dirname", "pwd", "test", "find",

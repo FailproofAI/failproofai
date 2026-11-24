@@ -992,6 +992,12 @@ describe("block-failproofai-commands — review round six", () => {
       expect(await bash(command)).toBe(true);
     });
 
+    it("reads through a filter that writes no file of its own", async () => {
+      expect(await bashDecision(`cat ~/.claude/settings.json | tr a-z A-Z`)).toBe("allow");
+      expect(await bashDecision(`cat ~/.claude/settings.json | tac | rev`)).toBe("allow");
+      expect(await bash(`cat /tmp/x | tr a-z A-Z > ~/.claude/settings.json`)).toBe(true);
+    });
+
     it("leaves a quoted > inside an argument where it is", async () => {
       expect(await bashDecision(`cp "/tmp/a > b" /tmp/out`)).toBe("allow");
     });

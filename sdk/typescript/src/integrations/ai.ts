@@ -1564,3 +1564,7 @@ export const _internals = {
   tracker: (): core.RunTracker | null => tracker,
   openCalls: (): number => calls.size,
 };
+
+/** The Self Reports tool for this framework — see `./self-report-tools.ts`. */
+export { aiSelfReportTool as selfReportTool } from "./self-report-tools.js";
+export type { AiSelfReportToolOptions, AiSelfReportTool, AiModule } from "./self-report-tools.js";

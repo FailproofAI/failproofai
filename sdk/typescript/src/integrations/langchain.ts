@@ -2338,3 +2338,7 @@ export function langchainHandler(options?: LangChainOptions): Record<string, unk
   }
   return theHandler();
 }
+
+/** The Self Reports tool for this framework — see `./self-report-tools.ts`. */
+export { langchainSelfReportTool as selfReportTool } from "./self-report-tools.js";
+export type { LangChainSelfReportToolOptions, LangChainToolsModule } from "./self-report-tools.js";

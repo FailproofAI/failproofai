@@ -2109,3 +2109,11 @@ export const adapter: Adapter = {
     }, [], `${NAME}.shutdown`);
   },
 };
+
+/** The Self Reports tool for this framework — see `./self-report-tools.ts`. */
+export { llamaindexSelfReportTool as selfReportTool } from "./self-report-tools.js";
+export type {
+  LlamaIndexSelfReportTool,
+  LlamaIndexSelfReportToolOptions,
+  LlamaIndexToolsModule,
+} from "./self-report-tools.js";

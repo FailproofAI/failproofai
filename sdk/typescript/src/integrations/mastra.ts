@@ -1800,3 +1800,7 @@ export const _internals = {
   resumeTargetOf,
   humanText,
 };
+
+/** The Self Reports tool for this framework — see `./self-report-tools.ts`. */
+export { mastraSelfReportTool as selfReportTool } from "./self-report-tools.js";
+export type { MastraSelfReportToolOptions, MastraToolsModule, ZodModule } from "./self-report-tools.js";

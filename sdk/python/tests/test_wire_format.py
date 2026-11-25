@@ -49,6 +49,7 @@ GOLDEN = {
     "human_input": '{"timestamp": "2026-01-02T03:04:05.678901Z", "session_id": "sess-1", "agent_id": "agent-1", "type": "human_input", "input_id": "i-1", "environment": "prod", "response": "y", "duration_ms": 78}',
     "human_pause": '{"timestamp": "2026-01-02T03:04:05.678901Z", "session_id": "sess-1", "agent_id": "agent-1", "type": "human_pause", "environment": "prod", "reason": "lunch", "user_id": "u-1"}',
     "human_interrupt": '{"timestamp": "2026-01-02T03:04:05.678901Z", "session_id": "sess-1", "agent_id": "agent-1", "type": "human_interrupt", "environment": "prod", "reason": "stop", "user_id": "u-1", "at_step": "3"}',
+    "self_report": '{"timestamp": "2026-01-02T03:04:05.678901Z", "session_id": "sess-1", "agent_id": "agent-1", "type": "self_report", "category": "looping", "detail": "same search again", "source": "sdk", "environment": "prod", "tool_call_id": "tc-1"}',
 }
 
 
@@ -71,6 +72,7 @@ def _events():
         "human_input": s.HumanInputEvent(**BASE, input_id="i-1", response="y", duration_ms=78),
         "human_pause": s.HumanPauseEvent(**BASE, reason="lunch", user_id="u-1"),
         "human_interrupt": s.HumanInterruptEvent(**BASE, reason="stop", user_id="u-1", at_step="3"),
+        "self_report": s.SelfReportEvent(**BASE, category="looping", detail="same search again", tool_call_id="tc-1"),
     }
 
 

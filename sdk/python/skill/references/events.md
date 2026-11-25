@@ -1,6 +1,6 @@
 # Event catalog
 
-> TypeScript/JavaScript: the same 15 events on `failproofai.event`, camelCase
+> TypeScript/JavaScript: the same 16 events on `failproofai.event`, camelCase
 > (`toolUse({ toolName, toolCallId })`) taking one options object; the file written
 > is identical. Name map in `typescript.md`. Code below is Python, and where it
 > says `ValueError` or `TypeError`, TypeScript throws `TypeError` or a plain
@@ -9,7 +9,7 @@
 Every method lives on `failproofai_sdk.event`, is **keyword-only**, and returns `None`.
 Nothing here blocks or does I/O — the call queues the event and returns.
 
-`session_id` and `agent_id` are optional on all fifteen: omit them and they come
+`session_id` and `agent_id` are optional on all sixteen: omit them and they come
 from the enclosing `failproofai_sdk.session()` / `failproofai_sdk.agent()` scope. Pass them and
 your value wins. Omit `session_id` with nothing bound and you get a `TypeError`
 naming the fix; `agent_id` falls back to `"main"` and never raises. See
@@ -19,7 +19,7 @@ Emit only what fits the agent. There is no requirement to use every type, and no
 penalty for skipping one — except `agent_start`, without which the session does
 not exist at all.
 
-## The 15 events
+## The 16 events
 
 Columns: **Required** is beyond `session_id` + `agent_id`, which every event
 carries and which you rarely pass by hand.
@@ -43,6 +43,7 @@ not written as `null`.
 | `human_input` | `input_id` | `response` | `duration_ms` auto-computed — how long the human took. |
 | `human_pause` | — | `reason`, `user_id` | |
 | `human_interrupt` | — | `reason`, `user_id`, `at_step` | |
+| `self_report` | `category`, `detail` (positional) | `tool_call_id` | The agent says it is stuck. Never raises for a missing session (see *Self Reports*). Always carries `source: "sdk"` (passing `source` raises `ValueError`). Category recorded as given; `detail` cut to 2,000 chars. Usually the model triggers it through the report tool — see *Self Reports* below. |
 
 ## Rules that apply to every event
 
@@ -76,9 +77,9 @@ the optional names are silent.
 `agent_id`, `type`, `environment` — passing any as a custom field. (`session_id`
 and `agent_id` are already named args, so Python raises `TypeError` first.)
 
-**`duration_ms` is yours to pass on eleven of the fifteen.** It is computed for you
+**`duration_ms` is yours to pass on twelve of the sixteen.** It is computed for you
 on `tool_result`, `hook_completed`, `human_input`, and `agent_resume`, and passing
-it to *those four* raises `ValueError`. On the other eleven there is no guard:
+it to *those four* raises `ValueError`. On the other twelve there is no guard:
 `agent_end(..., duration_ms=5)` is accepted and stored as an ordinary custom field. Don't.
 
 The one place you *should* pass it is **`model_response`**, where nothing computes
@@ -241,3 +242,31 @@ The agent span stays open across the pause (it is not ended); `agent_resume`
 carries the paused `duration_ms` when both halves run in the same process, and
 paused time is reported separately from active work. Persist `pause_id` if the
 resume happens in a different process so it reuses the same value.
+
+
+## Self Reports
+
+Give the model a tool to report it is stuck instead of emitting `self_report`
+yourself. The tool answers `Recorded.` and changes nothing.
+
+```python
+import failproofai_sdk
+
+# a framework agent — one factory per adapter module
+from failproofai_sdk.integrations.langchain import self_report_tool
+tools = [*my_tools, self_report_tool()]
+
+# a raw provider API
+tools = [failproofai_sdk.openai_tool(), *my_tools]       # anthropic_tool(), openai_responses_tool()
+if failproofai_sdk.is_self_report_tool(name):
+    output = failproofai_sdk.handle_tool_call(name, arguments, tool_call_id=call_id)
+```
+
+Tool name `failproofai_report`; description and `category` enum from
+`~/.failproofai/self-report.json`, else six defaults
+(`failproofai_sdk.self_report_spec()` shows the result). The same factory exists
+in `integrations.crewai`, `integrations.llama_index` and
+`integrations.pydantic_ai` (also `FailproofAI(self_report=True)`). Tool helpers
+never raise into the agent loop. Unlike every other event, `self_report` never
+raises for a missing session: it uses the open `tool_use` for the call, then the
+enclosing scope, then files the report under `"unattributed"` with one warning.

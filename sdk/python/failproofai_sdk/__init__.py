@@ -7,7 +7,10 @@ Three surfaces, in the order most people meet them:
   under `with` and `async with`.
 * **Adapters** — `instrument()`. Auto-detects LangChain/LangGraph, CrewAI,
   LlamaIndex and Pydantic AI in the process and wires them to the scopes above.
-* **`event.*`** — the 15 event methods, for anything the adapters do not cover.
+* **`event.*`** — the 16 event methods, for anything the adapters do not cover.
+* **Self Reports** — `self_report()` and the report tool for the model
+  (`openai_tool()`, `anthropic_tool()`, `handle_tool_call()`, `is_self_report_tool()`);
+  ready-made framework tools are `integrations.<framework>.self_report_tool()`.
 
 `session_id` and `agent_id` are optional on every event method: omitted, they
 resolve from the enclosing scope. Nothing bound and nothing passed is an error,
@@ -25,6 +28,15 @@ from failproofai_sdk._scopes import agent, session, tool_call
 from failproofai_sdk._environment import _reject_comma
 from failproofai_sdk._writer import _validated_interval
 from failproofai_sdk import _runtime
+from failproofai_sdk._self_report import (
+    anthropic_tool,
+    handle_tool_call,
+    is_self_report_tool,
+    openai_responses_tool,
+    openai_tool,
+    self_report,
+    self_report_spec,
+)
 
 __all__ = [
     "__version__",
@@ -39,6 +51,13 @@ __all__ = [
     "instrument",
     "uninstrument",
     "OtelSpanExporter",
+    "self_report",
+    "self_report_spec",
+    "openai_tool",
+    "openai_responses_tool",
+    "anthropic_tool",
+    "handle_tool_call",
+    "is_self_report_tool",
     "_writer",
 ]
 

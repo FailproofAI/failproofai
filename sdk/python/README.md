@@ -74,6 +74,69 @@ standard library. See `skill/references/frameworks.md` for the per-framework
 mapping, and `docs/` for a per-framework integration guide with runnable
 examples beside it.
 
+## Self Reports
+
+A tool your agent calls when it is stuck — looping, a broken tool or credential,
+missing context, a request it cannot do, a task it failed. Each call becomes a
+`self_report` event on the session, shown on the Self Reports page in
+FailproofAI Cloud. The tool always answers `Recorded.` and changes nothing.
+
+Ready-made tools, one per framework (each imports its framework only when called):
+
+```python
+from failproofai_sdk.integrations.langchain import self_report_tool    # StructuredTool (LangChain / LangGraph)
+from failproofai_sdk.integrations.crewai import self_report_tool       # crewai BaseTool
+from failproofai_sdk.integrations.llama_index import self_report_tool  # FunctionTool
+from failproofai_sdk.integrations.pydantic_ai import self_report_tool  # pydantic_ai Tool
+
+tools = [*my_tools, self_report_tool()]
+```
+
+Pydantic AI can also add it through the capability, opt in:
+`FailproofAI(self_report=True)` or `failproofai_sdk.instrument("pydantic_ai", self_report=True)`.
+
+With a raw provider API:
+
+```python
+tools = [failproofai_sdk.openai_tool(), *my_tools]   # or openai_responses_tool(), anthropic_tool()
+
+for call in message.tool_calls:
+    if failproofai_sdk.is_self_report_tool(call.function.name):
+        output = failproofai_sdk.handle_tool_call(
+            call.function.name, call.function.arguments, tool_call_id=call.id
+        )  # "Recorded."; arguments may be a dict or a JSON string
+```
+
+Or record one directly, in the current session and agent scope:
+
+```python
+failproofai_sdk.self_report("invalid_tool_or_credential", "The search API rejects our key.")
+```
+
+- **Spec.** `failproofai_sdk.self_report_spec()` returns `{name: "failproofai_report",
+  description, input_schema}`. The categories (the `category` enum) and any extra
+  guidance come from `$FAILPROOFAI_HOME/self-report.json` — written by the daemon
+  from your org's Cloud setting, or by `failproofai self-report enable` — read each
+  time a spec is built. When that file is missing, unreadable or disabled, six
+  defaults are used (`looping`, `cannot_do_request`, `invalid_tool_or_credential`,
+  `missing_context`, `repeated_tool_failure`, `task_failure`): adding the tool is
+  itself the opt-in. Pass `categories=[...]` (and `guidance=`) to any helper to
+  override.
+- **Event.** `{type: "self_report", category, detail, source: "sdk", tool_call_id?}`
+  plus the usual `session_id` / `agent_id` / `timestamp` / `environment`. An
+  unknown category is recorded as given; `detail` is cut to 2,000 characters.
+- **Session.** Most specific first: an explicit `session_id=` (framework tools
+  also take one on the factory); the run the adapter is recording (framework
+  tools, when instrumented); the open `tool_use` for this call (by
+  `tool_call_id`, then the newest open report-tool call) within the enclosing
+  session; the enclosing `session()` / `agent()` scope; otherwise the report is
+  filed under `"unattributed"` with one warning. Unlike the other event methods,
+  a missing session never raises, and the tool helpers never raise into your
+  agent loop at all.
+- **Hiding it.** `failproofai_sdk.is_self_report_tool(name)` is true for
+  `failproofai_report` and the coding-agent MCP spellings
+  (`mcp__failproofai__report`, `failproofai__report`, ...).
+
 ## OpenTelemetry (opt in)
 
 Already emitting OpenTelemetry spans? Install `opentelemetry-sdk` separately,
@@ -439,6 +502,22 @@ failproofai_sdk.event.error(
 
 ---
 
+### `event.self_report()`
+
+The agent reports it is stuck. See [Self Reports](#self-reports).
+
+```python
+failproofai_sdk.event.self_report(
+    "looping",                  # category: str, required (recorded as given)
+    "same search, third time",  # detail: str | None, cut to 2000 chars
+    session_id="run-001",
+    agent_id="planner",
+    tool_call_id="call_1",      # str | None
+)
+```
+
+---
+
 ## Custom fields
 
 Any extra keyword arguments are appended to the event after the standard fields:
@@ -501,7 +580,7 @@ uv run pytest tests/test_sdk.py -k duration -v
 | Suite | What it holds |
 |---|---|
 | `test_sdk.py` | The public API — every event method, unit and on-disk |
-| `test_wire_format.py` | Golden bytes for all 15 event types, frozen |
+| `test_wire_format.py` | Golden bytes for all 16 event types, frozen |
 | `test_server_contract.py` | The keys ingest promotes to indexed columns |
 | `test_spool_contract.py` | Agreement with the daemons that read the spool |
 | `test_durability.py` | Concurrency, crash and retry paths — nothing silently lost |

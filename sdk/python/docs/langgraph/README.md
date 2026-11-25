@@ -361,6 +361,32 @@ The root agent span deliberately stays **open** across the gap, so the two
 
 ---
 
+## Self Reports
+
+Give the agent a tool to say it is stuck: looping, a broken tool or credential,
+missing context, a request it cannot do.
+
+```python
+from failproofai_sdk.integrations.langchain import self_report_tool
+from langgraph.prebuilt import ToolNode
+
+tools = [search, self_report_tool()]
+model = model.bind_tools(tools)
+graph.add_node("tools", ToolNode(tools))
+```
+
+A `StructuredTool`. While the adapter is installed the report lands on the agent whose run called it, with the model's `tool_call_id`; otherwise on the enclosing `failproofai_sdk.session()`.
+
+The tool's description and its `category` enum come from
+`~/.failproofai/self-report.json` (your org's categories when Self Reports is on
+in FailproofAI Cloud, or set locally with `failproofai self-report enable`), and
+fall back to six built-in categories. It always answers `Recorded.` and changes
+nothing; the call becomes a `self_report` event on the agent's session. To keep
+it out of a transcript you show users, filter on
+`failproofai_sdk.is_self_report_tool(name)`.
+
+---
+
 ## Pitfalls
 
 ### A raising tool aborts the whole graph

@@ -1574,3 +1574,49 @@ def test_captured_values_are_not_capped_at_a_quarter_of_the_core_limit():
     assert adapter_module._capture_limit(float("inf")) == _core.FIELD_LIMIT
     assert adapter_module._capture_limit("nope") == _core.FIELD_LIMIT
     assert adapter_module._capture_limit(0) == _core.FIELD_LIMIT
+
+
+# ---------------------------------------------------------------------------
+# Self Reports: the ready-made report tool
+# ---------------------------------------------------------------------------
+
+def test_self_report_tool_schema_matches_the_spec():
+    from llama_index.core.tools import FunctionTool
+
+    tool = adapter_module.self_report_tool()
+    spec = failproofai_sdk.self_report_spec()
+    assert isinstance(tool, FunctionTool)
+    assert tool.metadata.name == "failproofai_report"
+    assert tool.metadata.description == spec["description"]
+    params = tool.metadata.get_parameters_dict()
+    assert params["properties"]["category"]["enum"] == spec["input_schema"]["properties"]["category"]["enum"]
+    assert set(params["required"]) == {"category", "detail"}
+
+
+def test_self_report_tool_records_on_the_instrumented_agent(instrumented, tmp_path):
+    llm = StubLLM(script=[("failproofai_report", {"category": "looping", "detail": "same step again"})], final="ok")
+    run_agent(calculator(llm, tools=[add, adapter_module.self_report_tool()]), "go")
+    events = read_events(tmp_path)
+    (report,) = only(events, "self_report")
+    start = only(events, "agent_start")[0]
+    assert report["session_id"] == start["session_id"]
+    assert report["agent_id"] == "calc"
+    assert (report["category"], report["detail"], report["source"]) == ("looping", "same step again", "sdk")
+    assert report["framework"] == "llama_index"
+    results = [e for e in only(events, "tool_result") if e["tool_name"] == "failproofai_report"]
+    assert results and "Recorded." in str(results[0].get("output"))
+
+
+def test_self_report_tool_uses_the_ambient_scope_when_not_instrumented(tmp_path):
+    tool = adapter_module.self_report_tool()
+    with failproofai_sdk.session("li-ambient"):
+        assert str(tool.call(category="task_failure", detail="gave up")) == "Recorded."
+    (report,) = only(read_events(tmp_path), "self_report")
+    assert (report["session_id"], report["agent_id"]) == ("li-ambient", "main")
+
+
+def test_self_report_tool_explicit_identity(tmp_path):
+    tool = adapter_module.self_report_tool(session_id="li-s", agent_id="li-a")
+    tool.call(category="looping", detail="x")
+    (report,) = only(read_events(tmp_path), "self_report")
+    assert (report["session_id"], report["agent_id"]) == ("li-s", "li-a")

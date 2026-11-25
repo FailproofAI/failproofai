@@ -11,6 +11,21 @@ see `scripts/changelog-section.py`.
 
 ## 0.0.1b7 — 2026-10-16
 
+### Features
+
+- **Self Reports.** A tool the agent calls when it is stuck, recorded as a new
+  `self_report` event (`category`, `detail`, `source: "sdk"`, optional
+  `tool_call_id`) in the current session and agent scope. New API:
+  `failproofai_sdk.self_report()` / `event.self_report()`, `self_report_spec()`,
+  `openai_tool()`, `openai_responses_tool()`, `anthropic_tool()`,
+  `handle_tool_call()` (always answers `Recorded.`, never raises into the agent
+  loop) and `is_self_report_tool()`. Ready-made tools:
+  `integrations.<langchain|crewai|llama_index|pydantic_ai>.self_report_tool()`,
+  and the Pydantic AI capability adds it with `FailproofAI(self_report=True)` /
+  `instrument("pydantic_ai", self_report=True)`. Categories and guidance come from
+  `$FAILPROOFAI_HOME/self-report.json`, else six defaults. Still no runtime
+  dependencies.
+
 ### Dependencies
 
 - **The CrewAI extra no longer brings ChromaDB.** crewai 1.15.44 made `chromadb` an

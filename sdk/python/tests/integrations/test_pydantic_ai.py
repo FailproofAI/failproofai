@@ -325,7 +325,7 @@ TYPE_OF_DATACLASS = {
 
 def test_the_type_table_covers_the_whole_schema():
     # Guards the test below: a bad CamelCase split would make it vacuous.
-    assert len(TYPE_OF_DATACLASS) == 15
+    assert len(TYPE_OF_DATACLASS) == 16
     assert {"tool_use", "model_response", "agent_end", "hook_triggered", "error"} <= set(
         TYPE_OF_DATACLASS
     )
@@ -969,6 +969,7 @@ class TestAntiDrift:
         # Guards every test below: `for name in {}` passes vacuously.
         assert set(OVERRIDES) == {
             "get_ordering",
+            "get_toolset",  # contributes the opt-in report tool
             "wrap_run",
             "wrap_model_request",
             "wrap_tool_execute",
@@ -1100,3 +1101,86 @@ def test_a_run_failure_no_leaf_owns_still_gets_its_one_error_event(instrumented,
     # Strictly before agent_end: the dashboard closes the agent span there and
     # anything after it is attributed to nothing.
     assert types_of(rows).index("error") < types_of(rows).index("agent_end")
+
+
+# ---------------------------------------------------------------------------
+# Self Reports: the ready-made report tool, and the capability opt-in
+# ---------------------------------------------------------------------------
+
+_REPORT_ARGS = {"category": "invalid_tool_or_credential", "detail": "The API key is rejected."}
+
+
+def _tool_definitions(agent):
+    """The tool definitions the model is actually shown on the first request."""
+    seen = {}
+
+    def respond(messages, info):
+        seen["tools"] = {t.name: t for t in info.function_tools}
+        return ModelResponse(parts=[TextPart("done")])
+
+    agent.run_sync("go", model=FunctionModel(respond))
+    return seen["tools"]
+
+
+def test_self_report_tool_schema_is_exactly_the_spec():
+    agent = Agent(TestModel(call_tools=[]), tools=[adapter.self_report_tool()])
+    tools = _tool_definitions(agent)
+    spec = failproofai_sdk.self_report_spec()
+    definition = tools["failproofai_report"]
+    assert definition.description == spec["description"]
+    assert definition.parameters_json_schema == spec["input_schema"]
+
+
+def test_self_report_tool_records_on_the_instrumented_run(instrumented, emitted):
+    agent = Agent(
+        one_shot_tool_model("failproofai_report", _REPORT_ARGS, tool_call_id="call-r"),
+        name="reporter_agent",
+        tools=[adapter.self_report_tool()],
+    )
+    agent.run_sync("go")
+    rows = emitted()
+    (report,) = of_type(rows, "self_report")
+    start = of_type(rows, "agent_start")[0]
+    assert report["session_id"] == start["session_id"]
+    assert report["agent_id"] == "reporter_agent"
+    assert report["tool_call_id"] == "call-r"
+    assert (report["category"], report["detail"], report["source"]) == (
+        "invalid_tool_or_credential", "The API key is rejected.", "sdk",
+    )
+    assert report["framework"] == "pydantic_ai"
+    (result,) = [r for r in of_type(rows, "tool_result") if r["tool_name"] == "failproofai_report"]
+    assert result["output"] == "Recorded."
+
+
+def test_self_report_tool_ambient_and_explicit_identity(emitted):
+    with failproofai_sdk.session("pai-ambient"):
+        Agent(one_shot_tool_model("failproofai_report", _REPORT_ARGS),
+              tools=[adapter.self_report_tool()]).run_sync("go")
+    Agent(one_shot_tool_model("failproofai_report", _REPORT_ARGS),
+          tools=[adapter.self_report_tool(session_id="pai-s", agent_id="pai-a")]).run_sync("go")
+    reports = of_type(emitted(), "self_report")
+    assert [(r["session_id"], r["agent_id"]) for r in reports] == [
+        ("pai-ambient", "main"), ("pai-s", "pai-a"),
+    ]
+
+
+def test_the_capability_adds_the_tool_only_when_asked():
+    plain = _tool_definitions(Agent(TestModel(call_tools=[]), capabilities=[FailproofAI()]))
+    assert "failproofai_report" not in plain
+    opted = _tool_definitions(Agent(TestModel(call_tools=[]), capabilities=[FailproofAI(self_report=True)]))
+    assert "failproofai_report" in opted
+
+
+def test_instrument_self_report_option_adds_the_tool(emitted):
+    _core.set_strict(False)
+    _compat.set_strict_integrations(False)
+    assert failproofai_sdk.instrument("pydantic_ai", self_report=True) == ("pydantic_ai",)
+    try:
+        agent = Agent(
+            one_shot_tool_model("failproofai_report", _REPORT_ARGS), name="auto_agent"
+        )
+        agent.run_sync("go")
+    finally:
+        failproofai_sdk.uninstrument("pydantic_ai")
+    (report,) = of_type(emitted(), "self_report")
+    assert report["agent_id"] == "auto_agent"

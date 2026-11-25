@@ -245,7 +245,9 @@ export const POLICY_CATALOG: PolicyCatalogEntry[] = [
     // also how an agent would set `"disableAllHooks": true` in its settings.
     match: {
       events: ["PreToolUse", "PermissionRequest"],
-      toolNames: ["Bash", "Write", "Edit", "MultiEdit", "NotebookEdit"],
+      // `apply_patch` by its own name too: OpenClaw passes its patch tool
+      // through uncanonicalized, where Codex, Copilot and OpenCode map theirs to Edit.
+      toolNames: ["Bash", "Write", "Edit", "MultiEdit", "NotebookEdit", "apply_patch"],
     },
     defaultEnabled: true,
     alwaysOn: true,

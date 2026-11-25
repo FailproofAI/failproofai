@@ -5205,7 +5205,8 @@ function blockFailproofaiCommands(ctx: PolicyContext): PolicyResult {
   // completely as `rm -rf` does — and the machine still reads as fresh, so
   // fail-closed never fires. Reading is not offered by these tools' write half,
   // so naming the state at all is the whole test.
-  if (ctx.toolName === "Write" || ctx.toolName === "Edit" || ctx.toolName === "MultiEdit" || ctx.toolName === "NotebookEdit") {
+  const rawPatch = ctx.toolName === "apply_patch";
+  if (ctx.toolName === "Write" || ctx.toolName === "Edit" || ctx.toolName === "MultiEdit" || ctx.toolName === "NotebookEdit" || rawPatch) {
     const path = getFilePath(ctx) || ((ctx.toolInput?.notebook_path as string) ?? "");
     // The path as given AND the file it lands on. The bin entry a user-scope
     // hook runs is usually a symlink into the package, so writing through it
@@ -5228,7 +5229,10 @@ function blockFailproofaiCommands(ctx: PolicyContext): PolicyResult {
     // hooks file with our entries taken out, switches off every policy — this
     // one included — and Claude Code's file watcher applies it before the next
     // tool call. Checked after symlinks, and through apply_patch's patch text.
-    const settingsFile = agentSettingsWriteTarget(ctx.toolInput, ctx.session?.cwd, sessionAgentSettingsPaths(ctx));
+    // A patch tool that arrives by its own name (OpenClaw's) is read whole:
+    // every string it carries, whatever the key, as a patch.
+    const writeInput = rawPatch ? { ...ctx.toolInput, patch: Object.values(ctx.toolInput ?? {}) } : ctx.toolInput;
+    const settingsFile = agentSettingsWriteTarget(writeInput, ctx.session?.cwd, sessionAgentSettingsPaths(ctx));
     if (settingsFile) {
       return deny(
         `${settingsFile} is an agent settings or hook file, and editing it could switch failproofai's hooks off. ` +

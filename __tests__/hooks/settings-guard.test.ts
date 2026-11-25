@@ -1576,6 +1576,18 @@ describe("block-failproofai-commands — review round seven", () => {
     expect(performance.now() - started).toBeLessThan(3000);
   });
 
+  it("reads OpenClaw's apply_patch, which arrives by its own name", async () => {
+    const patch = (file: string) => `*** Begin Patch\n*** Update File: ${file}\n@@\n-x\n+y\n*** End Patch\n`;
+    const run = async (toolInput: Record<string, unknown>) =>
+      (await policy.fn({ eventType: "PreToolUse", payload: {}, toolName: "apply_patch", toolInput, session: { cwd: p7 } })).decision;
+    expect(await run({ input: patch(join(h7, ".openclaw", "openclaw.json")) })).toBe("deny");
+    expect(await run({ patchText: patch(".claude/settings.json") })).toBe("deny");
+    // Whatever key carries it.
+    expect(await run({ text: patch(".codex/hooks.json") })).toBe("deny");
+    expect(await run({ input: patch("src/app.ts") })).toBe("allow");
+    expect(POLICY_CATALOG.find((entry) => entry.name === "block-failproofai-commands")!.match.toolNames).toContain("apply_patch");
+  });
+
   it("reads an appended variable in an agent CLI's hooks-off command", async () => {
     expect(await bashDecision(`F=ho; F+=oks; codex features disable "$F"`, p7)).toBe("deny");
     expect(await bashDecision(`F+=hooks; codex features disable $F`, p7)).toBe("deny");

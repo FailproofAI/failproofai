@@ -405,6 +405,11 @@ describe("block-failproofai-commands — the entry a project-scope npx hook runs
         "printf x > ho?k",
         "cp /tmp/stub.sh {hook,nothing}",
         "tee {hook,x} < /tmp/stub.sh",
+        // Past the brace words that are expanded on disk, the rest are refused,
+        // not dropped: `hook` is the 65th word here (found by hermes on
+        // FailproofAI/failproofai#1058).
+        "tee {x{a,b,c,d}{1,2,3,4}{i,j,k,l},hook} </dev/null",
+        "tee {hook,x{a,b,c,d}{1,2,3,4}{i,j,k,l}} </dev/null",
       ])("denies a glob or brace through a linked directory onto the entry: %s", async (command) => {
         expect(await bashIn(join(root, "proj"), command)).toBe("deny");
       });
@@ -421,6 +426,8 @@ describe("block-failproofai-commands — the entry a project-scope npx hook runs
         "rm -rf node_modules/*",
         "ls *",
         "cat hook",
+        "tee {x{a,b,c,d}{1,2,3,4}{i,j,k,l},notes} </dev/null",
+        "mkdir -p {a,b,c,d}/{e,f,g,h}/{i,j,k,l}/{m,n,o,p}",
       ])("still allows a glob that reaches no protected path: %s", async (command) => {
         expect(await bashIn(join(root, "proj"), command)).not.toBe("deny");
       });
@@ -824,6 +831,13 @@ describe("block-failproofai-commands — the entry a project-scope npx hook runs
       ["/work/proj", "D=node_modules/.bin; (D=/tmp); printf y > $D/failproofai"],
       ["/work/proj", "D=node_modules/.bin; (D=/tmp); cp /tmp/stage/failproofai $D/"],
       ["/work/proj/node_modules/.bin", "F=failproofai; F=x | true; printf y > $F"],
+      // Every combination of the values of the variables one word names
+      // (found by hermes on FailproofAI/failproofai#1058).
+      ["/work/proj", "A=fail; B=proofai; (A=x; B=y); printf x > node_modules/.bin/$A$B"],
+      ["/work/proj", "A=fail; B=proofai; A=x true; B=y true; printf x > node_modules/.bin/${A}${B}"],
+      ["/work/proj", "A=fa; B=il; C=proofai; (A=x; B=y; C=z); printf x > node_modules/.bin/$A$B$C"],
+      // More combinations than are tried is refused, not guessed at.
+      ["/work/proj", Array.from({ length: 13 }, (_, i) => `V${i}=a; V${i}=b`).join("; ") + "; printf x > " + Array.from({ length: 13 }, (_, i) => `$V${i}`).join("")],
     ])("denies a write through a variable another value may hold, from %s: %s", async (cwd, command) => {
       expect(await bashIn(cwd, command)).toBe("deny");
     });
@@ -832,6 +846,8 @@ describe("block-failproofai-commands — the entry a project-scope npx hook runs
       ["/work/proj/node_modules/.bin", "F=a; F=b; printf y > $F"],
       ["/work/proj", "D=dist; (D=build); rm -rf $D"],
       ["/work/proj", "F=a; F=b; echo " + Array(2000).fill("$F/$F").join(" ")],
+      ["/work/proj", "A=a; A=b; B=c; B=d; printf x > $A$B"],
+      ["/work/proj", Array.from({ length: 12 }, (_, i) => `V${i}=a; V${i}=b`).join("; ") + "; printf x > " + Array.from({ length: 12 }, (_, i) => `$V${i}`).join("")],
     ])("allows a reassigned variable that never reaches the entry, from %s: %s", async (cwd, command) => {
       expect(await bashIn(cwd, command)).not.toBe("deny");
     });
@@ -874,6 +890,7 @@ describe("block-failproofai-commands — the entry a project-scope npx hook runs
       "echo 'printf x > node_modules/.bin/failproofai' | tee /tmp/s.sh",
       "echo 'printf x > node_modules/.bin/failproofai' | cat > /tmp/s.sh",
       "echo 'cat > node_modules/.bin/failproofai'; echo done",
+      "echo 'cat > node_modules/.bin/failproofai' > docs/notes.md && git add docs/notes.md",
     ])("allows printing a command as text: %s", async (command) => {
       expect(await bash(command)).toBe("allow");
     });
@@ -905,6 +922,15 @@ describe("block-failproofai-commands — the entry a project-scope npx hook runs
       "exec > >(sh); echo 'printf x > node_modules/.bin/failproofai'",
       "exec >/tmp/s.sh; echo 'printf x > node_modules/.bin/failproofai'; sh /tmp/s.sh",
       'echo "$(cat > node_modules/.bin/failproofai < /tmp/stub.sh)"',
+      // An interpreter spelled with quotes or an escape is still an
+      // interpreter, and so is one behind `time` or a variable (found by
+      // hermes on FailproofAI/failproofai#1058).
+      "echo 'printf x > .failproofai/policies-config.json' > notes; 'sh' notes",
+      "echo 'printf x > .failproofai/policies-config.json' > notes; \"sh\" notes",
+      "echo 'printf x > .failproofai/policies-config.json' > notes; s'h' notes",
+      "echo 'printf x > .failproofai/policies-config.json' > notes; \\sh notes",
+      "echo 'printf x > .failproofai/policies-config.json' > notes; time sh notes",
+      "echo 'printf x > .failproofai/policies-config.json' > notes; \"$SHELL\" notes",
     ])("denies quoted text something runs, or a real redirect: %s", async (command) => {
       expect(await bash(command)).toBe("deny");
     });

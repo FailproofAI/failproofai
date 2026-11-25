@@ -2551,11 +2551,21 @@ function destroysFailproofaiState(command: string, depth = 0, startDir?: string,
       });
     });
   };
+  // Every word a brace expands to is read: a literal one as the path it is,
+  // which costs a lookup, and one that is still a pattern on disk, of which
+  // at most MAX_BRACE_WORDS_ON_DISK are expanded. Past that the rest are
+  // refused rather than dropped: `tee {x{a,b,c,d}{1,2,3,4}{i,j,k,l},hook}`
+  // wrote through `hook` as its 65th word (found by hermes on
+  // FailproofAI/failproofai#1058).
   const globLandsOnState = (written: string): boolean => {
-    const words = expandBraces(written);
-    for (let w = 0; w < words.length && w < MAX_BRACE_WORDS_ON_DISK; w++) {
-      const word = words[w];
-      if (GLOB_METACHAR_RE.test(word) ? patternLandsOnState(word) : word !== written && landsOnState(word)) return true;
+    let patterns = 0;
+    for (const word of expandBraces(written)) {
+      if (!GLOB_METACHAR_RE.test(word)) {
+        if (word !== written && landsOnState(word)) return true;
+        continue;
+      }
+      if (++patterns > MAX_BRACE_WORDS_ON_DISK) return true;
+      if (patternLandsOnState(word)) return true;
     }
     return false;
   };
@@ -2689,20 +2699,35 @@ function destroysFailproofaiState(command: string, depth = 0, startDir?: string,
   // cannot push it out of reach; past VARIANT_BUDGET tries the line is refused
   // as one the walk could not read.
   let variantBudget = VARIANT_BUDGET;
+  // Every combination of the values of the reassigned variables a word names,
+  // one value per variable as the shell uses it: `A=fail; B=proofai; (A=x;
+  // B=y); printf x > node_modules/.bin/$A$B` writes `failproofai`, which
+  // swapping one variable at a time never spelled (found by hermes on
+  // FailproofAI/failproofai#1058).
   const variantsOf = (word: string): string[] => {
     if (!reassigned || !word.includes("$")) return [];
     const known = variantsByWord.get(word);
     if (known !== undefined) return known;
+    const names = [...new Set([...word.matchAll(VAR_REFERENCE_RE)].map(([, name]) => name))].filter(
+      (name) => (everyValue.get(name)?.length ?? 0) > 1,
+    );
+    let combinations = 1;
+    for (const name of names) combinations *= everyValue.get(name)!.length;
+    variantBudget -= names.length === 0 ? 0 : combinations;
+    if (variantBudget < 0) throw new Error("a variable is reassigned too many times to follow");
     const variants = new Set<string>();
     const current = expand(word);
-    for (const [, name] of word.matchAll(VAR_REFERENCE_RE)) {
-      for (const value of everyValue.get(name) ?? []) {
-        if (--variantBudget < 0) throw new Error("a variable is reassigned too many times to follow");
-        const replaced = word.split(`\${${name}}`).join(value).replace(new RegExp(`\\$${name}(?![A-Za-z0-9_])`, "g"), () => value);
-        const variant = expand(replaced);
+    const substitute = (text: string, name: string, value: string): string =>
+      text.split(`\${${name}}`).join(value).replace(new RegExp(`\\$${name}(?![A-Za-z0-9_])`, "g"), () => value);
+    const choose = (index: number, text: string): void => {
+      if (index === names.length) {
+        const variant = expand(text);
         if (variant !== current) variants.add(variant);
+        return;
       }
-    }
+      for (const value of everyValue.get(names[index])!) choose(index + 1, substitute(text, names[index], value));
+    };
+    if (names.length > 0) choose(0, word);
     const found = [...variants];
     variantsByWord.set(word, found);
     return found;
@@ -4444,14 +4469,20 @@ function blankPrintedRedirects(command: string): string {
   let bare = "";
   for (let i = 0; i < command.length; i++) bare += text[i] ? " " : command[i];
   if (/\w\s*\(\s*\)/.test(bare)) return command;
-  // Each piece's command word, past any assignments in front of it.
+  // Each piece's command word, past any assignments in front of it: as the
+  // shell reads it, quotes and escapes removed (`'sh'` runs `sh`; found by
+  // hermes on FailproofAI/failproofai#1058), and as written with its text
+  // blanked, which is how a reserved word stands. A runner anywhere in the
+  // piece (`time sh`, `command sh`) counts, and so does a command word the
+  // walk cannot read (`"$SHELL" notes`) or one named by a path.
   const commandOf = (from: number, to: number): string =>
     bare.slice(from, to).trim().split(/\s+/).find((word) => !/^[A-Za-z_]\w*=/.test(word)) ?? "";
   let runsFiles = false;
   for (const { start: from, end: to } of pieces) {
-    const word = commandOf(from, to);
-    if (RUNS_PRINTED_TEXT.has(word)) return command;
-    if (RUNS_FILES.has(word) || word.includes("/")) runsFiles = true;
+    const words = shellWords(command.slice(from, to)).map(({ raw }) => stripShellQuoting(raw));
+    const head = words.find((word) => !/^[A-Za-z_]\w*=/.test(word)) ?? "";
+    if (RUNS_PRINTED_TEXT.has(commandOf(from, to)) || RUNS_PRINTED_TEXT.has(head)) return command;
+    if (head.includes("/") || /[$`]/.test(head) || words.some((word) => RUNS_FILES.has(word))) runsFiles = true;
   }
 
   // Whether a piece stands alone at the top of the line with only harmless

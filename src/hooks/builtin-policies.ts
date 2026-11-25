@@ -1466,6 +1466,9 @@ const REDIRECT_TARGET_RE = /\d*>{1,2}\|?\s*("[^"]*"|'[^']*'|[^\s;&|<>]+)/g;
  * reader.
  */
 function bareToken(token: string): string {
+  // A brace expansion keeps its braces: `{hook,x}` is two words to the shell,
+  // not `hook,x` (found by hermes on FailproofAI/failproofai#1058).
+  if (/\{[^{}]*(?:,|\.\.)[^{}]*\}/.test(token)) return token.replace(/^[()'"]+|[()'"]+$/g, "");
   return token.replace(/^[(){}'"]+|[(){}'"]+$/g, "");
 }
 
@@ -1907,6 +1910,9 @@ const GLOB_DISK_LIMIT = 4096;
 /** How many of the words a brace expands to are each read on disk. */
 const MAX_BRACE_WORDS_ON_DISK = 64;
 
+/** How many values of reassigned variables one line is read with; past it the line is refused. */
+const VARIANT_BUDGET = 4096;
+
 /**
  * The values an option word may carry glued on, each a path the command may
  * write: `--output=<file>`, and the rest of a short-option cluster,
@@ -1951,6 +1957,22 @@ function gluedOptionValues(head: string, word: string): string[] | null {
 function downloadLandings(words: string[]): Array<{ dir: string; name: string | null }> {
   const head = words.length > 0 ? commandBasename(words[0]) : "";
   if (head !== "wget" && head !== "curl") return [];
+  // curl's `--next` (`-:`) starts a transfer with options of its own: each is
+  // read alone, so a later `--output-dir` cannot stand in for an earlier one
+  // (found by hermes on FailproofAI/failproofai#1058).
+  if (head === "curl") {
+    const transfers: string[][] = [[]];
+    for (const word of words.slice(1)) {
+      if (word === "--next" || word === "-:") transfers.push([]);
+      else transfers[transfers.length - 1].push(word);
+    }
+    if (transfers.length > 1) return transfers.flatMap((transfer) => transferLandings(head, transfer));
+  }
+  return transferLandings(head, words.slice(1));
+}
+
+/** `downloadLandings` for one transfer's arguments. */
+function transferLandings(head: string, args: string[]): Array<{ dir: string; name: string | null }> {
   const valueOptions = head === "wget" ? WGET_VALUE_OPTIONS : CURL_VALUE_OPTIONS;
   let dir = ".";
   let urlNamed = head === "wget";
@@ -1962,7 +1984,6 @@ function downloadLandings(words: string[]): Array<{ dir: string; name: string | 
   // What curl's `-o` / `--output` name, which `--output-dir` also prefixes.
   const outputs: string[] = [];
   const urls: string[] = [];
-  const args = words.slice(1);
   for (let i = 0; i < args.length; i++) {
     const arg = args[i];
     if (arg === "--") {
@@ -2011,11 +2032,12 @@ function downloadLandings(words: string[]): Array<{ dir: string; name: string | 
     }
     urls.push(arg);
   }
-  // curl puts a file `-o` names in `--output-dir` as well: `--output-dir
-  // node_modules/.bin -o failproofai` writes the entry (found by hermes on
+  // curl puts a file `-o` names in `--output-dir` as well, an absolute name
+  // too (joined, not replaced): `--output-dir node_modules/.bin -o failproofai`
+  // and `-o /failproofai` both write the entry (found by hermes on
   // FailproofAI/failproofai#1058).
   const landings: Array<{ dir: string; name: string | null }> =
-    head === "curl" && dirGiven ? outputs.filter((output) => relativeWord(output)).map((name) => ({ dir, name })) : [];
+    head === "curl" && dirGiven ? outputs.filter((output) => output !== "" && output !== "-").map((name) => ({ dir, name })) : [];
   if (!urlNamed || named || (recursive && !flat)) return landings;
   if (serverNamed || recursive) return [...landings, { dir, name: null }];
   for (const url of urls) {
@@ -2462,12 +2484,18 @@ function destroysFailproofaiState(command: string, depth = 0, startDir?: string,
       if (real === ELOOP) return true;
       if (typeof real !== "string") return lostNamesState({ via: real.via, lost: real.lost === "" ? pattern : `${real.lost}/${pattern}` });
       if (real !== shellPath(undefined, raw) && namesState(`${real === "/" ? "" : real}/${pattern}`)) return true;
-      if (!inDirectory) return false;
+      // A pattern only in the last component matches names in one directory:
+      // what counts there is a match that is a link (`hoo*` reaching `hook`, a
+      // link to the entry). In npm's bin directory or a `node_modules`, its
+      // names are what the pattern is read against, so a sweep stays a sweep.
+      if (!inDirectory && (NPM_BIN_DIRECTORY_RE.test(real) || /(?:^|\/)(?:node_modules|\.pnpm)$/i.test(real))) return false;
       const matches = expandOnDisk(real, pattern);
-      if (matches === null) return true;
+      if (matches === null) return inDirectory;
       return matches.some((match) => {
         const reached = realPath(match);
-        return reached === ELOOP ? true : typeof reached !== "string" ? lostNamesState(reached) : namesState(reached);
+        if (reached === ELOOP) return true;
+        if (typeof reached !== "string") return lostNamesState(reached);
+        return (inDirectory || reached !== shellPath(undefined, match)) && namesState(reached);
       });
     });
   };
@@ -2587,6 +2615,46 @@ function destroysFailproofaiState(command: string, depth = 0, startDir?: string,
     return out;
   };
   const expand = (word: string): string => expandAt(word, at);
+  // Every value the line gives each variable. One set only in a subshell or
+  // only for one command (`(F=x)`, `F=x true`) does not replace the value
+  // before it, so a word is also read with each other value its variables are
+  // given (found by hermes on FailproofAI/failproofai#1058).
+  // Outside a loop only what the line has assigned by the point the walk
+  // reaches counts, as with `values`; in one, every assignment may come first.
+  const everyValue = new Map<string, string[]>();
+  let reassigned = false;
+  const variantsByWord = new Map<string, string[]>();
+  const assigned = (name: string, value: string) => {
+    const seen = everyValue.get(name) ?? [];
+    if (seen.includes(value)) return;
+    seen.push(value);
+    everyValue.set(name, seen);
+    if (seen.length > 1) reassigned = true;
+    variantsByWord.clear();
+  };
+  if (LOOP_HEADER_RE.test(command)) for (const [name, value] of assignments) assigned(name, value);
+  // Every value is tried, so decoys in front of or after the one that counts
+  // cannot push it out of reach; past VARIANT_BUDGET tries the line is refused
+  // as one the walk could not read.
+  let variantBudget = VARIANT_BUDGET;
+  const variantsOf = (word: string): string[] => {
+    if (!reassigned || !word.includes("$")) return [];
+    const known = variantsByWord.get(word);
+    if (known !== undefined) return known;
+    const variants = new Set<string>();
+    const current = expand(word);
+    for (const [, name] of word.matchAll(VAR_REFERENCE_RE)) {
+      for (const value of everyValue.get(name) ?? []) {
+        if (--variantBudget < 0) throw new Error("a variable is reassigned too many times to follow");
+        const replaced = word.split(`\${${name}}`).join(value).replace(new RegExp(`\\$${name}(?![A-Za-z0-9_])`, "g"), () => value);
+        const variant = expand(replaced);
+        if (variant !== current) variants.add(variant);
+      }
+    }
+    const found = [...variants];
+    variantsByWord.set(word, found);
+    return found;
+  };
   // `$PWD` and `~+` name wherever the shell stands, which after a move that
   // may have failed is any of the places it may be.
   const NAMES_PWD_RE = /\$\{?PWD\b|^~\+/;
@@ -2872,7 +2940,12 @@ function destroysFailproofaiState(command: string, depth = 0, startDir?: string,
       pending = [];
     }
     if (!pipeline.trim()) continue;
-    for (const [, name, value] of pipeline.matchAll(ASSIGNMENT_RE)) values.set(name, value.replace(/^["']|["']$/g, ""));
+    for (const [, name, value] of pipeline.matchAll(ASSIGNMENT_RE)) {
+      const bare = value.replace(/^["']|["']$/g, "");
+      if (values.has(name)) assigned(name, values.get(name)!);
+      values.set(name, bare);
+      assigned(name, bare);
+    }
     const simpleCommands = pipeline.split("|");
     const reachesState = namesState(pipeline) || cwdInState || loopCarriesState;
     if (reachesState && LOOP_HEADER_RE.test(pipeline)) loopCarriesState = true;
@@ -2888,6 +2961,7 @@ function destroysFailproofaiState(command: string, depth = 0, startDir?: string,
       const written = target.replace(/^["']|["']$/g, "");
       if (namesHere(written) || namesHere(expand(written)) || expandEverywhere(written).some(namesHere)) return true;
       if (anywhereHere() && (plantsAnywhere(written) || plantsAnywhere(expand(written)))) return true;
+      if (variantsOf(written).some((variant) => namesHere(variant) || (anywhereHere() && plantsAnywhere(variant)))) return true;
     }
 
     for (const simple of simpleCommands) {
@@ -2901,6 +2975,23 @@ function destroysFailproofaiState(command: string, depth = 0, startDir?: string,
       if (alts.length > 0 && words.some((word) => NAMES_PWD_RE.test(word))) {
         for (const alt of alts) lists.push(words.map((word) => expandAt(word, alt)));
       }
+      // The line read with each other value a reassigned variable may hold
+      // that could reach what is protected: the path itself, npm's bin
+      // directory, or the entry from a directory the agent may not report.
+      const variantLists: string[][] = [];
+      for (let k = 1; k < words.length; k++) {
+        for (const variant of variantsOf(words[k])) {
+          const reaches =
+            namesHere(variant) ||
+            NPM_BIN_DIRECTORY_RE.test(variant.replace(/[\\/]+$/, "")) ||
+            isBinDir(variant) ||
+            (anywhereHere() && plantsAnywhere(variant));
+          if (!reaches) continue;
+          if (variantLists.length >= 16) throw new Error("a variable is reassigned too many times to follow");
+          variantLists.push(expanded.map((word, j) => (j === k ? variant : word)));
+        }
+      }
+      lists.push(...variantLists);
       const head = words.length > 0 ? commandBasename(words[0]) : "";
       if (head === "cd" || head === "pushd" || head === "popd") {
         // Every stage of a pipeline runs in a subshell of its own, so a `cd`
@@ -2959,6 +3050,7 @@ function destroysFailproofaiState(command: string, depth = 0, startDir?: string,
               return values === null || values.some(gluedValueNamesHere);
             }),
           ) ||
+          variantLists.length > 0 ||
           // A file a sed script writes, read the same way.
           (head === "sed" && lists.some((list) => sedWriteTargets(list.slice(1)).some(namesHere)))) &&
         lists.some((list) => simpleCommandDestroys(list, namesHere))

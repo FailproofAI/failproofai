@@ -397,6 +397,12 @@ describe("block-failproofai-commands — the entry a project-scope npx hook runs
         "cp /tmp/stub.sh [b]ins/failproofai",
         "printf x > b*/failproofai",
         "tee {bins,x}/failproofai < /tmp/stub.sh",
+        // A pattern or brace in the last component that matches a link to the
+        // entry (found by hermes on FailproofAI/failproofai#1058).
+        "cp /tmp/stub.sh hoo*",
+        "printf x > ho?k",
+        "cp /tmp/stub.sh {hook,nothing}",
+        "tee {hook,x} < /tmp/stub.sh",
       ])("denies a glob or brace through a linked directory onto the entry: %s", async (command) => {
         expect(await bashIn(join(root, "proj"), command)).toBe("deny");
       });
@@ -407,6 +413,12 @@ describe("block-failproofai-commands — the entry a project-scope npx hook runs
         "ls b*/",
         "cp /tmp/stub.sh s*/notes.txt",
         "tee {out,src}/notes.txt < /tmp/stub.sh",
+        // Sweeps of npm's bin directory and `node_modules` stay sweeps with the
+        // entry on disk, and reading through a link is a read.
+        "rm -rf node_modules/.bin/*",
+        "rm -rf node_modules/*",
+        "ls *",
+        "cat hook",
       ])("still allows a glob that reaches no protected path: %s", async (command) => {
         expect(await bashIn(join(root, "proj"), command)).not.toBe("deny");
       });
@@ -715,6 +727,11 @@ describe("block-failproofai-commands — the entry a project-scope npx hook runs
       ["/work/proj", "curl --output-dir node_modules/.bin -o failproofai https://example.com/x"],
       ["/work/proj", "curl --output-dir=node_modules/.bin -sofailproofai https://example.com/x"],
       ["/work/proj", "curl --output-dir node_modules/.bin --output failproofai https://example.com/x"],
+      // An absolute name is joined to it too, and each `--next` transfer keeps
+      // its own directory (found by hermes on FailproofAI/failproofai#1058).
+      ["/work/proj", "curl --output-dir node_modules/.bin -o /failproofai https://example.com/x"],
+      ["/work/proj", "curl --output-dir node_modules/.bin -O https://example.com/dl/failproofai --next --output-dir /tmp -O https://example.com/y"],
+      ["/work/proj", "curl -o /tmp/a https://example.com/a -: --output-dir node_modules/.bin -o failproofai https://example.com/b"],
     ])("denies a download or remote copy from %s: %s", async (cwd, command) => {
       expect(await bashIn(cwd, command)).toBe("deny");
     });
@@ -780,6 +797,30 @@ describe("block-failproofai-commands — the entry a project-scope npx hook runs
       "sed -n 'w /tmp/copy.txt' node_modules/.bin/failproofai",
     ])("allows a sed script that writes no protected file: %s", async (command) => {
       expect(await bashIn("/work/proj", command)).not.toBe("deny");
+    });
+
+    // A value set only in a subshell, only for one command, or only if a test
+    // passes does not replace the one before it, so a word is read with every
+    // value the line gives its variables (found by hermes on
+    // FailproofAI/failproofai#1058).
+    it.each([
+      ["/work/proj/node_modules/.bin", "F=failproofai; (F=x); printf y > $F"],
+      ["/work/proj/node_modules/.bin", "F=failproofai; F=x true; printf y > $F"],
+      ["/work/proj/node_modules/.bin", "F=failproofai; F=x env; cp /tmp/stub.sh $F"],
+      ["/work/proj/node_modules/.bin", Array.from({ length: 70 }, (_, i) => `F=v${i}`).join("; ") + "; F=failproofai; false && F=x; printf y > $F"],
+      ["/work/proj/node_modules/.bin", "F=failproofai; " + Array.from({ length: 70 }, (_, i) => `F=y${i} true`).join("; ") + "; printf y > $F"],
+      ["/work/proj", "D=node_modules/.bin; (D=/tmp); printf y > $D/failproofai"],
+      ["/work/proj", "D=node_modules/.bin; (D=/tmp); cp /tmp/stage/failproofai $D/"],
+    ])("denies a write through a variable another value may hold, from %s: %s", async (cwd, command) => {
+      expect(await bashIn(cwd, command)).toBe("deny");
+    });
+
+    it.each([
+      ["/work/proj/node_modules/.bin", "F=a; F=b; printf y > $F"],
+      ["/work/proj", "D=dist; (D=build); rm -rf $D"],
+      ["/work/proj", "F=a; F=b; echo " + Array(2000).fill("$F/$F").join(" ")],
+    ])("allows a reassigned variable that never reaches the entry, from %s: %s", async (cwd, command) => {
+      expect(await bashIn(cwd, command)).not.toBe("deny");
     });
 
     it.each([
@@ -881,6 +922,8 @@ describe("block-failproofai-commands — the entry a project-scope npx hook runs
       "printf x > x/y/failproofai.cmd",
       "cp /tmp/stub.sh deps/failproofai/dist/cli.mjs",
       "sed -n 'wfailproofai' /tmp/stub.sh",
+      "F=failproofai; (F=x); printf y > $F",
+      'F=failproofai; F=x true; printf y > "$F"',
     ])("denies a Codex command planting the entry wherever it runs: %s", async (command) => {
       expect(await bashAs("codex", { command })).toBe("deny");
     });

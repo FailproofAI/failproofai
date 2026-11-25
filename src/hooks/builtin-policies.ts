@@ -2,7 +2,7 @@
  * Built-in security policies for Claude Code hooks.
  */
 import { resolve, join, posix } from "node:path";
-import { lstatSync, readlinkSync, statSync } from "node:fs";
+import { lstatSync, readdirSync, readlinkSync, statSync } from "node:fs";
 import { readFile, writeFile } from "node:fs/promises";
 import { execSync, execFileSync } from "node:child_process";
 import { homedir } from "node:os";
@@ -3125,6 +3125,128 @@ function destroysFailproofaiState(command: string): boolean {
   return destroysProtectedPath(command, FAILPROOFAI_STATE_TARGET);
 }
 
+/** How many paths a glob may expand to on disk before its expansion is not followed. */
+const DISK_GLOB_LIMIT = 256;
+
+/**
+ * One command's disk-glob work: each directory read once, and a bound on the
+ * entries matched across all of its globs, which only a command built to
+ * stall the guard reaches.
+ */
+interface DiskGlobBudget {
+  listings: Map<string, string[] | null>;
+  entries: number;
+}
+
+/**
+ * The paths a glob word expands to on disk, as the shell expands it: braces
+ * first, then each segment with glob characters matched against the entries
+ * of its directory — a leading dot only by a pattern that starts with one —
+ * relative to `cwd` when relative. Null when that would read more than a few
+ * directories or keep more than DISK_GLOB_LIMIT paths; "exhausted" past the
+ * command's budget.
+ */
+function globOnDisk(word: string, cwd: string | undefined, budget: DiskGlobBudget): string[] | null | "exhausted" {
+  const out: string[] = [];
+  let reads = 0;
+  for (const expanded of expandBraces(word).slice(0, 16)) {
+    let path = expanded === "~" || expanded.startsWith("~/") ? homedir() + expanded.slice(1) : expanded;
+    if (!path.startsWith("/")) {
+      if (cwd === undefined) continue;
+      path = `${cwd}/${path}`;
+    }
+    let bases = ["/"];
+    for (const segment of path.split("/").filter(Boolean)) {
+      if (!GLOB_METACHAR_RE.test(segment)) {
+        bases = bases.map((base) => posix.join(base, segment));
+        continue;
+      }
+      const atoms = globAtoms(segment);
+      if (!atoms) return null;
+      const next: string[] = [];
+      for (const base of bases) {
+        if (++reads > 8) return null;
+        let entries = budget.listings.get(base);
+        if (entries === undefined) {
+          try {
+            entries = readdirSync(base).slice(0, 4096);
+          } catch {
+            entries = null;
+          }
+          budget.listings.set(base, entries);
+        }
+        if (entries === null) continue;
+        budget.entries -= entries.length;
+        if (budget.entries < 0) return "exhausted";
+        for (const entry of entries) {
+          if (entry.startsWith(".") && !segment.startsWith(".")) continue;
+          if (globSegmentMatches(atoms, entry)) next.push(posix.join(base, entry));
+          if (next.length > DISK_GLOB_LIMIT) return null;
+        }
+      }
+      bases = next;
+      if (bases.length === 0) break;
+    }
+    out.push(...bases);
+    if (out.length > DISK_GLOB_LIMIT) return null;
+  }
+  return out;
+}
+
+/** A shell word with one pair of outer quotes taken off, expansions left in. */
+function withoutOuterQuotes(word: string): string {
+  return word.replace(/^(["'])([\s\S]*)\1$/, "$2");
+}
+
+/**
+ * What `printf FORMAT ARGS…` prints, for the conversions a path is made with:
+ * each `%…` takes the next argument, `%%` is a percent sign, escapes decode,
+ * and the format repeats while arguments remain.
+ */
+function printfOutput(format: string, args: readonly string[]): string {
+  const decoded = decodeAnsiC(format);
+  let k = 0;
+  const pass = (): string => decoded.replace(/%(%|[-+ #0]*[0-9]*(?:\.[0-9]+)?[A-Za-z])/g, (_, spec: string) => (spec === "%" ? "%" : (args[k++] ?? "")));
+  let out = pass();
+  for (let round = 0; round < 64 && k > 0 && k < args.length; round++) out += pass();
+  return out;
+}
+
+/**
+ * What a command substitution prints, for the few commands whose output the
+ * text alone decides: `echo`, `printf`, `basename`, `dirname`, `cat <<< word`,
+ * and `readlink`/`realpath`, whose output is the path a link resolves to —
+ * here the link's own name, which the walk resolves itself. Null for anything
+ * else, which the walk reads as unknown.
+ */
+function simpleSubstitutionOutput(body: string): string | null {
+  const words = quoteAwareWords(body.trim()).map(withoutOuterQuotes);
+  const head = commandBasename(words[0] ?? "");
+  const args = words.slice(1);
+  if (head === "echo") {
+    let k = 0;
+    let escapes = false;
+    for (; k < args.length && /^-[neE]+$/.test(args[k]); k++) escapes ||= args[k].includes("e");
+    const text = args.slice(k).join(" ");
+    return escapes ? decodeAnsiC(text) : text;
+  }
+  if (head === "printf") return args.length > 0 && !args[0].startsWith("-") ? printfOutput(args[0], args.slice(1)) : null;
+  const operands = args.filter((a) => !a.startsWith("-"));
+  if (head === "basename" && operands.length >= 1) {
+    const name = operands[0].replace(/\/+$/, "").split("/").pop() ?? "";
+    const suffix = operands[1];
+    return suffix && name.endsWith(suffix) && name !== suffix ? name.slice(0, name.length - suffix.length) : name;
+  }
+  if (head === "dirname" && operands.length >= 1) {
+    const trimmed = operands[0].replace(/\/+$/, "");
+    const at = trimmed.lastIndexOf("/");
+    return at === -1 ? "." : at === 0 ? "/" : trimmed.slice(0, at);
+  }
+  if ((head === "readlink" || head === "realpath") && operands.length >= 1) return operands[operands.length - 1];
+  if (head === "cat" && args[0] === "<<<" && args.length === 2) return args[1];
+  return null;
+}
+
 /** What a variable may hold, for `shellWordExpansionForms`: its values, null when unknown, or "complex". */
 type ShellVariableLookup = (name: string) => string[] | "complex" | null;
 
@@ -3505,6 +3627,41 @@ function destroysProtectedPath(command: string, target: ProtectedPathTarget, dep
   for (const [, name, elements] of lexed.readable.matchAll(/(?:^|[\s;&|(])([A-Za-z_][A-Za-z0-9_]*)\+?=\(([^()]*)\)/g)) {
     for (const element of quoteAwareWords(elements).slice(0, 64)) assignments.push([name, element.replace(/^["']|["']$/g, "")]);
   }
+  // And the other ways a line gives a variable a value it writes out: a
+  // substitution whose output the text decides (`A=$(echo cfg.json)`), a
+  // `for`/`select` list, `read … <<< word`, `printf -v NAME FORMAT ARGS`, and
+  // a nameref (`declare -n R=A` reads A).
+  for (const [, name, body, ticked] of lexed.readable.matchAll(/(?:^|[\s;&|(])([A-Za-z_][A-Za-z0-9_]*)=["']?(?:\$\(([^()]*)\)|`([^`]*)`)/g)) {
+    const output = simpleSubstitutionOutput(body ?? ticked ?? "");
+    if (output !== null) assignments.push([name, output]);
+  }
+  for (const [, name, list] of lexed.readable.matchAll(/(?:^|[\s;&|(])(?:for|select)\s+([A-Za-z_][A-Za-z0-9_]*)\s+in\s+([^;\n]*?)\s*[;\n]\s*do(?=[\s;]|$)/g)) {
+    for (const word of quoteAwareWords(list).slice(0, 64)) assignments.push([name, withoutOuterQuotes(word)]);
+  }
+  for (const [, options, here] of lexed.readable.matchAll(/(?:^|[\s;&|(])read((?:[ \t]+[^\s;&|<>]+)*?)[ \t]*<<<[ \t]*("[^"]*"|'[^']*'|[^\s;&|)]+)/g)) {
+    const value = withoutOuterQuotes(here);
+    const tokens = options.trim().split(/\s+/).filter(Boolean);
+    const names: string[] = [];
+    for (let k = 0; k < tokens.length; k++) {
+      if (/^-[adinNptu]$/.test(tokens[k])) {
+        if (tokens[k] === "-a" && tokens[k + 1]) names.push(tokens[k + 1]);
+        k++;
+      } else if (!tokens[k].startsWith("-")) names.push(tokens[k]);
+    }
+    for (const name of names.length > 0 ? names : ["REPLY"]) {
+      if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(name)) continue;
+      assignments.push([name, value]);
+      for (const field of value.split(/\s+/).filter(Boolean).slice(0, 32)) assignments.push([name, field]);
+    }
+  }
+  for (const [, name, rest] of lexed.readable.matchAll(/(?:^|[\s;&|(])printf[ \t]+-v[ \t]*([A-Za-z_][A-Za-z0-9_]*)[ \t]+([^;&|\n]*)/g)) {
+    const [format = "", ...args] = quoteAwareWords(rest).map(withoutOuterQuotes);
+    assignments.push([name, printfOutput(format, args)]);
+  }
+  for (const [, flags, rest] of lexed.readable.matchAll(/(?:^|[\s;&|(])(?:declare|local|typeset)((?:[ \t]+-[A-Za-z]+)+)[ \t]+([^;&|\n]*)/g)) {
+    if (!flags.includes("n")) continue;
+    for (const [, name, ref] of rest.matchAll(/([A-Za-z_][A-Za-z0-9_]*)=([A-Za-z_][A-Za-z0-9_]*)/g)) assignments.push([name, `\${${ref}}`]);
+  }
   const stateVars = new Set<string>();
   const assignedValues = new Map<string, string[]>();
   // A variable given more values than are kept is not known: the value that
@@ -3674,9 +3831,27 @@ function destroysProtectedPath(command: string, target: ProtectedPathTarget, dep
   // Whether one text a word may become reaches the target, judged as a word
   // the shell hands over: by name, as a glob, through a link, relative to
   // where the shell stands.
+  // A glob reaches what it expands to on disk: in a directory holding
+  // `cfg.json -> ~/.claude/settings.json`, `*.json` writes the settings.
+  const diskGlobs = new Map<string, boolean>();
+  const diskGlobBudget: DiskGlobBudget = { listings: new Map(), entries: 262_144 };
+  const globReachesThroughLinks = (glob: string): boolean => {
+    if (!target.namesThroughLinks) return false;
+    return walkCwds.some((cwd) => {
+      const key = `${cwd ?? ""}\0${glob}`;
+      let hit = diskGlobs.get(key);
+      if (hit === undefined) {
+        const paths = globOnDisk(glob, cwd, diskGlobBudget);
+        // Past the budget the command was built to stall the guard.
+        hit = paths === "exhausted" || (paths ?? []).some((path) => target.namesThroughLinks!(path, undefined));
+        diskGlobs.set(key, hit);
+      }
+      return hit;
+    });
+  };
   const formNamesTarget = (form: string): boolean => {
     if (target.namesLiteral(form)) return true;
-    if (GLOB_METACHAR_RE.test(form) && globNames(form)) return true;
+    if (GLOB_METACHAR_RE.test(form) && (globNames(form) || globReachesThroughLinks(form))) return true;
     for (const cwd of walkCwds) {
       if (target.namesThroughLinks?.(form, cwd)) return true;
       if (cwd === undefined) continue;
@@ -3697,6 +3872,14 @@ function destroysProtectedPath(command: string, target: ProtectedPathTarget, dep
         const forms = formsOfWord(word);
         if (forms === COMPLEX) return true;
         if (forms.some((form) => form !== word && formNamesTarget(form))) return true;
+      }
+    }
+    // A glob the shell expands — its glob characters outside quotes — as the
+    // paths it expands to.
+    if (target.namesThroughLinks && GLOB_METACHAR_RE.test(text)) {
+      for (const word of quoteAwareWords(text)) {
+        if (/[$`]/.test(word) || !GLOB_METACHAR_RE.test(word.replace(/'[^']*'|"(?:[^"\\]|\\.)*"/g, ""))) continue;
+        if (globReachesThroughLinks(stripShellQuoting(word))) return true;
       }
     }
     for (const [, name] of text.matchAll(VAR_REFERENCE_RE)) {

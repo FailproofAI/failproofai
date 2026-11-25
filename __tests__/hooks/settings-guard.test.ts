@@ -1527,6 +1527,55 @@ describe("block-failproofai-commands — review round seven", () => {
     expect(await bash(`cp /tmp/x config/cl*.json`, p7)).toBe(true);
   });
 
+  it("follows values a line assigns other ways: for, read, printf -v, a nameref, a substitution", async () => {
+    mkdirSync(join(p7, "sub11"), { recursive: true });
+    symlinkSync(settings(), join(p7, "sub11", "cfg11.json"));
+    for (const command of [
+      `cd sub11; for A in cfg11.json; do cp /tmp/evil.json "$A"; done`,
+      `cd sub11; for A in *.json; do cp /tmp/evil.json "$A"; done`,
+      `cd sub11; read -r A <<< "cfg11.json"; cp /tmp/evil.json "$A"`,
+      `cd sub11; read <<< cfg11.json; cp /tmp/evil.json "$REPLY"`,
+      `cd sub11; printf -v A '%s.%s' cfg11 json; cp /tmp/evil.json "$A"`,
+      `cd sub11; A=$(echo cfg11.json); cp /tmp/evil.json "$A"`,
+      "cd sub11; A=`printf %s cfg11.json`; cp /tmp/evil.json \"$A\"",
+      `cd sub11; A=$(basename /x/cfg11.json); cp /tmp/evil.json "$A"`,
+      `cd sub11; A=$(readlink -f cfg11.json); cp /tmp/evil.json "$A"`,
+      `A=cfg11.json; declare -n R=A; cd sub11; cp /tmp/evil.json "$R"`,
+    ]) {
+      expect(await bash(command, p7), command).toBe(true);
+    }
+    for (const command of [
+      `read A <<< hello; echo "$A" > /tmp/out.txt`,
+      `A=$(date +%s); cp a "/tmp/$A.txt"`,
+      `A=$(echo build); cp a "$A/x"`,
+      `printf -v n '%05d' 7; cp a "/tmp/$n.txt"`,
+      `for f in src/*.ts; do cp "$f" /tmp/; done`,
+    ]) {
+      expect(await bashDecision(command, p7), command).toBe("allow");
+    }
+  });
+
+  it("expands a glob on disk to the links it reaches", async () => {
+    mkdirSync(join(p7, "sub12"), { recursive: true });
+    symlinkSync(settings(), join(p7, "sub12", "cfg12.json"));
+    writeFileSync(join(p7, "sub12", "notes.txt"), "x");
+    expect(await bash(`cd sub12; cp /tmp/evil.json *.json`, p7)).toBe(true);
+    expect(await bash(`cp /tmp/evil.json sub12/c?g12.json`, p7)).toBe(true);
+    expect(await bash(`cp /tmp/evil.json sub12/{cfg12,x}.json`, p7)).toBe(true);
+    expect(await bashDecision(`cd sub12; cp /tmp/x *.txt`, p7)).toBe("allow");
+    expect(await bashDecision(`ls sub12/*.json; cat sub12/*.json; cp sub12/*.json /tmp/backup/`, p7)).toBe("allow");
+  });
+
+  it("reads each directory once for a command's globs", async () => {
+    const many = join(root, "many12");
+    mkdirSync(many, { recursive: true });
+    for (let i = 0; i < 1000; i++) writeFileSync(join(many, `f${i}.json`), "");
+    const command = "cp a " + Array.from({ length: 4000 }, (_, i) => `x${i}*.json`).join(" ") + " /tmp/out/";
+    const started = performance.now();
+    expect(await bashDecision(command, many)).toBe("allow");
+    expect(performance.now() - started).toBeLessThan(3000);
+  });
+
   it("reads an appended variable in an agent CLI's hooks-off command", async () => {
     expect(await bashDecision(`F=ho; F+=oks; codex features disable "$F"`, p7)).toBe("deny");
     expect(await bashDecision(`F+=hooks; codex features disable $F`, p7)).toBe("deny");

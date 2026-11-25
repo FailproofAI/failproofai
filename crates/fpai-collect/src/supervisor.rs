@@ -98,6 +98,12 @@ impl Shutdown {
         }
     }
 
+    /// Observe the daemon's flag alone, for a lane that runs outside the
+    /// collector (the Self Reports MCP server).
+    pub(crate) fn from_daemon(daemon: Arc<AtomicBool>) -> Self {
+        Self::for_test(daemon)
+    }
+
     /// True once either the daemon or the collector has been asked to stop.
     pub fn is_set(&self) -> bool {
         self.daemon.load(Ordering::Relaxed) || self.collector.load(Ordering::Relaxed)

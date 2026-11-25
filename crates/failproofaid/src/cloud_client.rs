@@ -882,7 +882,10 @@ impl CloudClient {
                 // this daemon refuses (an unknown schemaVersion, a payload that
                 // does not decode) must not turn troubleshooting back on or start
                 // an upload, so the last valid answer keeps standing.
-                let (desired, consent) = decode_desired_state(raw)?;
+                let (desired, consent, self_report) = decode_desired_state(raw)?;
+                // Applied by the maintenance lane after this tick (see
+                // `self_report::tick`), so a refused response changes nothing.
+                crate::self_report::note_desired(self_report);
                 // The org's troubleshooting switch: `machineLogs: false` means
                 // send no daemon log (logship.rs). Absent, from a Cloud with it
                 // on or one that predates the key, means send.
@@ -1197,6 +1200,14 @@ pub fn spawn_maintenance(
                 // `desired-state.json` through `reconcile`, which raises the floor
                 // straight back to the old number. Replay protection resumes from
                 // the new identity's first success.
+                // Self Reports follow enrolment: written from the response just
+                // accepted, or released when the machine left Cloud. Unknown
+                // (unreadable credential) changes nothing.
+                let self_report_enrolment = match &cloud {
+                    Ok(Some(_)) => Some(true),
+                    Ok(None) => Some(false),
+                    Err(_) => None,
+                };
                 if maintenance_tick(
                     &store,
                     cloud,
@@ -1206,6 +1217,7 @@ pub fn spawn_maintenance(
                 ) {
                     floor_reset_pending = false;
                 }
+                crate::self_report::tick(self_report_enrolment, &enrolment_withdrawn);
                 wait_until_shutdown(
                     &shutdown,
                     if enrolled {
@@ -1333,7 +1345,20 @@ struct LogConsent {
 /// Validates a desired-state response and decodes it. The log-shipping fields
 /// come back only with a response that was accepted, so a refused one has
 /// nothing to apply.
-fn decode_desired_state(raw: serde_json::Value) -> Result<(DesiredState, LogConsent), PollFailure> {
+///
+/// The third value is the optional `selfReport` block (`None`: absent, which
+/// means Self Reports are off). It is read leniently and never refuses the
+/// response: a malformed block must not take the policies beside it down.
+fn decode_desired_state(
+    raw: serde_json::Value,
+) -> Result<
+    (
+        DesiredState,
+        LogConsent,
+        Option<crate::self_report::Desired>,
+    ),
+    PollFailure,
+> {
     // THE VERSION IS CHECKED BEFORE THE FIELDS, which is the whole
     // point of having one. `SUPPORTED_SCHEMA_VERSIONS` accepts 1 as
     // well, and its comment says that is "for files on DISK, never for
@@ -1372,9 +1397,10 @@ fn decode_desired_state(raw: serde_json::Value) -> Result<(DesiredState, LogCons
             .and_then(serde_json::Value::as_str)
             .map(str::to_owned),
     };
+    let self_report = crate::self_report::decode(&raw);
     let desired = serde_json::from_value::<DesiredState>(raw)
         .map_err(|err| PollFailure::payload(format!("invalid desired-state response: {err}")))?;
-    Ok((desired, consent))
+    Ok((desired, consent, self_report))
 }
 
 /// One poll and its reconcile. `withdrawn` is asked right before anything is
@@ -1809,10 +1835,60 @@ mod tests {
     }
 
     fn decode(body: &str) -> Result<(DesiredState, LogConsent), String> {
+        decode_with_self_report(body).map(|(desired, consent, _)| (desired, consent))
+    }
+
+    fn decode_with_self_report(
+        body: &str,
+    ) -> Result<
+        (
+            DesiredState,
+            LogConsent,
+            Option<crate::self_report::Desired>,
+        ),
+        String,
+    > {
         decode_desired_state(serde_json::from_str(body).unwrap()).map_err(|f| {
             assert!(f.reportable, "a refused payload is the server's to see");
             f.message
         })
+    }
+
+    /// `selfReport` rides an accepted response; absent stays absent, and a
+    /// malformed block never refuses the policies beside it.
+    #[test]
+    fn a_desired_state_response_carries_its_self_report_block() {
+        let (_, _, self_report) = decode_with_self_report(
+            r#"{"schemaVersion":2,"deployment":7,"policies":[],
+                "selfReport":{"enabled":true,"categories":[{"name":"x","description":"X."}],"guidance":"g"}}"#,
+        )
+        .expect("a valid response is accepted");
+        assert_eq!(
+            self_report,
+            Some(crate::self_report::Desired {
+                enabled: true,
+                categories: Some(vec![fpai_collect::self_report::Category {
+                    name: "x".into(),
+                    description: "X.".into(),
+                }]),
+                guidance: Some("g".into()),
+            })
+        );
+
+        let (_, _, self_report) =
+            decode_with_self_report(r#"{"schemaVersion":2,"deployment":7,"policies":[]}"#)
+                .expect("an older server's response is accepted");
+        assert_eq!(self_report, None, "absent means disabled");
+
+        let (desired, _, self_report) = decode_with_self_report(
+            r#"{"schemaVersion":2,"deployment":7,"policies":[],"selfReport":[1,2]}"#,
+        )
+        .expect("a malformed block does not refuse the response");
+        assert_eq!(desired.deployment, 7);
+        assert_eq!(self_report, None);
+
+        decode_with_self_report(r#"{"schemaVersion":999,"selfReport":{"enabled":true}}"#)
+            .expect_err("a refused response carries nothing to apply");
     }
 
     /// A response the daemon refuses carries no consent to apply: the refusal

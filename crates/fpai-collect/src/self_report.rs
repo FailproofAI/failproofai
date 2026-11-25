@@ -37,7 +37,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 
 use crate::sources::hooks::transform::{self, HookRow};
-use crate::supervisor::{Shutdown, TaskError, TaskSpec};
+use crate::supervisor::{Shutdown, TaskError};
 
 /// The settings file under the failproofai home.
 pub const SETTINGS_FILE: &str = "self-report.json";
@@ -374,27 +374,52 @@ struct Server {
     settings: SettingsCache,
 }
 
-/// The daemon's MCP task. Not gated on ingest: OSS machines use it too.
-pub fn tasks(home: PathBuf, port: u16) -> Vec<TaskSpec> {
-    vec![TaskSpec::new("self-report-mcp", move |sd| {
-        let home = home.clone();
-        async move {
-            let address = SocketAddr::from((Ipv4Addr::LOCALHOST, port));
-            let listener = match tokio::net::TcpListener::bind(address).await {
-                Ok(listener) => listener,
+/// Start the daemon's MCP server on its own thread and its own small runtime.
+///
+/// Not a collector task: the collector runs only with an ingest credential,
+/// and OSS machines need this too. Not the collector's supervisor either, so it
+/// never shows up in (or is cycled with) the collector's lifecycle. A busy
+/// port logs one warning and the thread ends; the daemon carries on, as with
+/// the OTLP relay. Stops when `shutdown` is set.
+pub fn spawn(
+    home: PathBuf,
+    port: u16,
+    shutdown: Arc<std::sync::atomic::AtomicBool>,
+) -> Option<std::thread::JoinHandle<()>> {
+    std::thread::Builder::new()
+        .name("fpai-self-report".to_string())
+        .spawn(move || {
+            let runtime = match tokio::runtime::Builder::new_current_thread()
+                .enable_all()
+                .build()
+            {
+                Ok(rt) => rt,
                 Err(err) => {
-                    tracing::warn!(
-                        port,
-                        %err,
-                        "Self Reports MCP server off: loopback port unavailable; daemon continues"
-                    );
-                    return Ok(()); // Clean exit: not restarted, not logged again.
+                    tracing::warn!(%err, "Self Reports MCP server off: no runtime; daemon continues");
+                    return;
                 }
             };
-            tracing::info!(port, "Self Reports MCP server listening on 127.0.0.1");
-            serve(listener, home, sd).await
-        }
-    })]
+            runtime.block_on(async move {
+                let address = SocketAddr::from((Ipv4Addr::LOCALHOST, port));
+                let listener = match tokio::net::TcpListener::bind(address).await {
+                    Ok(listener) => listener,
+                    Err(err) => {
+                        tracing::warn!(
+                            port,
+                            %err,
+                            "Self Reports MCP server off: loopback port unavailable; daemon continues"
+                        );
+                        return;
+                    }
+                };
+                tracing::info!(port, "Self Reports MCP server listening on 127.0.0.1");
+                if let Err(err) = serve(listener, home, Shutdown::from_daemon(shutdown)).await {
+                    tracing::warn!(%err, "Self Reports MCP server stopped");
+                }
+            });
+        })
+        .inspect_err(|err| tracing::warn!(%err, "could not start the Self Reports MCP server"))
+        .ok()
 }
 
 /// Serve on an already-bound listener until shutdown. The Host/Origin checks

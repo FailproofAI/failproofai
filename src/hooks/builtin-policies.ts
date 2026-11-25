@@ -2,7 +2,7 @@
  * Built-in security policies for Claude Code hooks.
  */
 import { resolve, join, posix } from "node:path";
-import { statSync } from "node:fs";
+import { lstatSync, readlinkSync, statSync } from "node:fs";
 import { readFile, writeFile } from "node:fs/promises";
 import { execSync, execFileSync } from "node:child_process";
 import { homedir } from "node:os";
@@ -474,12 +474,167 @@ const GIT_COMMIT_MERGE_RE = /git\s+(commit|merge|rebase|cherry-pick)\b/;
 
 // blockFailproofaiCommands
 /**
- * A command that removes or moves failproofai's own state.
+ * The path component `name` (regex source), only where it STARTS a component:
+ * at the start, after a path separator, or after what ends a shell word —
+ * whitespace, a quote, `=`, `:`, `;`, `|`, `&`, a redirect, a bracket of a
+ * subshell or a brace list, a comma — or glued to a cluster of short options
+ * (`wget -Onode_modules/…`, `wget -qO.pnpm/…`), which is how those tools take an
+ * output file. Anything else in front of it is part of the same name, so it is
+ * a different directory: `cached_node_modules/…`, `my-node_modules/…` and
+ * `fixture+node_modules/…` are somebody's fixtures. A list of what may come
+ * before, not of what may not — the second kind is never finished.
+ *
+ * The check is a lookbehind placed AFTER the name, so it runs only where the
+ * name already matched. A variable-length lookbehind in FRONT of the name ran
+ * at every position of the input and rescanned a whole run of letters each
+ * time: a command carrying 32,000 letters took 35 s in the guard, long enough
+ * to time a hook out. Here each match scans back over the letters just before
+ * it, and those runs cannot overlap — every name ends in a non-letter (`_` in
+ * `node_modules`, the `.` that starts `.pnpm`) — so the cluster needs no bound,
+ * and a long one (`-qqqq…O<path>`) is not a way past.
+ */
+function pathComponent(name: string): string {
+  return String.raw`${name}(?<=(?:^|[\\/\s"'\`=:;|&<>(){},])${name}|(?:^|\s)-[A-Za-z]+${name})`;
+}
+
+/**
+ * failproofai's INSTALLED CODE: the package a hook command runs, and the bin
+ * entry that names it.
+ *
+ * User-scope hooks run the absolute path `which failproofai` returned at
+ * install time. Under nvm, Homebrew, Volta, bun, pnpm and the npx cache that is
+ * a package directory the agent's own user can write, and the hook client runs
+ * fresh from it on every tool call — so `process.exit(0)` written over
+ * `dist/cli.mjs` turned every later hook into an allow, for every session on
+ * the machine, with nothing reporting it. The daemon cannot catch that: a
+ * tampered client never asks it. The state pattern below needs a `.` the
+ * package path does not have (FailproofAI/agenteye#1796).
+ *
+ * A checkout of this repository matches none of the shapes below — no
+ * `node_modules` above it, and its entry is `bin/failproofai.mjs` — so the guard
+ * does not stand in front of working on failproofai itself.
+ * `node_modules/.bin/failproofai`, the stub `npx` prefers, is not matched here
+ * either (FailproofAI/agenteye#1795).
+ *
+ * Case-insensitive because macOS volumes are by default: every casing of these
+ * paths opens the real file. `(?:\.?[\\/])*` absorbs the `//` and `/./` a path
+ * resolver collapses. This matches the path as WRITTEN: a shell spelling that
+ * only the shell resolves — `..`, a `cd` before a relative path, a command
+ * substitution — is beyond it, as it is for the state (see `stripShellQuoting`).
+ * The file tools also check the path a write really lands on (`resolveWriteTarget`).
+ */
+const FAILPROOFAI_CODE_PATH_RE = new RegExp(
+  [
+    // The package, in every layout a package manager uses, and the daemon's
+    // platform package, which `failproofai config` and `update` copy into place
+    // (on Linux as root, under `/opt`). `node_modules` as a whole path
+    // component (`pathComponent`).
+    pathComponent("node_modules") +
+      String.raw`[\\/](?:\.?[\\/])*(?:failproofai(?![\w.@-])|@failproofai[\\/](?:\.?[\\/])*failproofaid\b)`,
+    // pnpm's virtual store, which holds each package one directory above its
+    // own `node_modules/failproofai`. The daemon's entry is recognised by its
+    // name alone, so a glob over its platform or version
+    // (`@failproofai+failproofaid-*@*`) still names it.
+    pathComponent(String.raw`\.pnpm`) + String.raw`[\\/](?:\.?[\\/])*(?:failproofai@|@failproofai\+failproofaid\b)`,
+    // The entry a hook command names: `…/bin/failproofai` for npm, nvm,
+    // Homebrew, bun, Volta and yarn, `…/pnpm/failproofai` for pnpm's home, and
+    // the variables nvm and pnpm export for those directories. A FILE, so a
+    // directory of that name (`~/bin/failproofai/src/…`) is not it.
+    String.raw`(?:[\\/](?:bin|pnpm)|\$\{?(?:NVM_BIN|PNPM_HOME)\}?)[\\/](?:\.?[\\/])*failproofai(?:\.cmd|\.ps1)?(?![\w.@\\/-])`,
+  ].join("|"),
+  "i",
+);
+
+/**
+ * failproofai's own files: its state, and the installed code above.
+ *
+ * Named for the state, which came first. The code joined it because writing
+ * over it switches enforcement off as completely as deleting the state does,
+ * and every use of this pattern — the file tools, the shell walk, the variable
+ * and glob tracking — has to see both.
  *
  * Named separately from the binary walk because it never mentions the binary:
  * the target is a path, and the verb is an ordinary file command.
  */
-const FAILPROOFAI_STATE_PATH_RE = /\.failproofai(?:\/|\b)/;
+const FAILPROOFAI_STATE_PATH_RE = new RegExp(
+  String.raw`\.failproofai(?:\/|\b)|` + FAILPROOFAI_CODE_PATH_RE.source,
+  "i",
+);
+
+/**
+ * Which of failproofai's own files `path` names, for a deny message that says
+ * which. Tool input is untrusted JSON, so a non-string is read the way
+ * `RegExp.test` always read it — as its string form — rather than waved through.
+ */
+function failproofaiFileKind(path: unknown): "state" | "code" | null {
+  if (path === undefined || path === null || path === "") return null;
+  const text = String(path);
+  if (!FAILPROOFAI_STATE_PATH_RE.test(text)) return null;
+  return FAILPROOFAI_CODE_PATH_RE.test(text) ? "code" : "state";
+}
+
+/**
+ * The file a write to `path` actually changes, every symlink resolved.
+ *
+ * A file tool writes THROUGH a link, so the path it is handed is not
+ * necessarily the one it changes — and npm, nvm and bun install the
+ * `failproofai` bin entry as exactly such a link into the package.
+ *
+ * Walked one component at a time, the way the kernel resolves a path: a link is
+ * expanded where it stands, and a `..` after it steps out of what it points at.
+ * `path.resolve` and Node's `realpathSync` both collapse `..` as TEXT first, so
+ * a write to `<link-to-pkg/dist>/../dist/cli.mjs` resolved to a harmless path
+ * while `open(2)` wrote the CLI. A component that does not exist is walked as
+ * the plain directory a write tool's `mkdir -p` would make of it — NOT taken as
+ * the end of the walk: `missing/../alias.mjs` steps straight back out, and
+ * `alias.mjs` can be a link into the package (found in review, PR #1050).
+ * A relative path is taken from the session's directory, not this process's —
+ * the daemon's worker runs somewhere else entirely — and `~` from home.
+ *
+ * "" when nothing resolves. Never throws, whatever the tool input holds: a
+ * throw here would take the always-on guard out of the evaluation.
+ */
+function resolveWriteTarget(path: unknown, cwd: unknown): string {
+  if (typeof path !== "string" || path === "") return "";
+  try {
+    const expanded = path === "~" || path.startsWith("~/") ? homedir() + path.slice(1) : path;
+    const start = expanded.startsWith("/")
+      ? expanded
+      : typeof cwd === "string" && cwd.startsWith("/")
+        ? `${cwd}/${expanded}`
+        : "";
+    if (!start) return "";
+    const pending = start.split("/");
+    let resolved = ""; // "" is the root
+    for (let links = 0; pending.length > 0; ) {
+      const part = pending.shift()!;
+      if (part === "" || part === ".") continue;
+      if (part === "..") {
+        resolved = resolved.slice(0, resolved.lastIndexOf("/"));
+        continue;
+      }
+      const next = `${resolved}/${part}`;
+      let isLink = false;
+      try {
+        isLink = lstatSync(next).isSymbolicLink();
+      } catch {
+        // Missing or unreadable: a plain directory once created, so walk on.
+      }
+      if (!isLink) {
+        resolved = next;
+        continue;
+      }
+      // The kernel's own bound on a chain of links (MAXSYMLINKS).
+      if (++links > 40) return "";
+      const target = readlinkSync(next);
+      if (target.startsWith("/")) resolved = "";
+      pending.unshift(...target.split("/"));
+    }
+    return resolved || "/";
+  } catch {
+    return "";
+  }
+}
 
 /**
  * Everything the state guard is allowed to let PAST, as a list of commands that
@@ -830,6 +985,30 @@ const STATE_GLOB_CANDIDATES = [
   "/root/.failproofai",
   "/home/u/.failproofai",
   "/Users/u/.failproofai",
+  // The installed code (FAILPROOFAI_CODE_PATH_RE): a project install, and the
+  // global locations whose prefix is the same on every machine. nvm's version
+  // directory and the npx cache's hash are not, so a glob under those is not one
+  // this list can anticipate; the literal paths there still match.
+  "node_modules/failproofai",
+  "./node_modules/failproofai",
+  "node_modules/.pnpm/failproofai@1.0.0",
+  "./node_modules/.pnpm/failproofai@1.0.0",
+  // The daemon's platform package, in pnpm's store and in its scope, for each
+  // platform it ships to, so a glob that wildcards its name is still read as
+  // aimed at it (`node_modules/.pnpm/@failproofai+*`, `node_modules/@failproofai/f*`).
+  ...["linux-x64", "linux-arm64", "darwin-x64", "darwin-arm64"].flatMap((platform) => [
+    `node_modules/.pnpm/@failproofai+failproofaid-${platform}@1.0.0`,
+    `./node_modules/.pnpm/@failproofai+failproofaid-${platform}@1.0.0`,
+    `node_modules/@failproofai/failproofaid-${platform}`,
+    `./node_modules/@failproofai/failproofaid-${platform}`,
+  ]),
+  "/usr/local/lib/node_modules/failproofai",
+  "/usr/lib/node_modules/failproofai",
+  "/opt/homebrew/lib/node_modules/failproofai",
+  "/usr/local/bin/failproofai",
+  "/opt/homebrew/bin/failproofai",
+  "~/.bun/bin/failproofai",
+  "~/.volta/bin/failproofai",
 ];
 
 /**
@@ -847,6 +1026,14 @@ const GLOB_DECOYS = [
   "~/.config", "~/.cache", "$HOME/.config", "${HOME}/.cache",
   "/home/u/.config", "/Users/u/.config", "/root/.cache", "/tmp/build",
   "a", "foo.txt", "test-failures",
+  // Neighbours of the installed-code candidates, so `rm -rf node_modules/*` and
+  // its global equivalents are read as the sweeps they are.
+  "node_modules/react", "node_modules/.bin", "./node_modules/react", "node_modules/.pnpm/react@18.0.0",
+  "./node_modules/.pnpm/react@18.0.0",
+  "node_modules/.pnpm/@types+node@20.0.0", "./node_modules/.pnpm/@types+node@20.0.0",
+  "node_modules/@types/node", "./node_modules/@types/node",
+  "/usr/local/lib/node_modules/npm", "/usr/lib/node_modules/npm", "/opt/homebrew/lib/node_modules/npm",
+  "/usr/local/bin/node", "/opt/homebrew/bin/node", "~/.bun/bin/bun", "~/.volta/bin/node",
 ];
 
 /**
@@ -4408,7 +4595,17 @@ function blockFailproofaiCommands(ctx: PolicyContext): PolicyResult {
   // so naming the state at all is the whole test.
   if (ctx.toolName === "Write" || ctx.toolName === "Edit" || ctx.toolName === "MultiEdit" || ctx.toolName === "NotebookEdit") {
     const path = getFilePath(ctx) || ((ctx.toolInput?.notebook_path as string) ?? "");
-    if (FAILPROOFAI_STATE_PATH_RE.test(path)) {
+    // The path as given AND the file it lands on. The bin entry a user-scope
+    // hook runs is usually a symlink into the package, so writing through it
+    // changes the hook's code without the package's path ever being named.
+    const kind = failproofaiFileKind(path) ?? failproofaiFileKind(resolveWriteTarget(path, ctx.session?.cwd));
+    if (kind === "code") {
+      return deny(
+        "Writing to failproofai's installed code would switch enforcement off. " +
+          "If a policy is blocking legitimate work, say so and let the operator decide.",
+      );
+    }
+    if (kind === "state") {
       return deny(
         "Writing to failproofai's own state would switch enforcement off. " +
           "If a policy is blocking legitimate work, say so and let the operator decide.",
@@ -4456,7 +4653,7 @@ function blockFailproofaiCommands(ctx: PolicyContext): PolicyResult {
   // matcher and a real path to the shell.
   if (destroysFailproofaiState(cmd) || destroysFailproofaiState(unescaped)) {
     return deny(
-      "Deleting, moving or overwriting failproofai's own state would switch enforcement off. " +
+      "Deleting, moving or overwriting failproofai's own state or installed code would switch enforcement off. " +
         "If a policy is blocking legitimate work, say so and let the operator decide.",
     );
   }

@@ -9,6 +9,7 @@
 
 import { noopAdapter } from "./adapter.js";
 import { notice } from "./notice.js";
+import { inertAiTool } from "./self-report-tool.js";
 
 type AttributeValue = string | number | boolean | Array<string | number | boolean>;
 
@@ -114,3 +115,9 @@ export function wrapTools<T>(tools: T): T {
 }
 
 export const adapter = noopAdapter("ai");
+
+/** The Self Reports tool, answering `Recorded.` and recording nothing. */
+export function selfReportTool<T = unknown>(...options: unknown[]): T {
+  void options;
+  return inertAiTool<T>();
+}

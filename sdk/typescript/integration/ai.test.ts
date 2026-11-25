@@ -135,6 +135,37 @@ describe.each(FIXTURES)("%s", (fixture) => {
       expect(result.stdout).toContain("It is 20C in Paris.");
     });
 
+    it("records a Self Report inside a scope, on the agent whose loop called the tool", () => {
+      const result = run("self-report");
+      expect(result.stdout).toContain("It is 20C in Paris.");
+      const reports = ofType(result.events, "self_report");
+      expect(reports, describeTrace(result)).toHaveLength(1);
+      expect(reports[0]).toMatchObject({
+        session_id: "req-sr",
+        agent_id: "weather-agent",
+        category: "invalid_tool_or_credential",
+        detail: "The weather API rejected its key.",
+        source: "sdk",
+        tool_call_id: "call-r1",
+      });
+      const done = ofType(result.events, "tool_result").find((e) => e.tool_name === "failproofai_report")!;
+      expect(JSON.stringify(done.output), describeTrace(result)).toContain("Recorded.");
+      expect(traceViolations(result.events), describeTrace(result)).toEqual([]);
+    });
+
+    it("attributes a Self Report with no scope to the run the adapter recorded", () => {
+      const result = run("self-report-bare");
+      const [report] = ofType(result.events, "self_report");
+      const use = ofType(result.events, "tool_use").find((e) => e.tool_name === "failproofai_report")!;
+      expect(report, describeTrace(result)).toMatchObject({
+        session_id: use.session_id,
+        agent_id: "weather-agent",
+        tool_call_id: "call-r1",
+        source: "sdk",
+      });
+      expect(report!.session_id).not.toBe("unattributed");
+    });
+
     it("records streamText like generateText, and stamps the request when it is made", () => {
       const result = run("stream");
       const { events } = result;

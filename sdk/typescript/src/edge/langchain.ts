@@ -2,6 +2,7 @@
 
 import { noopAdapter } from "./adapter.js";
 import { notice } from "./notice.js";
+import { inertNamedTool } from "./self-report-tool.js";
 
 export const SESSION_METADATA_KEY = "failproofai_sdk_session_id";
 
@@ -16,3 +17,9 @@ export function langchainHandler(): Record<string, unknown> {
 }
 
 export const adapter = noopAdapter("langchain");
+
+/** The Self Reports tool, answering `Recorded.` and recording nothing. */
+export function selfReportTool<T = unknown>(...options: unknown[]): T {
+  void options;
+  return inertNamedTool<T>();
+}

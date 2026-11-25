@@ -2,6 +2,7 @@
 
 import { noopAdapter } from "./adapter.js";
 import { notice } from "./notice.js";
+import { inertNamedTool } from "./self-report-tool.js";
 
 /** Attaching to a LlamaIndex object records nothing here; returns a detach. */
 export function attach(): () => void {
@@ -10,3 +11,9 @@ export function attach(): () => void {
 }
 
 export const adapter = noopAdapter("llamaindex");
+
+/** The Self Reports tool, answering `Recorded.` and recording nothing. */
+export function selfReportTool<T = unknown>(...options: unknown[]): T {
+  void options;
+  return inertNamedTool<T>();
+}

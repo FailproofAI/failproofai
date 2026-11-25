@@ -200,6 +200,23 @@ describe.each(FIXTURES)("%s", (fixture) => {
       expect(traceViolations(result.events), describeTrace(result)).toEqual([]);
     });
 
+    it("records a Self Report on the agent whose loop called the tool", () => {
+      const result = run("self-report");
+      expect(result.stdout).toContain('"toolResult":"Recorded."');
+      const reports = ofType(result.events, "self_report");
+      expect(reports, describeTrace(result)).toHaveLength(1);
+      const use = ofType(result.events, "tool_use").find((e) => e.tool_name === "failproofai_report")!;
+      expect(use, describeTrace(result)).toBeDefined();
+      expect(reports[0]).toMatchObject({
+        session_id: use.session_id,
+        agent_id: "react_bot",
+        category: "invalid_tool_or_credential",
+        detail: "The weather API rejected its key.",
+        source: "sdk",
+      });
+      expect(traceViolations(result.events), describeTrace(result)).toEqual([]);
+    });
+
     it("records a failure once, where it happened", () => {
       const result = run("error");
       expect(result.stdout).toContain("model exploded");

@@ -36,8 +36,26 @@ import type {
   ToolCallFn,
   ToolCallOptions,
 } from "../scopes.js";
+import {
+  SELF_REPORT_RESULT,
+  buildSelfReportSpec,
+  defaultCategories,
+  isSelfReportTool,
+  toAnthropicTool,
+  toOpenAITool,
+  type AnthropicTool,
+  type OpenAITool,
+  type SelfReportSpec,
+} from "../self-report-spec.js";
 import { VERSION } from "../version.js";
 import { notice } from "./notice.js";
+
+export {
+  DEFAULT_SELF_REPORT_CATEGORIES,
+  SELF_REPORT_RESULT,
+  SELF_REPORT_TOOL_NAME,
+  isSelfReportTool,
+} from "../self-report-spec.js";
 
 export { VERSION as version };
 
@@ -206,9 +224,10 @@ const EVENT_METHODS = [
   "humanInput",
   "humanPause",
   "humanInterrupt",
+  "selfReport",
 ] as const;
 
-/** The 15 event methods, each accepting its options and recording nothing. */
+/** The event methods, each accepting its options and recording nothing. */
 export const event: EventNamespace = Object.freeze(
   Object.fromEntries(EVENT_METHODS.map((name) => [name, () => notice()])),
 ) as unknown as EventNamespace;
@@ -244,4 +263,47 @@ export function availableFrameworks(): never[] {
 
 export function activeFrameworks(): never[] {
   return [];
+}
+
+// -- Self Reports: the same tool, recording nothing ----------------------------
+//
+// No settings file can be read here, so the spec always carries the default
+// categories. A report call still answers `Recorded.`: the model's loop must go
+// on exactly as it would in Node.
+
+export function selfReportSettings(): {
+  enabled: false;
+  source: null;
+  categories: ReturnType<typeof defaultCategories>;
+  guidance: null;
+  mcp: null;
+  updatedAt: null;
+} {
+  return { enabled: false, source: null, categories: defaultCategories(), guidance: null, mcp: null, updatedAt: null };
+}
+
+export function selfReportSettingsPath(): string {
+  return "~/.failproofai/self-report.json";
+}
+
+export function selfReportSpec(): SelfReportSpec {
+  return buildSelfReportSpec(defaultCategories());
+}
+
+export function openaiTool(): OpenAITool {
+  return toOpenAITool(selfReportSpec());
+}
+
+export function anthropicTool(): AnthropicTool {
+  return toAnthropicTool(selfReportSpec());
+}
+
+export function selfReport(): void {
+  notice();
+}
+
+export function handleToolCall(name: string): string | null {
+  if (!isSelfReportTool(name)) return null;
+  notice();
+  return SELF_REPORT_RESULT;
 }

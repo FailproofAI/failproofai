@@ -26,7 +26,7 @@ afterEach(() => {
 });
 
 describe("the edge build's imports", () => {
-  it("imports no Node builtin and nothing from the Node build but VERSION and types", () => {
+  it("imports no Node builtin and nothing from the Node build but VERSION, the self-report spec and types", () => {
     for (const file of readdirSync(edgeDir).filter((name) => name.endsWith(".ts"))) {
       const source = readFileSync(join(edgeDir, file), "utf8");
       const imports = [...source.matchAll(/^import\s+(type\s+)?[^;]*?from\s+"([^"]+)";/gms)].map((m) => ({
@@ -35,12 +35,19 @@ describe("the edge build's imports", () => {
       }));
       for (const { typeOnly, from } of imports) {
         if (typeOnly) continue;
-        const allowed = from.startsWith("./") || from === "../version.js";
+        const allowed = from.startsWith("./") || from === "../version.js" || from === "../self-report-spec.js";
         expect(allowed, `${file} imports ${from} at run time`).toBe(true);
       }
       expect(source, file).not.toMatch(/\bprocess\./);
       expect(source, file).not.toMatch(/require\(/);
     }
+  });
+
+  it("shares a self-report spec module that itself imports nothing", () => {
+    const source = readFileSync(join(root, "src", "self-report-spec.ts"), "utf8");
+    expect(source).not.toMatch(/^import\s/m);
+    expect(source).not.toMatch(/\bprocess\./);
+    expect(source).not.toMatch(/require\(/);
   });
 });
 
@@ -139,7 +146,7 @@ describe("the edge build's behaviour", () => {
     for (const method of Object.keys(edge.event)) {
       expect(() => (edge.event as unknown as Record<string, (o: unknown) => void>)[method]!({})).not.toThrow();
     }
-    expect(Object.keys(edge.event)).toHaveLength(15);
+    expect(Object.keys(edge.event)).toHaveLength(16);
     await expect(edge.flush()).resolves.toBeUndefined();
     expect(await edge.instrument()).toEqual([]);
     expect(await (edge.instrument as (name: string) => Promise<unknown[]>)("langchain")).toEqual([]);

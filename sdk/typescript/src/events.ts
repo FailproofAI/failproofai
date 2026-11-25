@@ -14,12 +14,14 @@ import {
   humanWaitEvent,
   modelRequestEvent,
   modelResponseEvent,
+  selfReportEvent,
   toolResultEvent,
   toolUseEvent,
 } from "./schema.js";
 import type { EventWriter } from "./writer.js";
 import { formatMicros, nowMicros } from "./clock.js";
 import { fatalSuffix, onProcessExit, type OpenItem } from "./exit.js";
+import { SELF_REPORT_DETAIL_LIMIT, clipDetail, isSelfReportTool } from "./self-report-spec.js";
 
 /**
  * `sessionId` and `agentId` are named options on every method, so a caller
@@ -396,6 +398,27 @@ export interface HumanInterruptOptions extends BaseEventOptions {
   userId?: string | null;
   atStep?: string | null;
 }
+
+/**
+ * The options `selfReport` takes beside its category and detail. `toolCallId`
+ * is the model's id for the report call, when there was one: it is recorded,
+ * and it is how a report made from inside a framework's tool loop finds the
+ * agent whose loop called it.
+ */
+export interface SelfReportOptions extends BaseEventOptions {
+  toolCallId?: string | null;
+}
+
+/**
+ * The session a report goes to when nothing names one — the same placeholder
+ * the MCP server uses. A report is never dropped and never throws for want of
+ * a session: an agent that is stuck is precisely the one whose run may have
+ * lost its scope.
+ */
+export const UNATTRIBUTED_SESSION = "unattributed";
+
+/** Keys `selfReport` sets itself; an extra of the same name would overwrite them. */
+const SELF_REPORT_OWN: ReadonlySet<string> = new Set(["category", "detail", "source", "tool_call_id"]);
 
 type Extras = Record<string, unknown>;
 
@@ -802,6 +825,92 @@ export class EventNamespace {
     );
   }
 
+  /**
+   * `self_report` — the agent says it is stuck (Self Reports).
+   *
+   * `category` is recorded as given, known or not; a missing `detail` is
+   * recorded as `""`, and a longer one is cut to 2000 characters. `source` is
+   * always `"sdk"`.
+   *
+   * Identity, most specific first: an explicit `sessionId`; the open
+   * `tool_use` for `toolCallId` (or, with no id, for a report-tool name) that
+   * an adapter or a `toolCall()` scope recorded — so a report made inside a
+   * framework's tool loop lands on the agent whose loop called it; the
+   * enclosing scope; and last `"unattributed"`, with one warning. Unlike every
+   * other event method a missing session never throws.
+   */
+  selfReport(category: string, detail?: string | null, options: SelfReportOptions = {}): void {
+    const { sessionId, agentId, toolCallId, ...fields } = options;
+    const own = Object.keys(fields).filter((key) => SELF_REPORT_OWN.has(key));
+    if (own.length > 0) {
+      throw new Error(
+        `selfReport sets ${JSON.stringify(own.sort())} itself; they cannot be passed as custom fields`,
+      );
+    }
+    this.validateFields(fields);
+    const callId = typeof toolCallId === "string" && toolCallId !== "" ? toolCallId : undefined;
+    const [sid, aid] = this.reportIdentity(sessionId, agentId, callId);
+    this.writer.submit(
+      selfReportEvent({
+        timestamp: this.fmtTs(this.now()),
+        sessionId: sid,
+        agentId: aid,
+        category: typeof category === "string" ? category : category === undefined || category === null ? "" : String(category),
+        detail: clipDetail(typeof detail === "string" ? detail : detail === undefined || detail === null ? "" : String(detail)),
+        source: "sdk",
+        toolCallId: callId,
+        extraFields: fields,
+      }),
+    );
+  }
+
+  private warnedUnattributed = false;
+
+  private reportIdentity(
+    sessionId: string | null | undefined,
+    agentId: string | null | undefined,
+    toolCallId: string | undefined,
+  ): [string, string] {
+    if (sessionId !== undefined && sessionId !== null) return resolveIdentity(sessionId, agentId);
+    const ambient = context.sessionId();
+    const leaf = this.openToolFor(toolCallId, ambient);
+    if (leaf !== undefined) {
+      const aid = agentId ?? leaf.agentId;
+      validateIdentity("agentId", aid);
+      return [leaf.sessionId, aid];
+    }
+    if (ambient !== null) return resolveIdentity(null, agentId);
+    if (!this.warnedUnattributed) {
+      this.warnedUnattributed = true;
+      logger.warn(
+        `selfReport found no session to record into and filed it under "${UNATTRIBUTED_SESSION}". ` +
+          "Call it inside `failproofai.session(fn)` / `failproofai.agent('name', fn)`, or pass sessionId. " +
+          "This is logged once.",
+      );
+    }
+    const aid = agentId ?? context.agentId();
+    validateIdentity("agentId", aid);
+    return [UNATTRIBUTED_SESSION, aid];
+  }
+
+  /**
+   * The newest open tool call a report belongs to: the one with this id, else
+   * one named like the report tool (LlamaIndex gives a tool no id, and an
+   * adapter may have recorded its own id rather than the model's). Inside a
+   * scope only that scope's session is searched.
+   */
+  private openToolFor(toolCallId: string | undefined, preferSession: string | null): OpenLeaf | undefined {
+    const leaves = [...this.openLeaves.values()].filter((leaf) => leaf.kind === "tool").reverse();
+    const pick = (matches: (leaf: OpenLeaf) => boolean): OpenLeaf | undefined => {
+      const found = leaves.filter(matches);
+      return preferSession === null ? found[0] : found.find((leaf) => leaf.sessionId === preferSession);
+    };
+    return (
+      (toolCallId !== undefined ? pick((leaf) => leaf.id === toolCallId) : undefined) ??
+      pick((leaf) => isSelfReportTool(leaf.name))
+    );
+  }
+
   humanWait(opts: HumanWaitOptions): void {
     const { sessionId, agentId, inputId, prompt, options, reason, ...fields } = opts;
     this.validateFields(fields);
@@ -876,4 +985,4 @@ export class EventNamespace {
   }
 }
 
-export { RESERVED, PROMOTED_NUMERIC, PROMOTED_STRING, U32_MAX, PENDING_CAP };
+export { RESERVED, PROMOTED_NUMERIC, PROMOTED_STRING, U32_MAX, PENDING_CAP, SELF_REPORT_DETAIL_LIMIT };

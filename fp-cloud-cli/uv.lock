@@ -35,15 +35,6 @@ wheels = [
 ]
 
 [[package]]
-name = "backoff"
-version = "2.2.1"
-source = { registry = "https://pypi.org/simple" }
-sdist = { url = "https://files.pythonhosted.org/packages/47/d7/5bbeb12c44d7c4f2fb5b56abce497eb5ed9f34d85701de869acedd602619/backoff-2.2.1.tar.gz", hash = "sha256:03f829f5bb1923180821643f8753b0502c3b682293992485b0eef2807afa5cba", size = 17001, upload-time = "2022-10-05T19:19:32.061Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/df/73/b6e24bd22e6720ca8ee9a85a0c4a2971af8497d8f3193fa05390cbd46e09/backoff-2.2.1-py3-none-any.whl", hash = "sha256:63579f9a0628e06278f7e47b7d7d5b6ce20dc65c5e96a6f3ca99a6adca0396e8", size = 15148, upload-time = "2022-10-05T19:19:30.546Z" },
-]
-
-[[package]]
 name = "certifi"
 version = "2026.10.19"
 source = { registry = "https://pypi.org/simple" }
@@ -276,7 +267,7 @@ dev = [
 requires-dist = [
     { name = "click", specifier = ">=8.1" },
     { name = "httpx", specifier = ">=0.27" },
-    { name = "posthog", specifier = ">=3.5,<8" },
+    { name = "posthog", specifier = ">=3.5,<9" },
     { name = "pygments", specifier = ">=2.13" },
     { name = "pytest", marker = "extra == 'dev'", specifier = ">=7" },
     { name = "respx", marker = "extra == 'dev'", specifier = ">=0.21" },
@@ -381,17 +372,16 @@ wheels = [
 
 [[package]]
 name = "posthog"
-version = "7.91.1"
+version = "8.1.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
-    { name = "backoff" },
     { name = "distro" },
     { name = "requests" },
     { name = "typing-extensions" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/d0/50/1acd1a03d0fb49b5b9c7617ec1eec7df86edf475538dec4e18d906166cab/posthog-7.91.1.tar.gz", hash = "sha256:e4b3d34854860d814c04b276057c52282bab8fa0d1636d01e44868b32037649c", size = 1000112, upload-time = "2026-11-13T14:22:48.829Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/be/39/bb5fd6ca1f7e4466953d54194116bf9c27373acccfab8f407ad91b142e54/posthog-8.1.0.tar.gz", hash = "sha256:2c862b3956f64d6fe8d26542a8557e4ec97d61b9448a6645ae34114ab9b5a6b8", size = 1044111, upload-time = "2026-11-20T20:30:56.173Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/89/1f/90c26e72e23cfae827dcff7a76ecad623f1a447d613079fbd0bc1c345c06/posthog-7.91.1-py3-none-any.whl", hash = "sha256:22ce67d6ea2adb523920edb00033a8c49377704c523513f6afe168eded5e0b98", size = 1150356, upload-time = "2026-11-13T14:22:46.537Z" },
+    { url = "https://files.pythonhosted.org/packages/4f/68/dd49608b8d5f9302ddad914a8fcb780b9e787477309040fd6edfa7b752df/posthog-8.1.0-py3-none-any.whl", hash = "sha256:0b62485673d9554090ebbe0c85e34d77fe2378b778d8a1cb43d716156536dec4", size = 1197215, upload-time = "2026-11-20T20:30:54.136Z" },
 ]
 
 [[package]]

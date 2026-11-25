@@ -38,6 +38,11 @@ vi.mock("../../src/hooks/manager", () => ({
   }),
 }));
 
+// Self Reports MCP removal reads agent configs through the real integrations;
+// its own behaviour is covered in self-report-install.test.ts.
+vi.mock("../../src/hooks/self-report-install", () => ({
+  removeSelfReportMcp: vi.fn(() => []),
+}));
 vi.mock("../../src/hooks/agent-skill", () => ({
   installedAgentSkillDirs: () => skillDirs,
   removeAgentSkill: vi.fn(() => {
@@ -564,5 +569,21 @@ describe("hooks/uninstall-cli — the agent selection is not uninstall's to chan
       source: "uninstall_command",
       silent: true,
     });
+  });
+});
+
+describe("hooks/uninstall-cli — Self Reports MCP server", () => {
+  it("removes failproofai's MCP server from every agent and says so", async () => {
+    const mod = await import("../../src/hooks/self-report-install");
+    vi.mocked(mod.removeSelfReportMcp).mockReturnValueOnce([
+      { agent: "claude", path: "/x/.claude.json", action: "removed", transport: "http", status: "ok" },
+      { agent: "codex", path: "/x/.codex/config.toml", action: "unchanged", transport: null, status: "ok" },
+    ]);
+    const { runUninstallCommand } = await import("../../src/hooks/uninstall-cli");
+    const res = await runUninstallCommand({ yes: true, cwd: join(home, "project") });
+
+    expect(res.exitCode).toBe(0);
+    expect(vi.mocked(mod.removeSelfReportMcp)).toHaveBeenCalledWith({ quiet: true });
+    expect(res.lines.join("\n")).toContain("Removed the Self Reports MCP server from 1 agent config.");
   });
 });

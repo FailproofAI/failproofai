@@ -743,6 +743,41 @@ async function runCli() {
   // over. Every precondition a person can get wrong is still checked HERE,
   // synchronously, because reporting success and leaving the real failure in the
   // journal is what already cost twenty minutes on a live machine.
+  // `failproofai self-report sync [--quiet]`: add or remove failproofai's
+  // Self Reports MCP server in every agent with failproofai hooks, from
+  // ~/.failproofai/self-report.json. The daemon runs it with --quiet whenever
+  // that file's `enabled` (or port) changes; it is idempotent.
+  // TODO(merge): "self-report" joins SUBCOMMANDS, the help index and its own
+  // help page with the `self-report status|enable|disable|test` hunk; until
+  // then `self-report sync --help` falls through to the index.
+  if (args[0] === "self-report" && args[1] === "sync") {
+    const subArgs = args.slice(2);
+    if (subArgs.includes("--help") || subArgs.includes("-h")) {
+      await printHelp({
+        name: "self-report sync",
+        usage: [["failproofai self-report sync [--quiet]", "Register or remove the Self Reports MCP server in each hooked agent"]],
+        options: [["--quiet", "Print nothing; the exit code says whether every agent succeeded"]],
+        optionsCol: 12,
+      });
+      process.exit(0);
+    }
+    const unknown = subArgs.find((a) => a !== "--quiet");
+    if (unknown) {
+      throw new CliError(`Unexpected argument: ${unknown}.\nRun  \`failproofai self-report sync --help\`  for usage.`);
+    }
+    lastSubcommand = "self-report";
+    const { syncSelfReportMcp, selfReportSyncLines } = await import("../src/hooks/self-report-install");
+    const results = syncSelfReportMcp({ quiet: true });
+    const failed = results.some((r) => r.status === "error");
+    if (!subArgs.includes("--quiet")) {
+      const lines = selfReportSyncLines(results);
+      await printLines(lines.length > 0 ? lines : ["Self Reports MCP registration is already up to date."], !failed);
+    }
+    lastSubcommand = null;
+    await exitAfterFlush(failed ? 1 : 0);
+    return;
+  }
+
   if (args[0] === "flush") {
     const subArgs = args.slice(1);
     if (subArgs.includes("--help") || subArgs.includes("-h")) {
@@ -2071,6 +2106,18 @@ async function runCli() {
         if (out.length > 0) process.stdout.write(`${out.join("\n")}\n`);
         if (run.ok) markUpdated(version);
         else updateExit = 1;
+      }
+    }
+    // Self Reports: bring every hooked agent's MCP registration in line with
+    // self-report.json, also when setup found the machine already configured
+    // and wrote no hooks. Best-effort; prints only what changed.
+    if (result.applied) {
+      try {
+        const { syncSelfReportMcp, selfReportSyncLines } = await import("../src/hooks/self-report-install");
+        const lines = selfReportSyncLines(syncSelfReportMcp({ quiet: true }));
+        if (lines.length > 0) process.stdout.write(`${lines.join("\n")}\n`);
+      } catch {
+        // never fail setup over it
       }
     }
     await warnTokenOnArgv();

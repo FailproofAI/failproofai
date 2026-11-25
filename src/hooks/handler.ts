@@ -55,6 +55,7 @@ import {
 } from "./policy-authority";
 import type { CustomHook } from "./policy-types";
 import { persistHookActivity } from "./hook-activity-store";
+import { isSelfReportToolName, selfReportArgs, SELF_REPORT_SERVER_RECORDS } from "./self-report";
 import { deliveryHealth, deliveryHealthLine } from "./delivery-health";
 import { trackHookEvent, flushHookTelemetry } from "./hook-telemetry";
 import * as hookTelemetry from "./hook-telemetry";
@@ -657,6 +658,71 @@ async function captureJevIntent(
 }
 
 /**
+ * The Self Reports short-circuit's whole answer: one activity row, then allow.
+ *
+ * The row carries `selfReport` only on PreToolUse, and only for an agent whose
+ * hook is the recorder (contract §8). An agent in
+ * `SELF_REPORT_SERVER_RECORDS` has its report written by the MCP server
+ * instead, so a hook that turns out to see the call there must not file it a
+ * second time. A PostToolUse row is the call's completion, not a second report.
+ */
+function recordSelfReportCall(
+  canonicalEventType: string,
+  cli: IntegrationType,
+  parsed: Record<string, unknown>,
+  session: SessionMetadata,
+  arrivedAt: number,
+  startTime: number,
+): HookEventOutcome {
+  const durationMs = Math.round(performance.now() - startTime);
+  const writtenAt = Date.now();
+  const toolCallId = toolCallIdOf(parsed);
+  // Only the PreToolUse row carries the report: the collector emits one
+  // `self_report` event per row that has it, and a call that also raises a
+  // PermissionRequest (or completes with a PostToolUse) is still one report.
+  const isReportRow = canonicalEventType === "PreToolUse";
+  const hookRecords = !SELF_REPORT_SERVER_RECORDS.includes(cli);
+  try {
+    persistHookActivity({
+      timestamp: writtenAt,
+      startedAt: Math.min(arrivedAt, writtenAt),
+      ...(toolCallId ? { toolCallId } : {}),
+      eventType: canonicalEventType,
+      integration: cli,
+      toolName: (parsed.tool_name as string) ?? null,
+      policyName: null,
+      matchedPolicies: [],
+      decision: "allow",
+      reason: null,
+      durationMs,
+      sessionId: session.sessionId,
+      transcriptPath: session.transcriptPath,
+      cwd: session.cwd,
+      permissionMode: session.permissionMode,
+      hookEventName: session.hookEventName,
+      ...(isReportRow && hookRecords ? { selfReport: { ...selfReportArgs(parsed.tool_input), source: "mcp" as const } } : {}),
+    });
+  } catch {
+    hookLogWarn("activity persistence failed");
+  }
+  hookLogInfo(`event=${canonicalEventType} cli=${cli} self-report allowed duration=${durationMs}ms`);
+  return {
+    exitCode: 0,
+    stdout: "",
+    stderr: "",
+    evaluation: {
+      decision: "allow",
+      policyName: null,
+      policyNames: [],
+      reason: null,
+      matchedPolicies: [],
+      durationMs,
+      toolName: (parsed.tool_name as string) ?? null,
+    },
+  };
+}
+
+/**
  * The core hook-evaluation logic, decoupled from process stdin/stdout so it
  * can be called repeatedly inside a long-lived process (the daemon's warm
  * worker) as well as from the one-shot `handleHookEvent` wrapper below.
@@ -746,6 +812,23 @@ export async function evaluateHookEvent(
       rawHookEventName: eventType,
       cli,
     };
+
+    // Self Reports: the agent telling FailproofAI it is stuck. Answered HERE,
+    // ahead of the fail-closed branch, the session pause, every policy layer
+    // (builtin, custom, Cloud, pack) and Jev, so nothing can block, rewrite or
+    // delay a report — in the study our own `.env` policy blocked one. The
+    // allow is the same empty answer the evaluator gives every integration
+    // when no policy decides. PostToolUse for the tool is recorded, never
+    // evaluated; any other event for it takes the ordinary path.
+    if (
+      isSelfReportToolName(parsed.tool_name) &&
+      (canonicalEventType === "PreToolUse" ||
+        canonicalEventType === "PermissionRequest" ||
+        canonicalEventType === "PostToolUse")
+    ) {
+      return recordSelfReportCall(canonicalEventType, cli, parsed, session, arrivedAt, startTime);
+    }
+
     const runtimeAgent = readRuntimeAgentIdentity(
       cli, opts?.agentSettingsPath ?? runtimeAgentSettingsPath(cli, session.cwd),
     );

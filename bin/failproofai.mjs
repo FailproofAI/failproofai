@@ -314,6 +314,43 @@ if (hookIdx >= 0) {
   }
 }
 
+// mcp [--agent <integration>] — the Self Reports MCP server over stdio, spawned
+// by an agent that registered it. Outside runCli() like --hook: stdout is the
+// JSON-RPC stream, so nothing else (layout notices, onboarding, the install
+// report) may run or print first, and it must work with no daemon.
+const SELF_REPORT_MCP_HELP = {
+  name: "mcp",
+  usage: [["failproofai mcp [--agent <agent>]", "Serve the Self Reports tool over stdio MCP"]],
+  options: [
+    ["--agent <agent>", "The agent this server was registered for"],
+    ["", "claude, codex, copilot, cursor, opencode, pi,"],
+    ["", "hermes, openclaw, factory, devin, antigravity, goose"],
+  ],
+};
+if (args[0] === "mcp") {
+  if (args.includes("--help") || args.includes("-h")) {
+    await printHelp(SELF_REPORT_MCP_HELP);
+    await exitAfterFlush(0);
+  }
+  const agentIdx = args.indexOf("--agent");
+  const agentArg = agentIdx >= 0 ? args[agentIdx + 1] : undefined;
+  const stray = args.slice(1).find((a, i) => a !== "--agent" && args[i] !== "--agent");
+  if ((agentIdx >= 0 && (!agentArg || agentArg.startsWith("-"))) || stray) {
+    process.stderr.write(
+      `✕ ${stray ? `Unexpected argument: ${stray}.` : "Missing agent name after --agent."}\n  Run  failproofai help mcp  for usage.\n`,
+    );
+    await exitAfterFlush(1);
+  }
+  try {
+    const { runSelfReportMcpServer } = await import("../src/hooks/self-report-mcp");
+    await runSelfReportMcpServer({ agent: agentArg });
+    await exitAfterFlush(0);
+  } catch (err) {
+    process.stderr.write(`✕ failproofai mcp: ${err instanceof Error ? err.message : String(err)}\n`);
+    await exitAfterFlush(1);
+  }
+}
+
 /**
  * Centralised error handler for all CLI subcommands.
  * CliError  → clean message, no stack trace, exit exitCode (1 or 2)
@@ -469,7 +506,7 @@ async function runCli() {
   // at all, only the paragraph in the top-level dump that this rewrite moved.
   // `help` and `publish` are new. `policy` and `pack` are canonicalized to
   // `policies` above and never reach this list.
-  const SUBCOMMANDS = ["policies", "audit", "config", "uninstall", "backfill", "flush", "harness", "otel", "jev", "publish", "update", "migrate", "help"];
+  const SUBCOMMANDS = ["policies", "audit", "config", "uninstall", "backfill", "flush", "harness", "otel", "jev", "self-report", "publish", "update", "migrate", "help"];
   // ── help ─────────────────────────────────────────────────────────────────
   //
   // The index and the reference manual used to be the same document: 152 lines,
@@ -498,6 +535,12 @@ async function runCli() {
         ],
       });
       process.exit(0);
+      process.exit(0);
+    }
+    // `mcp` is machine-facing too (an agent spawns it), so like --hook it is a
+    // help topic rather than a row on the index.
+    if (helpTopic === "mcp") {
+      await printHelp(SELF_REPORT_MCP_HELP);
       process.exit(0);
     }
     // Canonicalize the topic the same way a typed command is canonicalized, so
@@ -568,6 +611,7 @@ async function runCli() {
           ["(no args)", "Open the policy dashboard on localhost:8020"],
           ["audit", "Scan your agents' history for risky and wasteful patterns"],
           ["otel", "Opt in to OpenTelemetry from agents and apps"],
+          ["self-report", "Let agents report to you when they are stuck"],
         ]),
         ...section("Less often", [
           ["harness", "Collect sessions from extra locations per agent"],
@@ -977,6 +1021,52 @@ async function runCli() {
       // A path is a value the user typed, and `enterprise-docs/product-analytics.md`
       // promises we send shape, never value.
       sub: ["list", "add-path", "remove-path"].includes(subArgs[0]) ? subArgs[0] : "unknown",
+    });
+    lastSubcommand = null;
+    await exitAfterFlush(result.exitCode);
+    return;
+  }
+
+  // self-report status | enable | disable | test
+  //
+  // Self Reports: the `report` tool agents call when they are stuck. On a
+  // machine managed by FailproofAI Cloud the setting comes from Cloud and
+  // enable/disable refuse; otherwise they write config.json's `selfReport` and
+  // ~/.failproofai/self-report.json, then update the agents' MCP entries.
+  if (args[0] === "self-report") {
+    const subArgs = args.slice(1);
+    if (subArgs.length === 0 || subArgs.includes("--help") || subArgs.includes("-h")) {
+      await printHelp({
+        name: "self-report",
+        usage: [
+          ["failproofai self-report status", "Show whether it is on, and where that came from"],
+          ["failproofai self-report enable [options]", "Turn it on for this machine"],
+          ["failproofai self-report disable", "Turn it off for this machine"],
+          ["failproofai self-report test --agent <agent>", "Send one test report end to end"],
+          // TODO(merge): the installer part adds its `sync` row here.
+        ],
+        options: [
+          ["--categories-file <f>", "JSON list of {name, description}; replaces the defaults"],
+          ["--guidance <text>", "Extra instructions appended to the tool description"],
+          ["--agent <agent>", "With test: the agent to send it as"],
+        ],
+        examples: [
+          "failproofai self-report enable",
+          "failproofai self-report test --agent claude",
+        ],
+      });
+      process.exit(0);
+    }
+    // TODO(merge): `self-report sync` (installer part) dispatches here, ahead
+    // of runSelfReportCommand, in its own hunk.
+    lastSubcommand = "self-report";
+    const { runSelfReportCommand } = await import("../src/hooks/self-report-cli");
+    const result = await runSelfReportCommand(subArgs);
+    await printReport(`self-report ${subArgs[0]}`, result.lines, { ok: result.exitCode === 0 });
+    await track("cli_self_report", {
+      ok: result.exitCode === 0,
+      // The subcommand only — never a category, guidance text or a path.
+      sub: ["status", "enable", "disable", "test", "sync"].includes(subArgs[0]) ? subArgs[0] : "unknown",
     });
     lastSubcommand = null;
     await exitAfterFlush(result.exitCode);

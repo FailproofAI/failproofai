@@ -1931,6 +1931,15 @@ const MAX_SED_TARGETS = 64;
 /** Larger than a file of instructions (a sed script, a patch, a curl config) is read; past it, it is read as writing what is protected. */
 const MAX_INSTRUCTION_FILE_BYTES = 1024 * 1024;
 
+/** curl's short options that take a value (curl 8 `--help all`); the rest of a cluster after one is that value. */
+const CURL_SHORT_VALUE_OPTIONS = "AbcCdDeEFHKmoPQrtTuUwxXyYz";
+
+/** tar's short options other than `-C` that take a value (GNU tar and bsdtar). */
+const TAR_SHORT_VALUE_OPTIONS = "fbFgHIKLNTVX";
+
+/** How many curl configs deep one may name the next before the command is refused. */
+const MAX_CURL_CONFIG_DEPTH = 8;
+
 /**
  * The options a curl config file gives, as the words they would be on the
  * line: `output = hook`, `-o hook`, `--output-dir bins` and `remote-name`,
@@ -2411,7 +2420,8 @@ function applyParameterOperator(value: string, op: string, arg: string): string 
     const re = wholeGlob(arg);
     if (re === null) return null;
     const cuts = Array.from({ length: value.length + 1 }, (_, k) => k);
-    if (op === "##" || op === "%") cuts.reverse();
+    // Shortest first; `##` and `%%` take the longest (found by hermes on FailproofAI/failproofai#1058).
+    if (op === "##" || op === "%%") cuts.reverse();
     for (const k of cuts) {
       if (op.startsWith("#") ? re.test(value.slice(0, k)) : re.test(value.slice(value.length - k))) {
         return op.startsWith("#") ? value.slice(k) : value.slice(0, value.length - k);
@@ -3446,9 +3456,16 @@ function destroysFailproofaiState(command: string, depth = 0, startDir?: string,
     } else if (head === "printf" && words[1] === "-v" && words[2] !== undefined) {
       const format = expand(words[3] ?? "");
       const args = words.slice(4).map(expand);
+      // bash reuses the format until every argument is used (`printf -v D
+      // '%s' ho ok` is `hook`; found by hermes on FailproofAI/failproofai#1058).
       let k = 0;
-      const value = format.replace(/%(%|[sbqd])/g, (_, c: string) => (c === "%" ? "%" : (args[k++] ?? "")));
-      setVariable(words[2], /[%\\]/.test(value) ? [] : [value]);
+      let value = "";
+      let passes = 0;
+      const conversions = (format.match(/%[sbqd]/g) ?? []).length;
+      do {
+        value += format.replace(/%(%|[sbqd])/g, (_, c: string) => (c === "%" ? "%" : (args[k++] ?? "")));
+      } while (conversions > 0 && k < args.length && ++passes < 64);
+      setVariable(words[2], /[%\\]/.test(value) || k < args.length ? [] : [value]);
     } else if (head === "mapfile" || head === "readarray") {
       const named = words.slice(1).filter((word, k, all) => !word.startsWith("-") && !/^-[A-Za-z]*[dnOsuC]$/.test(all[k - 1] ?? ""));
       setVariable(named[named.length - 1] ?? "MAPFILE", []);
@@ -3551,18 +3568,27 @@ function destroysFailproofaiState(command: string, depth = 0, startDir?: string,
           else if (name.length >= 3 && ("extract".startsWith(name) || name === "get")) extracting = true;
           continue;
         }
-        // A cluster (`-xzf`, or `xzf` first with no dash), its value letters
-        // taking the words after it in order.
-        if (!arg.startsWith("-") && k > 0) continue;
-        const letters = arg.replace(/^-/, "");
-        if (!/^[A-Za-z]+$/.test(letters)) {
-          if (/^-C./.test(arg)) into = arg.slice(2);
+        // The old form (`xzf` first, no dash): its value letters take the
+        // words after it in order.
+        if (!arg.startsWith("-")) {
+          if (k > 0) continue;
+          if (arg.includes("x")) extracting = true;
+          for (const letter of arg) {
+            if (letter === "C") into = args[++k] ?? into;
+            else if (TAR_SHORT_VALUE_OPTIONS.includes(letter)) k++;
+          }
           continue;
         }
-        if (letters.includes("x")) extracting = true;
-        for (const letter of letters) {
-          if (letter === "C") into = args[++k] ?? into;
-          else if ("fbHIKLNTVX".includes(letter)) k++;
+        // A dashed cluster, as getopt reads it: a letter that takes a value
+        // takes the rest of the cluster, or the next word when none is left
+        // (`-Cbins`, `-xfstub.tar`; found by hermes on FailproofAI/failproofai#1058).
+        for (let i = 1; i < arg.length; i++) {
+          const letter = arg[i];
+          if (letter === "x") extracting = true;
+          if (letter !== "C" && !TAR_SHORT_VALUE_OPTIONS.includes(letter)) continue;
+          const value = i + 1 < arg.length ? arg.slice(i + 1) : (args[++k] ?? "");
+          if (letter === "C") into = value || into;
+          break;
         }
       }
     } else if (head === "unzip") {
@@ -3579,32 +3605,53 @@ function destroysFailproofaiState(command: string, depth = 0, startDir?: string,
     return extracting && isBinDir(into === "" ? "." : into);
   };
   // curl reads options from `-K FILE` / `--config FILE` as if they were on
-  // the line, so they are read onto it; one it cannot read is refused.
+  // the line, so they are read onto it; one it cannot read is refused. A
+  // short-option cluster is read the way curl's parser reads it: `K` takes
+  // the rest of the cluster or the next word (`-sKinner.cfg`), and a letter
+  // that takes a value before it makes the `K` part of that value (`-oK`). A
+  // config may name another (`config = inner.cfg`), which is read in turn,
+  // MAX_CURL_CONFIG_DEPTH deep and MAX_INSTRUCTION_FILE_BYTES in all (found by
+  // hermes on FailproofAI/failproofai#1058).
   const withCurlConfig = (list: string[]): string[] | null => {
     if (list.length === 0 || commandBasename(list[0]) !== "curl") return list;
-    const out = [list[0]];
-    for (let k = 1; k < list.length; k++) {
-      const arg = list[k];
-      let file: string | undefined;
-      if (arg === "-K") file = list[++k] ?? "";
-      else if (/^-K./.test(arg)) file = arg.slice(2);
-      else if (/^-[A-Za-z]+K$/.test(arg)) {
-        out.push(arg.slice(0, -1));
-        file = list[++k] ?? "";
-      } else if (arg.startsWith("--")) {
-        const eq = arg.indexOf("=");
-        const name = arg.slice(2, eq === -1 ? undefined : eq);
-        if (name.length >= 4 && "config".startsWith(name)) file = eq === -1 ? (list[++k] ?? "") : arg.slice(eq + 1);
+    let bytes = 0;
+    const expandArgs = (args: string[], depth: number): string[] | null => {
+      const out: string[] = [];
+      for (let k = 0; k < args.length; k++) {
+        const arg = args[k];
+        let file: string | undefined;
+        if (arg.startsWith("--")) {
+          const eq = arg.indexOf("=");
+          const name = arg.slice(2, eq === -1 ? undefined : eq);
+          if (name.length >= 4 && "config".startsWith(name)) file = eq === -1 ? (args[++k] ?? "") : arg.slice(eq + 1);
+        } else if (/^-[^-]/.test(arg)) {
+          for (let i = 1; i < arg.length; i++) {
+            const letter = arg[i];
+            if (letter === "K") {
+              if (i > 1) out.push(arg.slice(0, i));
+              file = i + 1 < arg.length ? arg.slice(i + 1) : (args[++k] ?? "");
+              break;
+            }
+            if (CURL_SHORT_VALUE_OPTIONS.includes(letter)) break;
+          }
+        }
+        if (file === undefined) {
+          out.push(arg);
+          continue;
+        }
+        if (depth >= MAX_CURL_CONFIG_DEPTH) return null;
+        const text = instructionsIn(file);
+        if (text === null) return null;
+        bytes += text.length;
+        if (bytes > MAX_INSTRUCTION_FILE_BYTES) return null;
+        const nested = expandArgs(curlConfigArgs(text), depth + 1);
+        if (nested === null) return null;
+        out.push(...nested);
       }
-      if (file === undefined) {
-        out.push(arg);
-        continue;
-      }
-      const text = instructionsIn(file);
-      if (text === null) return null;
-      out.push(...curlConfigArgs(text));
-    }
-    return out;
+      return out;
+    };
+    const expanded = expandArgs(list.slice(1), 0);
+    return expanded === null ? null : [list[0], ...expanded];
   };
   // A written word that still holds a value the walk cannot read — a
   // substitution, or a variable set from what it cannot read or never set —

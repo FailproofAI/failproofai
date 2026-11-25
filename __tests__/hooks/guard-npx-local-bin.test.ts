@@ -1433,3 +1433,56 @@ describe("block-failproofai-commands — globs read the way zsh expands them", (
     },
   );
 });
+
+// hermes's eighth round on 52c478da: each wrote the entry for real with
+// GNU tar, curl and bash while the guard allowed it.
+describe("block-failproofai-commands — option clusters, nested configs and operators, round eight", () => {
+  let root: string;
+  let proj: string;
+
+  beforeAll(() => {
+    root = mkdtempSync(join(tmpdir(), "fpai-round8-"));
+    proj = join(root, "proj");
+    mkdirSync(join(proj, "node_modules", ".bin"), { recursive: true });
+    mkdirSync(join(proj, "long"), { recursive: true });
+    const entry = join(proj, "node_modules", ".bin", "failproofai");
+    symlinkSync(entry, join(proj, "hook"));
+    symlinkSync(entry, join(proj, "long", "hook"));
+    symlinkSync(join(proj, "node_modules", ".bin"), join(proj, "bins"));
+    writeFileSync(join(proj, "inner.cfg"), "url = http://127.0.0.1/failproofai\noutput = hook\n");
+    writeFileSync(join(proj, "outer.cfg"), "config = inner.cfg\n");
+    writeFileSync(join(proj, "outer2.cfg"), "-K outer.cfg\n");
+    writeFileSync(join(proj, "plain.cfg"), "url = http://127.0.0.1/x\noutput = notes.txt\n");
+    writeFileSync(join(proj, "loop.cfg"), "config = loop.cfg\n");
+  });
+
+  afterAll(() => {
+    rmSync(root, { recursive: true, force: true });
+  });
+
+  it.each([
+    ["a curl -K glued at the end of a cluster", "curl -sKinner.cfg"],
+    ["a curl -K glued with more flags before it", "curl -fsSLKinner.cfg"],
+    ["a config naming another", "curl -s -K outer.cfg"],
+    ["a config naming another as -K", "curl -s --config outer2.cfg"],
+    ["configs that name each other forever", "curl -s -K loop.cfg"],
+    ["tar's -C glued to its directory", "tar -xf stub.tar -Cbins"],
+    ["tar's -f glued to its archive", "tar -xfstub.tar -C bins"],
+    ["tar's -C glued after other flags", "tar -xvzf stub.tgz -Cbins"],
+    ["the longest suffix removed", "A=long/out/x; cp stub ${A%%/*}/hook"],
+    ["printf -v reusing its format", "printf -v D '%s' ho ok; cp stub $D"],
+  ])("denies %s", async (_label, command) => {
+    expect(await bashIn(proj, command)).toBe("deny");
+  });
+
+  it.each([
+    "curl -s -K plain.cfg",
+    "curl -oK http://127.0.0.1/x",
+    "tar -xf stub.tar -Cout",
+    "tar -xfstub.tar",
+    "A=long/out/x; cp stub ${A%/*}/notes",
+    "printf -v D '%s' a b; cp stub out/$D",
+  ])("still allows %s", async (command) => {
+    expect(await bashIn(proj, command)).toBe("allow");
+  });
+});

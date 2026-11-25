@@ -48,6 +48,7 @@ import {
 import { listInstallableIds, getIntegration } from "./integrations";
 import type { IntegrationType } from "./types";
 import { removeHooks } from "./manager";
+import { removeSelfReportMcp } from "./self-report-install";
 import { shellQuote } from "./shell-quote";
 import { NO_PRINTED_COMMAND_REASON, sudoCommandLine } from "./system-command";
 import { installedAgentSkillDirs, removeAgentSkill } from "./agent-skill";
@@ -336,6 +337,19 @@ export async function runUninstallCommand(opts: UninstallOptions = {}): Promise<
           "Finish with  `failproofai policies --uninstall --scope all`",
       );
     }
+  }
+
+  // Self Reports: failproofai's MCP server comes out of every agent, hooked or
+  // not, so nothing is left pointing at a CLI or daemon this run removes.
+  try {
+    const mcp = removeSelfReportMcp({ quiet: true });
+    const removedFrom = mcp.filter((r) => r.action === "removed").length;
+    if (removedFrom > 0) lines.push(kit.ok(`Removed the Self Reports MCP server from ${many(removedFrom, "agent config")}.`));
+    for (const r of mcp.filter((x) => x.status === "error")) {
+      failures.push(`Could not remove the Self Reports MCP server from ${r.path}: ${r.detail ?? "unknown error"}`);
+    }
+  } catch (err) {
+    failures.push(`Could not remove the Self Reports MCP server: ${errText(err)}`);
   }
 
   if (found.skillDirs.length > 0) {

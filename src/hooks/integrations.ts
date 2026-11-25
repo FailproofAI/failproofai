@@ -116,7 +116,7 @@ function writeJsonFile(path: string, data: Record<string, unknown>): void {
  *  an empty Document; unreadable or unparseable → {@link UnreadableAgentConfigError},
  *  never an empty Document that the next write would put in the user's place.
  *  Used by the Hermes integration, whose config lives in `~/.hermes/config.yaml`. */
-function readYamlDoc(path: string): Document {
+export function readYamlDoc(path: string): Document {
   if (!existsSync(path)) return parseDocument("");
   let text: string;
   try {
@@ -141,7 +141,7 @@ function inspectYamlDoc(path: string): Document | null {
   }
 }
 
-function writeYamlDoc(path: string, doc: Document): void {
+export function writeYamlDoc(path: string, doc: Document): void {
   writeConfigFileAtomic(path, doc.toString());
 }
 

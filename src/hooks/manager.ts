@@ -43,6 +43,7 @@ import { packPolicyParamKey } from "./policy-evaluator";
 import { probeDaemonPolicyEvaluation } from "./daemon-service";
 import { NO_PRINTED_COMMAND_REASON, sudoPath } from "./system-command";
 import { keepAgentSelectionTrue } from "./agent-selection";
+import { removeSelfReportMcp, selfReportSyncLines, syncSelfReportMcp } from "./self-report-install";
 import { INDENT, colorsEnabled, optsFor, printBlock, screenKit, type ScreenKitOpts } from "./tui";
 
 const VALID_POLICY_NAMES = new Set(BUILTIN_POLICIES.map((p) => p.name));
@@ -1015,6 +1016,20 @@ async function installHooksImpl(
     const note = keepAgentSelectionTrue("installed", writtenSettingsPaths.map((written) => written.cli));
     if (note) console.log(note);
   }
+
+  // Self Reports: the agents that now have hooks get failproofai's MCP server
+  // when the feature is on (and lose a stale one when it is off). Best-effort:
+  // a config it cannot change is reported, never a failed install.
+  try {
+    const results = syncSelfReportMcp({
+      quiet: true,
+      alsoHooked: writtenSettingsPaths.map((written) => written.cli),
+      binaryPath,
+    });
+    for (const line of selfReportSyncLines(results)) console.log(line);
+  } catch {
+    // never block the install
+  }
 }
 
 /**
@@ -1124,6 +1139,17 @@ export async function removeHooks(policyNames?: string[], scope: HookScope | "al
     const note = keepAgentSelectionTrue("removed", acted);
     if (note) say(note);
   };
+
+  // Self Reports: an agent whose user-scope hooks go also loses failproofai's
+  // MCP server, whatever the setting says. Project/local removals leave it:
+  // the user-scope hooks that use it are still there.
+  if (scope === "user" || scope === "all") {
+    try {
+      for (const line of selfReportSyncLines(removeSelfReportMcp({ agents: selectedClis, quiet: true }))) say(line);
+    } catch {
+      // never block the removal
+    }
+  }
 
   // Remove failproofai hooks from each selected CLI's settings file(s)
   let totalRemoved = 0;

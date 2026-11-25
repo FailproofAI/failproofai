@@ -181,6 +181,14 @@ export interface HookActivityEntry {
     decision: "deny" | "instruct";
     reason: string | null;
   }>;
+  /**
+   * Set only on a call to the Self Reports tool (`mcp__failproofai__report` and
+   * its per-agent spellings): what the agent reported. Such a row was allowed
+   * before any policy ran and was never evaluated, so its decision is always
+   * `allow` and it names no policy. The collector turns it into a
+   * `self_report` event. `detail` is at most 2000 characters.
+   */
+  selfReport?: { category: string; detail: string; source: "mcp" };
 }
 
 export interface HookActivityFilters {
@@ -250,7 +258,7 @@ export function persistHookActivity(input: HookActivityEntry): void {
   // machine by the collector, and a fallback reason is the one field that can
   // carry free text (see jev-activity.ts). A row with no Jev fields is written
   // exactly as given.
-  const entry = sanitizeJevActivity(input);
+  const entry = sanitizeSelfReportActivity(sanitizeJevActivity(input));
   ensureDir();
   acquireLock();
   try {
@@ -273,6 +281,28 @@ export function persistHookActivity(input: HookActivityEntry): void {
   } finally {
     releaseLock();
   }
+}
+
+/**
+ * Keep `selfReport` only in its declared shape: two strings of at most 2000
+ * characters and `source: "mcp"`. Like the Jev fields it is shipped off the
+ * machine by the collector, so it is checked at this one door.
+ */
+function sanitizeSelfReportActivity(entry: HookActivityEntry): HookActivityEntry {
+  if (entry.selfReport === undefined) return entry;
+  const sr = entry.selfReport as unknown;
+  const out = { ...entry };
+  if (!sr || typeof sr !== "object" || Array.isArray(sr)) {
+    delete out.selfReport;
+    return out;
+  }
+  const rec = sr as Record<string, unknown>;
+  out.selfReport = {
+    category: typeof rec.category === "string" ? rec.category.slice(0, 2000) : "",
+    detail: typeof rec.detail === "string" ? rec.detail.slice(0, 2000) : "",
+    source: "mcp",
+  };
+  return out;
 }
 
 function rotate(currentPath: string, countPath: string): void {

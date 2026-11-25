@@ -24,7 +24,7 @@ import { join, resolve } from "node:path";
 const BINARY = resolve(__dirname, "..", "..", "bin", "failproofai.mjs");
 
 /** The redesign's index, with room for a row or two more — not a second screen's worth. */
-const MAX_LINES = 36;
+const MAX_LINES = 37; // +1: the Self Reports row (self-report)
 const MAX_COLUMNS = 80;
 const HEADINGS = ["GET STARTED", "SET UP", "ENFORCE", "OBSERVE", "LESS OFTEN", "EXAMPLES"];
 

@@ -1314,18 +1314,18 @@ const GLOB_METACHAR_RE = /[*?[{]|[@+!]\(/;
  * reaching too far is settled by the decoy test and reaching too little is a
  * bypass.
  */
-function compileGlobPattern(token: string): string {
+function compileGlobPattern(token: string, anyOne = "[^/]"): string {
   let pattern = "";
   for (let i = 0; i < token.length; i++) {
-    const extended = extglobAt(token, i);
+    const extended = extglobAt(token, i, anyOne);
     if (extended) {
       pattern += extended.source;
       i = extended.end;
       continue;
     }
     const ch = token[i];
-    if (ch === "*") pattern += "[^/]*";
-    else if (ch === "?") pattern += "[^/]";
+    if (ch === "*") pattern += `${anyOne}*`;
+    else if (ch === "?") pattern += anyOne;
     else if (ch === "[") {
       const bracket = bracketExpressionAt(token, i);
       if (!bracket) {
@@ -1344,7 +1344,7 @@ function compileGlobPattern(token: string): string {
 }
 
 /** One `@(…)`-style group, with its alternatives compiled as patterns. */
-function extglobAt(token: string, start: number): { source: string; end: number } | null {
+function extglobAt(token: string, start: number, anyOne = "[^/]"): { source: string; end: number } | null {
   const operator = token[start];
   if (!"?*+@!".includes(operator) || token[start + 1] !== "(") return null;
   const alternatives: string[] = [];
@@ -1371,8 +1371,8 @@ function extglobAt(token: string, start: number): { source: string; end: number 
   }
   // Unterminated, so the operator is an ordinary character rather than a group.
   if (i >= token.length) return null;
-  if (operator === "!") return { source: "[^/]*", end: i };
-  const body = alternatives.map((alternative) => compileGlobPattern(alternative)).join("|");
+  if (operator === "!") return { source: `${anyOne}*`, end: i };
+  const body = alternatives.map((alternative) => compileGlobPattern(alternative, anyOne)).join("|");
   const quantifier = operator === "?" ? "?" : operator === "*" ? "*" : operator === "+" ? "+" : "";
   return { source: `(?:${body})${quantifier}`, end: i };
 }
@@ -2383,10 +2383,15 @@ function readParameterReference(word: string, i: number): ParameterReference | n
   return { end: j + 1, name, op, arg: rest.slice(op.length), indirect, count };
 }
 
-/** A glob as an expression for a whole string, or `null` for one that makes none. */
-function wholeGlob(pattern: string): RegExp | null {
+/**
+ * A glob as an expression for a whole string, or `null` for one that makes
+ * none. `parameter`: a `${v%pattern}`-style pattern, where `*` and `?` match
+ * `/` too (`${A%%/*}` of `long/out/x` is `long`; found by hermes on
+ * FailproofAI/failproofai#1058), not a path component.
+ */
+function wholeGlob(pattern: string, parameter = false): RegExp | null {
   try {
-    return new RegExp(`^(?:${compileGlobPattern(pattern)})$`, "s");
+    return new RegExp(`^(?:${compileGlobPattern(pattern, parameter ? "." : "[^/]")})$`, "s");
   } catch {
     return null;
   }
@@ -2417,7 +2422,7 @@ function applyParameterOperator(value: string, op: string, arg: string): string 
   }
   if (value.length > MAX_OPERATED_VALUE) return null;
   if (op === "#" || op === "##" || op === "%" || op === "%%") {
-    const re = wholeGlob(arg);
+    const re = wholeGlob(arg, true);
     if (re === null) return null;
     const cuts = Array.from({ length: value.length + 1 }, (_, k) => k);
     // Shortest first; `##` and `%%` take the longest (found by hermes on FailproofAI/failproofai#1058).
@@ -2440,7 +2445,7 @@ function applyParameterOperator(value: string, op: string, arg: string): string 
   }
   const pattern = slash === -1 ? arg : arg.slice(0, slash);
   const replacement = slash === -1 ? "" : arg.slice(slash + 1);
-  const re = wholeGlob(pattern);
+  const re = wholeGlob(pattern, true);
   if (re === null || pattern === "") return re === null ? null : value;
   if (op === "/#") {
     for (let k = value.length; k > 0; k--) if (re.test(value.slice(0, k))) return replacement + value.slice(k);

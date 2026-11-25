@@ -3125,72 +3125,97 @@ function destroysFailproofaiState(command: string): boolean {
   return destroysProtectedPath(command, FAILPROOFAI_STATE_TARGET);
 }
 
-/** How many paths a glob may expand to on disk before its expansion is not followed. */
-const DISK_GLOB_LIMIT = 256;
-
 /**
- * One command's disk-glob work: each directory read once, and a bound on the
- * entries matched across all of its globs, which only a command built to
- * stall the guard reaches.
+ * One command's disk-glob work: each directory read once, and bounds on the
+ * entries read, the entries matched and the paths checked across all of its
+ * globs. Only a command built to stall the guard reaches them, and one that
+ * does reads as reaching the target: a limit never stands for "no match".
  */
 interface DiskGlobBudget {
   listings: Map<string, string[] | null>;
+  /** Directory entries read from disk. */
   entries: number;
+  /** Entries matched against a pattern, cached listings included. */
+  steps: number;
+  /** Expanded paths handed to the caller's check. */
+  checks: number;
+}
+
+/** A glob segment with each extended-glob group replaced by `*`, which matches at least what the group does. */
+function withExtglobsAsStars(segment: string): string {
+  let out = "";
+  for (let i = 0; i < segment.length; i++) {
+    const group = extglobAt(segment, i);
+    if (group) {
+      out += "*";
+      i = group.end;
+    } else {
+      out += segment[i];
+    }
+  }
+  return out;
 }
 
 /**
- * The paths a glob word expands to on disk, as the shell expands it: braces
- * first, then each segment with glob characters matched against the entries
- * of its directory — a leading dot only by a pattern that starts with one —
- * relative to `cwd` when relative. Null when that would read more than a few
- * directories or keep more than DISK_GLOB_LIMIT paths; "exhausted" past the
- * command's budget.
+ * Whether a glob word, expanded on disk as the shell expands it, reaches a
+ * path `reaches` accepts: braces first, then each segment with glob
+ * characters matched against the entries of its directory — a leading dot
+ * only by a pattern that starts with one — relative to `cwd` when relative.
+ * Every path it expands to is checked, however many there are, within the
+ * command's budget; "exhausted" past it, and for a segment this cannot match
+ * (an extended glob), which the caller reads as reaching the target.
  */
-function globOnDisk(word: string, cwd: string | undefined, budget: DiskGlobBudget): string[] | null | "exhausted" {
-  const out: string[] = [];
-  let reads = 0;
-  for (const expanded of expandBraces(word).slice(0, 16)) {
+function globOnDiskReaches(
+  word: string,
+  cwd: string | undefined,
+  budget: DiskGlobBudget,
+  reaches: (path: string) => boolean,
+): boolean | "exhausted" {
+  for (const expanded of expandBraces(word)) {
     let path = expanded === "~" || expanded.startsWith("~/") ? homedir() + expanded.slice(1) : expanded;
     if (!path.startsWith("/")) {
       if (cwd === undefined) continue;
       path = `${cwd}/${path}`;
     }
-    let bases = ["/"];
-    for (const segment of path.split("/").filter(Boolean)) {
-      if (!GLOB_METACHAR_RE.test(segment)) {
-        bases = bases.map((base) => posix.join(base, segment));
+    const segments = path.split("/").filter(Boolean);
+    const pending: Array<[string, number]> = [["/", 0]];
+    while (pending.length > 0) {
+      const [base, k] = pending.pop()!;
+      if (k === segments.length) {
+        if (--budget.checks < 0) return "exhausted";
+        if (reaches(base)) return true;
         continue;
       }
-      const atoms = globAtoms(segment);
-      if (!atoms) return null;
-      const next: string[] = [];
-      for (const base of bases) {
-        if (++reads > 8) return null;
-        let entries = budget.listings.get(base);
-        if (entries === undefined) {
-          try {
-            entries = readdirSync(base).slice(0, 4096);
-          } catch {
-            entries = null;
-          }
-          budget.listings.set(base, entries);
-        }
-        if (entries === null) continue;
-        budget.entries -= entries.length;
-        if (budget.entries < 0) return "exhausted";
-        for (const entry of entries) {
-          if (entry.startsWith(".") && !segment.startsWith(".")) continue;
-          if (globSegmentMatches(atoms, entry)) next.push(posix.join(base, entry));
-          if (next.length > DISK_GLOB_LIMIT) return null;
-        }
+      const segment = segments[k];
+      if (!GLOB_METACHAR_RE.test(segment)) {
+        pending.push([posix.join(base, segment), k + 1]);
+        continue;
       }
-      bases = next;
-      if (bases.length === 0) break;
+      // An extended glob matches no more than a `*` in its place would: that
+      // superset is what is checked.
+      const atoms = globAtoms(segment) ?? globAtoms(withExtglobsAsStars(segment));
+      if (!atoms) return "exhausted";
+      let entries = budget.listings.get(base);
+      if (entries === undefined) {
+        try {
+          entries = readdirSync(base);
+        } catch {
+          entries = null;
+        }
+        budget.listings.set(base, entries);
+        budget.entries -= entries?.length ?? 0;
+        if (budget.entries < 0) return "exhausted";
+      }
+      if (entries === null) continue;
+      budget.steps -= entries.length;
+      if (budget.steps < 0) return "exhausted";
+      for (const entry of entries) {
+        if (entry.startsWith(".") && !segment.startsWith(".")) continue;
+        if (globSegmentMatches(atoms, entry)) pending.push([posix.join(base, entry), k + 1]);
+      }
     }
-    out.push(...bases);
-    if (out.length > DISK_GLOB_LIMIT) return null;
   }
-  return out;
+  return false;
 }
 
 /** A shell word with one pair of outer quotes taken off, expansions left in. */
@@ -3693,34 +3718,22 @@ function destroysProtectedPath(command: string, target: ProtectedPathTarget, dep
   type Resolved = string[] | typeof COMPLEX | null;
   const resolved = new Map<string, Resolved>();
   const resolving = new Set<string>();
-  const REF_IN_VALUE_RE = /\$(?:\{([A-Za-z_][A-Za-z0-9_]*)\}|([A-Za-z_][A-Za-z0-9_]*))/g;
-  // One value with its references resolved; `self` binds the variable's own name.
+  // One value with its expansions resolved the way the shell expands an
+  // assignment's value — references and parameter operators alike
+  // (`B=${A%.bak}`, `B=${A:-cfg.json}`) — `self` binding the variable's own
+  // name to its earlier value. Substitutions whose output the text decides
+  // were read as values of their own (simpleSubstitutionOutput).
+  const valueBudget = { steps: 4_000_000 };
   const expandValue = (value: string, name: string, self: string | undefined): Resolved => {
     if (/`|\$\(/.test(value)) return null;
-    // A value as written may be long; only an expansion makes it longer.
-    const maxLength = Math.max(MAX_VALUE_LENGTH, value.length);
-    let forms: string[] = [""];
-    let pos = 0;
-    for (const ref of value.matchAll(REF_IN_VALUE_RE)) {
-      const refName = ref[1] ?? ref[2];
-      const inner: Resolved = refName === name ? (self === undefined ? null : [self]) : resolveVariable(refName);
-      if (inner === null || inner === COMPLEX) return inner;
-      const literal = value.slice(pos, ref.index);
-      pos = ref.index + ref[0].length;
-      if (forms.length * inner.length > MAX_VALUES) return COMPLEX;
-      const next: string[] = [];
-      for (const form of forms) {
-        for (const part of inner) {
-          if (form.length + literal.length + part.length > maxLength) return COMPLEX;
-          next.push(form + literal + part);
-        }
-      }
-      forms = next;
-    }
-    const tail = value.slice(pos);
-    if (/\$/.test(tail)) return null;
-    if (forms.some((form) => form.length + tail.length > maxLength)) return COMPLEX;
-    return forms.map((form) => form + tail);
+    const forms = shellWordExpansionForms(
+      value,
+      (ref) => (ref === name ? (self === undefined ? null : [self]) : resolveVariable(ref)),
+      valueBudget,
+      Math.max(MAX_VALUE_LENGTH, value.length),
+    );
+    if (forms === "complex") return COMPLEX;
+    return forms.length === 0 ? null : forms;
   };
   const resolveVariable = (name: string): Resolved => {
     if (resolved.has(name)) return resolved.get(name)!;
@@ -3737,8 +3750,9 @@ function destroysProtectedPath(command: string, target: ProtectedPathTarget, dep
   // The plain assignments' values, then each append applied to every value
   // before it; COMPLEX the moment a value past the limit would be made.
   const knownValues = (name: string, raw: readonly string[]): Resolved => {
-    const namesSelf = (value: string): boolean =>
-      [...value.matchAll(REF_IN_VALUE_RE)].some((ref) => (ref[1] ?? ref[2]) === name);
+    // Its own name anywhere in a value, an operator's operand included (`A=${A%.bak}`).
+    const selfReference = new RegExp(`\\$(?:\\{[!#]?${name}(?![A-Za-z0-9_])|${name}(?![A-Za-z0-9_]))`);
+    const namesSelf = (value: string): boolean => selfReference.test(value);
     const values = new Set<string>();
     const keep = (forms: Resolved): boolean => {
       if (forms === null) return true;
@@ -3834,16 +3848,15 @@ function destroysProtectedPath(command: string, target: ProtectedPathTarget, dep
   // A glob reaches what it expands to on disk: in a directory holding
   // `cfg.json -> ~/.claude/settings.json`, `*.json` writes the settings.
   const diskGlobs = new Map<string, boolean>();
-  const diskGlobBudget: DiskGlobBudget = { listings: new Map(), entries: 262_144 };
+  const diskGlobBudget: DiskGlobBudget = { listings: new Map(), entries: 262_144, steps: 1_048_576, checks: 32_768 };
   const globReachesThroughLinks = (glob: string): boolean => {
     if (!target.namesThroughLinks) return false;
     return walkCwds.some((cwd) => {
       const key = `${cwd ?? ""}\0${glob}`;
       let hit = diskGlobs.get(key);
       if (hit === undefined) {
-        const paths = globOnDisk(glob, cwd, diskGlobBudget);
         // Past the budget the command was built to stall the guard.
-        hit = paths === "exhausted" || (paths ?? []).some((path) => target.namesThroughLinks!(path, undefined));
+        hit = globOnDiskReaches(glob, cwd, diskGlobBudget, (path) => target.namesThroughLinks!(path, undefined)) !== false;
         diskGlobs.set(key, hit);
       }
       return hit;
@@ -4088,11 +4101,22 @@ function destroysProtectedPath(command: string, target: ProtectedPathTarget, dep
               cwdInState = oldCwds.includes(undefined) || oldCwds.some((dir) => dir !== undefined && namesState(dir));
             } else {
               cwdInState = operand !== undefined && namesState(operand);
-              after = before.map((cwd) =>
-                physical && operand !== undefined && !/[$`]/.test(operand)
-                  ? physicalAgentPath(operand, cwd) ?? cdDestination(cwd, operand)
-                  : cdDestination(cwd, operand),
-              );
+              // An operand built by expansions moves the shell to each place
+              // its texts name (`D=sub; cd "$D"`), or somewhere unknown.
+              const operandForms = operand !== undefined && /[$`]/.test(operand) ? valuesOfWord(operand) : null;
+              const places: Array<string | undefined> = operandForms ?? [operand];
+              after = [
+                ...new Set([
+                  ...before.flatMap((cwd) =>
+                    places.map((place) =>
+                      physical && place !== undefined && !/[$`]/.test(place)
+                        ? physicalAgentPath(place, cwd) ?? cdDestination(cwd, place)
+                        : cdDestination(cwd, place),
+                    ),
+                  ),
+                  ...(operandForms ? [undefined] : []),
+                ]),
+              ];
               mayFail = after.some((dir) => dir === undefined || !isDirectoryNow(dir));
             }
             if (head === "pushd") {

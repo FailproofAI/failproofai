@@ -1576,6 +1576,58 @@ describe("block-failproofai-commands — review round seven", () => {
     expect(performance.now() - started).toBeLessThan(3000);
   });
 
+  // hermes round 10.
+  it("checks every path a glob expands to on disk, and reads a limit as reaching the target", async () => {
+    const many = join(p7, "many13");
+    mkdirSync(many, { recursive: true });
+    for (let i = 0; i < 260; i++) writeFileSync(join(many, `cfg${i}.json`), "{}");
+    symlinkSync(settings(), join(many, "cfg999.json"));
+    expect(await bash(`cd many13; printf '{"disableAllHooks":true}' | tee cfg*.json >/dev/null`, p7)).toBe(true);
+    expect(await bash(`printf x | tee ${many}/cfg*.json >/dev/null`, p7)).toBe(true);
+    // Many ordinary matches are still ordinary work.
+    const objects = join(p7, "build13");
+    mkdirSync(objects, { recursive: true });
+    for (let i = 0; i < 3000; i++) writeFileSync(join(objects, `f${i}.o`), "");
+    const started = performance.now();
+    expect(await bashDecision(`rm -f build13/*.o`, p7)).toBe("allow");
+    expect(performance.now() - started).toBeLessThan(2000);
+    expect(await bashDecision(`cp a many13/zz*.json`, p7)).toBe("allow");
+    // An extended glob is matched as the `*` that covers it.
+    expect(await bash(`shopt -s extglob; cd many13; tee @(cfg999).json < /dev/null`, p7)).toBe(true);
+    expect(await bashDecision(`rm -rf /tmp/@(build|dist)`, p7)).toBe("allow");
+  });
+
+  it("follows a cd or pushd whose operand a variable gives", async () => {
+    mkdirSync(join(p7, "sub14"), { recursive: true });
+    symlinkSync(settings(), join(p7, "sub14", "cfg14.json"));
+    for (const command of [
+      `D=sub14; cd "$D"; cp ../disable.json cfg14.json`,
+      `D=sub14; pushd "$D"; cp ../disable.json cfg14.json`,
+      `D=sub14; cd $D && printf x > cfg14.json`,
+      `cd "\${D:-sub14}"; cp ../disable.json cfg14.json`,
+    ]) {
+      expect(await bash(command, p7), command).toBe(true);
+    }
+    expect(await bashDecision(`D=src; cd "$D"; cp ../a.txt out.txt`, p7)).toBe("allow");
+    expect(await bashDecision(`cd "$WORKDIR"; cp a b`, p7)).toBe("allow");
+  });
+
+  it("expands a parameter expansion in an assigned value", async () => {
+    mkdirSync(join(p7, "sub15"), { recursive: true });
+    symlinkSync(settings(), join(p7, "sub15", "cfg15.json"));
+    for (const command of [
+      `cd sub15; A=cfg15.json.bak; B=\${A%.bak}; cp /tmp/evil.json "$B"`,
+      `cd sub15; B=\${A:-cfg15.json}; cp /tmp/evil.json "$B"`,
+      `cd sub15; A=cfg15Xjson; B=\${A/X/.}; cp /tmp/evil.json "$B"`,
+      `cd sub15; A=zzcfg15.json; B=\${A:2}; cp /tmp/evil.json "$B"`,
+      `cd sub15; A=cfg15.json.bak; A=\${A%.bak}; cp /tmp/evil.json "$A"`,
+      `cd sub15; A=CFG15.JSON; B="\${A,,}"; cp /tmp/evil.json "$B"`,
+    ]) {
+      expect(await bash(command, p7), command).toBe(true);
+    }
+    expect(await bashDecision(`f=report.txt; out=\${f%.txt}.md; cp a "$out"`, p7)).toBe("allow");
+  });
+
   it("reads OpenClaw's apply_patch, which arrives by its own name", async () => {
     const patch = (file: string) => `*** Begin Patch\n*** Update File: ${file}\n@@\n-x\n+y\n*** End Patch\n`;
     const run = async (toolInput: Record<string, unknown>) =>

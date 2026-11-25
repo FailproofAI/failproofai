@@ -2130,6 +2130,56 @@ const MAX_OPTION_CLUSTER = 32;
 /** More paths than a glob in a directory component is expanded to on disk; past it, read as reaching the state. */
 const GLOB_DISK_LIMIT = 4096;
 
+/** Directories one `**` may walk through before the walk is given up and read as reaching the state. */
+const GLOB_RECURSIVE_DIR_LIMIT = 16_384;
+
+/** A zsh pattern flag group: `(#i)`, `(#l)`, `(#a2)`. */
+const ZSH_GLOB_FLAG_RE = /\(#[A-Za-z0-9]*\)/;
+
+/** The shell options that change what a glob matches, as far as a command turns them on. */
+interface GlobOptions {
+  /** `*` and `?` match a leading dot. */
+  dotglob: boolean;
+  /** `**` matches any depth of directories. */
+  globstar: boolean;
+  /** Matching ignores case. */
+  nocaseglob: boolean;
+}
+
+/**
+ * The glob options a command may turn on, in bash's spelling or zsh's. Claude
+ * Code runs the user's shell, and zsh is macOS's default: its `**` recurses
+ * with no option at all, where bash without globstar reads it as `*`, which
+ * matches less. zsh ignores case and underscores in option names.
+ *
+ * - dotglob: `shopt -s dotglob`, `GLOBIGNORE=`, `setopt globdots`, a `(D)` qualifier.
+ * - globstar: `shopt -s globstar`, `setopt globstarshort`, any `**` or `***` segment.
+ * - nocaseglob: `shopt -s nocaseglob`, `unsetopt caseglob`, the `(#i)` flag.
+ */
+function globOptionsOf(command: string): GlobOptions {
+  const names = command.toLowerCase().replace(/_/g, "");
+  return {
+    dotglob: /\b(?:dotglob|globdots)\b|globignore=/.test(names) || /\*\([^()|\s]*D[^()|\s]*\)/.test(command),
+    globstar: /\bglobstar(?:short)?\b/.test(names) || /(?:^|[\s/"'=(])\*{2,3}(?=\/|$|[\s"';&|)])/.test(command),
+    nocaseglob:
+      /\bnocaseglob\b/.test(names) || /\bunsetopt\b[^;&|\n]*\bcaseglob\b/.test(names) || /\(#[a-z]*i[a-z]*\)/i.test(command),
+  };
+}
+
+/** Whether a path component is a pattern to the shell, zsh's flags included. */
+function isGlobPart(part: string): boolean {
+  return GLOB_METACHAR_RE.test(part) || ZSH_GLOB_FLAG_RE.test(part);
+}
+
+/** A component's pattern as a regex, zsh's flags taken off; null when it cannot be read. */
+function globPartMatcher(part: string, options: GlobOptions): RegExp | null {
+  try {
+    return new RegExp(`^${compileGlobPattern(part.replace(new RegExp(ZSH_GLOB_FLAG_RE.source, "g"), ""))}$`, options.nocaseglob ? "i" : "");
+  } catch {
+    return null;
+  }
+}
+
 /** How many of the words a brace expands to are each read on disk. */
 const MAX_BRACE_WORDS_ON_DISK = 64;
 
@@ -2541,6 +2591,7 @@ const OPERATED_REFERENCE_RE = /\$\{[!#]?[A-Za-z_][A-Za-z0-9_]*[^A-Za-z0-9_}]|\$\
  * does, because nothing in the second command reaches the state.
  */
 function destroysFailproofaiState(command: string, depth = 0, startDir?: string, startUnknown = false): boolean {
+  const globOptions = globOptionsOf(command);
   // A substitution runs its body as a command of its own, so it is judged as
   // one — `echo $(rm -rf ~/.failproofai)` otherwise presents `echo` as the head
   // and walks straight through. Bounded, because a body can contain another.
@@ -2925,23 +2976,39 @@ function destroysFailproofaiState(command: string, depth = 0, startDir?: string,
   const expandOnDisk = (from: string, pattern: string): string[] | null => {
     let paths = [from === "/" ? "" : from];
     let reads = 0;
+    let walked = 0;
     for (const part of pattern.split("/")) {
       if (part === "" || part === ".") continue;
-      if (part === ".." || !GLOB_METACHAR_RE.test(part)) {
+      if (part === ".." || !isGlobPart(part)) {
         paths = paths.map((path) => `${path}/${part}`);
         continue;
       }
-      let matcher: RegExp;
-      try {
-        matcher = new RegExp(`^${compileGlobPattern(part)}$`);
-      } catch {
-        return null;
+      // zsh's `**/` (and bash's under globstar): this directory and every one
+      // below it, hidden ones under dotglob; `***/` follows links to them too.
+      if ((part === "**" || part === "***") && globOptions.globstar) {
+        const queue = [...paths];
+        for (let i = 0; i < queue.length; i++) {
+          if (++walked > GLOB_RECURSIVE_DIR_LIMIT) return null;
+          for (const name of namesInDirectory(queue[i]).names) {
+            if (name.startsWith(".") && !globOptions.dotglob) continue;
+            const child = `${queue[i]}/${name}`;
+            try {
+              if ((part === "***" ? statSync(child) : lstatSync(child)).isDirectory()) queue.push(child);
+            } catch {
+              // Gone or unreadable: nothing below it.
+            }
+          }
+        }
+        paths = queue;
+        continue;
       }
+      const matcher = globPartMatcher(part, globOptions);
+      if (matcher === null) return null;
       const next: string[] = [];
       for (const path of paths) {
         if (++reads > GLOB_DISK_LIMIT / 4) return null;
         for (const name of namesInDirectory(path).names) {
-          if (name.startsWith(".") && !part.startsWith(".")) continue;
+          if (name.startsWith(".") && !part.startsWith(".") && !globOptions.dotglob) continue;
           if (!matcher.test(name)) continue;
           next.push(`${path}/${name}`);
           if (next.length > GLOB_DISK_LIMIT) return null;
@@ -2974,16 +3041,12 @@ function destroysFailproofaiState(command: string, depth = 0, startDir?: string,
   // plain names (found by hermes on FailproofAI/failproofai#1058). `null`
   // past GLOB_DISK_LIMIT links.
   const linksMatching = (directory: string, part: string): string[] | null => {
-    let matcher: RegExp;
-    try {
-      matcher = new RegExp(`^${compileGlobPattern(part)}$`);
-    } catch {
-      // A bracket bash cannot read either (`[r-p]`) matches nothing.
-      return [];
-    }
+    // A bracket bash cannot read either (`[r-p]`) matches nothing.
+    const matcher = globPartMatcher(part, globOptions);
+    if (matcher === null) return [];
     const found: string[] = [];
     for (const name of linkNamesIn(directory)) {
-      if (name.startsWith(".") && !part.startsWith(".")) continue;
+      if (name.startsWith(".") && !part.startsWith(".") && !globOptions.dotglob) continue;
       if (!matcher.test(name)) continue;
       found.push(`${directory}/${name}`);
       if (found.length > GLOB_DISK_LIMIT) return null;
@@ -3000,12 +3063,12 @@ function destroysFailproofaiState(command: string, depth = 0, startDir?: string,
   // FailproofAI/failproofai#1058).
   const patternLandsOnState = (word: string): boolean => {
     const parts = word.split("/");
-    const first = parts.findIndex((part) => GLOB_METACHAR_RE.test(part));
+    const first = parts.findIndex((part) => isGlobPart(part));
     if (first === -1) return false;
     const prefix = first === 0 ? "" : parts.slice(0, first).join("/") || "/";
     const pattern = parts.slice(first).join("/");
     if (/[$`]/.test(prefix)) return false;
-    const inDirectory = parts.slice(first, -1).some((part) => GLOB_METACHAR_RE.test(part));
+    const inDirectory = parts.slice(first, -1).some((part) => isGlobPart(part));
     return [at, ...alts].some((base) => {
       const raw =
         prefix === ""
@@ -3043,7 +3106,7 @@ function destroysFailproofaiState(command: string, depth = 0, startDir?: string,
   const globLandsOnState = (written: string): boolean => {
     let patterns = 0;
     for (const word of expandBraces(written)) {
-      if (!GLOB_METACHAR_RE.test(word)) {
+      if (!isGlobPart(word)) {
         if (word !== written && landsOnState(word)) return true;
         continue;
       }
@@ -3056,7 +3119,7 @@ function destroysFailproofaiState(command: string, depth = 0, startDir?: string,
     realPathsOf(written).some(({ plain, real }) =>
       real === ELOOP ? true : typeof real !== "string" ? lostNamesState(real) : real !== plain && namesState(real),
     ) ||
-    (GLOB_METACHAR_RE.test(written) && globLandsOnState(written));
+    (isGlobPart(written) && globLandsOnState(written));
   const namesHere = (text: string): boolean => namesState(text) || resolvesOntoState(text) || landsOnState(text);
   // A glob that sweeps npm's bin directory reaches every name in it, which is
   // harmless for a delete (`rm -rf node_modules/.bin/*` stays allowed) and

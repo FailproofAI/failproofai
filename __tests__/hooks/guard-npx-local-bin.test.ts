@@ -1390,3 +1390,41 @@ describe("block-failproofai-commands — hermes's seventh round", () => {
     expect(await bashAs("codex", { command })).toBe("deny");
   });
 });
+
+// Found end to end on macOS, whose default shell is zsh: Claude Code runs the
+// agent's command there, `**/` recurses with no option, and `setopt globdots`
+// lets `*` match `.bin`.
+describe("block-failproofai-commands — globs read the way zsh expands them", () => {
+  let root: string;
+  let proj: string;
+
+  beforeAll(() => {
+    root = mkdtempSync(join(tmpdir(), "fpai-zsh-glob-"));
+    proj = join(root, "proj");
+    mkdirSync(join(proj, "node_modules", ".bin"), { recursive: true });
+    mkdirSync(join(proj, "deep", "a", "b"), { recursive: true });
+    mkdirSync(join(proj, "src", "lib"), { recursive: true });
+    symlinkSync(join(proj, "node_modules", ".bin", "failproofai"), join(proj, "deep", "a", "b", "hook"));
+  });
+
+  afterAll(() => {
+    rmSync(root, { recursive: true, force: true });
+  });
+
+  it.each([
+    "cp /tmp/stub.sh deep/**/hook",
+    "cp /tmp/stub.sh deep/***/hook",
+    "setopt globdots; cp /tmp/stub.sh node_modules/*/failproofai",
+    "setopt GLOB_DOTS; cp /tmp/stub.sh node_modules/*/failproofai",
+    "setopt extendedglob; cp /tmp/stub.sh deep/a/b/(#i)HOOK",
+  ])("denies %s", async (command) => {
+    expect(await bashIn(proj, command)).toBe("deny");
+  });
+
+  it.each(["rm -f src/**/*.orig", "rm -rf **/__pycache__", "cp /tmp/stub.sh node_modules/*/notes"])(
+    "still allows %s",
+    async (command) => {
+      expect(await bashIn(proj, command)).toBe("allow");
+    },
+  );
+});

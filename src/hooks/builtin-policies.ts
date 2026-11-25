@@ -1852,9 +1852,21 @@ function simpleCommandDestroys(words: string[], namesState: (text: string) => bo
 function sedWriteTargets(args: string[]): string[] {
   const targets: string[] = [];
   for (const arg of args) {
-    if (!/[wW]/.test(arg)) continue;
-    for (const [, written] of arg.matchAll(/(?:^|[;{}\n]|[^\w\s\\][gpiImMeE0-9]*)[ \t]*[wW][ \t]*([^\n]+)/g)) {
-      const name = written.trim();
+    for (let i = 0; i < arg.length; i++) {
+      if (arg[i] !== "w" && arg[i] !== "W") continue;
+      // A `w` that starts a command or is an `s///` flag: at the start, after
+      // a separator or an address (`1w`, `$w`, `1,5w`, `0~2w`, `1!w`, `/re/w`;
+      // found by hermes on FailproofAI/failproofai#1058), or after a delimiter
+      // and other flags (`s/a/b/gw`). After a letter it is part of a word.
+      let j = i - 1;
+      while (j >= 0 && (arg[j] === " " || arg[j] === "\t")) j--;
+      let k = j;
+      while (k >= 0 && /[gpiImMeE0-9]/.test(arg[k])) k--;
+      const starts = j < 0 || !/[A-Za-z_\\]/.test(arg[j]) || (k >= 0 && k < j && !/[\w\s\\]/.test(arg[k]));
+      if (!starts) continue;
+      if (targets.length >= MAX_SED_TARGETS) throw new Error("a sed script names too many files to check");
+      const end = arg.indexOf("\n", i);
+      const name = arg.slice(i + 1, Math.min(end === -1 ? arg.length : end, i + 1 + PATH_MAX_BYTES)).trim();
       if (name === "") continue;
       targets.push(name);
       const cut = name.split(/[;}]/)[0].trim();
@@ -1862,6 +1874,46 @@ function sedWriteTargets(args: string[]): string[] {
     }
   }
   return targets;
+}
+
+/** More files than a sed script writes in practice; past it the line is refused unread. */
+const MAX_SED_TARGETS = 64;
+
+/** What the shell splits a line at, when it is not quoted or escaped. */
+const SEPARATOR_CHARS = /[;&|\n\r]/;
+
+/**
+ * `text` split at `separator`, the separators kept between the pieces as
+ * `String.split` keeps a capture group, except where a separator is quoted or
+ * escaped: the shell reads that as text, so `sed -e 's/w/x/;1whook'` keeps its
+ * whole script (found by hermes on FailproofAI/failproofai#1058). The pieces
+ * are the text as written.
+ */
+function splitUnquoted(text: string, separator: RegExp): string[] {
+  const chars: string[] = [];
+  let quote: "'" | '"' | null = null;
+  for (let i = 0; i < text.length; i++) {
+    const ch = text[i];
+    if (ch === "\\" && quote !== "'" && i + 1 < text.length) {
+      chars.push(ch, SEPARATOR_CHARS.test(text[i + 1]) ? "\u0001" : text[i + 1]);
+      i++;
+      continue;
+    }
+    if (quote === null) {
+      if (ch === "'" || ch === '"') quote = ch;
+      chars.push(ch);
+      continue;
+    }
+    if (ch === quote) quote = null;
+    chars.push(quote !== null && SEPARATOR_CHARS.test(ch) ? "\u0001" : ch);
+  }
+  const out: string[] = [];
+  let offset = 0;
+  for (const piece of chars.join("").split(new RegExp(`(${separator.source})`))) {
+    out.push(text.slice(offset, offset + piece.length));
+    offset += piece.length;
+  }
+  return out;
 }
 
 /**
@@ -2930,7 +2982,7 @@ function destroysFailproofaiState(command: string, depth = 0, startDir?: string,
   // rm -rf $f; done` is a header that only expands and a body that only deletes
   // something called `$f`.
   let loopCarriesState = false;
-  const parts = command.split(new RegExp(`(${PIPELINE_SEPARATORS.source})`));
+  const parts = splitUnquoted(command, PIPELINE_SEPARATORS);
   for (let part = 0; part < parts.length; part += 2) {
     const pipeline = parts[part];
     // A move the next command does not depend on may have failed, so from
@@ -2946,7 +2998,7 @@ function destroysFailproofaiState(command: string, depth = 0, startDir?: string,
       values.set(name, bare);
       assigned(name, bare);
     }
-    const simpleCommands = pipeline.split("|");
+    const simpleCommands = splitUnquoted(pipeline, /\|/).filter((_, k) => k % 2 === 0);
     const reachesState = namesState(pipeline) || cwdInState || loopCarriesState;
     if (reachesState && LOOP_HEADER_RE.test(pipeline)) loopCarriesState = true;
     if (/(?:^|\s)done(?:\s|$)/.test(pipeline)) loopCarriesState = false;

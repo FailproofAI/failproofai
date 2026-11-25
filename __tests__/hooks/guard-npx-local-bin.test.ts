@@ -264,6 +264,8 @@ describe("block-failproofai-commands — the entry a project-scope npx hook runs
 
       it("denies a sed script writing the entry through a link", async () => {
         expect(await bashIn(join(root, "proj"), "sed -n 'w tools/bins/failproofai' /tmp/stub.sh")).toBe("deny");
+        expect(await bashIn(join(root, "proj"), "sed -n '1wtools/hook' /tmp/stub.sh")).toBe("deny");
+        expect(await bashIn(join(root, "proj"), "sed -e 's/w/x/;1wtools/hook' /tmp/stub.sh")).toBe("deny");
       });
 
       it("denies a named output that curl puts into a linked --output-dir", async () => {
@@ -784,6 +786,13 @@ describe("block-failproofai-commands — the entry a project-scope npx hook runs
       ["/work/proj", "sed -n --expression='w node_modules/failproofai/dist/cli.mjs' /tmp/stub.sh"],
       ["/work/proj/node_modules/.bin", "sed -n 'wfailproofai' /tmp/stub.sh"],
       ["/work/proj", "cd node_modules/.bin && sed -n 'wfailproofai' /tmp/stub.sh"],
+      // After an address, and in a script whose `;` is quoted text (found by
+      // hermes on FailproofAI/failproofai#1058).
+      ["/work/proj", "sed -n '1wnode_modules/.bin/failproofai' /tmp/stub.sh"],
+      ["/work/proj", "sed -n '10,20wnode_modules/.bin/failproofai' /tmp/stub.sh"],
+      ["/work/proj", "sed -n '$wnode_modules/.bin/failproofai' /tmp/stub.sh"],
+      ["/work/proj", "sed -n '1!wnode_modules/.bin/failproofai' /tmp/stub.sh"],
+      ["/work/proj/node_modules/.bin", "sed -e 's/w/x/;1wfailproofai' /tmp/stub.sh"],
     ])("denies a sed script writing the entry from %s: %s", async (cwd, command) => {
       expect(await bashIn(cwd, command)).toBe("deny");
     });
@@ -795,6 +804,9 @@ describe("block-failproofai-commands — the entry a project-scope npx hook runs
       "sed -n '/failproofai/p' notes.txt",
       "sed 's/www/web/g' urls.txt",
       "sed -n 'w /tmp/copy.txt' node_modules/.bin/failproofai",
+      "sed -n '1w out.txt' notes.txt",
+      "sed -n 'bigwig' notes.txt",
+      "sed 's/new/old/g; s/a/b/' notes.txt",
     ])("allows a sed script that writes no protected file: %s", async (command) => {
       expect(await bashIn("/work/proj", command)).not.toBe("deny");
     });
@@ -811,6 +823,7 @@ describe("block-failproofai-commands — the entry a project-scope npx hook runs
       ["/work/proj/node_modules/.bin", "F=failproofai; " + Array.from({ length: 70 }, (_, i) => `F=y${i} true`).join("; ") + "; printf y > $F"],
       ["/work/proj", "D=node_modules/.bin; (D=/tmp); printf y > $D/failproofai"],
       ["/work/proj", "D=node_modules/.bin; (D=/tmp); cp /tmp/stage/failproofai $D/"],
+      ["/work/proj/node_modules/.bin", "F=failproofai; F=x | true; printf y > $F"],
     ])("denies a write through a variable another value may hold, from %s: %s", async (cwd, command) => {
       expect(await bashIn(cwd, command)).toBe("deny");
     });

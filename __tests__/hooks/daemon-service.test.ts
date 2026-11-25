@@ -1,10 +1,13 @@
 // @vitest-environment node
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { execFileSync } from "node:child_process";
+import { createHash } from "node:crypto";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir, userInfo } from "node:os";
-import { dirname, resolve } from "node:path";
+import { basename, dirname, resolve } from "node:path";
 import { binDir } from "../../src/hooks/fp-home";
+import { SYSTEM_BIN_DIRS, sudoPath } from "../../src/hooks/system-command";
+import { standInSystemCommand } from "../helpers/system-command-stand-in";
 import { startedAtFromMonotonic, waitForDaemonRunning } from "../../src/hooks/daemon-service";
 import * as svc from "../../src/hooks/daemon-service";
 import { version as pkgVersion } from "../../package.json";
@@ -240,13 +243,22 @@ describe("hooks/daemon-service", () => {
       // first's daemon (UserName, ExecStart under their ~/.failproofai/bin,
       // their log paths) and their uninstall deleted it.
       setPlatform("darwin");
-      const { daemonServiceFilePath, daemonStatusCommand } = await import("../../src/hooks/daemon-service");
-      const user = userInfo().username;
-
-      expect(daemonServiceFilePath()).toBe(
-        `/Library/LaunchDaemons/ai.failproof.failproofaid.${user}.plist`,
+      // The status hint names launchctl by absolute path, and a Linux runner
+      // has none: stand one in.
+      vi.doMock("../../src/hooks/system-command", async (importOriginal) =>
+        standInSystemCommand(await importOriginal<typeof import("../../src/hooks/system-command")>()),
       );
-      expect(daemonStatusCommand()).toContain(`system/ai.failproof.failproofaid.${user}`);
+      try {
+        const { daemonServiceFilePath, daemonStatusCommand } = await import("../../src/hooks/daemon-service");
+        const user = userInfo().username;
+
+        expect(daemonServiceFilePath()).toBe(
+          `/Library/LaunchDaemons/ai.failproof.failproofaid.${user}.plist`,
+        );
+        expect(daemonStatusCommand()).toContain(`system/ai.failproof.failproofaid.${user}`);
+      } finally {
+        vi.doUnmock("../../src/hooks/system-command");
+      }
     });
 
     it("writes a unit that runs as the user, starts at boot, and knows where HOME is", async () => {
@@ -412,10 +424,16 @@ describe("hooks/daemon-service", () => {
         // Every privileged command fails the way a machine without
         // passwordless sudo fails. Nothing may be written, and the reason
         // has to be actionable rather than an errno.
+        // sudo and the programs it runs are looked up on this machine; any it
+        // lacks (systemctl on a Mac) gets a stand-in path. None of them runs.
+        vi.doMock("../../src/hooks/system-command", async (importOriginal) =>
+          standInSystemCommand(await importOriginal<typeof import("../../src/hooks/system-command")>()),
+        );
         vi.doMock("node:child_process", async (importOriginal) => ({
           ...(await importOriginal<typeof import("node:child_process")>()),
           execFileSync: (cmd: string) => {
-            if (cmd === "sudo") throw new Error("sudo: a password is required");
+            // By absolute path now (system-command.ts), never a bare `sudo`.
+            if (basename(cmd) === "sudo") throw new Error("sudo: a password is required");
             throw new Error(`nothing else should run before elevation succeeds, but got: ${cmd}`);
           },
         }));
@@ -436,6 +454,7 @@ describe("hooks/daemon-service", () => {
               existsSync(resolve(process.env.FAILPROOFAI_SYSTEMD_DIR!, `failproofaid@${userInfo().username}.service`)),
             ).toBe(false);
         } finally {
+          vi.doUnmock("../../src/hooks/system-command");
           vi.doUnmock("node:child_process");
           vi.resetModules();
         }
@@ -463,10 +482,17 @@ describe("hooks/daemon-service", () => {
       // read the same as root or not.
       async function runUninstall(opts: { failOn?: string } = {}): Promise<{ ran: string[]; root: string; unit: string }> {
         const ran: string[] = [];
+        // The install names sudo and each program by absolute path, looked up
+        // on this machine; none of them runs here, so any the machine lacks
+        // gets a stand-in path rather than failing the lookup.
+        vi.doMock("../../src/hooks/system-command", async (importOriginal) =>
+          standInSystemCommand(await importOriginal<typeof import("../../src/hooks/system-command")>()),
+        );
         vi.doMock("node:child_process", async (importOriginal) => ({
           ...(await importOriginal<typeof import("node:child_process")>()),
           execFileSync: (cmd: string, args: string[] = []) => {
-            const line = (cmd === "sudo" ? args.slice(1) : [cmd, ...args]).join(" ");
+            const [program, ...rest] = basename(cmd) === "sudo" ? args.slice(1) : [cmd, ...args];
+            const line = [basename(program), ...rest].join(" ");
             ran.push(line);
             if (opts.failOn && line.startsWith(opts.failOn)) throw new Error("sudo: a password is required");
             return "";
@@ -480,6 +506,7 @@ describe("hooks/daemon-service", () => {
           await uninstallDaemonService();
           return { ran, root: daemonSystemBinaryDir()!, unit: daemonServiceFilePath()! };
         } finally {
+          vi.doUnmock("../../src/hooks/system-command");
           vi.doUnmock("node:child_process");
           vi.resetModules();
         }
@@ -590,10 +617,16 @@ describe("hooks/daemon-service", () => {
         mkdirSync(dirname(path), { recursive: true });
         writeFileSync(path, "#!/bin/sh\n", { mode: 0o755 });
         setPlatform("linux");
+        // sudo and the programs it runs are looked up on this machine; any it
+        // lacks (systemctl on a Mac) gets a stand-in path. None of them runs.
+        vi.doMock("../../src/hooks/system-command", async (importOriginal) =>
+          standInSystemCommand(await importOriginal<typeof import("../../src/hooks/system-command")>()),
+        );
         vi.doMock("node:child_process", async (importOriginal) => ({
           ...(await importOriginal<typeof import("node:child_process")>()),
           execFileSync: (cmd: string) => {
-            if (cmd === "sudo") throw new Error("sudo: a password is required");
+            // By absolute path now (system-command.ts), never a bare `sudo`.
+            if (basename(cmd) === "sudo") throw new Error("sudo: a password is required");
             throw new Error(`nothing else should run before elevation succeeds, but got: ${cmd}`);
           },
         }));
@@ -602,15 +635,24 @@ describe("hooks/daemon-service", () => {
           const { installDaemonService, systemBinaryTarget, daemonSystemBinaryDir } = await import(
             "../../src/hooks/daemon-service"
           );
+          // The same lookups the install used (stand-ins included).
+          const sys = await import("../../src/hooks/system-command");
           const target = systemBinaryTarget(path)!;
           const result = await installDaemonService();
 
           expect(result.installed).toBe(false);
           expect(path).toContain(" ");
-          expect(result.reason).toContain(`sudo install -d -m 0755 '${dirname(target)}'`);
-          expect(result.reason).toContain(`sudo install -m 0755 '${path}' '${target}'`);
-          expect(result.reason).toContain(`sudo restorecon -R '${daemonSystemBinaryDir()}'`);
+          expect(result.reason).toContain(sys.sudoCommandLine("install", "-d", "-m", "0755", `'${dirname(target)}'`)!);
+          // The binary reaches root on stdin, from a `<` the user's own shell
+          // opens, with the digest root checks it against.
+          const digest = createHash("sha256").update("#!/bin/sh\n").digest("hex");
+          expect(result.reason).toContain(`failproofai_install '${target}' ${digest} 0755 < '${path}'`);
+          // Only where root's own directories have restorecon (every SELinux system).
+          if (sys.systemCommandPath("restorecon")) {
+            expect(result.reason).toContain(sys.sudoCommandLine("restorecon", "-R", `'${daemonSystemBinaryDir()}'`)!);
+          }
         } finally {
+          vi.doUnmock("../../src/hooks/system-command");
           vi.doUnmock("node:child_process");
           vi.resetModules();
         }
@@ -1523,7 +1565,9 @@ describe("refreshDaemonToCliVersion", () => {
 
     expect(result.lines).toEqual([
       `✕ failproofaid ${version} was not installed: root privileges are required. The previous daemon is untouched.`,
-      "  Run `sudo -v` and then `failproofai update` again.",
+      sudoPath()
+        ? `  Run \`${sudoPath()} -v\` and then \`failproofai update\` again.`
+        : `  No sudo was found in ${SYSTEM_BIN_DIRS.join(", ")}, so failproofai cannot install its service here.`,
     ]);
     expect(result.lines.join("\n")).not.toMatch(/failproofai config|\[Unit\]|sudo tee/);
   });

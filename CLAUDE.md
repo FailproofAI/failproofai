@@ -1010,6 +1010,21 @@ Three consequences, all handled explicitly rather than assumed:
   anything; when it fails, the install writes nothing and returns the exact commands to
   run, classified as `needs_root`. `sudo -n`, never interactive — a password prompt fired
   from under the wizard's TUI is unreadable.
+- **Root is never handed a path the user can write.** Every file written as root (unit,
+  plist, Codex's `/etc/codex/config.toml`, the `/opt` binary) goes through
+  `writePrivilegedFile()`: the bytes go to `PRIVILEGED_INSTALL_SCRIPT` on stdin with their
+  SHA-256 as an argument, and root checks them in a hidden `mktemp` file beside the
+  destination before it sets the mode and renames. On Linux the `/opt` binary is read by
+  the CLI, as the user, with `O_NOFOLLOW`, and checked before the install tears anything
+  down; on macOS root writes only the plist, which runs the user's own copy as that user.
+  No `sudo install <file under $HOME or $TMPDIR>`: root installs only bytes it has
+  verified. The printed `needs_root` recipe carries the same digests.
+- **Nor a program found through PATH.** `sudo` and everything it runs come from
+  `src/hooks/system-command.ts`, which looks only in `/usr/bin`, `/bin`, `/usr/sbin` and
+  `/sbin` and starts them with `privilegedEnv()` (root's PATH, the caller's locale and the
+  settings sudo authenticates with). PATH is the user's to change. Printed commands use
+  `sudoCommandLine()`, which returns null rather than a bare name where root's directories
+  lack sudo or the program; callers then print what to do instead of a command.
 - **A system unit has no login environment.** `resolveWorkerCommand()` uses
   `process.execPath`, not a bare `node`: the single most common Node install is nvm, whose
   binary lives under `~/.nvm/versions/node/*/bin` and is on no system PATH. A bare `node`

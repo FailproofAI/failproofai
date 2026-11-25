@@ -11,7 +11,7 @@
 // the first call asks for a tool, the next one answers. Every agent gets its
 // own script so the token counts in the trace say which call they came from.
 import * as failproofai from "@failproofai/sdk";
-import { wrapTool } from "@failproofai/sdk/mastra";
+import { selfReportTool, wrapTool } from "@failproofai/sdk/mastra";
 import { Agent } from "@mastra/core/agent";
 import { createTool } from "@mastra/core/tools";
 import { createStep, createWorkflow } from "@mastra/core/workflows";
@@ -414,6 +414,21 @@ async function main(scenario: string): Promise<void> {
   report({ instrumented: await failproofai.instrument("mastra") });
 
   switch (scenario) {
+    case "self-report": {
+      const reporting = new Agent({
+        id: "weather-agent",
+        name: "weather-agent",
+        instructions: "Answer weather questions.",
+        model: scriptedModel([
+          { tool: "failproofai_report", input: { category: "invalid_tool_or_credential", detail: "The weather API rejected its key." }, usage: [11, 7] },
+          { text: "I could not reach the weather service.", usage: [23, 9] },
+        ]) as never,
+        tools: { failproofai_report: selfReportTool<typeof weather>() },
+      });
+      const out = await reporting.generate(question);
+      report({ answer: out.text });
+      break;
+    }
     case "generate": {
       const out = await weatherAgent().generate(question);
       report({ answer: out.text });

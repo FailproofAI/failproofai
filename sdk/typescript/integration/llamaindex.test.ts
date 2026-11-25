@@ -97,6 +97,25 @@ describe.each(FIXTURES)("%s", (fixture) => {
       return result;
     };
 
+    it("records a Self Report on the agent whose loop called the tool", () => {
+      const result = run("self-report");
+      expect(result.stdout).toContain("I could not reach the weather service.");
+      const reports = ofType(result.events, "self_report");
+      expect(reports, describeTrace(result)).toHaveLength(1);
+      const use = ofType(result.events, "tool_use").find((e) => e.tool_name === "failproofai_report")!;
+      expect(use, describeTrace(result)).toBeDefined();
+      expect(reports[0]).toMatchObject({
+        session_id: use.session_id,
+        agent_id: use.agent_id,
+        category: "invalid_tool_or_credential",
+        detail: "The weather API rejected its key.",
+        source: "sdk",
+      });
+      const done = ofType(result.events, "tool_result").find((e) => e.tool_name === "failproofai_report")!;
+      expect(JSON.stringify(done.output), describeTrace(result)).toContain("Recorded.");
+      expect(traceViolations(result.events), describeTrace(result)).toEqual([]);
+    });
+
     it("records a workflow agent run as one agent with its steps as hooks", () => {
       const result = run("workflow");
       expect(shape(result.events), describeTrace(result)).toEqual(WORKFLOW());

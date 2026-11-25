@@ -10,6 +10,18 @@ section is missing or empty is refused before anything is built.
 
 ## 0.0.1-beta.3 — 2026-11-24
 
+### Features
+
+- **Self Reports.** A `self_report` event (`event.selfReport` / `selfReport()`,
+  `source: "sdk"`) and the `failproofai_report` tool an agent calls when it is
+  stuck: `selfReportSpec()`, `openaiTool()`, `anthropicTool()`, `handleToolCall()`
+  and `isSelfReportTool()` in the core, and a ready-made `selfReportTool()` on
+  `/ai` (v4–v7, no zod), `/langchain`, `/mastra` and `/llamaindex`, inert in the
+  Edge build. Categories and guidance come from `$FAILPROOFAI_HOME/self-report.json`
+  (`selfReportSettings()`), with the six defaults when it is missing or disabled.
+  A report made inside a framework's tool loop joins the agent whose loop called
+  it, and never throws for want of a session.
+
 ### Fixes
 
 - _Nothing yet._

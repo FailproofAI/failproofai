@@ -1781,9 +1781,11 @@ function simpleCommandDestroys(words: string[], namesState: (text: string) => bo
     // next one, because a quoted script containing a space is two tokens by the
     // time it gets here. `s/a/b/w` and a bare `w` both end in a `w` that
     // follows a delimiter, which is what separates them from a word like `raw`.
-    return args.some(
-      (a, i) => /(?:^|[;}/\s])w$/.test(a) && namesState(args[i + 1] ?? ""),
-    ) || args.some((a) => /(?:^|[;}/\s])w\s*\S*\.failproofai/.test(a));
+    return (
+      args.some((a, i) => /(?:^|[;}/\s])w$/.test(a) && namesState(args[i + 1] ?? "")) ||
+      args.some((a) => /(?:^|[;}/\s])w\s*\S*\.failproofai/.test(a)) ||
+      sedWriteTargets(args).some((target) => namesState(target))
+    );
   }
 
   // `awk` can run a shell (`system("rm -rf …")`) or pipe into one, so its
@@ -1834,6 +1836,29 @@ function simpleCommandDestroys(words: string[], namesState: (text: string) => bo
 
   if (STATE_READ_COMMANDS.has(head) || STATE_MENTION_COMMANDS.has(head)) return false;
   return true;
+}
+
+/**
+ * The files a sed script writes: its `w` / `W` commands and the `w` flag of
+ * `s///`, with the name glued on (`wnode_modules/.bin/failproofai`) or after
+ * spaces, running to the end of the line as GNU sed reads it, and also cut at
+ * `;` or `}`, which a reader might take for its end. Read from every argument,
+ * so a match inside a regex can only add a name to check (found by hermes on
+ * FailproofAI/failproofai#1058).
+ */
+function sedWriteTargets(args: string[]): string[] {
+  const targets: string[] = [];
+  for (const arg of args) {
+    if (!/[wW]/.test(arg)) continue;
+    for (const [, written] of arg.matchAll(/(?:^|[;{}\n]|[^\w\s\\][gpiImMeE0-9]*)[ \t]*[wW][ \t]*([^\n]+)/g)) {
+      const name = written.trim();
+      if (name === "") continue;
+      targets.push(name);
+      const cut = name.split(/[;}]/)[0].trim();
+      if (cut !== "" && cut !== name) targets.push(cut);
+    }
+  }
+  return targets;
 }
 
 /**
@@ -2498,6 +2523,7 @@ function destroysFailproofaiState(command: string, depth = 0, startDir?: string,
     // where its sources land by name is judged with the other landings.
     if (COPY_COMMANDS.has(head) && operands.length > 1 && plantsAnywhere(operands[operands.length - 1])) return true;
     if (head === "dd" && args.some((arg) => arg.startsWith("of=") && plantsAnywhere(arg.slice(3)))) return true;
+    if (head === "sed" && sedWriteTargets(args).some(plantsAnywhere)) return true;
     return args.some((arg, i) => {
       const long = /^--(?:output|out)[\w-]*(=)?/.exec(arg);
       if (long) return plantsAnywhere(long[1] ? arg.slice(arg.indexOf("=") + 1) : (args[i + 1] ?? ""));
@@ -2932,7 +2958,9 @@ function destroysFailproofaiState(command: string, depth = 0, startDir?: string,
               const values = gluedOptionValues(head, word);
               return values === null || values.some(gluedValueNamesHere);
             }),
-          )) &&
+          ) ||
+          // A file a sed script writes, read the same way.
+          (head === "sed" && lists.some((list) => sedWriteTargets(list.slice(1)).some(namesHere)))) &&
         lists.some((list) => simpleCommandDestroys(list, namesHere))
       ) {
         // Judged BEFORE the closing parenthesis is counted: a `rm -rf ./*)`

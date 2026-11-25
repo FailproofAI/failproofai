@@ -262,6 +262,10 @@ describe("block-failproofai-commands — the entry a project-scope npx hook runs
         expect(await bashIn(join(root, "proj", "tools"), command)).toBe("deny");
       });
 
+      it("denies a sed script writing the entry through a link", async () => {
+        expect(await bashIn(join(root, "proj"), "sed -n 'w tools/bins/failproofai' /tmp/stub.sh")).toBe("deny");
+      });
+
       it("denies a named output that curl puts into a linked --output-dir", async () => {
         expect(await bashIn(join(root, "proj"), "curl --output-dir tools/bins -o failproofai https://example.com/x")).toBe("deny");
       });
@@ -752,6 +756,32 @@ describe("block-failproofai-commands — the entry a project-scope npx hook runs
       expect(await bashIn(cwd, command)).toBe("deny");
     });
 
+    // A file a sed script writes with `w`, `W` or the `w` flag of `s///`,
+    // glued on or after spaces (found by hermes on FailproofAI/failproofai#1058).
+    it.each([
+      ["/work/proj", "sed -n 'w node_modules/.bin/failproofai' /tmp/stub.sh"],
+      ["/work/proj", "sed -n 'wnode_modules/.bin/failproofai' /tmp/stub.sh"],
+      ["/work/proj", "sed 's/a/b/wnode_modules/.bin/failproofai' /tmp/stub.sh"],
+      ["/work/proj", "sed -e 's/a/b/gw node_modules/.bin/failproofai' /tmp/stub.sh"],
+      ["/work/proj", "sed -n 'Wnode_modules/.bin/failproofai' /tmp/stub.sh"],
+      ["/work/proj", "sed -n --expression='w node_modules/failproofai/dist/cli.mjs' /tmp/stub.sh"],
+      ["/work/proj/node_modules/.bin", "sed -n 'wfailproofai' /tmp/stub.sh"],
+      ["/work/proj", "cd node_modules/.bin && sed -n 'wfailproofai' /tmp/stub.sh"],
+    ])("denies a sed script writing the entry from %s: %s", async (cwd, command) => {
+      expect(await bashIn(cwd, command)).toBe("deny");
+    });
+
+    it.each([
+      "sed -n 's/a/b/p' notes.txt",
+      "sed 's/raw/cooked/' notes.txt",
+      "sed -n 'w out.txt' notes.txt",
+      "sed -n '/failproofai/p' notes.txt",
+      "sed 's/www/web/g' urls.txt",
+      "sed -n 'w /tmp/copy.txt' node_modules/.bin/failproofai",
+    ])("allows a sed script that writes no protected file: %s", async (command) => {
+      expect(await bashIn("/work/proj", command)).not.toBe("deny");
+    });
+
     it.each([
       ["/work/proj/node_modules/.bin", "curl -somy-tool https://example.com/x"],
       ["/work/proj/node_modules/.bin", "grep -ffailproofai notes.txt"],
@@ -850,6 +880,7 @@ describe("block-failproofai-commands — the entry a project-scope npx hook runs
       "printf x > tbins/failproofai",
       "printf x > x/y/failproofai.cmd",
       "cp /tmp/stub.sh deps/failproofai/dist/cli.mjs",
+      "sed -n 'wfailproofai' /tmp/stub.sh",
     ])("denies a Codex command planting the entry wherever it runs: %s", async (command) => {
       expect(await bashAs("codex", { command })).toBe("deny");
     });

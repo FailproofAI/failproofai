@@ -1,10 +1,9 @@
 /**
  * `failproofai self-report status | enable | disable | test`.
  *
- * `sync` is another part's (it registers the MCP server in every agent); this
- * module only calls it, as the subprocess `failproofai self-report sync
- * --quiet` that contract §6 defines, so the two halves meet at a command line
- * rather than at a function name.
+ * `sync` (registering the MCP server in every agent) lives in
+ * self-report-install.ts; enable/disable call it in process, and bin keeps the
+ * `failproofai self-report sync --quiet` subcommand the daemon runs (contract §6).
  *
  * Returns lines and an exit code like the other `*-cli.ts` modules; bin prints
  * them.
@@ -29,6 +28,7 @@ import {
   type SelfReportCategory,
 } from "./self-report";
 import { INTEGRATION_TYPES } from "./types";
+import { selfReportRegistrationStatus, syncSelfReportMcp } from "./self-report-install";
 
 export interface SelfReportCliResult {
   exitCode: number;
@@ -96,25 +96,26 @@ async function selfReportProbe(url: string): Promise<boolean> {
   }
 }
 
-/** Per-agent registration, from the installer part once it is merged. */
-async function selfReportRegistrationLines(): Promise<string[]> {
-  // TODO(merge): import "./self-report-install" statically once it exists. A
-  // computed specifier keeps the bundler from failing on a module this branch
-  // does not have yet.
-  const spec = "./self-report-install";
-  try {
-    const mod = (await import(/* @vite-ignore */ spec)) as Record<string, unknown>;
-    const fn = mod.selfReportRegistrationStatus;
-    if (typeof fn !== "function") return ["Agents:     registration state not available in this build"];
-    const rows = (await (fn as () => unknown)()) as Array<{ integration: string; state: string; transport?: string }>;
-    if (!Array.isArray(rows) || rows.length === 0) return ["Agents:     none with failproofai hooks"];
-    return [
-      "Agents:",
-      ...rows.map((r) => `  ${String(r.integration).padEnd(12)} ${r.state}${r.transport ? ` (${r.transport})` : ""}`),
-    ];
-  } catch {
-    return ["Agents:     registration state not available in this build"];
-  }
+/** Per-agent registration state. */
+function selfReportRegistrationLines(): string[] {
+  const rows = selfReportRegistrationStatus();
+  const hooked = rows.filter((r) => r.hooked || r.registered || r.conflict || r.error);
+  if (hooked.length === 0) return ["Agents:     none with failproofai hooks"];
+  return [
+    "Agents:",
+    ...hooked.map((r) => {
+      const state = r.error
+        ? `unreadable (${r.error})`
+        : r.conflict
+          ? "another failproofai MCP server is configured; left alone"
+          : r.registered
+            ? `registered (${r.transport})`
+            : r.hooked
+              ? "not registered"
+              : "registered, no hooks";
+      return `  ${r.agent.padEnd(12)} ${state}`;
+    }),
+  ];
 }
 
 async function selfReportStatus(deps: SelfReportCliDeps): Promise<SelfReportCliResult> {
@@ -136,25 +137,23 @@ async function selfReportStatus(deps: SelfReportCliDeps): Promise<SelfReportCliR
   const probe = deps.probeEndpoint ?? ((url: string) => selfReportProbe(url));
   const healthy = await probe(settings.mcp.url, settings.mcp.port);
   lines.push(`Endpoint:   ${settings.mcp.url} ${healthy ? "(answering)" : "(not answering; stdio `failproofai mcp` still works)"}`);
-  lines.push(...(await selfReportRegistrationLines()));
+  lines.push(...selfReportRegistrationLines());
   return { exitCode: 0, lines };
 }
 
-/** `failproofai self-report sync --quiet`, if this build has it. */
-async function selfReportSync(deps: SelfReportCliDeps): Promise<string[]> {
+/** Update every hooked agent's MCP entry to match the settings just written. */
+function selfReportSync(deps: SelfReportCliDeps): string[] {
   if (deps.skipSync) return [];
-  const run = await selfReportRunChild([...selfReportCliCommand(deps), "self-report", "sync", "--quiet"], "", 60_000, deps.cwd);
-  if (run.code === 0) return ["Agents updated."];
-  if (run.code === SELF_REPORT_SYNC_UNAVAILABLE) {
-    return ["Agent configs were not changed: this build cannot register the MCP server yet."];
+  try {
+    const results = syncSelfReportMcp({ quiet: true });
+    if (results.some((r) => r.status === "error")) {
+      return ["▲ Could not update every agent's MCP settings. Run `failproofai self-report sync` to see why."];
+    }
+    return ["Agents updated."];
+  } catch {
+    return ["▲ Could not update your agents' MCP settings. Run `failproofai self-report sync` to see why."];
   }
-  return [
-    "▲ Could not update your agents' MCP settings. Run `failproofai self-report sync` to see why.",
-  ];
 }
-
-/** Exit code `self-report sync` returns in a build without the installer part. */
-export const SELF_REPORT_SYNC_UNAVAILABLE = 3;
 
 function selfReportFlag(args: string[], name: string): { value?: string; error?: string } {
   const i = args.indexOf(name);
@@ -205,7 +204,7 @@ async function selfReportEnable(args: string[], deps: SelfReportCliDeps): Promis
     "✓ Self Reports is on.",
     `  Categories: ${written.categories.map((c) => c.name).join(", ")}${categories ? "" : " (defaults)"}`,
     `  Settings:   ${selfReportSettingsFile()}`,
-    ...(await selfReportSync(deps)).map((l) => (l.startsWith("▲") ? l : `  ${l}`)),
+    ...selfReportSync(deps).map((l) => (l.startsWith("▲") ? l : `  ${l}`)),
   ];
   return { exitCode: 0, lines };
 }
@@ -219,7 +218,7 @@ async function selfReportDisable(args: string[], deps: SelfReportCliDeps): Promi
   writeEffectiveSelfReport({ enabled: false, categories: previous?.categories, guidance: previous?.guidance });
   return {
     exitCode: 0,
-    lines: ["✓ Self Reports is off.", ...(await selfReportSync(deps)).map((l) => (l.startsWith("▲") ? l : `  ${l}`))],
+    lines: ["✓ Self Reports is off.", ...selfReportSync(deps).map((l) => (l.startsWith("▲") ? l : `  ${l}`))],
   };
 }
 
@@ -348,10 +347,6 @@ export async function runSelfReportCommand(args: string[], deps: SelfReportCliDe
         return await selfReportDisable(rest, deps);
       case "test":
         return await selfReportTest(rest, deps);
-      case "sync":
-        // TODO(merge): the installer part implements `sync` in bin; this is
-        // only reached in a build without it.
-        return { exitCode: SELF_REPORT_SYNC_UNAVAILABLE, lines: ["`self-report sync` is not available in this build."] };
       default:
         return { exitCode: 1, lines: [verb ? `Unknown self-report command: ${verb}.` : "Missing self-report command.", "Use status, enable, disable or test."] };
     }

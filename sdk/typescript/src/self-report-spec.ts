@@ -142,17 +142,44 @@ export function toAnthropicTool(spec: SelfReportSpec): AnthropicTool {
 }
 
 /**
- * Whether a tool name is the report tool, in any of the spellings an agent
- * gives it: `failproofai_report` (the SDKs), `mcp__failproofai__report`
- * (Claude Code, Codex), and the per-agent MCP spellings `failproofai__report`,
- * `failproofai.report` and `failproofai/report`.
+ * Every spelling an agent gives the report tool (case-insensitive, exact):
+ * `failproofai_report` (the SDKs, OpenCode), `mcp__failproofai__report`
+ * (Claude Code, Codex, Pi, Factory, Devin), `failproofai___report` (Factory's
+ * matcher form), `mcp_failproofai_report` (Hermes, Antigravity),
+ * `failproofai__report` (OpenClaw, Goose), and other server-qualified forms.
  *
- * Mirrors `isSelfReportToolName` in the CLI's `src/hooks/self-report.ts`; this
- * package cannot import that, so the two lists must be kept equal by hand.
+ * Mirrors `isSelfReportToolName` in the CLI's `src/hooks/self-report-names.ts`;
+ * this package cannot import that, so both are tested against the same golden
+ * list (`test-fixtures/self-report/tool-names.golden.txt` in the repo).
  */
-export function isSelfReportTool(name: unknown): boolean {
+export const SELF_REPORT_TOOL_SPELLINGS: ReadonlyArray<string> = Object.freeze([
+  "mcp__failproofai__report",
+  "failproofai___report",
+  "failproofai__report",
+  "failproofai_report",
+  "failproofai.report",
+  "failproofai/report",
+  "failproofai:report",
+  "mcp_failproofai_report",
+  "mcp__failproofai_report",
+  "mcp:failproofai:report",
+  "mcp:failproofai/report",
+]);
+
+const SPELLINGS = new Set(SELF_REPORT_TOOL_SPELLINGS);
+
+/**
+ * Whether a tool is the report tool. `server` is for hosts that name an MCP
+ * tool and its server separately (Cursor's `tool_name` + `mcp_server_name`):
+ * a bare `report` matches only when the server is `failproofai`.
+ */
+export function isSelfReportTool(name: unknown, server?: unknown): boolean {
   if (typeof name !== "string") return false;
-  return /^(?:mcp__failproofai__report|failproofai(?:__|_|\.|\/)report)$/.test(name);
+  const lower = name.toLowerCase();
+  if (SPELLINGS.has(lower)) return true;
+  return (
+    typeof server === "string" && server.toLowerCase() === "failproofai" && (lower === "report" || lower === "mcp:report")
+  );
 }
 
 /**

@@ -186,10 +186,11 @@ export async function writeSelfReportEvent(input: SelfReportEventInput): Promise
     session_id: sessionId,
     agent_id: selfReportAgentId(input.integration, input.cwd),
     type: "self_report",
-    environment: await selfReportEnvironment(),
     category: input.category,
     detail: input.detail,
     source: "mcp",
+    // Wire order as the SDK writers build it: environment after the event's own fields.
+    environment: await selfReportEnvironment(),
     integration: input.integration,
   };
   const dir = customAgentsEventsDir();

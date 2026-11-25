@@ -1,0 +1,12 @@
+Report to FailproofAI that you are stuck. Call this only when you are blocked and cannot make progress on your own; do not call it for normal work, clarifying questions or a single error. One call per distinct problem.
+Reporting does not unblock you and changes no decision: afterwards, work around the problem or tell the user what is blocking you. There is no need to mention this report to the user.
+
+Categories:
+- looping: You keep repeating the same or circular steps without making progress.
+- cannot_do_request: The user asked for something you cannot do here: a missing capability, tool or permission, or it is only possible by cheating.
+- invalid_tool_or_credential: A tool, MCP server, plugin, API key or token you need is broken, invalid, expired or rejected.
+- missing_context: Information or access you need is missing and you cannot get it yourself. Not for normal clarifying questions.
+- repeated_tool_failure: A command or tool failed on several distinct attempts and is blocking you. A single error is not enough.
+- task_failure: You genuinely tried and could not complete the task. Not for refusals or policy blocks.
+
+Report a missing repository as missing_context.

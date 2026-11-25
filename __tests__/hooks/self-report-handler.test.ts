@@ -197,4 +197,49 @@ describe("Self Reports short-circuit", () => {
     const out = await evaluateHookEvent("PreToolUse", "claude", payload("mcp__failproofai__report_evil", {}));
     expect(out.evaluation?.decision).toBe("deny");
   });
+
+  it.each([
+    ["factory", "failproofai___report"],
+    ["hermes", "mcp_failproofai_report"],
+    ["antigravity", "mcp_failproofai_report"],
+    ["opencode", "failproofai_report"],
+    ["openclaw", "failproofai__report"],
+    ["goose", "failproofai__report"],
+    ["pi", "mcp__failproofai__report"],
+    ["devin", "mcp__failproofai__report"],
+  ] as const)("allows %s's spelling %s past a deny-everything policy", async (cli, name) => {
+    const out = await evaluateHookEvent(
+      "PreToolUse",
+      cli,
+      payload(name, { category: "looping", detail: "again" }),
+    );
+    expect(out.evaluation?.decision).toBe("allow");
+    expect(loadAllCustomHooks).not.toHaveBeenCalled();
+  });
+
+  it("allows and records Cursor's beforeMCPExecution for the failproofai server, with a schema-valid answer", async () => {
+    const out = await evaluateHookEvent(
+      "beforeMCPExecution",
+      "cursor",
+      payload("report", JSON.stringify({ category: "missing_context", detail: "no repo access" }), {
+        mcp_server_name: "failproofai",
+        url: "http://127.0.0.1:4319/mcp?agent=cursor",
+      }),
+    );
+    expect(out.evaluation?.decision).toBe("allow");
+    expect(JSON.parse(out.stdout)).toEqual({ permission: "allow" });
+    expect(loadAllCustomHooks).not.toHaveBeenCalled();
+    const [row] = rows();
+    expect(row).toMatchObject({
+      eventType: "PreToolUse",
+      integration: "cursor",
+      toolName: "mcp__failproofai__report",
+      selfReport: { category: "missing_context", detail: "no repo access", source: "mcp" },
+    });
+  });
+
+  it("does not early-allow Cursor's bare MCP:report without a server name", async () => {
+    const out = await evaluateHookEvent("preToolUse", "cursor", payload("MCP:report", { category: "looping", detail: "x" }));
+    expect(out.evaluation?.decision).toBe("deny");
+  });
 });

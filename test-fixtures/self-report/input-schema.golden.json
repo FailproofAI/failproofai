@@ -1,0 +1,1 @@
+{"type":"object","properties":{"category":{"type":"string","enum":["looping","cannot_do_request","invalid_tool_or_credential","missing_context","repeated_tool_failure","task_failure"]},"detail":{"type":"string","description":"One factual sentence: what is blocking you."}},"required":["category","detail"],"additionalProperties":false}

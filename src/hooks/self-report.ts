@@ -33,6 +33,7 @@ export {
   SELF_REPORT_DEFAULT_PORT,
   SELF_REPORT_SERVER_RECORDS,
   isSelfReportToolName,
+  isSelfReportCursorCall,
 } from "./self-report-names";
 import { SELF_REPORT_DETAIL_MAX, SELF_REPORT_DEFAULT_PORT } from "./self-report-names";
 

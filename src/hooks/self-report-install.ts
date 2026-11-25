@@ -60,7 +60,7 @@ import { writeConfigFileAtomic } from "./safe-config-write";
 import { codexHome } from "./codex-system-hooks";
 import { claudeConfigDir, getIntegration, readYamlDoc, writeYamlDoc, UnreadableAgentConfigError } from "./integrations";
 import { daemonSocketPresent } from "./daemon-client";
-import { failproofaiHome } from "./fp-home";
+import { readEffectiveSelfReport, selfReportPort, selfReportSettingsFile, SELF_REPORT_SERVER_NAME } from "./self-report";
 import { listHermesProfiles } from "../../lib/hermes-profiles";
 import { listOpenClawProfiles } from "../../lib/openclaw-profiles";
 import { INTEGRATION_TYPES, type IntegrationType } from "./types";
@@ -69,13 +69,11 @@ import { mergeTomlManagedBlock, readTomlManagedBlock, tomlString, type TomlBlock
 // ── Settings (CONTRACT §4) ──────────────────────────────────────────────────
 
 /** The MCP server's name in every agent. */
-export const SELF_REPORT_MCP_SERVER_NAME = "failproofai";
-// TODO(merge): import from ./self-report
-export const SELF_REPORT_DEFAULT_PORT = 4319;
+export { SELF_REPORT_SERVER_NAME as SELF_REPORT_MCP_SERVER_NAME, SELF_REPORT_DEFAULT_PORT } from "./self-report";
 
-/** `$FAILPROOFAI_HOME/self-report.json`. TODO(merge): import from ./self-report (or fp-home). */
+/** `$FAILPROOFAI_HOME/self-report.json`. */
 export function selfReportSettingsPath(): string {
-  return resolve(failproofaiHome(), "self-report.json");
+  return selfReportSettingsFile();
 }
 
 export interface SelfReportMcpSettings {
@@ -84,32 +82,14 @@ export interface SelfReportMcpSettings {
 }
 
 /**
- * The bits of self-report.json this module needs. Missing or unparsable file ⇒
- * disabled. TODO(merge): use the settings reader in ./self-report.
+ * The bits of self-report.json this module needs, through the one settings
+ * reader in ./self-report. Missing or unparsable file ⇒ disabled, on the port
+ * a local writer would record.
  */
 export function readSelfReportMcpSettings(path = selfReportSettingsPath()): SelfReportMcpSettings {
-  const envPort = Number(process.env.FAILPROOFAI_SELF_REPORT_PORT);
-  const fallbackPort = Number.isInteger(envPort) && envPort > 0 && envPort < 65536 ? envPort : SELF_REPORT_DEFAULT_PORT;
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(readFileSync(path, "utf8"));
-  } catch {
-    return { enabled: false, port: fallbackPort };
-  }
-  if (!parsed || typeof parsed !== "object") return { enabled: false, port: fallbackPort };
-  const s = parsed as { enabled?: unknown; mcp?: { port?: unknown; url?: unknown } };
-  let port = fallbackPort;
-  const filePort = s.mcp?.port;
-  if (typeof filePort === "number" && Number.isInteger(filePort) && filePort > 0 && filePort < 65536) port = filePort;
-  else if (typeof s.mcp?.url === "string") {
-    try {
-      const p = Number(new URL(s.mcp.url).port);
-      if (p > 0) port = p;
-    } catch {
-      // keep the fallback
-    }
-  }
-  return { enabled: s.enabled === true, port };
+  const s = readEffectiveSelfReport(path);
+  if (!s) return { enabled: false, port: selfReportPort() };
+  return { enabled: s.enabled, port: s.mcp.port };
 }
 
 // ── Transports ──────────────────────────────────────────────────────────────
@@ -294,8 +274,8 @@ export const SELF_REPORT_MCP_TARGETS: Record<IntegrationType, McpTarget> = {
     container: () => ["extensions"],
     entry: (t) =>
       t.kind === "http"
-        ? { name: SELF_REPORT_MCP_SERVER_NAME, type: "streamable_http", enabled: true, uri: t.url, envs: {}, env_keys: [], timeout: 300 }
-        : { name: SELF_REPORT_MCP_SERVER_NAME, type: "stdio", enabled: true, cmd: t.command, args: t.args, envs: {}, env_keys: [], timeout: 300 },
+        ? { name: SELF_REPORT_SERVER_NAME, type: "streamable_http", enabled: true, uri: t.url, envs: {}, env_keys: [], timeout: 300 }
+        : { name: SELF_REPORT_SERVER_NAME, type: "stdio", enabled: true, cmd: t.command, args: t.args, envs: {}, env_keys: [], timeout: 300 },
   },
 };
 
@@ -367,7 +347,7 @@ function jsonOps(target: McpTarget, path: string): FileOps {
       },
     };
   }
-  const keyPath = [...container, SELF_REPORT_MCP_SERVER_NAME];
+  const keyPath = [...container, SELF_REPORT_SERVER_NAME];
   return {
     container,
     current: () => classify(getIn(parsed, keyPath)),
@@ -388,7 +368,7 @@ function renderTomlBlock(entry: Record<string, unknown>): string {
     TOML_MARKERS.begin,
     "# Written by failproofai (Self Reports). `failproofai self-report disable` or",
     "# `failproofai uninstall` removes it. Everything between the markers is replaced.",
-    `[mcp_servers.${SELF_REPORT_MCP_SERVER_NAME}]`,
+    `[mcp_servers.${SELF_REPORT_SERVER_NAME}]`,
   ];
   for (const [k, v] of Object.entries(entry)) {
     if (typeof v === "string") lines.push(`${k} = ${tomlString(v)}`);
@@ -416,7 +396,7 @@ function tomlOps(path: string): FileOps {
   } catch (err) {
     throw new UnreadableAgentConfigError(path, `it does not parse as TOML (${err instanceof Error ? err.message.split("\n")[0] : String(err)})`);
   }
-  const keyPath = ["mcp_servers", SELF_REPORT_MCP_SERVER_NAME];
+  const keyPath = ["mcp_servers", SELF_REPORT_SERVER_NAME];
   return {
     container: ["mcp_servers"],
     current() {
@@ -447,7 +427,7 @@ function yamlOps(target: McpTarget, path: string): FileOps {
   if (typeof js !== "object" || Array.isArray(js)) throw new UnreadableAgentConfigError(path, "its top level is not a mapping");
   const container = target.container(js);
   const holder = doc.getIn(container);
-  const keyPath = [...container, SELF_REPORT_MCP_SERVER_NAME];
+  const keyPath = [...container, SELF_REPORT_SERVER_NAME];
   if (holder !== undefined && holder !== null && !isMap(holder)) {
     return {
       container,
@@ -626,7 +606,7 @@ export function syncSelfReportMcp(opts: SyncSelfReportMcpOptions = {}): SelfRepo
         if (cur.state === "foreign") {
           results.push({
             agent, path, action: "skipped", transport: null, status: "conflict",
-            detail: `a "${SELF_REPORT_MCP_SERVER_NAME}" MCP server that failproofai did not write is already configured`,
+            detail: `a "${SELF_REPORT_SERVER_NAME}" MCP server that failproofai did not write is already configured`,
           });
           continue;
         }

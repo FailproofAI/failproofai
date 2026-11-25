@@ -791,9 +791,8 @@ async function runCli() {
   // Self Reports MCP server in every agent with failproofai hooks, from
   // ~/.failproofai/self-report.json. The daemon runs it with --quiet whenever
   // that file's `enabled` (or port) changes; it is idempotent.
-  // TODO(merge): "self-report" joins SUBCOMMANDS, the help index and its own
-  // help page with the `self-report status|enable|disable|test` hunk; until
-  // then `self-report sync --help` falls through to the index.
+  // Dispatched ahead of the status|enable|disable|test branch below, which
+  // lists it on the `self-report --help` page.
   if (args[0] === "self-report" && args[1] === "sync") {
     const subArgs = args.slice(2);
     if (subArgs.includes("--help") || subArgs.includes("-h")) {
@@ -1078,7 +1077,7 @@ async function runCli() {
           ["failproofai self-report enable [options]", "Turn it on for this machine"],
           ["failproofai self-report disable", "Turn it off for this machine"],
           ["failproofai self-report test --agent <agent>", "Send one test report end to end"],
-          // TODO(merge): the installer part adds its `sync` row here.
+          ["failproofai self-report sync [--quiet]", "Update each hooked agent's MCP entry (the daemon runs this)"],
         ],
         options: [
           ["--categories-file <f>", "JSON list of {name, description}; replaces the defaults"],
@@ -1092,8 +1091,6 @@ async function runCli() {
       });
       process.exit(0);
     }
-    // TODO(merge): `self-report sync` (installer part) dispatches here, ahead
-    // of runSelfReportCommand, in its own hunk.
     lastSubcommand = "self-report";
     const { runSelfReportCommand } = await import("../src/hooks/self-report-cli");
     const result = await runSelfReportCommand(subArgs);

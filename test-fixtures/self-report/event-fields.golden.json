@@ -1,0 +1,5 @@
+{
+  "order": ["timestamp", "session_id", "agent_id", "type", "category", "detail", "source", "environment"],
+  "optional": ["tool_call_id"],
+  "fallbackExtras": ["integration"]
+}

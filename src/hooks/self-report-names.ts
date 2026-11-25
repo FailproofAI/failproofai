@@ -30,20 +30,22 @@ export const SELF_REPORT_DEFAULT_PORT = 4319;
  * contains `failproofai` and `report` past every policy, and this name is the
  * one thing that skips them all.
  *
- * - `mcp__failproofai__report`: Claude Code, Codex (and anything copying them).
- * - `failproofai__report`: Goose's `<extension>__<tool>`.
- * - `failproofai_report`: the SDK tool, and agents that join with one `_`
- *   (OpenCode, Copilot).
- * - `failproofai.report`, `failproofai/report`, `failproofai:report`: dotted /
- *   slashed / coloned server-qualified forms other agents use.
- * - `mcp_failproofai_report`, `mcp__failproofai_report`: single-underscore
- *   variants seen in agents that flatten MCP names.
- *
- * Cursor's preToolUse names MCP calls `MCP:<tool>` without the server, which
- * cannot be told apart from another server's `report` tool, so it is not here.
+ * Per agent (installer research, 2026-11-25; see self-report-install.ts):
+ * - `mcp__failproofai__report`: Claude Code, Codex, Pi, Factory, Devin.
+ * - `failproofai___report`: Factory's matcher-regex form of the same name.
+ * - `mcp_failproofai_report`: Hermes, and Antigravity's eager tools.
+ * - `failproofai_report`: OpenCode (and the SDK tool).
+ * - `failproofai__report`: OpenClaw and Goose (`<server>__<tool>`).
+ * - Cursor: see `isSelfReportCursorCall`; its preToolUse name `MCP:report`
+ *   carries no server, so it is never matched by name alone.
+ * - `failproofai.report`, `failproofai/report`, `failproofai:report`,
+ *   `mcp__failproofai_report`, `mcp:failproofai:report`,
+ *   `mcp:failproofai/report`: other server-qualified forms, kept so a
+ *   spelling change in an agent cannot route a report through the policies.
  */
 const SELF_REPORT_TOOL_SPELLINGS: ReadonlySet<string> = new Set([
   SELF_REPORT_MCP_TOOL_NAME,
+  "failproofai___report",
   "failproofai__report",
   SELF_REPORT_SDK_TOOL_NAME,
   "failproofai.report",
@@ -58,6 +60,21 @@ const SELF_REPORT_TOOL_SPELLINGS: ReadonlySet<string> = new Set([
 /** True for the report tool under any agent's spelling of it (contract §1). */
 export function isSelfReportToolName(name: unknown): boolean {
   return typeof name === "string" && SELF_REPORT_TOOL_SPELLINGS.has(name.toLowerCase());
+}
+
+/**
+ * Cursor's MCP hook (`beforeMCPExecution`) names the tool bare (`report`) and
+ * the server separately, as `mcp_server_name` (its key in mcp.json). Only that
+ * pair identifies our tool: a bare `report`, or preToolUse's `MCP:report`
+ * without a server name, could be any server's tool and is NOT matched.
+ */
+export function isSelfReportCursorCall(payload: unknown): boolean {
+  if (!payload || typeof payload !== "object" || Array.isArray(payload)) return false;
+  const p = payload as Record<string, unknown>;
+  const server = p.mcp_server_name;
+  if (typeof server !== "string" || server.toLowerCase() !== SELF_REPORT_SERVER_NAME) return false;
+  const tool = typeof p.tool_name === "string" ? p.tool_name.toLowerCase() : "";
+  return tool === SELF_REPORT_TOOL_NAME || tool === `mcp:${SELF_REPORT_TOOL_NAME}` || isSelfReportToolName(tool);
 }
 
 /**

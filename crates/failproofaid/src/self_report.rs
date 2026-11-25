@@ -243,7 +243,30 @@ fn run_sync_once() {
         );
         return;
     };
-    match run_with_timeout(&format!("{cli} self-report sync --quiet"), SYNC_TIMEOUT) {
+    // The service runs as its user (`failproofaid@<user>`, `User=` + an
+    // explicit `HOME=`), so the child inherits that account and home. Checked
+    // rather than assumed: a daemon started as root over someone else's home
+    // (`sudo -E`, a hand-written unit without `User=`) would have root rewrite
+    // that person's agent configs, and one whose home resolves to root's would
+    // register the server where the user's agents never look.
+    let home = match crate::paths::failproofai_home() {
+        Ok(home) => home,
+        Err(err) => {
+            tracing::warn!("Self Reports sync skipped: {err}");
+            return;
+        }
+    };
+    // SAFETY: geteuid has no preconditions and cannot fail.
+    let euid = unsafe { libc::geteuid() };
+    if let Some(problem) = sync_identity_problem(&home, euid) {
+        tracing::warn!("Self Reports sync skipped: {problem}");
+        return;
+    }
+    match run_with_timeout(
+        &format!("{cli} self-report sync --quiet"),
+        &home,
+        SYNC_TIMEOUT,
+    ) {
         Ok(Some(0)) => tracing::info!("Self Reports agent configs synced"),
         Ok(Some(code)) => tracing::warn!("`failproofai self-report sync` failed (exit {code})"),
         Ok(None) => tracing::warn!("`failproofai self-report sync` was killed (timeout or signal)"),
@@ -253,11 +276,33 @@ fn run_sync_once() {
 
 /// Run `command` under `sh -c` in its own process group; kill the group after
 /// `timeout`. `Ok(None)`: it ended by a signal (including the timeout's).
-fn run_with_timeout(command: &str, timeout: Duration) -> io::Result<Option<i32>> {
+/// Why `self-report sync` must not run as this process for `home`, if it must
+/// not: the home (`~/.failproofai`, else the directory that would hold it)
+/// belongs to another account than the one the daemon runs as.
+fn sync_identity_problem(home: &Path, euid: u32) -> Option<String> {
+    use std::os::unix::fs::MetadataExt;
+    let probe = if home.exists() {
+        home
+    } else {
+        home.parent().unwrap_or(home)
+    };
+    let owner = std::fs::metadata(probe).ok()?.uid();
+    (owner != euid).then(|| {
+        format!(
+            "{} belongs to uid {owner} but the daemon runs as uid {euid}; run the service as that user \
+             (failproofaid@<user>) or run `failproofai self-report sync` as them",
+            probe.display()
+        )
+    })
+}
+
+fn run_with_timeout(command: &str, home: &Path, timeout: Duration) -> io::Result<Option<i32>> {
     use std::os::unix::process::CommandExt;
     let mut child = Command::new("sh")
         .arg("-c")
         .arg(command)
+        // The CLI resolves the same home the daemon read self-report.json from.
+        .env("FAILPROOFAI_HOME", home)
         .stdin(Stdio::null())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
@@ -490,17 +535,57 @@ mod tests {
     fn a_sync_that_overruns_is_killed() {
         let started = Instant::now();
         assert_eq!(
-            run_with_timeout("sleep 30", Duration::from_millis(300)).unwrap(),
+            run_with_timeout(
+                "sleep 30",
+                &std::env::temp_dir(),
+                Duration::from_millis(300)
+            )
+            .unwrap(),
             None
         );
         assert!(started.elapsed() < Duration::from_secs(5));
         assert_eq!(
-            run_with_timeout("exit 3", Duration::from_secs(5)).unwrap(),
+            run_with_timeout("exit 3", &std::env::temp_dir(), Duration::from_secs(5)).unwrap(),
             Some(3)
         );
         assert_eq!(
-            run_with_timeout("echo hi", Duration::from_secs(5)).unwrap(),
+            run_with_timeout("echo hi", &std::env::temp_dir(), Duration::from_secs(5)).unwrap(),
             Some(0)
         );
+    }
+
+    #[test]
+    fn sync_runs_only_as_the_owner_of_the_home() {
+        use std::os::unix::fs::MetadataExt;
+        let dir = temp_path("sync-identity");
+        let home = dir.parent().unwrap().to_path_buf();
+        let me = std::fs::metadata(&home).unwrap().uid();
+        assert_eq!(sync_identity_problem(&home, me), None);
+        // A home that does not exist yet is judged by its parent.
+        assert_eq!(sync_identity_problem(&home.join(".failproofai"), me), None);
+        let other = me.wrapping_add(1);
+        let problem = sync_identity_problem(&home, other).expect("a mismatch is refused");
+        assert!(problem.contains(&format!("uid {me}")), "{problem}");
+        assert!(problem.contains(&format!("uid {other}")), "{problem}");
+        let _ = std::fs::remove_dir_all(&home);
+    }
+
+    #[test]
+    fn the_sync_child_gets_the_daemons_home() {
+        let dir = temp_path("sync-env");
+        let home = dir.parent().unwrap().to_path_buf();
+        let out = home.join("seen");
+        let code = run_with_timeout(
+            &format!("printf %s \"$FAILPROOFAI_HOME\" > '{}'", out.display()),
+            &home,
+            Duration::from_secs(10),
+        )
+        .unwrap();
+        assert_eq!(code, Some(0));
+        assert_eq!(
+            std::fs::read_to_string(&out).unwrap(),
+            home.display().to_string()
+        );
+        let _ = std::fs::remove_dir_all(&home);
     }
 }

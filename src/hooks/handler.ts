@@ -55,7 +55,7 @@ import {
 } from "./policy-authority";
 import type { CustomHook } from "./policy-types";
 import { persistHookActivity } from "./hook-activity-store";
-import { isSelfReportToolName, selfReportArgs, SELF_REPORT_SERVER_RECORDS } from "./self-report";
+import { isSelfReportCursorCall, isSelfReportToolName, selfReportArgs, SELF_REPORT_MCP_TOOL_NAME, SELF_REPORT_SERVER_RECORDS } from "./self-report";
 import { deliveryHealth, deliveryHealthLine } from "./delivery-health";
 import { trackHookEvent, flushHookTelemetry } from "./hook-telemetry";
 import * as hookTelemetry from "./hook-telemetry";
@@ -777,6 +777,11 @@ export async function evaluateHookEvent(
     // filter and policy bodies (`ctx.toolName === "Bash"`) see the canonical
     // form. Mutating `parsed.tool_name` keeps the activity store + telemetry
     // tagging consistent (they read from `parsed.tool_name`).
+    // Cursor's MCP hook names our tool `report` and the server separately;
+    // file it under the one name before anything else reads the tool name.
+    if (cli === "cursor" && isSelfReportCursorCall(parsed)) {
+      parsed.tool_name = SELF_REPORT_MCP_TOOL_NAME;
+    }
     const rawToolName = parsed.tool_name as string | undefined;
     const canonicalToolName = canonicalizeToolName(rawToolName, cli);
     if (canonicalToolName !== rawToolName) {
@@ -823,10 +828,16 @@ export async function evaluateHookEvent(
     if (
       isSelfReportToolName(parsed.tool_name) &&
       (canonicalEventType === "PreToolUse" ||
+        (cli === "cursor" && eventType === "beforeMCPExecution") ||
         canonicalEventType === "PermissionRequest" ||
         canonicalEventType === "PostToolUse")
     ) {
-      return recordSelfReportCall(canonicalEventType, cli, parsed, session, arrivedAt, startTime);
+      const outcome = recordSelfReportCall(
+        canonicalEventType === "PostToolUse" || canonicalEventType === "PermissionRequest" ? canonicalEventType : "PreToolUse",
+        cli, parsed, session, arrivedAt, startTime,
+      );
+      // beforeMCPExecution requires a schema-valid answer: anything else blocks the call.
+      return eventType === "beforeMCPExecution" ? { ...outcome, stdout: JSON.stringify({ permission: "allow" }) } : outcome;
     }
 
     const runtimeAgent = readRuntimeAgentIdentity(

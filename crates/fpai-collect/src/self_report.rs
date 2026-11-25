@@ -1199,4 +1199,115 @@ mod tests {
         assert!(leftovers.is_empty());
         let _ = fs::remove_dir_all(home);
     }
+
+    // ── Shared golden files (test-fixtures/self-report/) ───────────────────
+    //
+    // The CLI (src/hooks/self-report*.ts) and the TypeScript SDK test against
+    // the same files, so the description, schema, categories, server-recorded
+    // list and event fields cannot drift between the three implementations.
+
+    fn golden(name: &str) -> String {
+        let path = Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../test-fixtures/self-report")
+            .join(name);
+        fs::read_to_string(&path).unwrap_or_else(|e| panic!("{}: {e}", path.display()))
+    }
+
+    fn golden_lines(name: &str) -> Vec<String> {
+        golden(name)
+            .lines()
+            .filter(|l| !l.is_empty())
+            .map(str::to_string)
+            .collect()
+    }
+
+    #[test]
+    fn golden_description_and_schema() {
+        let cats = default_categories();
+        assert_eq!(describe(&cats, None), golden("description.golden.txt"));
+        assert_eq!(
+            describe(
+                &cats,
+                Some("Report a missing repository as missing_context.")
+            ),
+            golden("description-guidance.golden.txt")
+        );
+        let want: Value = serde_json::from_str(&golden("input-schema.golden.json")).unwrap();
+        assert_eq!(input_schema(&cats), want);
+    }
+
+    #[test]
+    fn golden_default_categories() {
+        let want: Vec<Category> = serde_json::from_str(&golden("categories.golden.json")).unwrap();
+        assert_eq!(default_categories(), want);
+    }
+
+    #[test]
+    fn golden_server_records() {
+        let got: Vec<String> = SERVER_RECORDS.iter().map(|s| s.to_string()).collect();
+        assert_eq!(got, golden_lines("server-records.golden.txt"));
+        for hooked in ["claude", "codex", "cursor"] {
+            assert!(!SERVER_RECORDS.contains(&hooked), "{hooked}");
+        }
+    }
+
+    fn golden_fields() -> (Vec<String>, Vec<String>, Vec<String>) {
+        let spec: Value = serde_json::from_str(&golden("event-fields.golden.json")).unwrap();
+        let list = |k: &str| -> Vec<String> {
+            spec[k]
+                .as_array()
+                .unwrap()
+                .iter()
+                .map(|v| v.as_str().unwrap().to_string())
+                .collect()
+        };
+        (list("order"), list("optional"), list("fallbackExtras"))
+    }
+
+    fn keys(v: &Value) -> std::collections::BTreeSet<String> {
+        v.as_object().unwrap().keys().cloned().collect()
+    }
+
+    #[test]
+    fn golden_event_fields_fallback_writer() {
+        let (order, _, extras) = golden_fields();
+        let home = temp_home("golden-fallback");
+        let report = Report {
+            category: "looping".into(),
+            detail: "Same step again.".into(),
+        };
+        let event = fallback_event(&home, "hermes", Some("/tmp/p"), &report, 1_764_064_800_000);
+        let want: std::collections::BTreeSet<String> =
+            order.iter().chain(extras.iter()).cloned().collect();
+        assert_eq!(keys(&event), want);
+        let _ = fs::remove_dir_all(&home);
+    }
+
+    #[test]
+    fn golden_event_fields_hook_row() {
+        let (order, optional, extras) = golden_fields();
+        let row: crate::sources::hooks::transform::HookRow = serde_json::from_value(json!({
+            "timestamp": 1_764_064_800_000_i64,
+            "sessionId": "s1",
+            "integration": "claude",
+            "eventType": "PreToolUse",
+            "toolName": "mcp__failproofai__report",
+            "decision": "allow",
+            "toolCallId": "toolu_1",
+            "selfReport": {"category": "looping", "detail": "again", "source": "mcp"}
+        }))
+        .unwrap();
+        let events = crate::sources::hooks::transform::to_events(&row, 0, "local");
+        let report = events
+            .iter()
+            .find(|e| e["type"] == "self_report")
+            .expect("a self_report event");
+        let want: std::collections::BTreeSet<String> = order
+            .iter()
+            .chain(optional.iter())
+            .chain(extras.iter())
+            .cloned()
+            .collect();
+        assert_eq!(keys(report), want);
+    }
 }

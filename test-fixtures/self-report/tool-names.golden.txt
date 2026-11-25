@@ -1,0 +1,11 @@
+mcp__failproofai__report
+failproofai___report
+failproofai__report
+failproofai_report
+failproofai.report
+failproofai/report
+failproofai:report
+mcp_failproofai_report
+mcp__failproofai_report
+mcp:failproofai:report
+mcp:failproofai/report

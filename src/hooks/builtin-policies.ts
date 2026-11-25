@@ -1876,6 +1876,12 @@ const SHORT_VALUE_OPTIONS: Record<string, string> = { curl: CURL_VALUE_OPTIONS, 
 /** More letters than a short-option cluster has when written to be read. */
 const MAX_OPTION_CLUSTER = 32;
 
+/** More paths than a glob in a directory component is expanded to on disk; past it, read as reaching the state. */
+const GLOB_DISK_LIMIT = 4096;
+
+/** How many of the words a brace expands to are each read on disk. */
+const MAX_BRACE_WORDS_ON_DISK = 64;
+
 /**
  * The values an option word may carry glued on, each a path the command may
  * write: `--output=<file>`, and the rest of a short-option cluster,
@@ -1927,6 +1933,9 @@ function downloadLandings(words: string[]): Array<{ dir: string; name: string | 
   let named = false;
   let recursive = false;
   let flat = false;
+  let dirGiven = false;
+  // What curl's `-o` / `--output` name, which `--output-dir` also prefixes.
+  const outputs: string[] = [];
   const urls: string[] = [];
   const args = words.slice(1);
   for (let i = 0; i < args.length; i++) {
@@ -1939,7 +1948,10 @@ function downloadLandings(words: string[]): Array<{ dir: string; name: string | 
       const eq = arg.indexOf("=");
       const name = arg.slice(2, eq === -1 ? undefined : eq);
       const value = eq === -1 ? undefined : arg.slice(eq + 1);
-      if (name === "directory-prefix" || name === "output-dir") dir = value ?? args[++i] ?? dir;
+      if (name === "directory-prefix" || name === "output-dir") {
+        dir = value ?? args[++i] ?? dir;
+        dirGiven = true;
+      } else if (head === "curl" && name === "output") outputs.push(value ?? args[++i] ?? "");
       else if (name === "output-document" || name === "spider") named = true;
       else if (name === "remote-name" || name === "remote-name-all") urlNamed = true;
       else if (name === "content-disposition" || name === "remote-header-name" || name === "input-file") serverNamed = true;
@@ -1957,7 +1969,11 @@ function downloadLandings(words: string[]): Array<{ dir: string; name: string | 
         const flag = arg[c];
         if (valueOptions.includes(flag)) {
           const value = c + 1 < arg.length ? arg.slice(c + 1) : args[++i];
-          if (head === "wget" && flag === "P") dir = value ?? dir;
+          if (head === "wget" && flag === "P") {
+            dir = value ?? dir;
+            dirGiven = true;
+          }
+          if (head === "curl" && flag === "o") outputs.push(value ?? "");
           if (head === "wget" && flag === "O") named = true;
           if (head === "wget" && flag === "i") serverNamed = true;
           break;
@@ -1970,9 +1986,13 @@ function downloadLandings(words: string[]): Array<{ dir: string; name: string | 
     }
     urls.push(arg);
   }
-  if (!urlNamed || named || (recursive && !flat)) return [];
-  if (serverNamed || recursive) return [{ dir, name: null }];
-  const landings: Array<{ dir: string; name: string | null }> = [];
+  // curl puts a file `-o` names in `--output-dir` as well: `--output-dir
+  // node_modules/.bin -o failproofai` writes the entry (found by hermes on
+  // FailproofAI/failproofai#1058).
+  const landings: Array<{ dir: string; name: string | null }> =
+    head === "curl" && dirGiven ? outputs.filter((output) => relativeWord(output)).map((name) => ({ dir, name })) : [];
+  if (!urlNamed || named || (recursive && !flat)) return landings;
+  if (serverNamed || recursive) return [...landings, { dir, name: null }];
   for (const url of urls) {
     // The last segment of the path, without the scheme, host, query or
     // fragment, as written and percent-decoded.
@@ -2131,6 +2151,7 @@ function destroysFailproofaiState(command: string, depth = 0, startDir?: string,
     stack: Where[];
     alts: Where[];
     pending: Where[];
+    physical: boolean;
   }> = [];
   const sameWhere = (x: Where, y: Where) => x.dir === y.dir && x.full === y.full && x.lost === y.lost;
   // A directory the walk cannot name: where the shell may be once there are
@@ -2330,18 +2351,80 @@ function destroysFailproofaiState(command: string, depth = 0, startDir?: string,
   // those this line makes: `printf x > bins/failproofai` where `bins` links to
   // `node_modules/.bin`. Only a link counts, so a backup that merely carries a
   // protected name somewhere else (`/tmp/backup/.failproofai`) does not.
+  // Whether a path exists, as `lstat` finds it: a missing name, or one under a
+  // file (`ENOTDIR`), does not.
+  const exists = (path: string): boolean => {
+    try {
+      return lstatSync(path || "/", { throwIfNoEntry: false }) !== undefined;
+    } catch {
+      return false;
+    }
+  };
+  // What a directory holds, read once.
+  const listings = new Map<string, Set<string> | null>();
+  const listingOf = (directory: string): Set<string> | null => {
+    let names = listings.get(directory);
+    if (names === undefined) {
+      try {
+        names = new Set(readdirSync(directory || "/"));
+      } catch {
+        names = null;
+      }
+      listings.set(directory, names);
+    }
+    return names;
+  };
+  // A pattern as the shell expands it against the disk, from directory
+  // `from`: each component with a pattern matched against what the directory
+  // before it holds, a leading `.` only by a pattern that spells one (no
+  // `dotglob`), and the whole path required to exist. `null` past
+  // GLOB_DISK_LIMIT paths.
+  const expandOnDisk = (from: string, pattern: string): string[] | null => {
+    let paths = [from === "/" ? "" : from];
+    let reads = 0;
+    for (const part of pattern.split("/")) {
+      if (part === "" || part === ".") continue;
+      if (part === ".." || !GLOB_METACHAR_RE.test(part)) {
+        paths = paths.map((path) => `${path}/${part}`);
+        continue;
+      }
+      let matcher: RegExp;
+      try {
+        matcher = new RegExp(`^${compileGlobPattern(part)}$`);
+      } catch {
+        return null;
+      }
+      const next: string[] = [];
+      for (const path of paths) {
+        if (++reads > GLOB_DISK_LIMIT / 4) return null;
+        for (const name of listingOf(path) ?? []) {
+          if (name.startsWith(".") && !part.startsWith(".")) continue;
+          if (!matcher.test(name)) continue;
+          next.push(`${path}/${name}`);
+          if (next.length > GLOB_DISK_LIMIT) return null;
+        }
+      }
+      if (next.length === 0) return [];
+      paths = next;
+    }
+    return paths.filter(exists);
+  };
   // A glob expands where its literal directories really are: `cp x bins/fail*`
   // with `bins` a link to `node_modules/.bin`, and `fail*` from a directory
-  // reached through one, both expand onto the entry (found by hermes on
-  // FailproofAI/failproofai#1058). So the directories before the first pattern
-  // are resolved, and the pattern is read from there.
-  const globLandsOnState = (written: string): boolean => {
-    const parts = written.split("/");
+  // reached through one, both expand onto the entry. So the directories before
+  // the first pattern are resolved, and the pattern is read from there. A
+  // pattern in a directory component (`b*/failproofai`) is expanded on disk as
+  // the shell expands it and each path it reaches resolved, and each word a
+  // brace expands to is read the same way (found by hermes on
+  // FailproofAI/failproofai#1058).
+  const patternLandsOnState = (word: string): boolean => {
+    const parts = word.split("/");
     const first = parts.findIndex((part) => GLOB_METACHAR_RE.test(part));
     if (first === -1) return false;
     const prefix = first === 0 ? "" : parts.slice(0, first).join("/") || "/";
     const pattern = parts.slice(first).join("/");
     if (/[$`]/.test(prefix)) return false;
+    const inDirectory = parts.slice(first, -1).some((part) => GLOB_METACHAR_RE.test(part));
     return [at, ...alts].some((base) => {
       const raw =
         prefix === ""
@@ -2353,8 +2436,23 @@ function destroysFailproofaiState(command: string, depth = 0, startDir?: string,
       const real = realPath(raw);
       if (real === ELOOP) return true;
       if (typeof real !== "string") return lostNamesState({ via: real.via, lost: real.lost === "" ? pattern : `${real.lost}/${pattern}` });
-      return real !== shellPath(undefined, raw) && namesState(`${real === "/" ? "" : real}/${pattern}`);
+      if (real !== shellPath(undefined, raw) && namesState(`${real === "/" ? "" : real}/${pattern}`)) return true;
+      if (!inDirectory) return false;
+      const matches = expandOnDisk(real, pattern);
+      if (matches === null) return true;
+      return matches.some((match) => {
+        const reached = realPath(match);
+        return reached === ELOOP ? true : typeof reached !== "string" ? lostNamesState(reached) : namesState(reached);
+      });
     });
+  };
+  const globLandsOnState = (written: string): boolean => {
+    const words = expandBraces(written);
+    for (let w = 0; w < words.length && w < MAX_BRACE_WORDS_ON_DISK; w++) {
+      const word = words[w];
+      if (GLOB_METACHAR_RE.test(word) ? patternLandsOnState(word) : word !== written && landsOnState(word)) return true;
+    }
+    return false;
   };
   const landsOnState = (written: string): boolean =>
     realPathsOf(written).some(({ plain, real }) =>
@@ -2364,17 +2462,25 @@ function destroysFailproofaiState(command: string, depth = 0, startDir?: string,
   const namesHere = (text: string): boolean => namesState(text) || resolvesOntoState(text) || landsOnState(text);
   // From a directory the agent may have run the line in without saying so
   // (`anywhere`), a relative destination that would be the entry, or the
-  // package, if that directory were npm's bin directory or a `node_modules`:
-  // `printf … > failproofai`, `../failproofai`, `failproofai/dist/cli.mjs`.
+  // package, wherever that directory is: `printf … > failproofai`, and through
+  // any directory on the way, since one there may be a link into a bin
+  // directory or a `node_modules` that no lstat can see from here
+  // (`bins/failproofai`, `deps/failproofai/dist/cli.mjs`; found by hermes on
+  // FailproofAI/failproofai#1058).
   const anywhereHere = (): boolean => at.anywhere === true || alts.some((base) => base.anywhere === true);
   const plantsAnywhere = (written: string): boolean => {
     if (!relativeWord(written) || /[$`]/.test(written)) return false;
-    const path = written.replace(/[\\/]+$/, "");
-    const slash = Math.max(path.lastIndexOf("/"), path.lastIndexOf("\\"));
-    return (
-      AS_IF_INSTALLED.some((dir) => FAILPROOFAI_CODE_PATH_RE.test(dir + path)) ||
-      (couldBeEntryName(path.slice(slash + 1)) && /^(?:\.\.?[\\/]+)*$/.test(path.slice(0, slash + 1)))
-    );
+    const parts = written.replace(/[\\/]+$/, "").split(/[\\/]+/);
+    if (couldBeEntryName(parts[parts.length - 1])) return true;
+    // The package is read from each component that could start it, a few at most.
+    let tried = 0;
+    for (let i = 0; i < parts.length && tried < 16; i++) {
+      if (!/^(?:failproof|\.pnpm$|@failproofai$)/i.test(parts[i])) continue;
+      tried++;
+      const rest = parts.slice(i).join("/");
+      if (AS_IF_INSTALLED.some((dir) => FAILPROOFAI_CODE_PATH_RE.test(dir + rest))) return true;
+    }
+    return false;
   };
   // What a simple command writes that its options or operands name, read from
   // such a directory: an output flag's value, separate or glued (`curl -o`,
@@ -2388,6 +2494,9 @@ function destroysFailproofaiState(command: string, depth = 0, startDir?: string,
     const operands = args.filter((arg) => !arg.startsWith("-"));
     if (OPERAND_WRITE_COMMANDS.has(head) && operands.some(plantsAnywhere)) return true;
     if (SECOND_OPERAND_WRITERS.has(head) && operands.length > 1 && plantsAnywhere(operands[operands.length - 1])) return true;
+    // A copy's destination into the package (`deps/failproofai/dist/cli.mjs`);
+    // where its sources land by name is judged with the other landings.
+    if (COPY_COMMANDS.has(head) && operands.length > 1 && plantsAnywhere(operands[operands.length - 1])) return true;
     if (head === "dd" && args.some((arg) => arg.startsWith("of=") && plantsAnywhere(arg.slice(3)))) return true;
     return args.some((arg, i) => {
       const long = /^--(?:output|out)[\w-]*(=)?/.exec(arg);
@@ -2411,18 +2520,9 @@ function destroysFailproofaiState(command: string, depth = 0, startDir?: string,
   // nothing can only reach one through a link: one this line made, or one on
   // disk under a first component that exists, which each directory's listing,
   // read once, answers.
-  const listings = new Map<string, Set<string> | null>();
   const existsIn = (directory: string, name: string): boolean => {
-    let names = listings.get(directory);
-    if (names === undefined) {
-      try {
-        names = new Set(readdirSync(directory));
-      } catch {
-        names = null;
-      }
-      listings.set(directory, names);
-    }
-    return names === null ? lstatSync(`${directory}/${name}`, { throwIfNoEntry: false }) !== undefined : names.has(name);
+    const names = listingOf(directory);
+    return names === null ? exists(`${directory}/${name}`) : names.has(name);
   };
   const gluedValueNamesHere = (value: string): boolean => {
     if (/failproof|\.\.|[$~]|[*?[{]|[@+!]\(/i.test(value) || links.size > 0 || value.startsWith("/")) {
@@ -2781,7 +2881,7 @@ function destroysFailproofaiState(command: string, depth = 0, startDir?: string,
         // there moves nothing the rest of the line sees.
         if (simpleCommands.length === 1) {
           if (parenDepth > 0) {
-            scopes.push({ depth: parenDepth, at, previous, stack: dirStack.slice(), alts: alts.slice(), pending: pending.slice() });
+            scopes.push({ depth: parenDepth, at, previous, stack: dirStack.slice(), alts: alts.slice(), pending: pending.slice(), physical: physicalMoves });
           }
           moveShell(head, words.slice(1), expanded.slice(1));
         }
@@ -2841,6 +2941,11 @@ function destroysFailproofaiState(command: string, depth = 0, startDir?: string,
       } else if (head === "ln" && simpleCommands.length === 1) {
         recordLink(expanded.slice(1));
       } else if (head === "set" && simpleCommands.length === 1) {
+        // Inside `( … )` it is the subshell's setting only, put back when it
+        // closes (found by hermes on FailproofAI/failproofai#1058).
+        if (parenDepth > 0) {
+          scopes.push({ depth: parenDepth, at, previous, stack: dirStack.slice(), alts: alts.slice(), pending: pending.slice(), physical: physicalMoves });
+        }
         for (let i = 1; i < words.length; i++) {
           if (/^[-+][A-Za-z]+$/.test(words[i]) && words[i].includes("P")) physicalMoves = words[i][0] === "-";
           else if ((words[i] === "-o" || words[i] === "+o") && words[i + 1] === "physical") physicalMoves = words[i] === "-o";
@@ -2859,6 +2964,7 @@ function destroysFailproofaiState(command: string, depth = 0, startDir?: string,
         previous = scope.previous;
         alts = scope.alts;
         pending = scope.pending;
+        physicalMoves = scope.physical;
         dirStack.splice(0, dirStack.length, ...scope.stack);
         cwdInState = at.inState;
         cdParenDepth = cwdInState ? parenDepth : null;
@@ -4054,6 +4160,19 @@ const TEXT_READERS = new Set([
 const HARMLESS_OUTPUT_RE = /^(?:&\d*-?|\/dev\/(?:null|stdout|stderr|tty))$/;
 
 /**
+ * Commands that run a file or text they are handed: shells, interpreters and
+ * what runs a command for you. A line with one of these, or a command named by
+ * a path (`./notes.md`), may run a file it has just printed into.
+ */
+const RUNS_FILES = new Set([
+  "sh", "bash", "zsh", "dash", "ksh", "mksh", "fish", "csh", "tcsh", "busybox", "source", ".", "eval", "xargs", "env",
+  "nohup", "timeout", "sudo", "doas", "su", "nice", "ionice", "chroot", "setsid", "stdbuf", "watch", "script",
+  "expect", "python", "python2", "python3", "node", "nodejs", "deno", "bun", "bunx", "npx", "pnpx", "perl", "ruby",
+  "php", "lua", "tclsh", "Rscript", "osascript", "pwsh", "powershell", "awk", "gawk", "mawk", "make", "chmod",
+  "crontab", "at", "batch", "systemd-run",
+]);
+
+/**
  * Commands after which what a line prints may be run or kept to run: a
  * compound command (`for … do echo '…'; done | sh`), a function or alias
  * definition that can stand in for `echo`, and `exec`, which redirects the
@@ -4153,8 +4272,14 @@ function blankPrintedRedirects(command: string): string {
   let bare = "";
   for (let i = 0; i < command.length; i++) bare += text[i] ? " " : command[i];
   if (/\w\s*\(\s*\)/.test(bare)) return command;
+  // Each piece's command word, past any assignments in front of it.
+  const commandOf = (from: number, to: number): string =>
+    bare.slice(from, to).trim().split(/\s+/).find((word) => !/^[A-Za-z_]\w*=/.test(word)) ?? "";
+  let runsFiles = false;
   for (const { start: from, end: to } of pieces) {
-    if (RUNS_PRINTED_TEXT.has(bare.slice(from, to).trim().split(/\s+/)[0])) return command;
+    const word = commandOf(from, to);
+    if (RUNS_PRINTED_TEXT.has(word)) return command;
+    if (RUNS_FILES.has(word) || word.includes("/")) runsFiles = true;
   }
 
   // Whether a piece stands alone at the top of the line with only harmless
@@ -4170,7 +4295,10 @@ function blankPrintedRedirects(command: string): string {
       while (j < to && /[ \t]/.test(command[j])) j++;
       let target = duplicate ? "&" : "";
       for (; j < to && !/\s/.test(command[j]); j++) if (command[j] !== "'" && command[j] !== '"') target += command[j];
-      if (!HARMLESS_OUTPUT_RE.test(target)) return undefined;
+      // Into a file, as documentation is, unless something on the line may
+      // run what it holds (`echo '…' > notes.md` stays text; `… && sh notes.md`
+      // does not).
+      if (!HARMLESS_OUTPUT_RE.test(target) && (runsFiles || target === "" || target.startsWith("&"))) return undefined;
       k = j - 1;
     }
     const words = shellWords(command.slice(from, to));
@@ -4189,7 +4317,7 @@ function blankPrintedRedirects(command: string): string {
     let readers = true;
     for (let q = p + 1; q <= last && readers; q++) {
       const reader = plain(pieces[q].start, pieces[q].end);
-      readers = reader !== undefined && TEXT_READERS.has(reader);
+      readers = reader !== undefined && (TEXT_READERS.has(reader) || (reader === "tee" && !runsFiles));
     }
     if (!readers) continue;
     for (let k = pieces[p].start; k < pieces[last].end; k++) if (text[k] && (command[k] === ">" || command[k] === "<")) out[k] = "_";

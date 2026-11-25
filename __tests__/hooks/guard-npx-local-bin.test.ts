@@ -362,6 +362,8 @@ describe("block-failproofai-commands — the entry a project-scope npx hook runs
       ["a project file named after the product", "/work/proj/scripts/failproofai.sh"],
       ["a directory of that name under .bin", "/work/proj/.bin/failproofai/README.md"],
       ["a file under a directory whose name ends in .bin", "/data/firmware.bin/failproofai"],
+      // Anything in front of `.bin` in the same component makes it another name.
+      ["a fixture under a directory named fixture+.bin", "/work/proj/fixture+.bin/failproofai"],
     ])("allows writing %s", async (_label, path) => {
       expect((await write(path)).decision).toBe("allow");
     });

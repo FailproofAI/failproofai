@@ -4555,7 +4555,9 @@ function blockFailproofaiCommands(ctx: PolicyContext): PolicyResult {
   // completely as `rm -rf` does — and the machine still reads as fresh, so
   // fail-closed never fires. Reading is not offered by these tools' write half,
   // so naming the state at all is the whole test.
-  if (ctx.toolName === "Write" || ctx.toolName === "Edit" || ctx.toolName === "NotebookEdit") {
+  // `apply_patch` is a patch tool under its own name: OpenClaw passes its own
+  // through uncanonicalized, where Codex's arrives as `Edit`.
+  if (ctx.toolName === "Write" || ctx.toolName === "Edit" || ctx.toolName === "NotebookEdit" || ctx.toolName === "apply_patch") {
     // The path the tool names, and every file a patch it carries names.
     const paths = [getFilePath(ctx) || ((ctx.toolInput?.notebook_path as string) ?? ""), ...patchTargets(ctx.toolInput)];
     // A patch's relative paths are read from the session's directory, and

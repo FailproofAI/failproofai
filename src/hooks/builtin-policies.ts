@@ -855,7 +855,12 @@ function gitOperandsNameTarget(
  * the shell stands is unknown, the chain stays relative, which the shapes
  * still read. A `-C` after the subcommand is that subcommand's own option.
  */
-function gitRepositoryDirs(gitWords: string[], cwds: ReadonlyArray<string | undefined>): string[] {
+function gitRepositoryDirs(
+  gitWords: string[],
+  cwds: ReadonlyArray<string | undefined>,
+  /** The texts a word built by expansions may become, or null; `-C "$D"` is each of them. */
+  valuesOf: (word: string) => string[] | null = () => null,
+): string[] {
   const chain: string[] = [];
   const at = gitWords.findIndex((word) => commandBasename(word) === "git");
   for (let i = at + 1; at !== -1 && i < gitWords.length; i++) {
@@ -868,14 +873,20 @@ function gitRepositoryDirs(gitWords: string[], cwds: ReadonlyArray<string | unde
     if (!word.startsWith("-")) break;
   }
   if (chain.length === 0) return [];
+  // Each `-C` as every text it may be, a few chains at most.
+  let chains: string[][] = [[]];
+  for (const step of chain) {
+    const forms = /[$`]/.test(step) ? valuesOf(step) ?? [step] : [step];
+    chains = chains.flatMap((walked) => forms.map((form) => [...walked, form])).slice(0, 16);
+  }
   const dirs = new Set<string>();
-  for (const cwd of cwds) {
+  for (const steps of chains) for (const cwd of cwds) {
     // As text, and as chdir walks it: `-C link/..` with `link -> ~/.claude/x`
     // is ~/.claude to git, whatever the text says.
     for (const physical of [false, true]) {
       let dir: string | undefined = cwd;
       let relativeChain = "";
-      for (const step of chain) {
+      for (const step of steps) {
         const literal = !/[$`]/.test(step);
         const walked = physical && literal ? physicalAgentPath(step, dir) : null;
         const next = walked ?? cdDestination(dir, step);
@@ -1806,7 +1817,7 @@ function simpleCommandDestroys(
     const gitWords = quoteAwareCommandWords(rawSimple).words;
     // A relative output path lands in the repository `-C` names, joined as
     // written so a `..` after a link there is walked the way the kernel does.
-    const repositories = gitRepositoryDirs(gitWords, cwds);
+    const repositories = gitRepositoryDirs(gitWords, cwds, valuesOfWord);
     const namesInRepository = (text: string): boolean =>
       namesState(text) || (isRelativeShellWord(text) && repositories.some((repository) => namesState(`${repository}/${text}`)));
     // Output files, whatever the subcommand: `git log --output=<file>` writes
@@ -3034,8 +3045,9 @@ function gitReachesTarget(
   gitWords: string[],
   cwds: ReadonlyArray<string | undefined>,
   names: (text: string) => boolean,
+  valuesOf: (word: string) => string[] | null = () => null,
 ): boolean {
-  const repositories = gitRepositoryDirs(gitWords, cwds);
+  const repositories = gitRepositoryDirs(gitWords, cwds, valuesOf);
   if (repositories.length === 0) return false;
   if (repositories.some((repository) => names(repository))) return true;
   return gitWords.some((word) => {
@@ -3132,13 +3144,23 @@ function destroysFailproofaiState(command: string): boolean {
  * does reads as reaching the target: a limit never stands for "no match".
  */
 interface DiskGlobBudget {
-  listings: Map<string, string[] | null>;
+  listings: Map<string, Array<{ name: string; dir: boolean }> | null>;
   /** Directory entries read from disk. */
   entries: number;
   /** Entries matched against a pattern, cached listings included. */
   steps: number;
   /** Expanded paths handed to the caller's check. */
   checks: number;
+}
+
+/** The shell options that change what a glob matches, as far as the command turns them on. */
+interface GlobOptions {
+  /** `*` and `?` match a leading dot (`shopt -s dotglob`, or GLOBIGNORE set). */
+  dotglob: boolean;
+  /** `**` matches any depth of directories (`shopt -s globstar`). */
+  globstar: boolean;
+  /** Matching ignores case (`shopt -s nocaseglob`). */
+  nocaseglob: boolean;
 }
 
 /** A glob segment with each extended-glob group replaced by `*`, which matches at least what the group does. */
@@ -3160,17 +3182,37 @@ function withExtglobsAsStars(segment: string): string {
  * Whether a glob word, expanded on disk as the shell expands it, reaches a
  * path `reaches` accepts: braces first, then each segment with glob
  * characters matched against the entries of its directory — a leading dot
- * only by a pattern that starts with one — relative to `cwd` when relative.
- * Every path it expands to is checked, however many there are, within the
- * command's budget; "exhausted" past it, and for a segment this cannot match
- * (an extended glob), which the caller reads as reaching the target.
+ * only by a pattern that starts with one unless dotglob is on, `**` at any
+ * depth under globstar — relative to `cwd` when relative. Paths are joined as
+ * written, never normalised, so a `..` after a link is walked the way the
+ * kernel walks it. Every path a glob expands to is checked, however many,
+ * within the command's budget; "exhausted" past it, which the caller reads as
+ * reaching the target.
  */
 function globOnDiskReaches(
   word: string,
   cwd: string | undefined,
   budget: DiskGlobBudget,
+  options: GlobOptions,
   reaches: (path: string) => boolean,
 ): boolean | "exhausted" {
+  const join = (base: string, name: string): string => (base.endsWith("/") ? base + name : `${base}/${name}`);
+  const list = (base: string): Array<{ name: string; dir: boolean }> | null | "exhausted" => {
+    let entries = budget.listings.get(base);
+    if (entries === undefined) {
+      try {
+        entries = readdirSync(base, { withFileTypes: true }).map((entry) => ({ name: entry.name, dir: entry.isDirectory() }));
+      } catch {
+        entries = null;
+      }
+      budget.listings.set(base, entries);
+      budget.entries -= entries?.length ?? 0;
+      if (budget.entries < 0) return "exhausted";
+    }
+    if (entries === null) return null;
+    budget.steps -= entries.length;
+    return budget.steps < 0 ? "exhausted" : entries;
+  };
   for (const expanded of expandBraces(word)) {
     let path = expanded === "~" || expanded.startsWith("~/") ? homedir() + expanded.slice(1) : expanded;
     if (!path.startsWith("/")) {
@@ -3188,34 +3230,45 @@ function globOnDiskReaches(
       }
       const segment = segments[k];
       if (!GLOB_METACHAR_RE.test(segment)) {
-        pending.push([posix.join(base, segment), k + 1]);
+        pending.push([join(base, segment), k + 1]);
+        continue;
+      }
+      if (segment === "**" && options.globstar) {
+        // Zero directories here, or one more and `**` again below it.
+        pending.push([base, k + 1]);
+        const entries = list(base);
+        if (entries === "exhausted") return "exhausted";
+        for (const entry of entries ?? []) {
+          if (entry.dir && (options.dotglob || !entry.name.startsWith("."))) pending.push([join(base, entry.name), k]);
+        }
         continue;
       }
       // An extended glob matches no more than a `*` in its place would: that
       // superset is what is checked.
-      const atoms = globAtoms(segment) ?? globAtoms(withExtglobsAsStars(segment));
+      const pattern = options.nocaseglob ? segment.toLowerCase() : segment;
+      const atoms = globAtoms(pattern) ?? globAtoms(withExtglobsAsStars(pattern));
       if (!atoms) return "exhausted";
-      let entries = budget.listings.get(base);
-      if (entries === undefined) {
-        try {
-          entries = readdirSync(base);
-        } catch {
-          entries = null;
-        }
-        budget.listings.set(base, entries);
-        budget.entries -= entries?.length ?? 0;
-        if (budget.entries < 0) return "exhausted";
-      }
-      if (entries === null) continue;
-      budget.steps -= entries.length;
-      if (budget.steps < 0) return "exhausted";
-      for (const entry of entries) {
-        if (entry.startsWith(".") && !segment.startsWith(".")) continue;
-        if (globSegmentMatches(atoms, entry)) pending.push([posix.join(base, entry), k + 1]);
+      const entries = list(base);
+      if (entries === "exhausted") return "exhausted";
+      for (const entry of entries ?? []) {
+        if (entry.name.startsWith(".") && !segment.startsWith(".") && !options.dotglob) continue;
+        if (globSegmentMatches(atoms, options.nocaseglob ? entry.name.toLowerCase() : entry.name)) pending.push([join(base, entry.name), k + 1]);
       }
     }
   }
   return false;
+}
+
+/**
+ * An assignment's value as the variable resolver reads it: its quotes off,
+ * and a single-quoted one with its `$`, backticks and backslashes escaped,
+ * because the shell expands nothing inside single quotes: `B='$A'` holds the
+ * text `$A`.
+ */
+function assignedValueText(raw: string): string {
+  const single = /^'([\s\S]*)'$/.exec(raw);
+  if (single) return single[1].replace(/[\\$`]/g, "\\$&");
+  return raw.replace(/^"([\s\S]*)"$/, "$1");
 }
 
 /** A shell word with one pair of outer quotes taken off, expansions left in. */
@@ -3643,14 +3696,14 @@ function destroysProtectedPath(command: string, target: ProtectedPathTarget, dep
   // a shell evaluating them top to bottom.
   const assignments: Array<readonly [string, string]> = [
     ...lexed.readable.matchAll(/(?:^|[\s;&|(])(?:export\s+)?([A-Za-z_][A-Za-z0-9_]*)=("[^"]*"|'[^']*'|[^\s;&|)(][^\s;&|)]*)/g),
-  ].map(([, name, value]) => [name, value.replace(/^["']|["']$/g, "")] as const);
+  ].map(([, name, value]) => [name, assignedValueText(value)] as const);
   // `A+=x` appends to A, the way `A=${A}x` does; `A=(x y)` and `A+=(z)` give
   // an array whose every element may be the one a reference reads.
   for (const [, name, value] of lexed.readable.matchAll(/(?:^|[\s;&|(])([A-Za-z_][A-Za-z0-9_]*)\+=("[^"]*"|'[^']*'|[^\s;&|)(][^\s;&|)]*)/g)) {
-    assignments.push([name, `\${${name}}${value.replace(/^["']|["']$/g, "")}`]);
+    assignments.push([name, `\${${name}}${assignedValueText(value)}`]);
   }
   for (const [, name, elements] of lexed.readable.matchAll(/(?:^|[\s;&|(])([A-Za-z_][A-Za-z0-9_]*)\+?=\(([^()]*)\)/g)) {
-    for (const element of quoteAwareWords(elements).slice(0, 64)) assignments.push([name, element.replace(/^["']|["']$/g, "")]);
+    for (const element of quoteAwareWords(elements).slice(0, 64)) assignments.push([name, assignedValueText(element)]);
   }
   // And the other ways a line gives a variable a value it writes out: a
   // substitution whose output the text decides (`A=$(echo cfg.json)`), a
@@ -3661,7 +3714,7 @@ function destroysProtectedPath(command: string, target: ProtectedPathTarget, dep
     if (output !== null) assignments.push([name, output]);
   }
   for (const [, name, list] of lexed.readable.matchAll(/(?:^|[\s;&|(])(?:for|select)\s+([A-Za-z_][A-Za-z0-9_]*)\s+in\s+([^;\n]*?)\s*[;\n]\s*do(?=[\s;]|$)/g)) {
-    for (const word of quoteAwareWords(list).slice(0, 64)) assignments.push([name, withoutOuterQuotes(word)]);
+    for (const word of quoteAwareWords(list).slice(0, 64)) assignments.push([name, assignedValueText(word)]);
   }
   for (const [, options, here] of lexed.readable.matchAll(/(?:^|[\s;&|(])read((?:[ \t]+[^\s;&|<>]+)*?)[ \t]*<<<[ \t]*("[^"]*"|'[^']*'|[^\s;&|)]+)/g)) {
     const value = withoutOuterQuotes(here);
@@ -3687,6 +3740,9 @@ function destroysProtectedPath(command: string, target: ProtectedPathTarget, dep
     if (!flags.includes("n")) continue;
     for (const [, name, ref] of rest.matchAll(/([A-Za-z_][A-Za-z0-9_]*)=([A-Za-z_][A-Za-z0-9_]*)/g)) assignments.push([name, `\${${ref}}`]);
   }
+  // A text whose quotes are already gone reads `B='$A'` as `B=$A`: there the
+  // raw pass, which sees the quoting, is the one that reads variables.
+  if (unescapedPass) assignments.length = 0;
   const stateVars = new Set<string>();
   const assignedValues = new Map<string, string[]>();
   // A variable given more values than are kept is not known: the value that
@@ -3763,18 +3819,19 @@ function destroysProtectedPath(command: string, target: ProtectedPathTarget, dep
       }
       return true;
     };
+    // A value naming the variable itself is also what it gives while the
+    // variable is unset: `A=${A:-cfg.json}` is cfg.json, while `PATH=$PATH:/x`
+    // and `F=${F}oks` give nothing there.
     for (const value of raw) {
-      if (!namesSelf(value) && !keep(expandValue(value, name, undefined))) return COMPLEX;
+      if (!keep(expandValue(value, name, undefined))) return COMPLEX;
     }
-    // Appends to a value no assignment here gives (`PATH=$PATH:/x`) stay unknown.
-    if (values.size === 0) return null;
     for (const value of raw) {
       if (!namesSelf(value)) continue;
       for (const previous of [...values]) {
         if (!keep(expandValue(value, name, previous))) return COMPLEX;
       }
     }
-    return [...values];
+    return values.size === 0 ? null : [...values];
   };
   const resolvedValues = (name: string): string[] | null => {
     const values = resolveVariable(name);
@@ -3849,6 +3906,17 @@ function destroysProtectedPath(command: string, target: ProtectedPathTarget, dep
   // `cfg.json -> ~/.claude/settings.json`, `*.json` writes the settings.
   const diskGlobs = new Map<string, boolean>();
   const diskGlobBudget: DiskGlobBudget = { listings: new Map(), entries: 262_144, steps: 1_048_576, checks: 32_768 };
+  // The options anywhere in the command that change what a glob matches:
+  // turned on in it, a glob after them may match more.
+  const globOptions: GlobOptions = {
+    dotglob: /\bdotglob\b|\bGLOBIGNORE=/.test(command),
+    globstar: /\bglobstar\b/.test(command),
+    nocaseglob: /\bnocaseglob\b/.test(command),
+  };
+  // Each path a glob expands to, by name and through links: `physical/../x`
+  // with `physical -> ~/.claude/subdir` is ~/.claude/x.
+  const expandedReaches = (path: string): boolean =>
+    target.namesLiteral(path) || target.namesLiteral(posix.normalize(path)) || target.namesThroughLinks!(path, undefined);
   const globReachesThroughLinks = (glob: string): boolean => {
     if (!target.namesThroughLinks) return false;
     return walkCwds.some((cwd) => {
@@ -3856,7 +3924,7 @@ function destroysProtectedPath(command: string, target: ProtectedPathTarget, dep
       let hit = diskGlobs.get(key);
       if (hit === undefined) {
         // Past the budget the command was built to stall the guard.
-        hit = globOnDiskReaches(glob, cwd, diskGlobBudget, (path) => target.namesThroughLinks!(path, undefined)) !== false;
+        hit = globOnDiskReaches(glob, cwd, diskGlobBudget, globOptions, expandedReaches) !== false;
         diskGlobs.set(key, hit);
       }
       return hit;
@@ -3975,6 +4043,10 @@ function destroysProtectedPath(command: string, target: ProtectedPathTarget, dep
   }
 
   let cwdInState = false;
+  // Whether the walk has lost track of where the shell stands because it may
+  // stand in too many places: a relative destination may then be anywhere,
+  // the target included, until a `cd` lands it somewhere known again.
+  let cwdLost = false;
   // How deep in `( … )` the walk is. A `cd`, `pushd` or `popd` inside a
   // subshell moves the subshell only, so where the shell stood — its
   // directory, its `pushd` stack, and whether that was inside the target —
@@ -3988,6 +4060,7 @@ function destroysProtectedPath(command: string, target: ProtectedPathTarget, dep
     cwds: ReadonlyArray<string | undefined>;
     olds: ReadonlyArray<string | undefined>;
     inState: boolean;
+    lost: boolean;
     dirs: DirStack;
   }> = [];
   // A loop header hands its word list to the body, and the body is a separate
@@ -3999,7 +4072,7 @@ function destroysProtectedPath(command: string, target: ProtectedPathTarget, dep
   // when the walk has lost track of where the shell stands, every relative
   // destination counts: `cd $D && cp x policies-config.json`.
   const namesHere = (text: string): boolean =>
-    namesState(text) || (cwdInState && walkCwds.includes(undefined) && isRelativeShellWord(bareToken(text)));
+    namesState(text) || ((cwdInState || cwdLost) && walkCwds.includes(undefined) && isRelativeShellWord(bareToken(text)));
   // The walk SPLITS the splittable text and READS the readable one: both keep
   // every offset, so each piece of one is the same piece of the other. Comments
   // and stored heredoc bodies are blank in both; separators inside a quoted
@@ -4010,7 +4083,7 @@ function destroysProtectedPath(command: string, target: ProtectedPathTarget, dep
     const pipeline = readable.slice(pipelineStart, pipelineEnd);
     const splitPipeline = splittable.slice(pipelineStart, pipelineEnd);
     if (!pipeline.trim()) continue;
-    const reachesState = namesState(pipeline) || cwdInState || loopCarriesState;
+    const reachesState = namesState(pipeline) || cwdInState || cwdLost || loopCarriesState;
     if (reachesState && LOOP_HEADER_RE.test(splitPipeline)) loopCarriesState = true;
     if (/(?:^|\s)done(?:\s|$)/.test(splitPipeline)) loopCarriesState = false;
 
@@ -4044,7 +4117,7 @@ function destroysProtectedPath(command: string, target: ProtectedPathTarget, dep
         // in the shell itself and bash does not, so after that one the shell
         // may stand in either place.
         if (simpleIndex === simples.length - 1) {
-          if (parenDepth > 0) cwdScopes.push({ depth: parenDepth, cwds: walkCwds, olds: oldCwds, inState: cwdInState, dirs: dirStack });
+          if (parenDepth > 0) cwdScopes.push({ depth: parenDepth, cwds: walkCwds, olds: oldCwds, inState: cwdInState, lost: cwdLost, dirs: dirStack });
           const before = walkCwds;
           let after: ReadonlyArray<string | undefined> = before;
           let mayFail = false;
@@ -4134,10 +4207,14 @@ function destroysProtectedPath(command: string, target: ProtectedPathTarget, dep
           // `cd -` may still return to where an earlier `cd` left.
           oldCwds = mayFail ? [...new Set([...before, ...oldCwds])] : after === before ? oldCwds : before;
           walkCwds = [...new Set(mayFail || simples.length > 1 ? [...after, ...before] : after)];
-          // A handful of places is plenty; past that, the walk stops naming them.
-          if (walkCwds.length > 4) {
-            cwdInState ||= walkCwds.some((dir) => dir !== undefined && namesState(dir));
+          // Past a few places the walk stops naming them, and a relative
+          // destination may then be in any of them, the target included: from
+          // there on every one counts, until a `cd` lands somewhere known.
+          if (walkCwds.length > 16) {
+            cwdLost = true;
             walkCwds = [undefined];
+          } else if (walkCwds.every((dir) => dir !== undefined)) {
+            cwdLost = false;
           }
         }
       } else if (reachesState && simpleIndex > 0 && quoteAwareCommandWords(simple).readsStdinProgram) {
@@ -4145,7 +4222,7 @@ function destroysProtectedPath(command: string, target: ProtectedPathTarget, dep
         // `echo 'rm -rf ~/.claude' | sh`. Whatever names the target upstream is
         // its program.
         return true;
-      } else if ((reachesState || (head === "git" && gitReachesTarget(quoteAwareCommandWords(simple).words, walkCwds, namesHere))) && words.length > 0) {
+      } else if ((reachesState || (head === "git" && gitReachesTarget(quoteAwareCommandWords(simple).words, walkCwds, namesHere, valuesOfWord))) && words.length > 0) {
         // `xargs` hands the paths on its stdin to the command after it, so a
         // copy or a `tee` fed by `echo <path> |` names its destination nowhere
         // in its own words. Judged like `find -exec`: only a reader is safe.
@@ -4153,7 +4230,7 @@ function destroysProtectedPath(command: string, target: ProtectedPathTarget, dep
         if (quoteAwareCommandWords(simple).viaXargs && !SAFE_EXEC_COMMANDS.has(head)) return true;
         // Judged BEFORE the closing parenthesis is counted: a `rm -rf ./*)`
         // still runs inside the subshell it closes.
-        if (simpleCommandDestroys(words, namesHere, target, simple, cwdInState, walkCwds, valuesOfWord)) return true;
+        if (simpleCommandDestroys(words, namesHere, target, simple, cwdInState || cwdLost, walkCwds, valuesOfWord)) return true;
       }
       parenDepth -= (splitSimple.match(/\)/g) ?? []).length;
       while (cwdScopes.length > 0 && parenDepth < cwdScopes[cwdScopes.length - 1].depth) {
@@ -4161,6 +4238,7 @@ function destroysProtectedPath(command: string, target: ProtectedPathTarget, dep
         walkCwds = scope.cwds;
         oldCwds = scope.olds;
         cwdInState = scope.inState;
+        cwdLost = scope.lost;
         dirStack = scope.dirs;
       }
     }

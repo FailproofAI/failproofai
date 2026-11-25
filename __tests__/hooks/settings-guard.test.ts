@@ -1399,6 +1399,59 @@ describe("block-failproofai-commands — review round seven", () => {
     expect(await decide(`printf '{}' > ${join(actual, "notes.json")}`)).toBe("allow");
   });
 
+  // hermes round 9.
+  it("bounds the values self-appends and doubling references can build, in time too", async () => {
+    const appends = (n: number) => ["A=x", ...Array.from({ length: n }, (_, i) => `A=\${A}x${i}`)].join("; ") + `; cp a "$A"`;
+    const doubling = (n: number) => ["A=x", ...Array.from({ length: n }, () => "A=${A}${A}")].join("; ") + `; cp a "$A"`;
+    const chained = (n: number) =>
+      ["B0=x", ...Array.from({ length: n }, (_, i) => `B${i + 1}=\${B${i}}\${B${i}}`)].join("; ") + `; cp a "$B${n}"`;
+    const started = performance.now();
+    // More values, or a longer one, than any real command builds count as
+    // naming the target; building them stops at the limit.
+    expect(await bashDecision(appends(24), p7)).toBe("deny");
+    expect(await bashDecision(appends(63), p7)).toBe("deny");
+    expect(await bashDecision(doubling(40), p7)).toBe("deny");
+    expect(await bashDecision(chained(40), p7)).toBe("deny");
+    expect(performance.now() - started).toBeLessThan(2000);
+    // Appends still resolve, and a long value as written is not one that grew.
+    expect(await bash(`cd sub; A=cf; A=\${A}g.json; cp /tmp/evil.json "$A"`, p7)).toBe(true);
+    expect(await bashDecision(`X=${"y".repeat(5000)}; cp a "$X"`, p7)).toBe("allow");
+  });
+
+  it("keeps a variable's known values beside one that cannot be known", async () => {
+    // A name that is a settings link only where the shell has moved to.
+    mkdirSync(join(p7, "sub9"), { recursive: true });
+    symlinkSync(settings(), join(p7, "sub9", "cfg9.json"));
+    expect(await bash(`cd sub9; A=cfg9.json; A=$(true); cp /tmp/evil.json "$A"`, p7)).toBe(true);
+    expect(await bash("cd sub9; A=cfg9.json; A=`true`; cp /tmp/evil.json \"$A\"", p7)).toBe(true);
+    expect(await bashDecision(`D=$(mktemp -d); D=$D/out; cp a "$D/x"`, p7)).toBe("allow");
+    expect(await bashDecision(`OUT=build/report.txt; OUT=$(mktemp); cp a "$OUT"`, p7)).toBe("allow");
+  });
+
+  it.skipIf(process.platform === "win32")(
+    "protects the link target of a worktree's local settings at the main checkout",
+    async () => {
+      // A linked worktree as git lays it out: Claude Code reads its local
+      // settings at the main checkout's root, which links them elsewhere.
+      const main = join(root, "main9");
+      const worktree = join(root, "wt9");
+      const outside = join(root, "outside9");
+      mkdirSync(join(main, ".git", "worktrees", "wt9"), { recursive: true });
+      writeFileSync(join(main, ".git", "worktrees", "wt9", "commondir"), "../..\n");
+      mkdirSync(join(worktree, "src"), { recursive: true });
+      writeFileSync(join(worktree, ".git"), `gitdir: ${join(main, ".git", "worktrees", "wt9")}\n`);
+      mkdirSync(join(main, ".claude"), { recursive: true });
+      mkdirSync(outside, { recursive: true });
+      writeFileSync(join(outside, "local-config.json"), "{}");
+      symlinkSync(join(outside, "local-config.json"), join(main, ".claude", "settings.local.json"));
+      const target = join(outside, "local-config.json");
+      expect(await write(target, join(worktree, "src"))).toBe(true);
+      expect(await bash(`printf '{}' > ${target}`, join(worktree, "src"))).toBe(true);
+      expect(await bash(`cp /tmp/disable.json ${target}`, worktree)).toBe(true);
+      expect(await bashDecision(`printf '{}' > ${join(outside, "notes.json")}`, worktree)).toBe("allow");
+    },
+  );
+
   it("reads an empty heredoc delimiter the way bash does", async () => {
     expect(await bash(`cat > /tmp/notes <<''\ncat > /tmp/y <<EOF\n\ncp /tmp/evil ${settings()}\nEOF\n`, p7)).toBe(true);
     expect(await bashDecision(`cat > /tmp/notes <<''\nrm -rf ~/.claude\n\necho done\n`, p7)).toBe("allow");

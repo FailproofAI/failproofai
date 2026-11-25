@@ -3200,11 +3200,18 @@ function destroysProtectedPath(command: string, target: ProtectedPathTarget, dep
   // (`A=cfg.json; D=$A`), each variable once, however long the chain. A
   // variable named in its own value is its earlier value, the shell's append
   // (`F=ho; F=${F}oks` is `hooks`; `PATH=$PATH:/x` extends an environment
-  // value, which is unknown). COMPLEX is what only a crafted command builds —
-  // a cycle between variables, more values than are kept, too many
-  // combinations — and counts as naming the target; UNKNOWN (null: no
-  // assignment on the line, a command substitution) does not, like any
-  // environment variable.
+  // value, which is unknown). Any assignment on the line may or may not have
+  // run where the variable is used, so a value that cannot be known (a command
+  // substitution) adds nothing but takes no known value away:
+  // `A=cfg.json; A=$(true); cp x "$A"` may still write cfg.json. COMPLEX is
+  // what only a crafted command builds — a cycle between variables, more
+  // values than are kept, too many combinations, a value grown longer than
+  // any path — and counts as naming the target; UNKNOWN (null: no known value
+  // at all) does not, like any environment variable. Both limits are checked
+  // before each value is made, never after a list is built: twenty-four
+  // appends double the values twenty-four times.
+  const MAX_VALUES = 64;
+  const MAX_VALUE_LENGTH = 4096;
   const COMPLEX = "complex" as const;
   type Resolved = string[] | typeof COMPLEX | null;
   const resolved = new Map<string, Resolved>();
@@ -3213,6 +3220,8 @@ function destroysProtectedPath(command: string, target: ProtectedPathTarget, dep
   // One value with its references resolved; `self` binds the variable's own name.
   const expandValue = (value: string, name: string, self: string | undefined): Resolved => {
     if (/`|\$\(/.test(value)) return null;
+    // A value as written may be long; only an expansion makes it longer.
+    const maxLength = Math.max(MAX_VALUE_LENGTH, value.length);
     let forms: string[] = [""];
     let pos = 0;
     for (const ref of value.matchAll(REF_IN_VALUE_RE)) {
@@ -3221,11 +3230,19 @@ function destroysProtectedPath(command: string, target: ProtectedPathTarget, dep
       if (inner === null || inner === COMPLEX) return inner;
       const literal = value.slice(pos, ref.index);
       pos = ref.index + ref[0].length;
-      forms = forms.flatMap((form) => inner.map((part) => form + literal + part));
-      if (forms.length > 64) return COMPLEX;
+      if (forms.length * inner.length > MAX_VALUES) return COMPLEX;
+      const next: string[] = [];
+      for (const form of forms) {
+        for (const part of inner) {
+          if (form.length + literal.length + part.length > maxLength) return COMPLEX;
+          next.push(form + literal + part);
+        }
+      }
+      forms = next;
     }
     const tail = value.slice(pos);
     if (/\$/.test(tail)) return null;
+    if (forms.some((form) => form.length + tail.length > maxLength)) return COMPLEX;
     return forms.map((form) => form + tail);
   };
   const resolveVariable = (name: string): Resolved => {
@@ -3235,40 +3252,38 @@ function destroysProtectedPath(command: string, target: ProtectedPathTarget, dep
     if (!raw || raw.length === 0) return null;
     if (overflowed.has(name)) return COMPLEX;
     resolving.add(name);
-    const namesSelf = (value: string): boolean =>
-      [...value.matchAll(REF_IN_VALUE_RE)].some((ref) => (ref[1] ?? ref[2]) === name);
-    let out: Resolved = [];
-    for (const value of raw.filter((v) => !namesSelf(v))) {
-      const forms = expandValue(value, name, undefined);
-      if (forms === null || forms === COMPLEX) {
-        out = forms;
-        break;
-      }
-      out.push(...forms);
-    }
-    const appends = raw.filter(namesSelf);
-    if (Array.isArray(out) && appends.length > 0) {
-      if (out.length === 0) out = null;
-      else {
-        for (const value of appends) {
-          const grown: string[] = [];
-          for (const previous of out as string[]) {
-            const forms = expandValue(value, name, previous);
-            if (forms === null || forms === COMPLEX) {
-              out = forms;
-              break;
-            }
-            grown.push(...forms);
-          }
-          if (!Array.isArray(out)) break;
-          out = [...new Set([...(out as string[]), ...grown])];
-        }
-      }
-    }
-    if (Array.isArray(out) && out.length > 64) out = COMPLEX;
+    const out = knownValues(name, raw);
     resolving.delete(name);
     resolved.set(name, out);
     return out;
+  };
+  // The plain assignments' values, then each append applied to every value
+  // before it; COMPLEX the moment a value past the limit would be made.
+  const knownValues = (name: string, raw: readonly string[]): Resolved => {
+    const namesSelf = (value: string): boolean =>
+      [...value.matchAll(REF_IN_VALUE_RE)].some((ref) => (ref[1] ?? ref[2]) === name);
+    const values = new Set<string>();
+    const keep = (forms: Resolved): boolean => {
+      if (forms === null) return true;
+      if (forms === COMPLEX) return false;
+      for (const form of forms) {
+        values.add(form);
+        if (values.size > MAX_VALUES) return false;
+      }
+      return true;
+    };
+    for (const value of raw) {
+      if (!namesSelf(value) && !keep(expandValue(value, name, undefined))) return COMPLEX;
+    }
+    // Appends to a value no assignment here gives (`PATH=$PATH:/x`) stay unknown.
+    if (values.size === 0) return null;
+    for (const value of raw) {
+      if (!namesSelf(value)) continue;
+      for (const previous of [...values]) {
+        if (!keep(expandValue(value, name, previous))) return COMPLEX;
+      }
+    }
+    return [...values];
   };
   const resolvedValues = (name: string): string[] | null => {
     const values = resolveVariable(name);

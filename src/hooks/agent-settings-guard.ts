@@ -33,6 +33,7 @@
 import { existsSync, lstatSync, readdirSync, readlinkSync, realpathSync } from "node:fs";
 import { homedir } from "node:os";
 import { basename, dirname, isAbsolute, join, normalize, relative, resolve } from "node:path";
+import { claudeLocalSettingsPaths } from "./claude-hooks-switch";
 
 /**
  * One shape per protected file, as the path's TAIL from the agent's config
@@ -347,8 +348,18 @@ function agentSettingsRealTargets(cwd: string | undefined, extraPaths: readonly 
   return realpathsOf([
     ...HOME_AGENT_SETTINGS_FILES.map((path) => join(home, path)),
     ...agentProjectRoots(cwd).flatMap((root) => PROJECT_AGENT_SETTINGS_FILES.map((path) => join(root, path))),
+    ...agentLocalSettingsFiles(cwd),
     ...extraPaths,
   ]);
+}
+
+/**
+ * Where Claude Code reads this session's `settings.local.json`, the places the
+ * walk to the repository root does not reach included: a linked worktree's
+ * are at the main checkout's root (the same files `config --status` reads).
+ */
+function agentLocalSettingsFiles(cwd: string | undefined): string[] {
+  return cwd ? claudeLocalSettingsPaths(cwd) : [];
 }
 
 /**
@@ -577,7 +588,10 @@ function agentSettingsShellExtras(
   // A project's settings linked elsewhere (`.claude/settings.json ->
   // ../config/claude.json`) are written through the target's own name, from
   // the root's subdirectories too.
-  const projectFiles = roots.flatMap((root) => PROJECT_AGENT_SETTINGS_FILES.map((path) => join(root, path)));
+  const projectFiles = [
+    ...roots.flatMap((root) => PROJECT_AGENT_SETTINGS_FILES.map((path) => join(root, path))),
+    ...agentLocalSettingsFiles(cwd),
+  ];
   for (const lexical of [...HOME_AGENT_SETTINGS_FILES.map((path) => join(home, path)), ...projectFiles]) {
     const real = settingsLinkTarget(lexical);
     if (real !== null && real !== lexical) files.add(real);

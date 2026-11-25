@@ -15,6 +15,8 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { mkdtempSync, rmSync, existsSync, writeFileSync, mkdirSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { NO_PRINTED_COMMAND_REASON, sudoCommandLine } from "../../src/hooks/system-command";
+import { hiddenSystemPrograms } from "../helpers/system-command-stand-in";
 
 /** Call order across the mocked modules, which is the actual thing under test. */
 const calls: string[] = [];
@@ -45,6 +47,14 @@ vi.mock("../../src/hooks/agent-skill", () => ({
     return removed;
   }),
 }));
+
+// sudo and the programs it runs are named by absolute path, looked up on this
+// machine; any it lacks (systemctl on a Mac) gets a stand-in path. See the helper.
+vi.mock("../../src/hooks/system-command", async (importOriginal) =>
+  (await import("../helpers/system-command-stand-in")).standInSystemCommand(
+    await importOriginal<typeof import("../../src/hooks/system-command")>(),
+  ),
+);
 
 vi.mock("../../src/hooks/daemon-service", () => ({
   isDaemonSupportedPlatform: () => true,
@@ -224,8 +234,9 @@ describe("hooks/uninstall-cli", () => {
     expect(res.exitCode).toBe(1);
     const out = res.lines.join("\n");
     expect(out).toMatch(/still there/);
-    expect(out).toMatch(/sudo systemctl disable --now failproofaid@tester\.service/);
-    expect(out).toMatch(/sudo rm -f/);
+    // sudo and each program by absolute path, as failproofai runs them itself.
+    expect(out).toContain(sudoCommandLine("systemctl", "disable", "--now", "failproofaid@tester.service"));
+    expect(out).toContain(sudoCommandLine("rm", "-f"));
     // Enforcement is still off even though cleanup was incomplete.
     expect(calls[0]).toBe("setDaemonConfigured(false)");
   });
@@ -417,13 +428,31 @@ describe("hooks/uninstall-cli — who decides the daemon's fate", () => {
     expect(at).toBeGreaterThanOrEqual(0);
     expect(res.lines.slice(at + 1, at + 7)).toEqual([
       "  Remove it as root:",
-      "    sudo systemctl disable --now failproofaid@tester.service",
-      `    sudo rm -f '${servicePath}'`,
-      "    sudo systemctl daemon-reload",
+      `    ${sudoCommandLine("systemctl", "disable", "--now", "failproofaid@tester.service")}`,
+      `    ${sudoCommandLine("rm", "-f", `'${servicePath}'`)}`,
+      `    ${sudoCommandLine("systemctl", "daemon-reload")}`,
       // The root-owned copy the unit ran, outside HOME for SELinux.
-      `    sudo rm -rf '${stagedDir}'`,
+      `    ${sudoCommandLine("rm", "-rf", `'${stagedDir}'`)}`,
       "  Check it with  systemctl status failproofaid@tester",
     ]);
+  });
+
+  it("prints no command, only what to remove, where root's directories have no sudo", async () => {
+    // A bare `sudo` would be whatever the PATH of whoever pastes it finds first.
+    hiddenSystemPrograms().add("sudo");
+    try {
+      serviceExists = false;
+      const { runUninstallCommand } = await import("../../src/hooks/uninstall-cli");
+      const res = await runUninstallCommand({ yes: true });
+
+      const out = res.lines.join("\n");
+      expect(res.exitCode).toBe(1);
+      expect(out).toContain(`Remove ${servicePath} as root (${NO_PRINTED_COMMAND_REASON}).`);
+      expect(out).not.toContain("Remove it as root:");
+      expect(out).not.toMatch(/`sudo /);
+    } finally {
+      hiddenSystemPrograms().clear();
+    }
   });
 });
 
@@ -480,7 +509,7 @@ describe("hooks/uninstall-cli — a staged daemon binary with no unit", () => {
     const res = await runUninstallCommand({ yes: true });
 
     expect(res.exitCode).toBe(1);
-    expect(res.lines.join("\n")).toContain(`sudo rm -rf '${stagedDir}'`);
+    expect(res.lines.join("\n")).toContain(sudoCommandLine("rm", "-rf", `'${stagedDir}'`));
     expect(res.lines.join("\n")).not.toContain("Removed the failproofaid binary");
   });
 });

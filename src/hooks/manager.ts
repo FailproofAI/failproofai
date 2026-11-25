@@ -41,6 +41,7 @@ import type { ResolvedPack } from "./pack-manifest";
 import { hasInstalledRegexPacks, readInstalledPacks } from "./pack-manifest";
 import { packPolicyParamKey } from "./policy-evaluator";
 import { probeDaemonPolicyEvaluation } from "./daemon-service";
+import { NO_PRINTED_COMMAND_REASON, sudoPath } from "./system-command";
 import { keepAgentSelectionTrue } from "./agent-selection";
 import { INDENT, colorsEnabled, optsFor, printBlock, screenKit, type ScreenKitOpts } from "./tui";
 
@@ -856,18 +857,23 @@ async function installHooksImpl(
   const writtenSettingsPaths: { cli: IntegrationType; path: string }[] = [];
   // Why Codex's user-scope hooks went to hooks.json rather than its system config.
   let codexFallback: CodexSystemInstall | null = null;
+  // Other accounts the system config's hook runner stopped running failproofai for.
+  let codexDropped: string[] = [];
   for (const cliId of selectedClis) {
     const integration = getIntegration(cliId);
     // Codex runs a hooks.json hook only once a person has trusted it, so a
     // headless `codex exec` skips every one of ours. Its system config is
     // trusted as managed: put user-scope hooks there whenever root allows, and
     // take them out of hooks.json so a trusted copy does not run them twice.
+    // The system config applies to every account, so its hooks run the hook
+    // runner, which runs this binary for this account only.
     if (cliId === "codex" && scope === "user") {
-      const placed = installCodexSystemHooks(codexSystemHookEntries(binaryPath));
+      const placed = installCodexSystemHooks(binaryPath, codexSystemHookEntries);
       if (placed.ok) {
         const userPath = integration.getSettingsPath("user", cwd);
         if (existsSync(userPath)) integration.removeHooksFromFile(userPath);
         writtenSettingsPaths.push({ cli: cliId, path: placed.path });
+        codexDropped = placed.dropped.map((d) => `uid ${d.uid}: ${d.reason}`);
         continue;
       }
       codexFallback = placed;
@@ -962,9 +968,18 @@ async function installHooksImpl(
   }
   if (scope === "project") console.log(`${INDENT}This file can be committed to git: it has no machine-specific paths.`);
 
+  for (const dropped of codexDropped) {
+    console.log(kit.caution(`Took an account out of failproofai's Codex hooks in Codex's system config (${dropped}).`));
+  }
+
   // Codex on hooks.json: say so when Codex will not run them yet.
   if (codexFallback && !codexFallback.ok) {
-    if (codexFallback.reason === "conflict" || codexFallback.reason === "unreadable" || codexFallback.reason === "write-failed") {
+    if (
+      codexFallback.reason === "conflict" ||
+      codexFallback.reason === "unreadable" ||
+      codexFallback.reason === "unsafe" ||
+      codexFallback.reason === "write-failed"
+    ) {
       console.log(
         kit.caution(`Couldn't add the Codex hooks to ${codexFallback.path}: ${codexFallback.detail ?? codexFallback.reason}.`),
       );
@@ -1135,16 +1150,26 @@ export async function removeHooks(policyNames?: string[], scope: HookScope | "al
         if (system.status === "removed") {
           removedFromSystem = system.hooks;
           if (scope !== "all") {
-            say(screenKit(optsFor(process.stdout)).ok(`Removed ${system.hooks} failproofai ${system.hooks === 1 ? "hook" : "hooks"} from Codex's system config.`));
+            say(
+              screenKit(optsFor(process.stdout)).ok(
+                system.remaining > 0
+                  ? `Took this account out of failproofai's Codex hooks in Codex's system config; ${system.remaining} other ${system.remaining === 1 ? "account keeps" : "accounts keep"} them.`
+                  : `Removed ${system.hooks} failproofai ${system.hooks === 1 ? "hook" : "hooks"} from Codex's system config.`,
+              ),
+            );
             for (const line of screenKit(optsFor(process.stdout)).kv([["settings", system.path]])) say(line);
           }
         } else if (system.status === "failed") {
           // Non-interactive by design (this also runs from the dashboard), so
-          // the fix is to prime sudo and come back.
+          // the fix is to prime sudo and come back. Only a sudo from root's own
+          // directories is named: a bare one is whatever PATH finds first.
+          const sudo = sudoPath();
           for (const line of screenKit(optsFor(process.stdout)).notice(
             "caution",
             `failproofai's Codex hooks are still in ${system.path}: ${system.reason}.\n` +
-              "Run  `sudo -v`,  then this command again.",
+              (sudo
+                ? `Run  \`${sudo} -v\`,  then this command again.`
+                : `Remove failproofai's block from ${system.path} as root (${NO_PRINTED_COMMAND_REASON}).`),
           )) {
             say(line);
           }

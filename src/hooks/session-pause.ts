@@ -20,10 +20,18 @@
  * stale file is therefore inert rather than dangerous — the failure mode worth
  * engineering against is not "the pause didn't work", it is "the pause silently
  * never ended".
+ *
+ * What this file does NOT give is unforgeability. The directory is owner-
+ * writable, and so is everything else that decides enforcement on this machine
+ * — the agent's hook config, the installed CLI, the interpreter that runs it —
+ * so anything running as the user, an agent's own script included, can write a
+ * pause here. The always-on guard refuses the direct routes; what the reader
+ * enforces is that one write buys at most the ceiling, measured from a start
+ * that cannot lie in the future (FailproofAI/agenteye#1796).
  */
 import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync } from "node:fs";
 import { createHash } from "node:crypto";
-import { join, resolve } from "node:path";
+import { basename, join, resolve } from "node:path";
 import { writeJsonAtomically } from "../../lib/atomic-write";
 import { getAllHookActivityEntries } from "./hook-activity-store";
 import { sessionPauseDir } from "./fp-home";
@@ -126,7 +134,16 @@ export function formatDuration(ms: number): string {
   return rest === 0 ? `${hours}h` : `${hours}h${rest}m`;
 }
 
-function parseStored(raw: unknown): StoredPause | null {
+/**
+ * How far a pause's recorded start may sit ahead of the reader's clock.
+ *
+ * The CLI that writes a pause and the hook that reads it share one clock, so a
+ * genuine file is ahead of it only after a clock correction — a minute covers
+ * that. Anything further was not written by `writePause` on this machine.
+ */
+const CLOCK_STEP_ALLOWANCE_MS = 60_000;
+
+function parseStored(raw: unknown, now: number): StoredPause | null {
   if (!raw || typeof raw !== "object") return null;
   const p = raw as Partial<StoredPause>;
   if (p.schemaVersion !== SCHEMA_VERSION) return null;
@@ -136,6 +153,15 @@ function parseStored(raw: unknown): StoredPause | null {
   // A file written before this field existed measures its ceiling from the
   // only start it recorded. Same meaning for a pause that was never renewed.
   const firstPausedAt = Number.isFinite(p.firstPausedAt) ? (p.firstPausedAt as number) : pausedAt;
+  // The ceiling below is measured from the run's start, and the start comes
+  // from this same owner-writable file — so a start in the future carried the
+  // ceiling with it. A file dated 2100 read as live on every tool call until
+  // 2100 (FailproofAI/agenteye#1796). `writePause` only ever records `now`, and
+  // a renewal keeps the earlier start, so a start after the renewal or ahead of
+  // the clock is not a pause this CLI wrote. Refused rather than clamped:
+  // clamping the start to `now` would restart the ceiling on every read, and
+  // refusing errs toward enforcement.
+  if (firstPausedAt > pausedAt || pausedAt > now + CLOCK_STEP_ALLOWANCE_MS) return null;
   return {
     schemaVersion: SCHEMA_VERSION,
     sessionId: p.sessionId,
@@ -165,7 +191,7 @@ export function readActivePause(sessionId: string | undefined, now = Date.now())
   try {
     const path = pauseFilePath(sessionId);
     if (!existsSync(path)) return null;
-    const stored = parseStored(JSON.parse(readFileSync(path, "utf8")));
+    const stored = parseStored(JSON.parse(readFileSync(path, "utf8")), now);
     if (!stored) return null;
     if (stored.expiresAt <= now) return null; // expired — inert, not dangerous
     const { schemaVersion: _ignored, ...pause } = stored;
@@ -186,7 +212,10 @@ export function writePause(opts: {
   // Carry the run's original start forward while a pause is still live, so a
   // renewal extends the same stretch rather than starting a fresh ceiling.
   const existing = readActivePause(opts.sessionId, now);
-  const firstPausedAt = existing?.firstPausedAt ?? now;
+  // Never later than this renewal: after a small clock step backwards the run's
+  // start can read as later than `now`, and the reader refuses a start after the
+  // latest renewal — the pause the CLI just reported extended would not exist.
+  const firstPausedAt = existing ? Math.min(existing.firstPausedAt, now) : now;
   const pause: ActivePause = {
     sessionId: opts.sessionId,
     pausedAt: now,
@@ -214,6 +243,45 @@ export function clearPause(sessionId: string): boolean {
   }
 }
 
+/**
+ * Remove every pause file, whatever it holds.
+ *
+ * Every file, not every active pause: a file dated in the future is not honoured
+ * yet, so it is not listed, and clearing only the listed ones left it to turn
+ * live later — out of sight of the `--resume --all` meant to end them all.
+ *
+ * `cleared` counts the ACTIVE pauses whose file is really gone, which is what a
+ * person ending them is told; `incomplete` says something stayed behind — a file
+ * that would not go, or a directory that could not be read. Reporting the active
+ * count instead said "Resumed" over a file a read-only directory had kept, and
+ * the hook went on reading it as paused (found in review, PR #1050).
+ */
+export function clearAllPauses(now = Date.now()): { cleared: number; incomplete: boolean } {
+  const dir = pauseStateDir();
+  const activeFiles = new Set(listActivePauses(now).map((pause) => basename(pauseFilePath(pause.sessionId))));
+  let names: string[];
+  try {
+    names = readdirSync(dir);
+  } catch (err) {
+    // No directory means nothing was ever paused; any other failure means the
+    // pauses in it are still there, still read by the hook by name.
+    return { cleared: 0, incomplete: (err as NodeJS.ErrnoException).code !== "ENOENT" };
+  }
+  let cleared = 0;
+  let incomplete = false;
+  for (const name of names) {
+    if (!name.endsWith(".json")) continue;
+    try {
+      rmSync(join(dir, name));
+      if (activeFiles.has(name)) cleared++;
+    } catch {
+      // One file that will not go must not stop the rest.
+      incomplete = true;
+    }
+  }
+  return { cleared, incomplete };
+}
+
 /** Every pause that has not yet expired, newest first. Expired files are ignored. */
 export function listActivePauses(now = Date.now()): ActivePause[] {
   const dir = pauseStateDir();
@@ -228,7 +296,7 @@ export function listActivePauses(now = Date.now()): ActivePause[] {
   for (const name of names) {
     if (!name.endsWith(".json")) continue;
     try {
-      const stored = parseStored(JSON.parse(readFileSync(join(dir, name), "utf8")));
+      const stored = parseStored(JSON.parse(readFileSync(join(dir, name), "utf8")), now);
       if (!stored || stored.expiresAt <= now) continue;
       const { schemaVersion: _ignored, ...pause } = stored;
       out.push(pause);

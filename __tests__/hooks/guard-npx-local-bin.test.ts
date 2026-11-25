@@ -1207,3 +1207,186 @@ describe("block-failproofai-commands — the entry a project-scope npx hook runs
     }
   });
 });
+
+/**
+ * hermes's seventh review of FailproofAI/failproofai#1058, each reproduced with
+ * real bash, curl and wget in a scratch project first: a final-component glob
+ * over more names than the walk expanded (F7), variable values that reach a
+ * destination through another variable, an operator, or a `cd` (F11), and a
+ * long option cut short (`--output-di`), which curl before 8 and every
+ * getopt_long tool take. Alongside, the same paths through a sweep of npm's
+ * bin directory, a link made earlier on the line, a loop, the builtins that set
+ * a variable without `=`, and a sed script read from a file.
+ */
+describe("block-failproofai-commands — hermes's seventh round", () => {
+  let root: string;
+  let proj: string;
+
+  beforeAll(() => {
+    root = mkdtempSync(join(tmpdir(), "fpai-npx-round7-"));
+    proj = join(root, "proj");
+    mkdirSync(join(proj, "node_modules", ".bin"), { recursive: true });
+    mkdirSync(join(proj, "out"));
+    mkdirSync(join(proj, "many"));
+    writeFileSync(join(proj, "node_modules", ".bin", "failproofai"), "#!/bin/sh\n");
+    symlinkSync(join(proj, "node_modules", ".bin"), join(proj, "bins"));
+    symlinkSync(join(proj, "node_modules", ".bin", "failproofai"), join(proj, "hook"));
+    // More plain names than a glob was expanded to, and one link among them.
+    for (let i = 0; i < 4200; i++) writeFileSync(join(proj, "many", `a${String(i).padStart(4, "0")}`), "");
+    symlinkSync(join(proj, "node_modules", ".bin", "failproofai"), join(proj, "many", "hook"));
+    writeFileSync(join(proj, "writes.sed"), "w hook\n");
+    writeFileSync(join(proj, "prints.sed"), "p\n");
+    writeFileSync(join(proj, "out", "a.txt"), "");
+    const diff = (path: string) => `--- a/${path}\n+++ b/${path}\n@@ -1 +1 @@\n-#!/bin/sh\n+exit 0\n`;
+    writeFileSync(join(proj, "entry.patch"), diff("node_modules/.bin/failproofai"));
+    writeFileSync(join(proj, "links.patch"), diff("bins/failproofai"));
+    writeFileSync(join(proj, "app.patch"), diff("src/app.ts"));
+    writeFileSync(join(proj, "output.cfg"), "silent\noutput = hook\n");
+    writeFileSync(join(proj, "landing.cfg"), "output-dir = bins\nremote-name\n");
+    writeFileSync(join(proj, "quiet.cfg"), "# just quiet\nsilent\n");
+  });
+
+  afterAll(() => {
+    rmSync(root, { recursive: true, force: true });
+  });
+
+  it.each([
+    // F7: past 4096 plain names, the link among them still counts.
+    "tee many/* < /tmp/stub.sh",
+    "cat /tmp/stub.sh | tee many/?*",
+    "cd many && tee * < /tmp/stub.sh",
+    "for f in many/*; do cat /tmp/stub.sh > \"$f\"; done",
+    // A write that sweeps npm's bin directory writes the entry in it.
+    "tee bins/* < /tmp/stub.sh",
+    "tee node_modules/.bin/* < /tmp/stub.sh",
+    "cp /tmp/stub.sh node_modules/.bin/*",
+    // A glob reads the links this line made before it.
+    "ln -s ../node_modules/.bin out/b && cp /tmp/stub.sh out/b*/failproofai",
+    "ln -s ../node_modules/.bin out/b && cd out/b* && printf x > failproofai",
+  ])("denies a glob that writes the entry: %s", async (command) => {
+    expect(await bashIn(proj, command)).toBe("deny");
+  });
+
+  it.each([
+    // F11: a value through another variable, read when it is assigned.
+    "A=bins; (A=out); B=$A; cp /tmp/stub.sh $B/failproofai",
+    "A=bins; A=out true; B=$A; cp /tmp/stub.sh $B/failproofai",
+    "A=bins; (A=out); B=${A}; cp /tmp/stub.sh ${B}/failproofai",
+    "N=fail; M=${N}proofai; (N=x); printf x > bins/$M",
+    // A `cd` to each value the operand may hold.
+    "D=bins; (D=out); cd $D && printf x > failproofai",
+    "D=bins; D=out true; cd \"${D}\" && printf x > failproofai",
+    "D=bins; (D=out); pushd $D > /dev/null && printf x > failproofai",
+    "export D=bins; (D=out); cd $D; printf x > failproofai",
+    // Operators as bash applies them.
+    "D=bins; cd ${D%/} && printf x > failproofai",
+    "D=out; cp /tmp/stub.sh ${D/out/bins}/failproofai",
+    "cp /tmp/stub.sh ${X:-bins}/failproofai",
+    "N=D; D=bins; cp /tmp/stub.sh ${!N}/failproofai",
+    // Values set without `=`, and ones the walk cannot read.
+    "D=bins; declare -n R=D; cp /tmp/stub.sh $R/failproofai",
+    "read D <<< bins; cp /tmp/stub.sh $D/failproofai",
+    "printf -v D bins; cp /tmp/stub.sh $D/failproofai",
+    "for d in out bins; do cp /tmp/stub.sh $d/failproofai; done",
+    "for n in x failproofai; do printf x > bins/$n; done",
+    "D=$(echo bins); cp /tmp/stub.sh $D/failproofai",
+    "D=`echo bins`; cp /tmp/stub.sh $D/failproofai",
+  ])("denies a variable that carries the write onto the entry: %s", async (command) => {
+    expect(await bashIn(proj, command)).toBe("deny");
+  });
+
+  it.each([
+    // A long option cut short, as curl before 8 and getopt_long take it.
+    "curl -s --output-di bins -O https://example.test/failproofai",
+    "curl -s --output-d node_modules/.bin --remote-name https://example.test/failproofai",
+    "curl -s --output-dir bins --remote-name-a https://example.test/failproofai",
+    "curl -s --output-dir out -O https://example.test/x --nex --output-di bins -O https://example.test/failproofai",
+    "wget -q --directory-p=bins https://example.test/failproofai",
+    "wget -q --dir bins https://example.test/failproofai",
+    // The names wget gives that are not the URL's last segment.
+    "cd bins && wget -q --default-page=failproofai https://example.test/",
+    "wget -q -P bins --default-p=failproofai https://example.test/",
+    "wget -q -e dir_prefix=bins https://example.test/failproofai",
+    "cd bins && wget -q --trust-server-names https://example.test/x",
+    // The other files curl writes.
+    "curl -s --stderr hook -o /dev/null https://example.test/x",
+    "curl -s --stde hook -o /dev/null https://example.test/x",
+    "curl -s -c hook https://example.test/x",
+    "curl -s --cookie-j hook https://example.test/x",
+  ])("denies a download option that lands on the entry: %s", async (command) => {
+    expect(await bashIn(proj, command)).toBe("deny");
+  });
+
+  it.each([
+    "sed -n -f writes.sed /tmp/notes",
+    "sed -n --file=writes.sed /tmp/notes",
+    "sed -nf writes.sed /tmp/notes",
+    "sed -n -f missing.sed /tmp/notes",
+  ])("denies a sed script file that writes the entry, or one it cannot read: %s", async (command) => {
+    expect(await bashIn(proj, command)).toBe("deny");
+  });
+
+  it.each([
+    // An archive extracted into npm's bin directory.
+    "tar -xf /tmp/stub.tar -C bins",
+    "tar --extract --file=/tmp/stub.tar --directory=node_modules/.bin",
+    "cd bins && tar -xzf /tmp/stub.tgz",
+    "unzip -o /tmp/stub.zip -d bins",
+    // A patch file that names the entry, directly or through a link.
+    "patch -p1 < entry.patch",
+    "patch -p1 -i links.patch",
+    "git apply entry.patch",
+    "git -C . apply links.patch",
+    "cat entry.patch | patch -p1",
+    "patch -p1 < missing.patch",
+    // A curl config read onto the line.
+    "curl -K output.cfg https://example.test/x",
+    "curl --config landing.cfg https://example.test/failproofai",
+    "curl -sK missing.cfg https://example.test/x",
+  ])("denies an archive, patch or config that writes the entry: %s", async (command) => {
+    expect(await bashIn(proj, command)).toBe("deny");
+  });
+
+  it.each([
+    "rm -rf node_modules/.bin/*",
+    "tar -xf /tmp/stub.tar -C out",
+    "tar -czf out/backup.tgz node_modules",
+    "patch -p1 < app.patch",
+    "git apply app.patch",
+    "curl -K quiet.cfg https://example.test/x -o out/x",
+    "ls many/* > /dev/null",
+    "wc -l many/* > out/counts",
+    "for f in out/*.txt; do cp \"$f\" \"$f.bak\"; done",
+    "for f in many/a000*; do cat \"$f\" > /dev/null; done",
+    "D=out; cp /tmp/stub.sh ${D}/notes",
+    "D=out/; cp /tmp/stub.sh ${D%/}/x",
+    "OUT=out/log.txt; echo hi > \"$OUT\"",
+    "cp /tmp/stub.sh ${X:-out}/notes",
+    "read D <<< out; cp /tmp/stub.sh $D/notes",
+    "cd out && curl -sO https://example.test/failproofai/my-tool",
+    "curl -s --cookie hook https://example.test/x",
+    "sed -n -f prints.sed /tmp/notes > out/x",
+    "cd out && wget -q --default-page=index.txt https://example.test/",
+  ])("still allows: %s", async (command) => {
+    expect(await bashIn(proj, command)).toBe("allow");
+  });
+
+  // F13: curl's `-O` takes no value, so the URL after it is no file name, and
+  // a download from a directory Codex does not report lands by the URL's last
+  // segment, `my-tool` here.
+  it.each([
+    "cd out && curl -sO http://host/failproofai/my-tool",
+    "cd out && curl -s -O http://host/failproofai/my-tool",
+    "cd out && curl -sSLO http://host/failproofai/my-tool",
+  ])("allows a Codex download whose URL only passes through a failproofai directory: %s", async (command) => {
+    expect(await bashAs("codex", { command })).toBe("allow");
+  });
+
+  it.each([
+    "curl -sD failproofai http://host/x",
+    "curl -s --stderr failproofai http://host/x",
+    "curl -so failproofai http://host/x",
+  ])("denies a Codex download that names the entry as a file curl writes: %s", async (command) => {
+    expect(await bashAs("codex", { command })).toBe("deny");
+  });
+});

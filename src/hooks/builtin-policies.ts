@@ -2,7 +2,7 @@
  * Built-in security policies for Claude Code hooks.
  */
 import { resolve, join } from "node:path";
-import { lstatSync, readdirSync, readlinkSync, statSync } from "node:fs";
+import { lstatSync, readFileSync, readdirSync, readlinkSync, statSync } from "node:fs";
 import { readFile, writeFile } from "node:fs/promises";
 import { execSync, execFileSync } from "node:child_process";
 import { homedir } from "node:os";
@@ -870,8 +870,26 @@ const SECOND_OPERAND_WRITERS = new Set(["uniq", "xxd"]);
 const OUTPUT_FLAG_COMMANDS: Record<string, readonly string[]> = {
   sort: ["-o", "--output"],
   tree: ["-o", "--output"],
-  curl: ["-o", "--output", "--output-dir", "-D", "--dump-header", "--trace", "--trace-ascii"],
+  curl: [
+    "-o",
+    "--output",
+    "--output-dir",
+    "-D",
+    "--dump-header",
+    "--trace",
+    "--trace-ascii",
+    "-c",
+    "--cookie-jar",
+    "--stderr",
+    "--libcurl",
+    "--etag-save",
+    "--hsts",
+    "--alt-svc",
+  ],
 };
+
+/** Options that are a prefix of an output option's name but are another option themselves. */
+const EXACT_NON_OUTPUT_OPTIONS = new Set(["curl --cookie", "curl --trace-time", "curl --trace-ids", "curl --trace-config"]);
 
 /**
  * `find` actions that write a file of their own, as opposed to running one.
@@ -975,6 +993,19 @@ const VAR_REFERENCE_RE = /\$\{?([A-Za-z_][A-Za-z0-9_]*)\}?/g;
 
 /** `NAME=value` or `export NAME=value`, quoted or not, wherever it sits. */
 const ASSIGNMENT_RE = /(?:^|[\s;&|(])(?:export\s+)?([A-Za-z_][A-Za-z0-9_]*)=("[^"]*"|'[^']*'|[^\s;&|)]+)/g;
+
+/** `declare -n NAME=TARGET` (or `typeset`, `local`): `NAME` read as `TARGET`. */
+const NAMEREF_RE =
+  /(?:^|[\s;&|(])(?:declare|typeset|local)\s+(?:[-+][A-Za-z]+\s+)*?-[A-Za-z]*n[A-Za-z]*\s+(?:[-+][A-Za-z]+\s+)*([A-Za-z_][A-Za-z0-9_]*)=["']?([A-Za-z_][A-Za-z0-9_]*)["']?/g;
+
+/** The header of a `for` or `select` loop over a list: its variable and the list. */
+const LOOP_VARIABLE_RE = /(?:^|[\s(])(?:for|select)\s+([A-Za-z_][A-Za-z0-9_]*)\s+in\b\s*([\s\S]*)$/;
+
+/** More values than a loop's variable is read with; past it, only those that may reach what is protected. */
+const MAX_LOOP_VALUES = 64;
+
+/** A value a word still holds that the walk cannot read: a substitution, or a reference left unexpanded. */
+const UNREAD_VALUE_RE = /\$\(\((?:[^()]|\([^()]*\))*\)\)|\$\((?:[^()]|\([^()]*\))*\)|\$\(|`[^`]*`|`|\$\{[^}]*\}|\$\{|\$[A-Za-z_][A-Za-z0-9_]*|\$[0-9@*#?$!-]/g;
 
 /**
  * The spellings of the state directory a glob would have to match.
@@ -1842,6 +1873,24 @@ function simpleCommandDestroys(words: string[], namesState: (text: string) => bo
 }
 
 /**
+ * The operands a simple command writes, apart from those it reads or deletes:
+ * every operand of `tee` and `truncate`, the destination of a copy, move or
+ * link, the last of `uniq` / `xxd`, `dd of=`, and what `sed -i` edits.
+ */
+function writtenOperands(words: string[]): string[] {
+  if (words.length === 0) return [];
+  const head = commandBasename(words[0]);
+  const args = words.slice(1);
+  const operands = args.filter((arg) => !arg.startsWith("-"));
+  if (OPERAND_WRITE_COMMANDS.has(head) || head === "truncate") return operands;
+  if (COPY_COMMANDS.has(head) || head === "mv" || head === "ln") return operands.slice(-1);
+  if (SECOND_OPERAND_WRITERS.has(head)) return operands.length > 1 ? operands.slice(-1) : [];
+  if (head === "dd") return args.filter((arg) => arg.startsWith("of=")).map((arg) => arg.slice(3));
+  if (head === "sed" && args.some((arg) => arg.startsWith("-i") || arg.startsWith("--in-place"))) return operands;
+  return [];
+}
+
+/**
  * The files a sed script writes: its `w` / `W` commands and the `w` flag of
  * `s///`, with the name glued on (`wnode_modules/.bin/failproofai`) or after
  * spaces, running to the end of the line as GNU sed reads it, and also cut at
@@ -1878,6 +1927,64 @@ function sedWriteTargets(args: string[]): string[] {
 
 /** More files than a sed script writes in practice; past it the line is refused unread. */
 const MAX_SED_TARGETS = 64;
+
+/** Larger than a file of instructions (a sed script, a patch, a curl config) is read; past it, it is read as writing what is protected. */
+const MAX_INSTRUCTION_FILE_BYTES = 1024 * 1024;
+
+/**
+ * The options a curl config file gives, as the words they would be on the
+ * line: `output = hook`, `-o hook`, `--output-dir bins` and `remote-name`,
+ * one per line, a value quoted or not, `#` starting a comment.
+ */
+function curlConfigArgs(text: string): string[] {
+  const args: string[] = [];
+  for (const line of text.split(/\r?\n/)) {
+    const trimmed = line.trim();
+    if (trimmed === "" || trimmed.startsWith("#")) continue;
+    const m = /^(-{0,2}[A-Za-z0-9][\w-]*)(?:\s*[=:]\s*|\s+|$)(.*)$/.exec(trimmed);
+    if (m === null) continue;
+    const option = m[1].startsWith("-") ? m[1] : m[1].length === 1 ? `-${m[1]}` : `--${m[1]}`;
+    args.push(option);
+    const value = m[2].trim();
+    if (value !== "") args.push(value.replace(/^"((?:[^"\\]|\\.)*)"$/, "$1").replace(/\\(.)/g, "$1"));
+  }
+  return args;
+}
+
+/**
+ * The script files a sed command line reads: `-f FILE` (alone, glued, or
+ * ending a cluster such as `-nf`) and `--file=FILE` / `--file FILE` in any
+ * abbreviation GNU sed takes (`--fi`).
+ */
+function sedScriptFiles(args: string[]): string[] {
+  const files: string[] = [];
+  for (let k = 0; k < args.length; k++) {
+    const arg = args[k];
+    if (arg === "--") break;
+    if (arg.startsWith("--")) {
+      const eq = arg.indexOf("=");
+      const name = arg.slice(2, eq === -1 ? undefined : eq);
+      if (name !== "" && "file".startsWith(name) && !"follow-symlinks".startsWith(name)) {
+        files.push(eq === -1 ? (args[++k] ?? "") : arg.slice(eq + 1));
+      } else if (eq === -1 && name !== "" && ["expression", "line-length"].some((option) => option.startsWith(name))) k++;
+      continue;
+    }
+    if (!/^-[A-Za-z]/.test(arg)) continue;
+    for (let c = 1; c < arg.length; c++) {
+      if (arg[c] === "f") {
+        files.push(c + 1 < arg.length ? arg.slice(c + 1) : (args[++k] ?? ""));
+        break;
+      }
+      // `-e SCRIPT` and `-l N` take a value; `-i` takes the rest as a suffix.
+      if (arg[c] === "e" || arg[c] === "l") {
+        if (c + 1 === arg.length) k++;
+        break;
+      }
+      if (arg[c] === "i") break;
+    }
+  }
+  return files;
+}
 
 /** What the shell splits a line at, when it is not quoted or escaped. */
 const SEPARATOR_CHARS = /[;&|\n\r]/;
@@ -1931,7 +2038,17 @@ function writesViaOutputFlag(head: string, args: string[], namesState: (text: st
     const arg = args[i];
     const long = flags.find((f) => f.startsWith("--") && arg.startsWith(`${f}=`));
     if (long && (namesState(arg) || namesState(arg.slice(long.length + 1)))) return true;
-    const bundled = /^-[A-Za-z]*[oD]$/.test(arg) && flags.includes(`-${arg[arg.length - 1]}`);
+    // A long option as getopt_long and curl before 8 also take it, cut short
+    // to a prefix of its name (`--stde`, `--outp=`), unless that prefix is
+    // itself another option (`--cookie`, which reads).
+    if (arg.startsWith("--") && arg.length > 2) {
+      const eq = arg.indexOf("=");
+      const name = arg.slice(2, eq === -1 ? undefined : eq);
+      if (!flags.includes(`--${name}`) && !EXACT_NON_OUTPUT_OPTIONS.has(`${head} --${name}`) && flags.some((f) => f.startsWith(`--${name}`))) {
+        if (namesState(eq === -1 ? (args[i + 1] ?? "") : arg.slice(eq + 1))) return true;
+      }
+    }
+    const bundled = /^-[A-Za-z]*[oDc]$/.test(arg) && flags.includes(`-${arg[arg.length - 1]}`);
     if ((flags.includes(arg) || bundled) && namesState(args[i + 1] ?? "")) return true;
     // Or the value glued on, after the option alone or at the end of a
     // cluster: `curl -o<file>`, `curl -so<file>`.
@@ -1952,6 +2069,60 @@ const CURL_VALUE_OPTIONS = "AbcCdDEeFHKmoPQrTtuUwxXyYz";
 
 /** Short options that take a value, for the commands whose list is known. */
 const SHORT_VALUE_OPTIONS: Record<string, string> = { curl: CURL_VALUE_OPTIONS, wget: WGET_VALUE_OPTIONS };
+
+/** Short options that name a file the command writes, for the commands whose list is known. */
+const SHORT_OUTPUT_OPTIONS: Record<string, string> = { curl: "oDc", wget: "Oao" };
+
+/**
+ * The long options that decide where a download lands. curl before 8 and
+ * wget (getopt_long) also take an unambiguous abbreviation of a long option
+ * (`--output-di` for `--output-dir`; found by hermes on
+ * FailproofAI/failproofai#1058), so a name that only starts one of these is
+ * read as each it may be. One two options share is refused by both tools, so
+ * reading it as either never misses a landing.
+ */
+const CURL_LANDING_OPTIONS = ["output", "output-dir", "remote-name", "remote-name-all", "remote-header-name", "next"];
+const WGET_LANDING_OPTIONS = [
+  "directory-prefix",
+  "output-document",
+  "spider",
+  "content-disposition",
+  "trust-server-names",
+  "input-file",
+  "recursive",
+  "mirror",
+  "page-requisites",
+  "force-directories",
+  "no-directories",
+  "default-page",
+  "execute",
+];
+const LANDING_VALUE_OPTIONS = new Set(["output", "output-dir", "directory-prefix", "output-document", "input-file", "default-page", "execute"]);
+
+/** The landing options `--<written>` may be, for curl or wget. */
+function landingOptions(head: string, written: string): string[] {
+  const options = head === "wget" ? WGET_LANDING_OPTIONS : CURL_LANDING_OPTIONS;
+  if (options.includes(written)) return [written];
+  return written === "" ? [] : options.filter((option) => option.startsWith(written));
+}
+
+/**
+ * wget's `-e` / `--execute` runs a `.wgetrc` command, whose name wget reads
+ * without case, `_` or `-` (`-e dir_prefix=node_modules/.bin`): the ones that
+ * decide where a download lands, as the long option each stands for.
+ */
+const WGETRC_LANDING_COMMANDS: Record<string, string> = {
+  dirprefix: "directory-prefix",
+  outputdocument: "output-document",
+  spider: "spider",
+  contentdisposition: "content-disposition",
+  trustservernames: "trust-server-names",
+  recursive: "recursive",
+  mirror: "mirror",
+  pagerequisites: "page-requisites",
+  dirstruct: "force-directories",
+  defaultpage: "default-page",
+};
 
 /** More letters than a short-option cluster has when written to be read. */
 const MAX_OPTION_CLUSTER = 32;
@@ -2015,7 +2186,7 @@ function downloadLandings(words: string[]): Array<{ dir: string; name: string | 
   if (head === "curl") {
     const transfers: string[][] = [[]];
     for (const word of words.slice(1)) {
-      if (word === "--next" || word === "-:") transfers.push([]);
+      if (word === "-:" || (word.startsWith("--") && !word.includes("=") && landingOptions(head, word.slice(2)).includes("next"))) transfers.push([]);
       else transfers[transfers.length - 1].push(word);
     }
     if (transfers.length > 1) return transfers.flatMap((transfer) => transferLandings(head, transfer));
@@ -2033,9 +2204,29 @@ function transferLandings(head: string, args: string[]): Array<{ dir: string; na
   let recursive = false;
   let flat = false;
   let dirGiven = false;
+  // The name wget gives a URL that ends in `/`.
+  let defaultPage = "index.html";
   // What curl's `-o` / `--output` name, which `--output-dir` also prefixes.
   const outputs: string[] = [];
   const urls: string[] = [];
+  const apply = (option: string, value: string | undefined) => {
+    if (option === "directory-prefix" || option === "output-dir") {
+      dir = value ?? dir;
+      dirGiven = true;
+    } else if (option === "output") outputs.push(value ?? "");
+    else if (option === "output-document" || option === "spider") named = true;
+    else if (option === "remote-name" || option === "remote-name-all") urlNamed = true;
+    else if (option === "content-disposition" || option === "remote-header-name" || option === "input-file" || option === "trust-server-names") {
+      serverNamed = true;
+    } else if (option === "recursive" || option === "mirror" || option === "page-requisites" || option === "force-directories") recursive = true;
+    else if (option === "no-directories") flat = true;
+    else if (option === "default-page") defaultPage = value ?? defaultPage;
+    else if (option === "execute" && value !== undefined) {
+      const eq = value.indexOf("=");
+      const command = WGETRC_LANDING_COMMANDS[value.slice(0, eq === -1 ? undefined : eq).replace(/[\s_-]/g, "").toLowerCase()];
+      if (command !== undefined) apply(command, eq === -1 ? undefined : value.slice(eq + 1).trim());
+    }
+  };
   for (let i = 0; i < args.length; i++) {
     const arg = args[i];
     if (arg === "--") {
@@ -2044,17 +2235,9 @@ function transferLandings(head: string, args: string[]): Array<{ dir: string; na
     }
     if (arg.startsWith("--")) {
       const eq = arg.indexOf("=");
-      const name = arg.slice(2, eq === -1 ? undefined : eq);
-      const value = eq === -1 ? undefined : arg.slice(eq + 1);
-      if (name === "directory-prefix" || name === "output-dir") {
-        dir = value ?? args[++i] ?? dir;
-        dirGiven = true;
-      } else if (head === "curl" && name === "output") outputs.push(value ?? args[++i] ?? "");
-      else if (name === "output-document" || name === "spider") named = true;
-      else if (name === "remote-name" || name === "remote-name-all") urlNamed = true;
-      else if (name === "content-disposition" || name === "remote-header-name" || name === "input-file") serverNamed = true;
-      else if (name === "recursive" || name === "mirror" || name === "page-requisites" || name === "force-directories") recursive = true;
-      else if (name === "no-directories") flat = true;
+      const options = landingOptions(head, arg.slice(2, eq === -1 ? undefined : eq));
+      const value = eq !== -1 ? arg.slice(eq + 1) : options.some((option) => LANDING_VALUE_OPTIONS.has(option)) ? args[++i] : undefined;
+      for (const option of options) apply(option, value);
       continue;
     }
     if (arg.startsWith("-") && arg.length > 1) {
@@ -2067,13 +2250,11 @@ function transferLandings(head: string, args: string[]): Array<{ dir: string; na
         const flag = arg[c];
         if (valueOptions.includes(flag)) {
           const value = c + 1 < arg.length ? arg.slice(c + 1) : args[++i];
-          if (head === "wget" && flag === "P") {
-            dir = value ?? dir;
-            dirGiven = true;
-          }
-          if (head === "curl" && flag === "o") outputs.push(value ?? "");
+          if (head === "wget" && flag === "P") apply("directory-prefix", value);
+          if (head === "curl" && flag === "o") apply("output", value);
           if (head === "wget" && flag === "O") named = true;
           if (head === "wget" && flag === "i") serverNamed = true;
+          if (head === "wget" && flag === "e") apply("execute", value);
           break;
         }
         if (head === "curl" && flag === "O") urlNamed = true;
@@ -2103,10 +2284,238 @@ function transferLandings(head: string, args: string[]): Array<{ dir: string; na
     } catch {
       // Not valid percent-encoding: the name as written is what lands.
     }
+    // wget saves a URL that ends in `/` as `--default-page`, `index.html`
+    // unless the line names another (`--default-page=failproofai`).
+    if (last === "" && head === "wget") landings.push({ dir, name: defaultPage });
     for (const name of new Set([last, decoded])) if (name !== "") landings.push({ dir, name });
   }
   return landings;
 }
+
+/**
+ * A `$name` or `${…}` reference starting at `word[i]`, a `$`: where it ends,
+ * the variable it reads (`""` for one this does not read, such as `$1`,
+ * `${a[0]}` or `${!prefix*}`), and the operator and word after the name.
+ */
+type ParameterReference = { end: number; name: string; op: string; arg: string; indirect: boolean; count: boolean };
+function readParameterReference(word: string, i: number): ParameterReference | null {
+  if (word[i + 1] !== "{") {
+    const name = /^[A-Za-z_][A-Za-z0-9_]*/.exec(word.slice(i + 1, i + 257))?.[0];
+    return name === undefined ? null : { end: i + 1 + name.length, name, op: "", arg: "", indirect: false, count: false };
+  }
+  let depth = 0;
+  let j = i + 1;
+  for (; j < word.length; j++) {
+    if (word[j] === "\\") j++;
+    else if (word[j] === "{") depth++;
+    else if (word[j] === "}" && --depth === 0) break;
+  }
+  if (j >= word.length) return null;
+  const body = word.slice(i + 2, j);
+  const indirect = body.startsWith("!");
+  const count = !indirect && body.startsWith("#") && body.length > 1;
+  const from = indirect || count ? 1 : 0;
+  const name = /^[A-Za-z_][A-Za-z0-9_]*/.exec(body.slice(from))?.[0];
+  const unread = { end: j + 1, name: "", op: "", arg: "", indirect, count };
+  if (name === undefined) return unread;
+  const rest = body.slice(from + name.length);
+  const op = /^(?::[-=+?]|[-=+?]|##?|%%?|\/[/#%]?|\^\^?|,,?|@|:)/.exec(rest)?.[0] ?? "";
+  if ((op === "" && rest !== "") || ((indirect || count) && op !== "")) return unread;
+  return { end: j + 1, name, op, arg: rest.slice(op.length), indirect, count };
+}
+
+/** A glob as an expression for a whole string, or `null` for one that makes none. */
+function wholeGlob(pattern: string): RegExp | null {
+  try {
+    return new RegExp(`^(?:${compileGlobPattern(pattern)})$`, "s");
+  } catch {
+    return null;
+  }
+}
+
+/** Longer than a value an operator's pattern is matched against, position by position. */
+const MAX_OPERATED_VALUE = 512;
+
+/**
+ * `${name<op><arg>}` for a variable holding `value`, as bash computes it, for
+ * the operators that change the value: trimming (`#`, `%`), replacing (`/`),
+ * case (`^`, `,`, `@U`), quoting (`@Q`) and substrings (`:2:3`). `null` for one
+ * this does not compute, which is then read as a value the walk cannot know.
+ */
+function applyParameterOperator(value: string, op: string, arg: string): string | null {
+  if (op === "^^" || (op === "@" && arg === "U")) return value.toUpperCase();
+  if (op === ",," || (op === "@" && arg === "L")) return value.toLowerCase();
+  if (op === "^" || (op === "@" && arg === "u")) return value.charAt(0).toUpperCase() + value.slice(1);
+  if (op === ",") return value.charAt(0).toLowerCase() + value.slice(1);
+  if (op === "@") return arg === "Q" ? `'${value.replace(/'/g, "'\\''")}'` : null;
+  if (op === ":") {
+    const m = /^\s*(-?\d{1,6})\s*(?::\s*(-?\d{1,6})\s*)?$/.exec(arg);
+    if (m === null) return null;
+    const start = Number(m[1]) < 0 ? Math.max(0, value.length + Number(m[1])) : Math.min(value.length, Number(m[1]));
+    if (m[2] === undefined) return value.slice(start);
+    const length = Number(m[2]);
+    return length < 0 ? value.slice(start, Math.max(start, value.length + length)) : value.slice(start, start + length);
+  }
+  if (value.length > MAX_OPERATED_VALUE) return null;
+  if (op === "#" || op === "##" || op === "%" || op === "%%") {
+    const re = wholeGlob(arg);
+    if (re === null) return null;
+    const cuts = Array.from({ length: value.length + 1 }, (_, k) => k);
+    if (op === "##" || op === "%") cuts.reverse();
+    for (const k of cuts) {
+      if (op.startsWith("#") ? re.test(value.slice(0, k)) : re.test(value.slice(value.length - k))) {
+        return op.startsWith("#") ? value.slice(k) : value.slice(0, value.length - k);
+      }
+    }
+    return value;
+  }
+  // `/pattern/string`, `//` for every match, `/#` at the start, `/%` at the end.
+  let slash = -1;
+  for (let k = 0; k < arg.length; k++) {
+    if (arg[k] === "\\") k++;
+    else if (arg[k] === "/") {
+      slash = k;
+      break;
+    }
+  }
+  const pattern = slash === -1 ? arg : arg.slice(0, slash);
+  const replacement = slash === -1 ? "" : arg.slice(slash + 1);
+  const re = wholeGlob(pattern);
+  if (re === null || pattern === "") return re === null ? null : value;
+  if (op === "/#") {
+    for (let k = value.length; k > 0; k--) if (re.test(value.slice(0, k))) return replacement + value.slice(k);
+    return value;
+  }
+  if (op === "/%") {
+    for (let k = 0; k < value.length; k++) if (re.test(value.slice(k))) return value.slice(0, k) + replacement;
+    return value;
+  }
+  let out = "";
+  let pos = 0;
+  let replaced = false;
+  while (pos < value.length) {
+    let end = -1;
+    if (!(replaced && op === "/")) {
+      for (let k = value.length; k > pos; k--) {
+        if (re.test(value.slice(pos, k))) {
+          end = k;
+          break;
+        }
+      }
+    }
+    if (end === -1) {
+      out += value[pos++];
+      continue;
+    }
+    out += replacement;
+    replaced = true;
+    pos = end;
+  }
+  return out;
+}
+
+/**
+ * What `word` may expand to, each `$name` and `${…}` in it read with every
+ * value `valuesOf` gives the variable: none for one the line never sets, which
+ * stays written as it is, as one whose value the walk cannot know. A
+ * `${name:-word}`-style default or `${name:+word}` alternate is also read for
+ * a variable it does not know, `${!name}` through the variable it names, and
+ * a value that refers to another variable through that one's values too.
+ * `null` past `limit` results.
+ */
+function expandParameters(
+  word: string,
+  valuesOf: (name: string) => readonly string[],
+  limit: number,
+  depth = 0,
+  memo = new Map<string, string[] | null>(),
+): string[] | null {
+  let results = [""];
+  let literal = 0;
+  // A result longer than PATH_MAX names no file anything can open, so it is
+  // dropped as it grows: a value that refers to itself (`A=$A$A…`) doubles
+  // with every reading.
+  const append = (alternatives: readonly string[]): boolean => {
+    const next = new Set<string>();
+    for (const result of results) {
+      for (const alternative of alternatives) {
+        if (result.length + alternative.length > PATH_MAX_BYTES) continue;
+        next.add(result + alternative);
+        if (next.size > limit) return false;
+      }
+    }
+    results = [...next];
+    return true;
+  };
+  for (let i = 0; i < word.length; i++) {
+    if (word[i] !== "$") continue;
+    const reference = readParameterReference(word, i);
+    if (reference === null) continue;
+    const written = word.slice(i, reference.end);
+    const alternatives = parameterAlternatives(reference, written, valuesOf, limit, depth, memo);
+    if (alternatives === null || !append([word.slice(literal, i)]) || !append(alternatives)) return null;
+    literal = reference.end;
+    i = reference.end - 1;
+  }
+  return append([word.slice(literal)]) ? results : null;
+}
+
+/** The values one reference in `expandParameters` may take. */
+function parameterAlternatives(
+  reference: ParameterReference,
+  written: string,
+  valuesOf: (name: string) => readonly string[],
+  limit: number,
+  depth: number,
+  memo: Map<string, string[] | null>,
+): string[] | null {
+  if (reference.name === "") return [written];
+  const deeper = (text: string): string[] | null => {
+    if (depth >= 3 || !text.includes("$")) return [text];
+    const key = `${depth}\u0000${text}`;
+    if (!memo.has(key)) memo.set(key, expandParameters(text, valuesOf, limit, depth + 1, memo));
+    return memo.get(key)!;
+  };
+  const argument = (): string[] | null => deeper(reference.arg);
+  let values: readonly string[] = valuesOf(reference.name);
+  if (reference.indirect) {
+    if (values.length === 0 || values.some((value) => !/^[A-Za-z_][A-Za-z0-9_]*$/.test(value))) return [written];
+    values = values.flatMap((target) => valuesOf(target));
+  }
+  const { op } = reference;
+  if (values.length === 0) {
+    const arg = op === "-" || op === ":-" || op === "=" || op === ":=" || op === "+" || op === ":+" ? argument() : [];
+    if (arg === null) return null;
+    if (op === "+" || op === ":+") return ["", ...arg];
+    return [written, ...arg];
+  }
+  const out: string[] = [];
+  for (const raw of values) {
+    const expanded = deeper(raw);
+    if (expanded === null) return null;
+    for (const value of expanded) {
+      if (reference.count) out.push(String(value.length));
+      else if (op === "" || op === "-" || op === "=" || op === "?" || op === ":?") out.push(value);
+      else if (op === ":-" || op === ":=") {
+        if (value !== "") out.push(value);
+        else out.push(...(argument() ?? [written]));
+      } else if (op === "+") out.push(...(argument() ?? [written]));
+      else if (op === ":+") {
+        if (value === "") out.push("");
+        else out.push(...(argument() ?? [written]));
+      } else {
+        const arg = argument();
+        const result = arg === null ? null : applyParameterOperator(value, op, arg[0]);
+        out.push(result ?? written);
+      }
+      if (out.length > limit) return null;
+    }
+  }
+  return [...new Set(out)];
+}
+
+/** A `${…}` that does more than name a variable: an operator, `${!name}` or `${#name}`. */
+const OPERATED_REFERENCE_RE = /\$\{[!#]?[A-Za-z_][A-Za-z0-9_]*[^A-Za-z0-9_}]|\$\{[!#]/;
 
 /**
  * True when `command` would delete, move or overwrite failproofai's own state.
@@ -2473,6 +2882,41 @@ function destroysFailproofaiState(command: string, depth = 0, startDir?: string,
     }
     return names;
   };
+  // The names of the links this line has made in `directory` ("" is the
+  // root), which no listing holds yet but the shell's glob will.
+  const inlineNamesIn = (directory: string): string[] => {
+    if (links.size === 0) return [];
+    const names: string[] = [];
+    for (const place of links.keys()) {
+      const cut = place.lastIndexOf("/");
+      if (place.slice(0, cut) === directory) names.push(place.slice(cut + 1));
+    }
+    return names;
+  };
+  // A directory as a glob reads it: the directory it really is, through this
+  // line's links too, and the names in it, this line's links among them.
+  const namesInDirectory = (path: string): { directory: string; names: Iterable<string> } => {
+    let directory = path;
+    if (links.size > 0 && path !== "") {
+      const real = realPath(path);
+      if (typeof real === "string") directory = real === "/" ? "" : real;
+    }
+    const listed = listingOf(directory);
+    const inline = inlineNamesIn(directory);
+    return { directory, names: inline.length === 0 ? (listed ?? []) : new Set([...(listed ?? []), ...inline]) };
+  };
+  // Whether `path` is there once this line's links are made: on disk, or
+  // through or as one of them.
+  const present = (path: string): boolean => {
+    if (exists(path)) return true;
+    if (links.size === 0) return false;
+    const cut = path.lastIndexOf("/");
+    const parent = realPath(path.slice(0, cut) || "/");
+    if (typeof parent !== "string") return true;
+    if (links.has(`${parent === "/" ? "" : parent}/${path.slice(cut + 1)}`)) return true;
+    const real = realPath(path);
+    return typeof real !== "string" || exists(real) || links.has(real);
+  };
   // A pattern as the shell expands it against the disk, from directory
   // `from`: each component with a pattern matched against what the directory
   // before it holds, a leading `.` only by a pattern that spells one (no
@@ -2496,7 +2940,7 @@ function destroysFailproofaiState(command: string, depth = 0, startDir?: string,
       const next: string[] = [];
       for (const path of paths) {
         if (++reads > GLOB_DISK_LIMIT / 4) return null;
-        for (const name of listingOf(path) ?? []) {
+        for (const name of namesInDirectory(path).names) {
           if (name.startsWith(".") && !part.startsWith(".")) continue;
           if (!matcher.test(name)) continue;
           next.push(`${path}/${name}`);
@@ -2506,7 +2950,45 @@ function destroysFailproofaiState(command: string, depth = 0, startDir?: string,
       if (next.length === 0) return [];
       paths = next;
     }
-    return paths.filter(exists);
+    return paths.filter(present);
+  };
+  // The links in `directory`, read once from disk, with this line's.
+  const diskLinks = new Map<string, string[]>();
+  const linkNamesIn = (directory: string): string[] => {
+    let names = diskLinks.get(directory);
+    if (names === undefined) {
+      names = [];
+      try {
+        for (const entry of readdirSync(directory || "/", { withFileTypes: true })) if (entry.isSymbolicLink()) names.push(entry.name);
+      } catch {
+        // Unreadable: nothing in it can be reached through it.
+      }
+      diskLinks.set(directory, names);
+    }
+    const inline = inlineNamesIn(directory);
+    return inline.length === 0 ? names : [...names, ...inline];
+  };
+  // The matches of a pattern in one directory that are links, the only ones
+  // that reach anywhere else, however many plain names match beside them:
+  // `tee many/*` wrote through `many/hook`, a link to the entry, past 4096
+  // plain names (found by hermes on FailproofAI/failproofai#1058). `null`
+  // past GLOB_DISK_LIMIT links.
+  const linksMatching = (directory: string, part: string): string[] | null => {
+    let matcher: RegExp;
+    try {
+      matcher = new RegExp(`^${compileGlobPattern(part)}$`);
+    } catch {
+      // A bracket bash cannot read either (`[r-p]`) matches nothing.
+      return [];
+    }
+    const found: string[] = [];
+    for (const name of linkNamesIn(directory)) {
+      if (name.startsWith(".") && !part.startsWith(".")) continue;
+      if (!matcher.test(name)) continue;
+      found.push(`${directory}/${name}`);
+      if (found.length > GLOB_DISK_LIMIT) return null;
+    }
+    return found;
   };
   // A glob expands where its literal directories really are: `cp x bins/fail*`
   // with `bins` a link to `node_modules/.bin`, and `fail*` from a directory
@@ -2539,10 +3021,11 @@ function destroysFailproofaiState(command: string, depth = 0, startDir?: string,
       // A pattern only in the last component matches names in one directory:
       // what counts there is a match that is a link (`hoo*` reaching `hook`, a
       // link to the entry). In npm's bin directory or a `node_modules`, its
-      // names are what the pattern is read against, so a sweep stays a sweep.
+      // names are what the pattern is read against, so a sweep stays a sweep;
+      // what a sweep writes is judged by `sweepWritesEntry`.
       if (!inDirectory && (NPM_BIN_DIRECTORY_RE.test(real) || /(?:^|\/)(?:node_modules|\.pnpm)$/i.test(real))) return false;
-      const matches = expandOnDisk(real, pattern);
-      if (matches === null) return inDirectory;
+      const matches = inDirectory ? expandOnDisk(real, pattern) : linksMatching(real === "/" ? "" : real, pattern);
+      if (matches === null) return true;
       return matches.some((match) => {
         const reached = realPath(match);
         if (reached === ELOOP) return true;
@@ -2575,6 +3058,47 @@ function destroysFailproofaiState(command: string, depth = 0, startDir?: string,
     ) ||
     (GLOB_METACHAR_RE.test(written) && globLandsOnState(written));
   const namesHere = (text: string): boolean => namesState(text) || resolvesOntoState(text) || landsOnState(text);
+  // A glob that sweeps npm's bin directory reaches every name in it, which is
+  // harmless for a delete (`rm -rf node_modules/.bin/*` stays allowed) and
+  // the entry for a write: `tee bins/* < stub` with `bins` a link to
+  // `node_modules/.bin` overwrote it (found by hermes on
+  // FailproofAI/failproofai#1058). So a written word whose last component is
+  // a pattern, in a bin directory, lands on the entry when the pattern matches
+  // the entry there, or a link there that reaches the entry or the state.
+  const sweepWritesEntry = (written: string): boolean => {
+    if (!GLOB_METACHAR_RE.test(written)) return false;
+    let patterns = 0;
+    for (const word of expandBraces(written)) {
+      const cut = word.replace(/[\\/]+$/, "").lastIndexOf("/");
+      const pattern = word.slice(cut + 1);
+      const directory = cut === -1 ? "." : word.slice(0, cut) || "/";
+      if (!GLOB_METACHAR_RE.test(pattern) || GLOB_METACHAR_RE.test(directory) || /[$`]/.test(word)) continue;
+      if (++patterns > MAX_BRACE_WORDS_ON_DISK) return true;
+      let matcher: RegExp;
+      try {
+        matcher = new RegExp(`^${compileGlobPattern(pattern)}$`);
+      } catch {
+        continue;
+      }
+      for (const base of [at, ...alts]) {
+        const path = absoluteFrom(base, directory);
+        if (path === undefined) continue;
+        const real = realPath(path.raw);
+        if (typeof real !== "string" || !NPM_BIN_DIRECTORY_RE.test(real)) continue;
+        const dir = real === "/" ? "" : real;
+        if (NPX_ENTRY_NAMES.some((name) => matcher.test(name) && present(`${dir}/${name}`))) return true;
+        for (const name of linkNamesIn(dir)) {
+          if ((name.startsWith(".") && !pattern.startsWith(".")) || !matcher.test(name)) continue;
+          const reached = realPath(`${dir}/${name}`);
+          if (reached === ELOOP) return true;
+          if (typeof reached !== "string") {
+            if (lostNamesState(reached)) return true;
+          } else if (NPX_ENTRY_PATH_RE.test(reached) || FAILPROOFAI_STATE_PATH_RE.test(reached)) return true;
+        }
+      }
+    }
+    return false;
+  };
   // From a directory the agent may have run the line in without saying so
   // (`anywhere`), a relative destination that would be the entry, or the
   // package, wherever that directory is: `printf … > failproofai`, and through
@@ -2614,18 +3138,40 @@ function destroysFailproofaiState(command: string, depth = 0, startDir?: string,
     if (COPY_COMMANDS.has(head) && operands.length > 1 && plantsAnywhere(operands[operands.length - 1])) return true;
     if (head === "dd" && args.some((arg) => arg.startsWith("of=") && plantsAnywhere(arg.slice(3)))) return true;
     if (head === "sed" && sedWriteTargets(args).some(plantsAnywhere)) return true;
+    const known = SHORT_VALUE_OPTIONS[head];
+    const outputLetters = SHORT_OUTPUT_OPTIONS[head];
     return args.some((arg, i) => {
       const long = /^--(?:output|out)[\w-]*(=)?/.exec(arg);
       if (long) return plantsAnywhere(long[1] ? arg.slice(arg.indexOf("=") + 1) : (args[i + 1] ?? ""));
+      // The other files curl writes (`--stderr`, `--dump-header`, …), by any
+      // prefix of the name curl before 8 takes.
+      if (arg.startsWith("--") && OUTPUT_FLAG_COMMANDS[head] !== undefined) {
+        const eq = arg.indexOf("=");
+        const name = arg.slice(2, eq === -1 ? undefined : eq);
+        if (name !== "" && !EXACT_NON_OUTPUT_OPTIONS.has(`${head} --${name}`) && OUTPUT_FLAG_COMMANDS[head].some((flag) => flag.startsWith(`--${name}`))) {
+          return plantsAnywhere(eq === -1 ? (args[i + 1] ?? "") : arg.slice(eq + 1));
+        }
+      }
       if (!/^-[A-Za-z]/.test(arg)) return false;
+      // Where the command's value letters are known, the cluster is read as
+      // getopt reads it: flags up to the first letter that takes a value, and
+      // that value, glued on or the next word, a file written only when the
+      // letter is an output's. curl's `-O` takes none, so `cd out && curl -sO
+      // http://host/failproofai/my-tool` names no file; where it lands is
+      // judged with the other downloads (found by hermes on
+      // FailproofAI/failproofai#1058).
+      if (known !== undefined) {
+        for (let c = 1; c < arg.length; c++) {
+          if (!known.includes(arg[c])) continue;
+          return outputLetters.includes(arg[c]) && plantsAnywhere(c + 1 < arg.length ? arg.slice(c + 1) : (args[i + 1] ?? ""));
+        }
+        return false;
+      }
       if (/^-[A-Za-z]*[oO]$/.test(arg)) return plantsAnywhere(args[i + 1] ?? "");
-      // Glued on after an `o` or `O`; read as getopt reads it where the
-      // command's value letters are known.
-      const known = SHORT_VALUE_OPTIONS[head];
+      // Glued on after an `o` or `O`.
       for (let c = 1; c < arg.length - 1 && /[A-Za-z]/.test(arg[c]); c++) {
         if (c > MAX_OPTION_CLUSTER) return /failproof/i.test(arg);
         if ((arg[c] === "o" || arg[c] === "O") && plantsAnywhere(arg.slice(c + 1))) return true;
-        if (known?.includes(arg[c])) return false;
       }
       return false;
     });
@@ -2661,20 +3207,24 @@ function destroysFailproofaiState(command: string, depth = 0, startDir?: string,
   // `cd` the walk cannot follow. Every word is judged as written as well, so an
   // assignment the shell never makes (`: D=x`) cannot hide one.
   const values = new Map<string, string>(LOOP_HEADER_RE.test(command) ? assignments : []);
+  // A variable's value where the shell stands at `here`: `$PWD` is that
+  // directory, `$HOME` is `~` unless the line sets it.
+  const valueAt = (name: string, here: Where): string | undefined =>
+    name === "PWD" && here.dir !== undefined && !here.lost ? here.dir : (values.get(name) ?? (name === "HOME" ? "~" : undefined));
   const expandAt = (word: string, here: Where): string => {
     let out = word;
     if (out.startsWith("~+") && here.dir !== undefined && !here.lost) out = here.dir + out.slice(2);
     else if (out.startsWith("~-") && previous?.dir !== undefined && !previous.lost) out = previous.dir + out.slice(2);
-    for (let pass = 0; pass < 3 && out.includes("$"); pass++) {
-      out = out.replace(VAR_REFERENCE_RE, (reference, name: string) =>
-        name === "PWD" && here.dir !== undefined && !here.lost
-          ? here.dir
-          : values.get(name) ?? (name === "HOME" ? "~" : reference),
-      );
-      // A value that refers to itself grows with every pass.
-      if (out.length > 4096) return word;
-    }
-    return out;
+    if (!out.includes("$")) return out;
+    // Each operator as bash applies it (`${D%/}` is `D` without its trailing
+    // `/`), and a variable read in a value read too.
+    const results = expandParameters(out, (name) => {
+      const value = valueAt(name, here);
+      return value === undefined ? [] : [value];
+    }, 64);
+    out = results?.[0] ?? word;
+    // A value that refers to itself grows with every pass.
+    return out.length > 4096 ? word : out;
   };
   const expand = (word: string): string => expandAt(word, at);
   // Every value the line gives each variable. One set only in a subshell or
@@ -2704,31 +3254,28 @@ function destroysFailproofaiState(command: string, depth = 0, startDir?: string,
   // B=y); printf x > node_modules/.bin/$A$B` writes `failproofai`, which
   // swapping one variable at a time never spelled (found by hermes on
   // FailproofAI/failproofai#1058).
+  // A `${name:-word}` default, `${!name}` and the other operators give a word
+  // other values too, so those are read even when nothing is reassigned:
+  // `cp stub ${X:-bins}/failproofai` writes through `bins` when `X` is unset.
   const variantsOf = (word: string): string[] => {
-    if (!reassigned || !word.includes("$")) return [];
+    if (!word.includes("$") || (!reassigned && !OPERATED_REFERENCE_RE.test(word))) return [];
     const known = variantsByWord.get(word);
     if (known !== undefined) return known;
-    const names = [...new Set([...word.matchAll(VAR_REFERENCE_RE)].map(([, name]) => name))].filter(
-      (name) => (everyValue.get(name)?.length ?? 0) > 1,
+    const results = expandParameters(
+      word,
+      (name) => {
+        const every = everyValue.get(name);
+        if (every !== undefined && every.length > 0 && !(name === "PWD" && at.dir !== undefined && !at.lost)) return every;
+        const value = valueAt(name, at);
+        return value === undefined ? [] : [value];
+      },
+      Math.max(variantBudget, 1),
     );
-    let combinations = 1;
-    for (const name of names) combinations *= everyValue.get(name)!.length;
-    variantBudget -= names.length === 0 ? 0 : combinations;
+    if (results === null) throw new Error("a variable is reassigned too many times to follow");
+    if (results.length > 1) variantBudget -= results.length;
     if (variantBudget < 0) throw new Error("a variable is reassigned too many times to follow");
-    const variants = new Set<string>();
     const current = expand(word);
-    const substitute = (text: string, name: string, value: string): string =>
-      text.split(`\${${name}}`).join(value).replace(new RegExp(`\\$${name}(?![A-Za-z0-9_])`, "g"), () => value);
-    const choose = (index: number, text: string): void => {
-      if (index === names.length) {
-        const variant = expand(text);
-        if (variant !== current) variants.add(variant);
-        return;
-      }
-      for (const value of everyValue.get(names[index])!) choose(index + 1, substitute(text, names[index], value));
-    };
-    if (names.length > 0) choose(0, word);
-    const found = [...variants];
+    const found = results.filter((variant) => variant !== current && variant.length <= 4096);
     variantsByWord.set(word, found);
     return found;
   };
@@ -2737,6 +3284,288 @@ function destroysFailproofaiState(command: string, depth = 0, startDir?: string,
   const NAMES_PWD_RE = /\$\{?PWD\b|^~\+/;
   const expandEverywhere = (word: string): string[] =>
     NAMES_PWD_RE.test(word) ? alts.map((alt) => expandAt(word, alt)) : [];
+  // Gives `name` the values in `found`, keeping each it held before as one
+  // it may still hold; with none, a value the walk cannot know.
+  const setVariable = (name: string, found: readonly string[]) => {
+    if (values.has(name)) assigned(name, values.get(name)!);
+    if (found.length === 0) {
+      values.delete(name);
+      variantsByWord.clear();
+      return;
+    }
+    for (const value of found) assigned(name, value);
+    values.set(name, found[found.length - 1]);
+  };
+  // What a glob word expands to on disk from `base`, as the shell expands
+  // it; `null` past GLOB_DISK_LIMIT paths or from a directory the walk lost.
+  const globPaths = (base: Where, word: string): string[] | null => {
+    const absolute = word.startsWith("/")
+      ? word
+      : word === "~" || word.startsWith("~/")
+        ? homedir() + word.slice(1)
+        : !base.lost && base.full?.startsWith("/")
+          ? `${base.full}/${word}`
+          : undefined;
+    return absolute === undefined ? null : expandOnDisk("/", absolute.slice(1));
+  };
+  // A loop's variable takes each value its list gives as the shell expands
+  // it: `for d in out bins; do cp stub $d/failproofai; done` writes through
+  // `bins`, and `for f in many/*` through every link the pattern matches
+  // (found by hermes on FailproofAI/failproofai#1058). Past MAX_LOOP_VALUES,
+  // only the values that may reach what is protected are kept.
+  const loopValues = (name: string, list: string) => {
+    const found: string[] = [];
+    let plain = 0;
+    const take = (value: string, reaches: boolean) => {
+      if (found.includes(value) || (!reaches && plain++ >= MAX_LOOP_VALUES)) return;
+      found.push(value);
+    };
+    const nameReaches = (path: string): boolean => /failproof/i.test(path) || couldBeEntryName(path.slice(path.lastIndexOf("/") + 1));
+    const linked = (path: string): boolean => {
+      const cut = path.lastIndexOf("/");
+      return linkNamesIn(path.slice(0, cut)).includes(path.slice(cut + 1));
+    };
+    for (const { raw } of shellWords(list)) {
+      const word = bareToken(raw);
+      if (word === "" || word === "do") continue;
+      for (const each of [expand(word), ...variantsOf(word)]) {
+        if (!GLOB_METACHAR_RE.test(each) || /[$`]/.test(each)) {
+          take(each, nameReaches(each) || isBinDir(each) || landsOnState(each));
+          continue;
+        }
+        const matches = globPaths(at, each);
+        if (matches === null) {
+          // Too many names to read one by one: in one directory, only its
+          // links and the entry reach anywhere else.
+          const cut = each.lastIndexOf("/");
+          const part = each.slice(cut + 1);
+          const directory = cut === -1 ? "." : each.slice(0, cut) || "/";
+          if (GLOB_METACHAR_RE.test(directory)) throw new Error("a loop runs over more paths than the walk reads");
+          for (const { real } of realPathsOf(directory)) {
+            if (typeof real !== "string") throw new Error("a loop runs over more paths than the walk reads");
+            const dir = real === "/" ? "" : real;
+            const links = linksMatching(dir, part);
+            if (links === null) throw new Error("a loop runs over more paths than the walk reads");
+            for (const link of links) take(link, true);
+            const re = wholeGlob(part);
+            for (const entry of NPX_ENTRY_NAMES) if (re?.test(entry) && present(`${dir}/${entry}`)) take(`${dir}/${entry}`, true);
+          }
+          continue;
+        }
+        if (matches.length === 0) take(each, nameReaches(each));
+        for (const match of matches) take(match, nameReaches(match) || (linked(match) && (landsOnState(match) || isBinDir(match))));
+      }
+    }
+    setVariable(name, found);
+  };
+  // `read`, `printf -v`, `mapfile` and `unset`, which set a variable without
+  // `=`: `read D <<< bins` gives `D` the here-string, and a value read from a
+  // file or a pipe is one the walk cannot know.
+  const setByBuiltin = (head: string, words: string[], simple: string) => {
+    if (head === "read") {
+      const names: string[] = [];
+      for (let k = 1; k < words.length; k++) {
+        if (/^-[A-Za-z]*[adinNptu]$/.test(words[k])) {
+          if (words[k].endsWith("a")) names.push(words[k + 1] ?? "");
+          k++;
+        } else if (!words[k].startsWith("-")) names.push(words[k]);
+      }
+      const here = /<<<\s*("[^"]*"|'[^']*'|\S+)/.exec(simple);
+      const text = here === null ? undefined : expand(bareToken(here[1]));
+      const fields = text?.split(/[ \t\n]+/).filter((field) => field !== "") ?? [];
+      names.forEach((name, index) => {
+        if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(name)) return;
+        if (text === undefined) setVariable(name, []);
+        else setVariable(name, [index === names.length - 1 ? fields.slice(index).join(" ") : (fields[index] ?? "")]);
+      });
+      if (names.length === 0) setVariable("REPLY", text === undefined ? [] : [text]);
+    } else if (head === "printf" && words[1] === "-v" && words[2] !== undefined) {
+      const format = expand(words[3] ?? "");
+      const args = words.slice(4).map(expand);
+      let k = 0;
+      const value = format.replace(/%(%|[sbqd])/g, (_, c: string) => (c === "%" ? "%" : (args[k++] ?? "")));
+      setVariable(words[2], /[%\\]/.test(value) ? [] : [value]);
+    } else if (head === "mapfile" || head === "readarray") {
+      const named = words.slice(1).filter((word, k, all) => !word.startsWith("-") && !/^-[A-Za-z]*[dnOsuC]$/.test(all[k - 1] ?? ""));
+      setVariable(named[named.length - 1] ?? "MAPFILE", []);
+    } else if (head === "unset") {
+      for (const word of words.slice(1)) if (/^[A-Za-z_][A-Za-z0-9_]*$/.test(word)) setVariable(word, []);
+    }
+  };
+  // A copy, move or link into a directory the walk cannot read puts each
+  // source there by its own name: `D=$(npm root)/.bin; cp stub/failproofai $D`.
+  const copiesIntoUnread = (list: string[]): boolean => {
+    const head = list.length > 0 ? commandBasename(list[0]) : "";
+    if (!COPY_COMMANDS.has(head) && head !== "mv" && head !== "ln") return false;
+    const operands = list.slice(1).filter((arg) => !arg.startsWith("-"));
+    if (operands.length < 2 || !new RegExp(UNREAD_VALUE_RE.source).test(operands[operands.length - 1])) return false;
+    return operands.slice(0, -1).some((source) => couldBeEntryName(baseNameOf(source)));
+  };
+  // What a sed script read from a file writes (`sed -n -f s.sed in`, the
+  // script holding `w hook`): the script as it is on disk, and one the walk
+  // cannot read (not there yet, standard input, or not a small regular file)
+  // is read as writing what is protected.
+  const sedScriptWrites = (args: string[]): boolean =>
+    sedScriptFiles(args).some((file) => {
+      const text = instructionsIn(file);
+      return text === null || sedWriteTargets([text]).some(namesHere);
+    });
+  // A file a command takes what it does from, as it is on disk where the
+  // shell stands; `null` for one the walk cannot read: standard input, one
+  // not there yet, or one that is not a small regular file.
+  const instructionsIn = (file: string): string | null => {
+    const path = file === "-" || file === "" ? undefined : absoluteFrom(at, file);
+    if (path === undefined) return null;
+    try {
+      const info = statSync(path.raw);
+      if (!info.isFile() || info.size > MAX_INSTRUCTION_FILE_BYTES) return null;
+      return readFileSync(path.raw, "utf8");
+    } catch {
+      return null;
+    }
+  };
+  // A patch applied from a file writes every file it names (`patch -p1 <
+  // stub.patch`, `patch -i stub.patch`, `git apply stub.patch`), each read
+  // with up to three leading directories stripped, as `-p` may, and from the
+  // directory `-d` / `--directory` names. One the walk cannot read, from a
+  // pipe or not there yet, is read as writing what is protected.
+  const patchFileWrites = (list: string[], simple: string): boolean => {
+    const head = list.length > 0 ? commandBasename(list[0]) : "";
+    const args = list.slice(1);
+    const files: string[] = [];
+    const into: string[] = [""];
+    if (head === "patch") {
+      for (let k = 0; k < args.length; k++) {
+        const arg = args[k];
+        if (arg === "-i" || arg === "--input") files.push(args[++k] ?? "");
+        else if (arg.startsWith("--input=")) files.push(arg.slice(8));
+        else if (/^-i./.test(arg)) files.push(arg.slice(2));
+        else if (arg === "-d" || arg === "--directory") into.push(args[++k] ?? "");
+        else if (arg.startsWith("--directory=")) into.push(arg.slice(12));
+        else if (/^-d./.test(arg)) into.push(arg.slice(2));
+      }
+      if (files.length === 0) {
+        const redirected = /(?:^|[^<])<(?![<(])\s*("[^"]*"|'[^']*'|[^\s<>|&;]+)/.exec(simple);
+        files.push(redirected === null ? "-" : bareToken(redirected[1]));
+      }
+    } else if (head === "git") {
+      const subcommand = gitSubcommandIndex(args);
+      if (subcommand < 0 || (args[subcommand] !== "apply" && args[subcommand] !== "am")) return false;
+      for (const arg of args.slice(subcommand + 1)) {
+        if (arg.startsWith("--directory=")) into.push(arg.slice(12));
+        else if (!arg.startsWith("-")) files.push(arg);
+      }
+      if (files.length === 0) files.push("-");
+    } else return false;
+    for (const file of files) {
+      const text = instructionsIn(file);
+      if (text === null) return true;
+      for (const target of patchTargets({ patch: text })) {
+        const parts = target.split("/");
+        for (let strip = 0; strip <= Math.min(3, parts.length - 1); strip++) {
+          const rest = parts.slice(strip).join("/");
+          if (into.some((dir) => namesHere(dir === "" ? rest : `${dir.replace(/\/+$/, "")}/${rest}`))) return true;
+        }
+      }
+    }
+    return false;
+  };
+  // An archive extracted into npm's bin directory puts there names the line
+  // never spells: `tar -xf stub.tar -C bins`, `cd bins && unzip ../stub.zip`.
+  const extractsIntoBin = (list: string[]): boolean => {
+    const head = list.length > 0 ? commandBasename(list[0]) : "";
+    const args = list.slice(1);
+    let into = ".";
+    let extracting = false;
+    if (head === "tar" || head === "gtar" || head === "bsdtar") {
+      for (let k = 0; k < args.length; k++) {
+        const arg = args[k];
+        if (arg.startsWith("--")) {
+          const eq = arg.indexOf("=");
+          const name = arg.slice(2, eq === -1 ? undefined : eq);
+          if (name.length >= 3 && "directory".startsWith(name)) into = eq === -1 ? (args[++k] ?? into) : arg.slice(eq + 1);
+          else if (name.length >= 3 && ("extract".startsWith(name) || name === "get")) extracting = true;
+          continue;
+        }
+        // A cluster (`-xzf`, or `xzf` first with no dash), its value letters
+        // taking the words after it in order.
+        if (!arg.startsWith("-") && k > 0) continue;
+        const letters = arg.replace(/^-/, "");
+        if (!/^[A-Za-z]+$/.test(letters)) {
+          if (/^-C./.test(arg)) into = arg.slice(2);
+          continue;
+        }
+        if (letters.includes("x")) extracting = true;
+        for (const letter of letters) {
+          if (letter === "C") into = args[++k] ?? into;
+          else if ("fbHIKLNTVX".includes(letter)) k++;
+        }
+      }
+    } else if (head === "unzip") {
+      extracting = true;
+      const option = args.indexOf("-d");
+      if (option !== -1) into = args[option + 1] ?? into;
+    } else if (head === "cpio") {
+      extracting = args.some((arg) => /^-[A-Za-z]*i/.test(arg) || arg === "--extract");
+    } else if (head === "7z" || head === "7za" || head === "7zz") {
+      extracting = args[0] === "x" || args[0] === "e";
+      const out = args.find((arg) => arg.startsWith("-o"));
+      if (out !== undefined) into = out.slice(2);
+    }
+    return extracting && isBinDir(into === "" ? "." : into);
+  };
+  // curl reads options from `-K FILE` / `--config FILE` as if they were on
+  // the line, so they are read onto it; one it cannot read is refused.
+  const withCurlConfig = (list: string[]): string[] | null => {
+    if (list.length === 0 || commandBasename(list[0]) !== "curl") return list;
+    const out = [list[0]];
+    for (let k = 1; k < list.length; k++) {
+      const arg = list[k];
+      let file: string | undefined;
+      if (arg === "-K") file = list[++k] ?? "";
+      else if (/^-K./.test(arg)) file = arg.slice(2);
+      else if (/^-[A-Za-z]+K$/.test(arg)) {
+        out.push(arg.slice(0, -1));
+        file = list[++k] ?? "";
+      } else if (arg.startsWith("--")) {
+        const eq = arg.indexOf("=");
+        const name = arg.slice(2, eq === -1 ? undefined : eq);
+        if (name.length >= 4 && "config".startsWith(name)) file = eq === -1 ? (list[++k] ?? "") : arg.slice(eq + 1);
+      }
+      if (file === undefined) {
+        out.push(arg);
+        continue;
+      }
+      const text = instructionsIn(file);
+      if (text === null) return null;
+      out.push(...curlConfigArgs(text));
+    }
+    return out;
+  };
+  // A written word that still holds a value the walk cannot read — a
+  // substitution, or a variable set from what it cannot read or never set —
+  // could be anything there: `D=$(echo bins); cp stub $D/failproofai`. It
+  // lands on the entry or the state when what follows the last such value
+  // could, as if from anywhere npm installs (`$D/failproofai`), or when the
+  // name itself is unread and could be the entry, in a directory that is, or
+  // may be, npm's bin directory (`bins/$N`, `bins/${N}proofai`).
+  const unreadLands = (written: string): boolean => {
+    if (!/[$`]/.test(written)) return false;
+    const marked = written.replace(UNREAD_VALUE_RE, (piece) => (piece.startsWith("$((") ? "0" : "\u0000"));
+    if (!marked.includes("\u0000")) return false;
+    const tail = marked.slice(marked.lastIndexOf("\u0000") + 1).replace(/^[\\/]+/, "");
+    if (tail !== "" && lostNamesState({ via: "", lost: tail })) return true;
+    const trimmed = marked.replace(/[\\/]+$/, "");
+    const cut = trimmed.lastIndexOf("/");
+    const component = trimmed.slice(cut + 1);
+    if (!component.includes("\u0000") || !couldBeEntryName(component.replaceAll("\u0000", "*"))) return false;
+    // A name that is wholly unread, in a directory that is too, is any path
+    // at all, as `> "$OUT"` is: only what the line spells can be judged.
+    const partial = component !== "\u0000";
+    const directory = cut === -1 ? "." : trimmed.slice(0, cut) || "/";
+    if (directory.includes("\u0000")) return partial;
+    return isBinDir(directory) || (partial && anywhereHere() && relativeWord(directory));
+  };
   // `named` is the operand as written, judged when the walk cannot follow it.
   // A `physical` move (`cd -P`, or any `cd` after `set -P`) goes where the path
   // really is, each link followed and each `..` taken after it: with `deep` a
@@ -2866,17 +3695,32 @@ function destroysFailproofaiState(command: string, depth = 0, startDir?: string,
       return;
     }
     if (operand === "") return;
-    const target = operand ?? expand("$HOME");
+    let target = operand ?? expand("$HOME");
+    // A pattern is the directory it matches on disk, and this line's links
+    // (`ln -s ../node_modules/.bin out/b && cd out/b*`). Matching none, the
+    // `cd` fails and the shell stays; matching several, bash 4.4 and later
+    // fail and older ones take the first, which a move that may fail covers.
+    if (GLOB_METACHAR_RE.test(target) && !/[$`]/.test(target)) {
+      const matches = globPaths(at, target);
+      if (matches !== null && matches.length === 0) return;
+      target = matches?.[0] ?? "$(unknown)";
+    }
     const to = whereAfter(at, target, named ?? target, physical);
     if (stackOnly) {
       dirStack.push(to);
       return;
     }
     if (head === "pushd") dirStack.push(at);
-    // Wherever else the shell may stand moves too, the same way.
+    // Wherever else the shell may stand moves too, the same way, and to each
+    // other value the operand may hold: `D=bins; (D=out); cd $D` stands in
+    // `bins` (found by hermes on FailproofAI/failproofai#1058).
+    const others = named === undefined ? [] : variantsOf(named);
     moveTo(
       to,
-      alts.map((where) => whereAfter(where, target, named ?? target, physical)),
+      [
+        ...alts.map((where) => whereAfter(where, target, named ?? target, physical)),
+        ...others.flatMap((other) => [at, ...alts].map((where) => whereAfter(where, other, named ?? other, physical))),
+      ],
       startFull.startsWith("/") && to.full === startFull,
     );
   };
@@ -3017,12 +3861,29 @@ function destroysFailproofaiState(command: string, depth = 0, startDir?: string,
       pending = [];
     }
     if (!pipeline.trim()) continue;
+    // `declare -n R=D` makes `R` a name for `D`, read through it.
+    const namerefs = new Map<string, string>();
+    for (const [, name, target] of pipeline.matchAll(NAMEREF_RE)) namerefs.set(name, target);
+    // A value is what the shell stores: its references read when it is
+    // assigned, each with every value it may hold, so `A=bins; (A=out);
+    // B=$A` gives `B` both (found by hermes on FailproofAI/failproofai#1058).
     for (const [, name, value] of pipeline.matchAll(ASSIGNMENT_RE)) {
-      const bare = value.replace(/^["']|["']$/g, "");
+      let bare = value.replace(/^["']|["']$/g, "");
+      // A substitution with a space in it arrives cut short (`$(echo`): its
+      // value is one the walk cannot read, whole.
+      if ((bare.match(/\$\(/g) ?? []).length > (bare.match(/\)/g) ?? []).length || (bare.match(/`/g) ?? []).length % 2 === 1) bare = "$(…)";
+      const target = namerefs.get(name);
+      const now = target !== undefined ? `\${${target}}` : expand(bare);
+      const others = target !== undefined ? [] : variantsOf(bare);
       if (values.has(name)) assigned(name, values.get(name)!);
-      values.set(name, bare);
-      assigned(name, bare);
+      values.set(name, now);
+      assigned(name, now);
+      for (const other of others) assigned(name, other);
     }
+    // A loop's variable takes each value its list gives, and `read`,
+    // `printf -v` and `mapfile` set one too.
+    const loop = LOOP_VARIABLE_RE.exec(pipeline.trim());
+    if (loop !== null) loopValues(loop[1], loop[2] ?? "");
     const simpleCommands = splitUnquoted(pipeline, /\|/).filter((_, k) => k % 2 === 0);
     const reachesState = namesState(pipeline) || cwdInState || loopCarriesState;
     if (reachesState && LOOP_HEADER_RE.test(pipeline)) loopCarriesState = true;
@@ -3037,6 +3898,7 @@ function destroysFailproofaiState(command: string, depth = 0, startDir?: string,
     for (const [, target] of pipeline.matchAll(REDIRECT_TARGET_RE)) {
       const written = target.replace(/^["']|["']$/g, "");
       if (namesHere(written) || namesHere(expand(written)) || expandEverywhere(written).some(namesHere)) return true;
+      if (sweepWritesEntry(written) || sweepWritesEntry(expand(written)) || unreadLands(expand(written))) return true;
       if (anywhereHere() && (plantsAnywhere(written) || plantsAnywhere(expand(written)))) return true;
       if (variantsOf(written).some((variant) => namesHere(variant) || (anywhereHere() && plantsAnywhere(variant)))) return true;
     }
@@ -3046,7 +3908,9 @@ function destroysFailproofaiState(command: string, depth = 0, startDir?: string,
       // substitution's are not a subshell: `cd $(npm root)/.bin` moves this shell.
       const shellText = withoutSubstitutions(simple.replace(/\\[()]|'[^']*'|"(?:[^"\\]|\\.)*"/g, ""));
       parenDepth += (shellText.match(/\(/g) ?? []).length;
-      const words = commandWordList(simple);
+      const configured = withCurlConfig(commandWordList(simple));
+      if (configured === null) return true;
+      const words = configured;
       const expanded = words.map(expand);
       const lists = expanded.some((word, k) => word !== words[k]) ? [words, expanded] : [words];
       if (alts.length > 0 && words.some((word) => NAMES_PWD_RE.test(word))) {
@@ -3099,6 +3963,11 @@ function destroysFailproofaiState(command: string, depth = 0, startDir?: string,
               }),
           ),
         ) ||
+        lists.some((list) => writtenOperands(list).some(sweepWritesEntry)) ||
+        writtenOperands(expanded).some(unreadLands) ||
+        copiesIntoUnread(expanded) ||
+        (head === "sed" && lists.some((list) => sedScriptWrites(list.slice(1)))) ||
+        lists.some((list) => patchFileWrites(list, simple) || extractsIntoBin(list)) ||
         (anywhereHere() && lists.some(writesEntryAnywhere))
       ) {
         // Before the `reachesState` gate, because the point is that nothing on
@@ -3148,6 +4017,9 @@ function destroysFailproofaiState(command: string, depth = 0, startDir?: string,
           else if ((words[i] === "-o" || words[i] === "+o") && words[i + 1] === "physical") physicalMoves = words[i] === "-o";
         }
       }
+      // The builtins that set a variable without `=`. A pipeline's stages run
+      // in subshells, so only a command standing alone sets one this line keeps.
+      if (simpleCommands.length === 1) setByBuiltin(head, words, simple);
       parenDepth = Math.max(0, parenDepth - (shellText.match(/\)/g) ?? []).length);
       if (cdParenDepth !== null && parenDepth < cdParenDepth) {
         cwdInState = false;
@@ -3230,6 +4102,12 @@ function relativeWord(word: string): boolean {
 }
 
 /** The entry's own name, a Windows shim of it, or a glob that could be either. */
+/** The names npx runs for `failproofai` in a bin directory, the Windows shims included. */
+const NPX_ENTRY_NAMES = ["failproofai", "failproofai.cmd", "failproofai.ps1", "failproofai.exe", "failproofai.bunx"];
+
+/** A path that is npx's entry for `failproofai`. */
+const NPX_ENTRY_PATH_RE = /(?:^|[\\/])node_modules[\\/](?:\.?[\\/])*\.bin[\\/]failproofai(?:\.(?:cmd|ps1|exe|bunx))?$/i;
+
 function couldBeEntryName(name: string): boolean {
   return /^failproofai(?:\.(?:cmd|ps1|exe|bunx))?$/i.test(name) || (GLOB_METACHAR_RE.test(name) && globCouldBeEntry(name));
 }

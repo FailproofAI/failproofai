@@ -344,7 +344,7 @@ def test_is_self_report_tool_accepts_every_spelling(name):
 
 
 @pytest.mark.parametrize(
-    "name", ["report", "bash", "mcp__other__report", "failproofai:report", "failproofai-report", "", None, 3]
+    "name", ["report", "MCP:report", "bash", "mcp__other__report", "failproofai_report_x", "failproofai-report", "", None, 3]
 )
 def test_is_self_report_tool_rejects_others(name):
     assert not fp.is_self_report_tool(name)

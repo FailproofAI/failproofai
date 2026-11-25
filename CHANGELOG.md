@@ -2,6 +2,10 @@
 
 ## 1.0.18-beta.0 — 2026-11-24
 
+### Features
+
+- Self Reports: every hooked agent gets a `report` tool (MCP server `failproofai`, served by `failproofaid` at `http://127.0.0.1:4319/mcp` or by `failproofai mcp` over stdio) to say it is stuck, under six default categories or the organization's own; the hook allows the call before any policy, pause or Jev review and records it as a `self_report` event, the MCP server records it for agents whose hooks do not see MCP calls, the setting comes from Cloud (`selfReport` in desired-state) or `failproofai self-report enable|disable|status|test|sync` and lives in `~/.failproofai/self-report.json`, and both SDKs add `self_report()` / `selfReport()` with ready-made framework tools
+
 ### Fixes
 
 - Retire the hook-sync agent and stop publishing its image: `docker-hook-sync/`, its prompt and `build-image.yml` (which pushed `ghcr.io/failproofai/hook-sync` publicly every day) are removed. The agent ran Claude Code with permission checks skipped, a GitHub write token and a Claude token in its environment and no failproofai hooks, after reading a third-party npm README. Nothing had run it since July (FailproofAI/agenteye#1797, #1055)

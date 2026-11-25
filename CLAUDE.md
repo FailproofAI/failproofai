@@ -1370,7 +1370,7 @@ sdk/python/                  The telemetry SDK (Python, uv, pytest). PyPI dist
                               dependency we declare is a constraint they inherit.
                               `sdk/` is a directory because more languages go beside
                               `python/`, not inside it.
-  failproofai_sdk/_events.py  The 15 public event methods, and the `_pending` map that
+  failproofai_sdk/_events.py  The 16 public event methods, and the `_pending` map that
                               auto-computes duration_ms by pairing start/end events
   failproofai_sdk/_schema.py  One dataclass per event type; `to_dict()` IS the wire
                               format. Frozen byte-for-byte by tests/test_wire_format.py
@@ -1385,7 +1385,7 @@ sdk/python/                  The telemetry SDK (Python, uv, pytest). PyPI dist
                               on either side. tests/test_spool_contract.py checks the
                               Rust and the TypeScript directly and never skips
 sdk/typescript/              The telemetry SDK (TypeScript, npm, vitest). npm package
-                              `@failproofai/sdk`. The same 15 events, wire format,
+                              `@failproofai/sdk`. The same 16 events, wire format,
                               spool directory and Evaluator v2 protocol as
                               sdk/python — a fleet running both writes into one
                               pipe. Zero runtime dependencies for the same reason,

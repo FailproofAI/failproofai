@@ -74,7 +74,7 @@ The error is emitted before `agent_end`, because the dashboard closes the span a
 
 ## The event methods
 
-Fifteen methods in six families. Most come in pairs — you emit the opener, then the closer, and the SDK measures the span between them.
+Sixteen methods in seven families. Most come in pairs — you emit the opener, then the closer, and the SDK measures the span between them.
 
 | Family | Opens | Closes | Standalone |
 | --- | --- | --- | --- |
@@ -85,6 +85,7 @@ Fifteen methods in six families. Most come in pairs — you emit the opener, the
 | **Hooks** | `hook_triggered` | `hook_completed` | — |
 | **Humans** | `human_wait` | `human_input` | `human_pause`, `human_interrupt` |
 | **Failures** | — | — | `error` |
+| **Self Reports** | — | — | `self_report` |
 
 <Tip>
   Prefer the scopes — `agent()` and `tool_call()` — wherever they fit. They guarantee the closing event even when the body raises. Reach for these methods directly when your control flow doesn't nest, such as a model call inside a helper.
@@ -625,7 +626,7 @@ flowchart LR
 
 | Stage | Job | Runs in |
 | --- | --- | --- |
-| Adapter | Translates a framework callback into one of 15 event types | Your process |
+| Adapter | Translates a framework callback into one of 16 event types | Your process |
 | Writer | Queues, batches, writes JSONL atomically | Your process, background thread |
 | Spool | Durable handoff, survives your process exiting | Local disk |
 | Daemon | Watches the spool, ships batches, deletes what it shipped | Your machine |
@@ -703,6 +704,22 @@ The default is right in production and wrong while debugging, because it can onl
 </Accordion>
 
 </AccordionGroup>
+
+
+## Self Reports
+
+Give the model one more tool, so it can say when it is stuck. With a provider SDK directly, offer the tool and route the call:
+
+```python
+tools = [failproofai_sdk.openai_tool(), *my_tools]       # anthropic_tool() for Claude
+for call in message.tool_calls:
+    if failproofai_sdk.is_self_report_tool(call.function.name):
+        result = failproofai_sdk.handle_tool_call(
+            call.function.name, call.function.arguments, tool_call_id=call.id
+        )  # always "Recorded."
+```
+
+To record a report from your own code, call `failproofai_sdk.self_report("missing_context", "The customer id was never provided.")`. The categories and the tool's wording come from `~/.failproofai/self-report.json`, else six built-in categories. See [Self Reports](/self-reports).
 
 ## Common problems
 

@@ -23,7 +23,7 @@ and `failproofaid` — the daemon the `failproofai` CLI installs — picks them 
 Nothing here opens a socket, and nothing blocks your agent loop on the network.
 
 This is the TypeScript counterpart to the Python
-[`failproofai-sdk`](https://pypi.org/project/failproofai-sdk/). Same 15 events,
+[`failproofai-sdk`](https://pypi.org/project/failproofai-sdk/). Same 16 events,
 same wire format, same spool directory: a fleet running both writes into one
 pipe, and the dashboard cannot tell which language wrote what.
 

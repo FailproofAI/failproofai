@@ -87,17 +87,28 @@ _MAX_CATEGORIES = 32
 _MAX_DESCRIPTION = 500
 _MAX_GUIDANCE = 2000
 
-#: Every spelling the report tool reaches a host under: the SDK name, and the
-#: MCP tool `report` on server `failproofai` as each agent prefixes it.
-_TOOL_NAMES = frozenset(
-    {
-        TOOL_NAME,
-        "mcp__failproofai__report",
-        "failproofai__report",
-        "failproofai.report",
-        "failproofai/report",
-    }
+#: Every spelling the report tool reaches a host under (case-insensitive,
+#: exact): the SDK name (also OpenCode's), and the MCP tool `report` on server
+#: `failproofai` as each agent prefixes it: Claude Code, Codex, Pi, Factory and
+#: Devin `mcp__failproofai__report`, Factory's matcher form
+#: `failproofai___report`, Hermes and Antigravity `mcp_failproofai_report`,
+#: OpenClaw and Goose `failproofai__report`, plus other server-qualified forms.
+#: The CLI and the TypeScript SDK test the same list against the repository's
+#: test-fixtures/self-report/tool-names.golden.txt.
+TOOL_SPELLINGS: tuple[str, ...] = (
+    "mcp__failproofai__report",
+    "failproofai___report",
+    "failproofai__report",
+    "failproofai_report",
+    "failproofai.report",
+    "failproofai/report",
+    "failproofai:report",
+    "mcp_failproofai_report",
+    "mcp__failproofai_report",
+    "mcp:failproofai:report",
+    "mcp:failproofai/report",
 )
+_TOOL_NAMES = frozenset(TOOL_SPELLINGS)
 
 
 # ---------------------------------------------------------------------------
@@ -272,14 +283,26 @@ def self_report(category: str, detail: str | None = "", **fields: Any) -> None:
     _runtime.event.self_report(category, detail, **fields)
 
 
-def is_self_report_tool(name: Any) -> bool:
+def is_self_report_tool(name: Any, server: Any = None) -> bool:
     """True for the report tool under any of its names.
 
     Use it to hide the call from your UI or transcript: `failproofai_report`
     (this SDK), and the MCP tool as agents spell it (`mcp__failproofai__report`,
-    `failproofai__report`, `failproofai.report`, ...).
+    `mcp_failproofai_report`, `failproofai__report`, ...). `server` is for
+    hosts that name an MCP tool and its server separately (Cursor's
+    `tool_name` + `mcp_server_name`): a bare `report` matches only when the
+    server is `failproofai`.
     """
-    return isinstance(name, str) and name.strip() in _TOOL_NAMES
+    if not isinstance(name, str):
+        return False
+    lower = name.strip().lower()
+    if lower in _TOOL_NAMES:
+        return True
+    return (
+        isinstance(server, str)
+        and server.strip().lower() == "failproofai"
+        and lower in ("report", "mcp:report")
+    )
 
 
 def _coerce_text(value: Any) -> str:

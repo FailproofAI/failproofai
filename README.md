@@ -284,6 +284,10 @@ hand an agent more autonomy, not less:
 - **One daemon, always in sync.** The same process ships every run to Cloud and keeps
   your policies current, so a policy you approve reaches every machine without a
   redeploy.
+- **Agents that say when they're stuck.** [Self Reports](https://docs.befailproof.ai/self-reports)
+  gives every agent a `report` tool for looping, a broken credential, missing context or a
+  request it cannot do. No policy can block the call, and each report lands on its
+  session, so you see where agents get stuck without reading every transcript.
 
 ---
 

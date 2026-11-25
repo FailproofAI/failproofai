@@ -152,6 +152,7 @@
                 "group": "Find and manage failures",
                 "pages": [
                   "sessions/sentiment",
+                  "self-reports",
                   "audits/overview",
                   "audits/local-audit",
                   "audits/setup",

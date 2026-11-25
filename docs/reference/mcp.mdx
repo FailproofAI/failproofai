@@ -14,6 +14,10 @@ There is one address for everyone, hosted or self-hosted:
 https://gateway.befailproof.ai/mcp
 ```
 
+<Note>
+  This page is about the **Cloud MCP gateway**, which lets you query Failproof AI Cloud from an AI tool. It is not the local `failproofai` MCP server that [Self Reports](#the-local-self-reports-server) adds to your agents.
+</Note>
+
 ## Connect a client
 
 Add the address to your client. The first time a tool is used, your browser opens. Choose where your Failproof AI Cloud is, sign in, pick one organization, and select **Allow**. **Cancel** connects nothing.
@@ -115,6 +119,19 @@ Tool calls and their results pass through the hosted Failproof AI gateway on the
 ## What happens to your data
 
 Results go to the AI tool you connected, and that tool's provider handles them under its own terms. For each tool call, Failproof AI logs the tool's name, its outcome, how long it took, and the organization, never the arguments or results. See the [privacy policy](https://befailproof.ai/privacy/).
+
+## The local Self Reports server
+
+[Self Reports](/self-reports) registers a different MCP server in your agents, also named `failproofai`. It runs on your machine, serves one tool, `report`, and needs no sign-in:
+
+| | Cloud MCP gateway | Local Self Reports server |
+| --- | --- | --- |
+| Address | `https://gateway.befailproof.ai/mcp` | `http://127.0.0.1:4319/mcp` (served by `failproofaid`), or `failproofai mcp` over stdio |
+| Who adds it | You, in each client | failproofai, in every agent with failproofai hooks, while Self Reports is on |
+| What it offers | Your organization's data, with your permissions | One `report` tool an agent calls when it is stuck |
+| Sign-in | OAuth, one organization per connection | None. It answers only on `127.0.0.1` and refuses requests from web pages |
+
+Both use the name `failproofai`. If you added the gateway under that name in an agent failproofai hooks, failproofai leaves your entry alone and `failproofai self-report status` reports a conflict. To use both, rename the gateway entry, for example to `failproofai-cloud`, and run `failproofai self-report sync`.
 
 ## Troubleshooting
 

@@ -563,6 +563,10 @@ function agentSettingsShellExtras(
   for (const absolute of relocatedAgentSettings(extraPaths)) {
     files.add(absolute);
     dirs.add(dirname(absolute));
+    // And where it really is, existing or not yet: CLAUDE_CONFIG_DIR's
+    // settings.json linked to /tmp/actual/primary.json is written as that.
+    const real = settingsLinkTarget(absolute);
+    if (real !== null && real !== absolute) files.add(real);
   }
   // `.github/hooks/` is protected as a directory only in a project that keeps
   // failproofai's Copilot hooks there; elsewhere it is where git hooks live.

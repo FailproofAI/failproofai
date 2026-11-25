@@ -3196,30 +3196,83 @@ function destroysProtectedPath(command: string, target: ProtectedPathTarget, dep
     else overflowed.add(name);
     assignedValues.set(name, list);
   }
-  // A variable's values with the variables inside them resolved too (`A=cfg.json;
-  // D=$A`), a few levels deep and a few values wide; null where they cannot be
-  // known — an overflow, a value no assignment explains, a substitution.
-  const resolvedValues = (name: string, depth = 0): string[] | null => {
-    const raw = assignedValues.get(name);
-    if (!raw || raw.length === 0 || overflowed.has(name) || depth > 4) return null;
-    const out: string[] = [];
-    for (const value of raw) {
-      if (/`|\$\(/.test(value)) return null;
-      let forms = [""];
-      let pos = 0;
-      for (const ref of value.matchAll(/\$(?:\{([A-Za-z_][A-Za-z0-9_]*)\}|([A-Za-z_][A-Za-z0-9_]*))/g)) {
-        const inner = resolvedValues(ref[1] ?? ref[2], depth + 1);
-        if (inner === null) return null;
-        const literal = value.slice(pos, ref.index);
-        pos = ref.index + ref[0].length;
-        forms = forms.flatMap((form) => inner.map((part) => form + literal + part));
-        if (forms.length > 64) return null;
-      }
-      if (/\$/.test(value.slice(pos))) return null;
-      out.push(...forms.map((form) => form + value.slice(pos)));
-      if (out.length > 64) return null;
+  // A variable's values with the variables inside them resolved too
+  // (`A=cfg.json; D=$A`), each variable once, however long the chain. A
+  // variable named in its own value is its earlier value, the shell's append
+  // (`F=ho; F=${F}oks` is `hooks`; `PATH=$PATH:/x` extends an environment
+  // value, which is unknown). COMPLEX is what only a crafted command builds —
+  // a cycle between variables, more values than are kept, too many
+  // combinations — and counts as naming the target; UNKNOWN (null: no
+  // assignment on the line, a command substitution) does not, like any
+  // environment variable.
+  const COMPLEX = "complex" as const;
+  type Resolved = string[] | typeof COMPLEX | null;
+  const resolved = new Map<string, Resolved>();
+  const resolving = new Set<string>();
+  const REF_IN_VALUE_RE = /\$(?:\{([A-Za-z_][A-Za-z0-9_]*)\}|([A-Za-z_][A-Za-z0-9_]*))/g;
+  // One value with its references resolved; `self` binds the variable's own name.
+  const expandValue = (value: string, name: string, self: string | undefined): Resolved => {
+    if (/`|\$\(/.test(value)) return null;
+    let forms: string[] = [""];
+    let pos = 0;
+    for (const ref of value.matchAll(REF_IN_VALUE_RE)) {
+      const refName = ref[1] ?? ref[2];
+      const inner: Resolved = refName === name ? (self === undefined ? null : [self]) : resolveVariable(refName);
+      if (inner === null || inner === COMPLEX) return inner;
+      const literal = value.slice(pos, ref.index);
+      pos = ref.index + ref[0].length;
+      forms = forms.flatMap((form) => inner.map((part) => form + literal + part));
+      if (forms.length > 64) return COMPLEX;
     }
+    const tail = value.slice(pos);
+    if (/\$/.test(tail)) return null;
+    return forms.map((form) => form + tail);
+  };
+  const resolveVariable = (name: string): Resolved => {
+    if (resolved.has(name)) return resolved.get(name)!;
+    if (resolving.has(name) || resolving.size > 512) return COMPLEX;
+    const raw = assignedValues.get(name);
+    if (!raw || raw.length === 0) return null;
+    if (overflowed.has(name)) return COMPLEX;
+    resolving.add(name);
+    const namesSelf = (value: string): boolean =>
+      [...value.matchAll(REF_IN_VALUE_RE)].some((ref) => (ref[1] ?? ref[2]) === name);
+    let out: Resolved = [];
+    for (const value of raw.filter((v) => !namesSelf(v))) {
+      const forms = expandValue(value, name, undefined);
+      if (forms === null || forms === COMPLEX) {
+        out = forms;
+        break;
+      }
+      out.push(...forms);
+    }
+    const appends = raw.filter(namesSelf);
+    if (Array.isArray(out) && appends.length > 0) {
+      if (out.length === 0) out = null;
+      else {
+        for (const value of appends) {
+          const grown: string[] = [];
+          for (const previous of out as string[]) {
+            const forms = expandValue(value, name, previous);
+            if (forms === null || forms === COMPLEX) {
+              out = forms;
+              break;
+            }
+            grown.push(...forms);
+          }
+          if (!Array.isArray(out)) break;
+          out = [...new Set([...(out as string[]), ...grown])];
+        }
+      }
+    }
+    if (Array.isArray(out) && out.length > 64) out = COMPLEX;
+    resolving.delete(name);
+    resolved.set(name, out);
     return out;
+  };
+  const resolvedValues = (name: string): string[] | null => {
+    const values = resolveVariable(name);
+    return values === COMPLEX ? null : values;
   };
   // A word that is just `$NAME` for a variable whose values are known: those
   // values; null for anything else.
@@ -3275,6 +3328,7 @@ function destroysProtectedPath(command: string, target: ProtectedPathTarget, dep
       if (stateVars.has(name)) return true;
       // Its value judged from where the shell stands where it is used:
       // `cd sub; D=cfg.json; cp x "$D"` writes through sub/cfg.json.
+      if (resolveVariable(name) === COMPLEX) return true;
       const values = resolvedValues(name);
       if (
         values &&

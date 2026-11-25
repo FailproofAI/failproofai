@@ -693,7 +693,13 @@ describe("block-failproofai-commands — review round three", () => {
     });
 
     it("allows pointing git's hooksPath at a Copilot install's directory", async () => {
-      const session = { cwd: PROJ, agentSettingsPath: `${PROJ}/.github/hooks/failproofai.json` };
+      // A real install, so `.github/hooks/` is protected as a directory here:
+      // without the file the test passed whether or not the rule held.
+      const project = join(root, "copilot-install");
+      mkdirSync(join(project, ".github", "hooks"), { recursive: true });
+      writeFileSync(join(project, ".github", "hooks", "failproofai.json"), "{}");
+      const session = { cwd: project, agentSettingsPath: join(project, ".github", "hooks", "failproofai.json") };
+      expect((await runIn("Bash", { command: "rm -rf .github/hooks" }, session)).decision).toBe("deny");
       expect((await runIn("Bash", { command: "git config core.hooksPath .github/hooks" }, session)).decision).toBe("allow");
     });
 
@@ -1345,7 +1351,9 @@ describe("block-failproofai-commands — review round seven", () => {
     const backup = join(root, "backup7");
     mkdirSync(backup, { recursive: true });
     const decoys = Array.from({ length: 64 }, () => `D=${backup}`).join("; ");
-    expect(await bash(`${decoys}; D=~/.claude; cp /tmp/settings.json "$D"`, p7)).toBe(true);
+    // A crafted variable counts as naming every protected path, so the state
+    // guard, which runs first, refuses this with its own reason.
+    expect(await bashDecision(`${decoys}; D=~/.claude; cp /tmp/settings.json "$D"`, p7)).toBe("deny");
   });
 
   it("protects the target of a settings link that does not exist yet", async () => {
@@ -1356,6 +1364,39 @@ describe("block-failproofai-commands — review round seven", () => {
     expect(await write(join(fresh, "config", "new.json"), fresh)).toBe(true);
     expect(await bash(`printf '{}' > config/new.json`, fresh)).toBe(true);
     expect(await bashDecision(`printf '{}' > config/other.json`, fresh)).toBe("allow");
+  });
+
+  // hermes round 8.
+  it("resolves a variable chain of any length, and refuses a cycle", async () => {
+    const chain = (n: number) => ["A0=cfg.json", ...Array.from({ length: n }, (_, i) => `A${i + 1}=$A${i}`)].join("; ");
+    expect(await bash(`cd sub; ${chain(5)}; cp /tmp/evil.json "$A5"`, p7)).toBe(true);
+    expect(await bash(`cd sub; ${chain(300)}; cp /tmp/evil.json "$A300"`, p7)).toBe(true);
+    expect(await bashDecision(`cd sub; A=$B; B=$A; cp /tmp/evil.json "$A"`, p7)).toBe("deny");
+  });
+
+  it("leaves ordinary variables, environment variables, appends and substitutions alone", async () => {
+    expect(await bashDecision(`export PATH="$PATH:$HOME/bin"; npm test`, p7)).toBe("allow");
+    expect(await bashDecision(`PATH=$PATH:/opt/x npm run build`, p7)).toBe("allow");
+    expect(await bashDecision(`FLAGS="$FLAGS -v"; make $FLAGS`, p7)).toBe("allow");
+    expect(await bashDecision(`DIR=$(mktemp -d); cp a "$DIR/x"; rm -rf "$DIR"`, p7)).toBe("allow");
+    expect(await bashDecision(`A=x; B=$A; C=$B; rm -rf "$C"`, p7)).toBe("allow");
+    expect(await bashDecision(`cp /tmp/x "$OUTDIR/report.txt"`, p7)).toBe("allow");
+  });
+
+  it("protects a relocated settings file's link target from the shell, existing or not yet", async () => {
+    const profile = join(root, "profile8");
+    const actual = join(root, "actual8");
+    mkdirSync(profile, { recursive: true });
+    mkdirSync(actual, { recursive: true });
+    writeFileSync(join(actual, "primary.json"), "{}");
+    symlinkSync(join(actual, "primary.json"), join(profile, "settings.json"));
+    symlinkSync(join(actual, "local.json"), join(profile, "settings.local.json"));
+    const session = { cwd: p7, agentSettingsPath: join(profile, "settings.json") };
+    const decide = async (command: string) =>
+      (await policy.fn({ eventType: "PreToolUse", payload: {}, toolName: "Bash", toolInput: { command }, session })).decision;
+    expect(await decide(`cp /tmp/disable.json ${join(actual, "primary.json")}`)).toBe("deny");
+    expect(await decide(`printf '{}' > ${join(actual, "local.json")}`)).toBe("deny");
+    expect(await decide(`printf '{}' > ${join(actual, "notes.json")}`)).toBe("allow");
   });
 
   it("reads an empty heredoc delimiter the way bash does", async () => {

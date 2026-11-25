@@ -1421,6 +1421,11 @@ describe("block-failproofai-commands — globs read the way zsh expands them", (
     expect(await bashIn(proj, command)).toBe("deny");
   });
 
+  it("still allows a recursive cleanup in a tree with more directories than one glob component reads", async () => {
+    for (let i = 0; i < 1100; i++) mkdirSync(join(proj, "src", "many", `d${i}`), { recursive: true });
+    expect(await bashIn(proj, "rm -rf **/*.log")).toBe("allow");
+  });
+
   it.each(["rm -f src/**/*.orig", "rm -rf **/__pycache__", "cp /tmp/stub.sh node_modules/*/notes"])(
     "still allows %s",
     async (command) => {

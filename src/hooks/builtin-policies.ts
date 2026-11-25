@@ -3006,7 +3006,8 @@ function destroysFailproofaiState(command: string, depth = 0, startDir?: string,
       if (matcher === null) return null;
       const next: string[] = [];
       for (const path of paths) {
-        if (++reads > GLOB_DISK_LIMIT / 4) return null;
+        // After a `**` the directories are the ones it walked, under its own limit.
+        if (++reads > (walked > 0 ? GLOB_RECURSIVE_DIR_LIMIT : GLOB_DISK_LIMIT / 4)) return null;
         for (const name of namesInDirectory(path).names) {
           if (name.startsWith(".") && !part.startsWith(".") && !globOptions.dotglob) continue;
           if (!matcher.test(name)) continue;

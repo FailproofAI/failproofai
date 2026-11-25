@@ -1667,3 +1667,91 @@ def _count(usage, keys):
 
 
 adapter = _CrewAIAdapter()
+
+
+# ---------------------------------------------------------------------------
+# Self Reports: the ready-made report tool
+# ---------------------------------------------------------------------------
+
+def _report_identity():
+    """The identity of the CrewAI agent running this tool, if recorded.
+
+    CrewAI keeps its own event-scope stack on a contextvar. Inside a tool's
+    `_run` the top is the tool usage (a leaf, not a node), so walk down to the
+    nearest scope this adapter has as a node: the agent execution that called
+    the tool. The stack itself is private to crewai, so a missing one falls
+    back to the public `get_current_parent_id()` and the adapter's own
+    root-fallback.
+    """
+    tracker = adapter._tracker
+    if tracker is None:
+        return None
+    from crewai.events import event_context
+
+    key = None
+    stack = getattr(event_context, "_event_id_stack", None)
+    if stack is not None:
+        with adapter._lock:
+            for entry in reversed(stack.get()):
+                event_id = entry[0] if isinstance(entry, tuple) else entry
+                if event_id in adapter._nodes:
+                    key = event_id
+                    break
+    if key is None:
+        key = adapter._parent_key(event_context.get_current_parent_id())
+    if key is None:
+        return None
+    return tracker.identity(None, key, warn=False)
+
+
+def self_report_tool(
+    *,
+    session_id: "str | None" = None,
+    agent_id: "str | None" = None,
+    categories: "list[dict] | None" = None,
+    guidance: "str | None" = None,
+):
+    """The FailproofAI report tool as a CrewAI `BaseTool` instance.
+
+        from failproofai_sdk.integrations.crewai import self_report_tool
+        Agent(role=..., goal=..., tools=[*my_tools, self_report_tool()])
+
+    The schema and description come from `self-report.json` (or the defaults),
+    read when the tool is built. Identity: the factory's `session_id` /
+    `agent_id`, else the crew run this adapter is recording (when instrumented),
+    else the ambient scope, else "unattributed". Always returns `"Recorded."`.
+    """
+    from crewai.tools import BaseTool
+
+    from failproofai_sdk import _self_report
+
+    spec = _self_report.self_report_spec(categories=categories, guidance=guidance)
+    names = list(spec["input_schema"]["properties"]["category"]["enum"])
+    extra = framework_fields(NAME, DIST)
+
+    def _run(self, category, detail) -> str:
+        identity = None
+        try:
+            identity = _report_identity()
+        except Exception:  # noqa: BLE001 - identity is best-effort; the report is not
+            logger.debug("failproofai_sdk: could not resolve the report's crew run", exc_info=True)
+        return _self_report.record_framework_call(
+            category, detail, identity=identity, session_id=session_id,
+            agent_id=agent_id, fields=extra,
+        )
+
+    _run.__annotations__ = _self_report.framework_signature(names)
+
+    tool_cls = type(
+        "FailproofAIReportTool",
+        (BaseTool,),
+        {
+            "__module__": __name__,
+            "__doc__": "Report to FailproofAI that the agent is stuck.",
+            "__annotations__": {"name": str, "description": str},
+            "name": spec["name"],
+            "description": spec["description"],
+            "_run": _run,
+        },
+    )
+    return tool_cls()

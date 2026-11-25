@@ -18,6 +18,7 @@ from failproofai_sdk._schema import (
     HumanWaitEvent,
     ModelRequestEvent,
     ModelResponseEvent,
+    SelfReportEvent,
     ToolResultEvent,
     ToolUseEvent,
 )
@@ -62,6 +63,16 @@ _PROMOTED_STRING = frozenset(
 )
 
 _U32_MAX = 2**32 - 1
+
+#: Longest `detail` a `self_report` carries. The same limit every recorder of
+#: the event applies (hook, MCP server, both SDKs), so a report reads the same
+#: whichever path wrote it.
+SELF_REPORT_DETAIL_LIMIT = 2000
+
+#: The session a `self_report` is filed under when nothing else identifies one —
+#: the same value the MCP server fallback uses.
+UNATTRIBUTED_SESSION = "unattributed"
+_warned_unattributed = False
 
 
 def _validate_promoted_numeric(name: str, value) -> None:
@@ -287,6 +298,11 @@ class EventNamespace:
     def __init__(self, writer) -> None:
         self._writer = writer
         self._pending: dict[str, datetime] = {}
+        # tool_call_id -> (session_id, agent_id, tool_name) for every tool_use
+        # not yet closed by its tool_result. Read only by `self_report`, so a
+        # report made from inside a tool the caller already brackets lands on
+        # that tool's session and agent. Same cap and eviction as `_pending`.
+        self._open_tools: dict[str, tuple[str, str, str]] = {}
 
     def _track_pending(self, key: str, ts: datetime) -> None:
         # Evicting has to tolerate another thread doing the same thing, because
@@ -320,6 +336,60 @@ class EventNamespace:
             else:
                 self._pending.pop(oldest, None)  # may already be gone
         self._pending[key] = ts
+
+    def _track_open_tool(self, tool_call_id: str, entry: "tuple[str, str, str]") -> None:
+        # Tolerant for the reasons spelled out in `_track_pending`.
+        if len(self._open_tools) >= _PENDING_CAP:
+            try:
+                oldest = next(iter(self._open_tools))
+            except (StopIteration, RuntimeError):
+                pass
+            else:
+                self._open_tools.pop(oldest, None)
+        self._open_tools.pop(tool_call_id, None)  # re-insert at the end: newest last
+        self._open_tools[tool_call_id] = entry
+
+    def _report_identity(self, tool_call_id: "str | None", agent_id: "str | None") -> "tuple[str, str]":
+        """Where a `self_report` with no explicit `session_id` belongs.
+
+        Most specific first, within the ambient session when one is bound:
+        the open `tool_use` with this `tool_call_id`; then the newest open
+        `tool_use` of the report tool itself; then the enclosing scope; then
+        `"unattributed"` with one warning. Never raises: a report is evidence,
+        and losing it to a missing scope is the worse outcome.
+        """
+        global _warned_unattributed
+        from failproofai_sdk._self_report import is_self_report_tool
+
+        ambient = _context.session_id()
+        try:
+            open_tools = list(self._open_tools.items())
+        except RuntimeError:  # resized under us by another thread
+            open_tools = []
+        candidates = [
+            (call_id, entry) for call_id, entry in open_tools
+            if ambient is None or entry[0] == ambient
+        ]
+        match = None
+        if tool_call_id is not None:
+            match = next((e for c, e in candidates if c == tool_call_id), None)
+        if match is None:
+            match = next((e for _, e in reversed(candidates) if is_self_report_tool(e[2])), None)
+        if match is not None:
+            return match[0], agent_id if agent_id is not None else match[1]
+        if agent_id is None:
+            agent_id = _context.agent_id()
+        if ambient is not None:
+            return ambient, agent_id
+        if not _warned_unattributed:
+            _warned_unattributed = True
+            logger.warning(
+                "Failproof AI recorded a self report with no session bound; it is filed "
+                "under session_id=%r. Pass session_id=... or wrap the agent in "
+                "`failproofai_sdk.session()`.",
+                UNATTRIBUTED_SESSION,
+            )
+        return UNATTRIBUTED_SESSION, agent_id
 
     def _validate_fields(self, fields: dict) -> None:
         bad = _RESERVED & fields.keys()
@@ -367,6 +437,7 @@ class EventNamespace:
         session_id, agent_id = _resolve_identity(session_id, agent_id)
         ts = self._now()
         self._track_pending(_tool_key(session_id, tool_call_id), ts)
+        self._track_open_tool(tool_call_id, (session_id, agent_id, tool_name))
         self._writer.submit(
             ToolUseEvent(
                 timestamp=self._fmt_ts(ts),
@@ -396,6 +467,7 @@ class EventNamespace:
         session_id, agent_id = _resolve_identity(session_id, agent_id)
         ts = self._now()
         start_ts = self._pending.pop(_tool_key(session_id, tool_call_id), None)
+        self._open_tools.pop(tool_call_id, None)
         duration_ms = _measured_duration_ms(start_ts, ts)
         self._writer.submit(
             ToolResultEvent(
@@ -767,6 +839,63 @@ class EventNamespace:
                 reason=reason,
                 user_id=user_id,
                 at_step=at_step,
+                extra_fields=fields,
+            ).to_dict()
+        )
+
+    def self_report(
+        self,
+        category: str,
+        detail: "str | None" = "",
+        *,
+        session_id: str | None = None,
+        agent_id: str | None = None,
+        tool_call_id: str | None = None,
+        **fields,
+    ) -> None:
+        """Record that the agent reported itself stuck (a `self_report` event).
+
+        `category` is recorded as given, even if it is not one of the configured
+        categories: a report is evidence, and refusing one because the model
+        picked a stale name would lose exactly the signal this exists for.
+        `detail` of `None` is recorded as `""`; anything longer than
+        `SELF_REPORT_DETAIL_LIMIT` characters is cut to it.
+
+        `source` is always `"sdk"` and cannot be overridden: it is how the
+        dashboard tells an SDK report from one the coding-agent hook recorded.
+
+        Session, most specific first: an explicit `session_id`; the open
+        `tool_use` for this call (by `tool_call_id`, then the newest open
+        report-tool call) within the enclosing session; the enclosing scope;
+        otherwise `"unattributed"` with one warning. A missing session never
+        raises here, unlike the other event methods — the TypeError/ValueError
+        checks on the arguments themselves still apply.
+        """
+        if "source" in fields:
+            raise ValueError("source is set by the SDK (always \"sdk\") and cannot be passed by the caller")
+        self._validate_fields(fields)
+        if not isinstance(category, str):
+            raise TypeError(
+                f"category must be a str, got {type(category).__name__}: {category!r}"
+            )
+        if detail is None:
+            detail = ""
+        if not isinstance(detail, str):
+            raise TypeError(f"detail must be a str, got {type(detail).__name__}: {detail!r}")
+        if tool_call_id is not None:
+            _validate_promoted_string("tool_call_id", tool_call_id)
+        if session_id is None:
+            session_id, agent_id = self._report_identity(tool_call_id, agent_id)
+        session_id, agent_id = _resolve_identity(session_id, agent_id)
+        ts = self._now()
+        self._writer.submit(
+            SelfReportEvent(
+                timestamp=self._fmt_ts(ts),
+                session_id=session_id,
+                agent_id=agent_id,
+                category=category,
+                detail=detail[:SELF_REPORT_DETAIL_LIMIT],
+                tool_call_id=tool_call_id,
                 extra_fields=fields,
             ).to_dict()
         )

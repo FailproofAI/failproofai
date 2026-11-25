@@ -214,6 +214,7 @@ failproofai_sdk.instrument(
     "pydantic_ai",
     session_id=None,        # pin every run to one session id
     capture_content=True,   # False drops prompts and completions from payloads
+    self_report=False,      # True adds the report tool to every agent (see Self Reports)
 )
 ```
 
@@ -238,6 +239,36 @@ hide real tool failures behind a green run.
 The control-flow list is resolved by name at import time and tolerates every one
 of them being absent: a minor release renaming one degrades to "treat it as an
 error" rather than raising an `AttributeError` inside your run.
+
+---
+
+## Self Reports
+
+Give the agent a tool to say it is stuck: looping, a broken tool or credential,
+missing context, a request it cannot do.
+
+```python
+from pydantic_ai import Agent
+from failproofai_sdk.integrations.pydantic_ai import FailproofAI, self_report_tool
+
+agent = Agent("openai:gpt-5.6-sol", tools=[self_report_tool()])
+
+# or let the capability add it to the agent
+agent = Agent("openai:gpt-5.6-sol", capabilities=[FailproofAI(self_report=True)])
+
+# or to every agent built from now on
+failproofai_sdk.instrument("pydantic_ai", self_report=True)
+```
+
+A Pydantic AI `Tool` whose JSON schema is exactly the spec, carrying the model's `tool_call_id`. `self_report=True` is opt-in: the capability otherwise only observes, and adding a tool changes what the model sees.
+
+The tool's description and its `category` enum come from
+`~/.failproofai/self-report.json` (your org's categories when Self Reports is on
+in FailproofAI Cloud, or set locally with `failproofai self-report enable`), and
+fall back to six built-in categories. It always answers `Recorded.` and changes
+nothing; the call becomes a `self_report` event on the agent's session. To keep
+it out of a transcript you show users, filter on
+`failproofai_sdk.is_self_report_tool(name)`.
 
 ---
 

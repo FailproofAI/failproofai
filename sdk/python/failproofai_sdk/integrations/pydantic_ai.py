@@ -604,6 +604,7 @@ class FailproofAI(AbstractCapability):
         capture_content: bool = True,
         session_id: str | None = None,
         id: str | None = None,
+        self_report: bool = False,
     ) -> None:
         # `AbstractCapability` is a `@dataclass(init=False)`, so it contributes
         # class-level defaults (`id`, `defer_loading`, …) and no `__init__` to
@@ -611,6 +612,20 @@ class FailproofAI(AbstractCapability):
         self.capture_content = capture_content
         self.session_id = session_id
         self.id = id
+        self.self_report = self_report
+
+    def get_toolset(self):
+        """The FailproofAI report tool, when `self_report=True` was asked for.
+
+        Opt-in, never default: adding a tool changes what the model sees, and
+        this capability is otherwise pure observation. Built per agent, so the
+        categories are the ones in `self-report.json` when the agent is built.
+        """
+        if not self.self_report:
+            return None
+        from pydantic_ai.toolsets import FunctionToolset
+
+        return FunctionToolset([self_report_tool()])
 
     def get_ordering(self) -> CapabilityOrdering:
         """Outermost, so our spans bracket every other capability's work.
@@ -951,6 +966,7 @@ class _Adapter:
         _capability = FailproofAI(
             capture_content=bool(options.get("capture_content", True)),
             session_id=options.get("session_id"),
+            self_report=bool(options.get("self_report", False)),
         )
         _patcher.patch(Agent, "__init__", _wrap_init(Agent.__init__))
         _enabled = True
@@ -975,3 +991,50 @@ class _Adapter:
 adapter = _Adapter()
 install = adapter.install
 uninstall = adapter.uninstall
+
+
+# ---------------------------------------------------------------------------
+# Self Reports: the ready-made report tool
+# ---------------------------------------------------------------------------
+
+def self_report_tool(
+    *,
+    session_id: str | None = None,
+    agent_id: str | None = None,
+    categories: "list[dict] | None" = None,
+    guidance: str | None = None,
+):
+    """The FailproofAI report tool as a Pydantic AI `Tool`.
+
+        from failproofai_sdk.integrations.pydantic_ai import self_report_tool
+        agent = Agent(model, tools=[self_report_tool()])
+
+    or let the capability add it: `capabilities=[FailproofAI(self_report=True)]`
+    / `failproofai_sdk.instrument("pydantic_ai", self_report=True)`.
+
+    The JSON schema is exactly `self_report_spec()["input_schema"]` (built from
+    `self-report.json`, or the defaults). The call carries the model's
+    `tool_call_id`. Identity: the factory's `session_id`/`agent_id`, else the
+    run `FailproofAI` is recording (it binds the run's scope), else the ambient
+    scope, else "unattributed". Always returns `"Recorded."`.
+    """
+    from pydantic_ai import Tool
+
+    from failproofai_sdk import _self_report
+
+    spec = _self_report.self_report_spec(categories=categories, guidance=guidance)
+    extra = framework_fields(NAME, DIST)
+
+    def failproofai_report(ctx: Any, category: Any = "", detail: Any = "", **_: Any) -> str:
+        return _self_report.record_framework_call(
+            category, detail, session_id=session_id, agent_id=agent_id,
+            tool_call_id=getattr(ctx, "tool_call_id", None), fields=extra,
+        )
+
+    return Tool.from_schema(
+        failproofai_report,
+        name=spec["name"],
+        description=spec["description"],
+        json_schema=spec["input_schema"],
+        takes_ctx=True,
+    )

@@ -315,3 +315,32 @@ class HumanInterruptEvent:
             [("reason", self.reason), ("user_id", self.user_id), ("at_step", self.at_step)],
             self.extra_fields,
         )
+
+
+@dataclass(kw_only=True)
+class SelfReportEvent:
+    """The agent said it is stuck. See `failproofai_sdk.self_report`.
+
+    `category` and `detail` are always present, even when empty: the report is
+    the event, and a row without them would render as a blank line on the Self
+    Reports page. `source` says which path recorded it (`"sdk"` here; the hook
+    and MCP paths write `"mcp"`).
+    """
+
+    timestamp: str
+    session_id: str
+    agent_id: str
+    category: str
+    detail: str
+    source: str = "sdk"
+    tool_call_id: str | None = None
+    extra_fields: dict = field(default_factory=dict)
+
+    def to_dict(self) -> dict:
+        return _build(
+            {"timestamp": self.timestamp, "session_id": self.session_id, "agent_id": self.agent_id,
+             "type": "self_report", "category": self.category, "detail": self.detail,
+             "source": self.source},
+            [("tool_call_id", self.tool_call_id)],
+            self.extra_fields,
+        )

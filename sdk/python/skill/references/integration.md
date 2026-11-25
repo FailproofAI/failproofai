@@ -80,7 +80,7 @@ and one that propagates is reported exactly once, by the enclosing `agent()`.
 
 ## Explicit identity still works
 
-`session_id` and `agent_id` are optional keyword arguments on all 15 `event.*`
+`session_id` and `agent_id` are optional keyword arguments on all 16 `event.*`
 methods, not removed ones. Passing them explicitly still works, and still wins
 over whatever is bound:
 

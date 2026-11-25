@@ -9,7 +9,7 @@ adapters call underneath — they are translation tables over the same API.
 - [Install](#install)
 - [The three scopes](#the-three-scopes)
 - [What a scope does on the way out](#what-a-scope-does-on-the-way-out)
-- [The fifteen event methods](#the-fifteen-event-methods)
+- [The sixteen event methods](#the-sixteen-event-methods)
 - [A complete example](#a-complete-example)
 - [Threads and async](#threads-and-async)
 - [Instrumenting an unsupported framework](#instrumenting-an-unsupported-framework)
@@ -105,7 +105,7 @@ is reported exactly once by the enclosing `agent()`.
 
 ---
 
-## The fifteen event methods
+## The sixteen event methods
 
 ### agents
 
@@ -190,6 +190,32 @@ failproofai_sdk.event.error(
 
 Usually emitted for you by `agent()`. Call it directly for a failure that does
 not raise — a validation rejection, a guardrail trip.
+
+### self reports
+
+```python
+failproofai_sdk.self_report("missing_context", "The customer id was never provided.")
+# the same event: failproofai_sdk.event.self_report(category=..., detail=...)
+```
+
+The agent saying it is stuck. Usually the MODEL makes this call, through the
+report tool; with a raw provider API give it the tool and route the call:
+
+```python
+tools = [failproofai_sdk.openai_tool(), *my_tools]       # anthropic_tool() for Claude
+...
+for call in message.tool_calls:
+    if failproofai_sdk.is_self_report_tool(call.function.name):
+        result = failproofai_sdk.handle_tool_call(
+            call.function.name, call.function.arguments, tool_call_id=call.id
+        )  # always "Recorded."
+```
+
+`self_report_spec()` returns the bare `{name, description, input_schema}`.
+Categories and wording come from `~/.failproofai/self-report.json`, else six
+built-in defaults. `handle_tool_call` never raises into your loop. With no
+session bound, a report is filed under `"unattributed"` (one warning) instead
+of raising.
 
 ---
 
@@ -395,7 +421,7 @@ Instrumenting it means wrapping each agent at each construction site, which is a
 wrapper you paste into your own code — precisely the ergonomics the adapters
 exist to remove.
 
-If AutoGen matters to you, the three seams above record the same fifteen event
+If AutoGen matters to you, the three seams above record the same sixteen event
 types at the same fidelity. It just costs you the call sites.
 
 ---

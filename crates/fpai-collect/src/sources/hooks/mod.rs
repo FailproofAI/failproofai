@@ -245,11 +245,13 @@ async fn poll_once(
             // and erase the would-be verdict, which is the entire measurement
             // a trial exists to produce. Emit those exactly. The same holds
             // for an allow Jev produced by clearing a regex deny, and for a
-            // observe-mode allow Jev would have blocked.
+            // observe-mode allow Jev would have blocked, and for a self report.
             let aggregate = verbosity == HooksVerbosity::Decisions
                 && row.is_allow()
                 && !row.has_observation()
-                && !row.has_jev_signal();
+                && !row.has_jev_signal()
+                // A self report is its own event and must reach Cloud whole.
+                && row.self_report.is_none();
             if aggregate {
                 if let Some(key) = bucket_key(&row) {
                     buckets

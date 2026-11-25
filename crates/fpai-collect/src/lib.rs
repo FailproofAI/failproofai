@@ -20,6 +20,7 @@ pub mod health;
 pub mod org_boundary;
 pub mod otlp;
 pub mod redact;
+pub mod self_report;
 pub mod sources;
 pub mod spool;
 #[cfg(feature = "sqlite")]

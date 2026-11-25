@@ -159,6 +159,25 @@ pub struct HookRow {
     /// check, so Jev decided nothing.
     #[serde(rename = "jevChecks", default, deserialize_with = "lenient")]
     pub jev_checks: Option<Vec<Value>>,
+
+    // ---- Self Reports ------------------------------------------------------
+    /// Set on the row the hook wrote for a call to the `report` tool (the
+    /// agent said it is stuck). Emitted as its own `self_report` event, and the
+    /// row is never folded into an allow roll-up.
+    #[serde(rename = "selfReport", default, deserialize_with = "lenient")]
+    pub self_report: Option<SelfReportField>,
+}
+
+/// `selfReport` on a hook-activity row.
+#[derive(Debug, Clone, Default, Deserialize)]
+pub struct SelfReportField {
+    #[serde(default, deserialize_with = "lenient")]
+    pub category: Option<String>,
+    #[serde(default, deserialize_with = "lenient")]
+    pub detail: Option<String>,
+    /// `mcp` | `sdk`.
+    #[serde(default, deserialize_with = "lenient")]
+    pub source: Option<String>,
 }
 
 /// Deserialize `T`, or `None` when the value is absent, null, or the wrong
@@ -965,7 +984,47 @@ pub fn to_events(row: &HookRow, offset: u64, environment: &str) -> Vec<Value> {
         );
     }
 
-    vec![Value::Object(start), Value::Object(end)]
+    let mut events = vec![Value::Object(start), Value::Object(end)];
+    if let Some(report) = self_report_event(row, session_id, environment) {
+        events.push(report);
+    }
+    events
+}
+
+/// The `self_report` event for a row carrying `selfReport`. Same agent,
+/// environment and session as the row's hook events; stamped just after them.
+fn self_report_event(row: &HookRow, session_id: &str, environment: &str) -> Option<Value> {
+    let report = row.self_report.as_ref()?;
+    let mut m = base(row, session_id, environment, "self_report", 2)?;
+    m.insert(
+        "category".into(),
+        json!(report.category.as_deref().unwrap_or_default()),
+    );
+    m.insert(
+        "detail".into(),
+        json!(crate::self_report::truncate_chars(
+            report.detail.as_deref().unwrap_or_default(),
+            crate::self_report::MAX_DETAIL_CHARS
+        )),
+    );
+    m.insert(
+        "source".into(),
+        json!(
+            report
+                .source
+                .as_deref()
+                .filter(|s| !s.is_empty())
+                .unwrap_or("mcp")
+        ),
+    );
+    m.insert(
+        "integration".into(),
+        json!(row.integration.as_deref().unwrap_or("failproofai")),
+    );
+    if let Some(id) = row.tool_call_id.as_deref().filter(|id| !id.is_empty()) {
+        m.insert("tool_call_id".into(), json!(id));
+    }
+    Some(Value::Object(m))
 }
 
 /// One rolled-up `allow` bucket.

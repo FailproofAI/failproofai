@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { mkdtempSync, rmSync } from "node:fs";
+import { chmodSync, mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { resolve } from "node:path";
 
@@ -256,6 +256,39 @@ describe("--resume", () => {
     expect(r.lines).toEqual(["✓ Resumed enforcement for 2 sessions."]);
     expect(readActivePause("s1", NOW)).toBeNull();
     expect(readActivePause("s2", NOW)).toBeNull();
+  });
+
+  // A pause file dated in the future is not honoured, so it is not listed — but
+  // it turns live when its date arrives. `--all` is how a person ends every
+  // pause, so it must remove that one too (FailproofAI/agenteye#1796).
+  it("--all also removes a pause dated in the future, before it can turn live", () => {
+    writePause({ sessionId: "s1", durationMs: 600_000, now: NOW });
+    writePause({ sessionId: "later", durationMs: 600_000, now: NOW + 3_600_000 });
+    expect(readActivePause("later", NOW)).toBeNull();
+    const r = runPauseCommand({ action: "resume", all: true, cwd: "/tmp/p", now: NOW, render: PLAIN });
+    expect(r.affected).toBe(1);
+    expect(readActivePause("later", NOW + 3_600_000)).toBeNull();
+  });
+
+  // A pause file that stays behind is still read by the hook. Reporting
+  // "Resumed" over it, and exiting 0, left enforcement suspended while saying
+  // it was back (found in review). Root ignores the mode, so ordinary users only.
+  it.skipIf(process.getuid?.() === 0)("--all fails, and says so, when a pause file will not go", () => {
+    writePause({ sessionId: "s1", durationMs: 600_000, now: NOW });
+    const sessions = resolve(stateDir, "sessions");
+    chmodSync(sessions, 0o500);
+    const r = (() => {
+      try {
+        return runPauseCommand({ action: "resume", all: true, cwd: "/tmp/p", now: NOW, render: PLAIN });
+      } finally {
+        chmodSync(sessions, 0o700);
+      }
+    })();
+    expect(r.exitCode).toBe(1);
+    expect(r.affected).toBe(0);
+    expect(r.lines.join("\n")).not.toMatch(/Resumed/);
+    expect(r.lines[0]).toMatch(/Could not remove every pause file from .*sessions, so enforcement may still be paused/);
+    expect(readActivePause("s1", NOW)).not.toBeNull();
   });
 });
 

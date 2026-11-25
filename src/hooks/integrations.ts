@@ -577,12 +577,14 @@ export const codex: Integration = {
 
 /**
  * failproofai's user-scope Codex hooks, as the system config holds them: the
- * same events, commands and timeouts `codex.buildHookEntry` writes to
- * `~/.codex/hooks.json`.
+ * same events, arguments and timeouts `codex.buildHookEntry` writes to
+ * `~/.codex/hooks.json`, each running `runner`. That is Codex's hook runner
+ * (see ./codex-system-hooks), never an account's own failproofai: Codex runs
+ * the system config for every account on the machine.
  */
-export function codexSystemHookEntries(binaryPath: string): CodexSystemHookEntry[] {
+export function codexSystemHookEntries(runner: string): CodexSystemHookEntry[] {
   return CODEX_HOOK_EVENT_TYPES.map((eventType) => {
-    const entry = codex.buildHookEntry(binaryPath, eventType, "user") as { command: string; timeout: number };
+    const entry = codex.buildHookEntry(runner, eventType, "user") as { command: string; timeout: number };
     return { event: CODEX_EVENT_MAP[eventType as CodexHookEventType], command: entry.command, timeout: entry.timeout };
   });
 }

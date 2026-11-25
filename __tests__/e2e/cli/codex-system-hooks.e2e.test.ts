@@ -5,11 +5,12 @@
  * but runs hooks from its system config as managed. Each test gets its own
  * HOME, FAILPROOFAI_HOME and a temp "system config" (FAILPROOFAI_CODEX_SYSTEM_CONFIG),
  * plus a fake `codex` on PATH that reports a version, so nothing here reaches
- * /etc or needs sudo or a real Codex.
+ * /etc or needs sudo or a real Codex. The hook runner goes beside that temp
+ * config, never to /opt.
  */
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { spawnSync } from "node:child_process";
-import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -22,6 +23,12 @@ let root: string;
 let home: string;
 let fakeBin: string;
 let systemConfig: string;
+/**
+ * This account's failproofai as the hooks name it: a wrapper in the test's own
+ * 0755 directory that runs the in-tree CLI. A checkout made with umask 002 is
+ * group-writable, which the runner accepts only for a provably private group.
+ */
+let cliPath: string;
 
 function fakeCodex(version: string): void {
   const script = join(fakeBin, "codex");
@@ -38,7 +45,7 @@ function run(args: string[], env: Record<string, string> = {}) {
       USERPROFILE: home,
       FAILPROOFAI_HOME: join(home, ".failproofai"),
       FAILPROOFAI_PACK_DIR: join(root, "packs"),
-      FAILPROOFAI_BINARY_OVERRIDE: BINARY_PATH,
+      FAILPROOFAI_BINARY_OVERRIDE: cliPath,
       FAILPROOFAI_TELEMETRY_DISABLED: "1",
       FAILPROOFAI_CODEX_SYSTEM_CONFIG: systemConfig,
       PATH: `${fakeBin}:${process.env.PATH}`,
@@ -52,6 +59,18 @@ function run(args: string[], env: Record<string, string> = {}) {
 }
 
 const hooksJson = () => join(home, ".codex", "hooks.json");
+/** Where the hooks in a temp system config point: the runner beside it. */
+const runnerPath = () => join(dirname(systemConfig), "failproofai-codex-hook");
+/** The program each hook in the system config runs: the double-quoted path its command starts with. */
+const hookPrograms = (): string[] =>
+  [...readFileSync(systemConfig, "utf8").matchAll(/^command = (".*")$/gm)].map(
+    (m) => /^"([^"]*)"/.exec(JSON.parse(m[1]) as string)?.[1] ?? "",
+  );
+/** A directory as the system's own are made: 0755 whatever the umask, which the runner's check needs. */
+const mkdir755 = (dir: string) => {
+  mkdirSync(dir, { recursive: true });
+  for (let d = dir; d.startsWith(root) && d !== root; d = dirname(d)) chmodSync(d, 0o755);
+};
 const codexHooksInUserFile = (): number => {
   if (!existsSync(hooksJson())) return 0;
   const hooks = (JSON.parse(readFileSync(hooksJson(), "utf8")) as { hooks?: Record<string, Array<{ hooks: unknown[] }>> }).hooks ?? {};
@@ -59,12 +78,16 @@ const codexHooksInUserFile = (): number => {
 };
 
 beforeEach(() => {
-  root = mkdtempSync(join(tmpdir(), "fp-e2e-codex-system-"));
+  root = realpathSync(mkdtempSync(join(tmpdir(), "fp-e2e-codex-system-")));
   home = join(root, "home");
   fakeBin = join(root, "bin");
   systemConfig = join(root, "etc", "codex", "config.toml");
   mkdirSync(home, { recursive: true });
   mkdirSync(fakeBin, { recursive: true });
+  chmodSync(fakeBin, 0o755);
+  cliPath = join(fakeBin, "failproofai");
+  writeFileSync(cliPath, `#!/bin/sh\nexec bun ${JSON.stringify(BINARY_PATH)} "$@"\n`);
+  chmodSync(cliPath, 0o755);
   fakeCodex("0.162.1");
 });
 
@@ -74,9 +97,13 @@ afterEach(() => {
 
 describe("E2E: Codex hooks in the system config", () => {
   it("installs into the system config, keeps what was there, and moves hooks out of hooks.json", () => {
-    mkdirSync(dirname(systemConfig), { recursive: true });
+    // As root, the line also names its interpreter, and the files here are root's: unit tests cover that.
+    if (process.getuid?.() === 0) return;
+    mkdir755(dirname(systemConfig));
     const original = '# set by the admin\napproval_policy = "never"\n';
     writeFileSync(systemConfig, original);
+    // As an admin's config is: 0644 whatever this run's umask, or failproofai refuses it.
+    chmodSync(systemConfig, 0o644);
     // An older install's entries in hooks.json, next to someone else's hook.
     mkdirSync(join(home, ".codex"), { recursive: true });
     writeFileSync(
@@ -106,6 +133,21 @@ describe("E2E: Codex hooks in the system config", () => {
     expect(codexHooksInUserFile()).toBe(1);
     expect(readFileSync(hooksJson(), "utf8")).toContain("my-own-hook");
 
+    // Codex runs these hooks for every account, so each runs the hook runner,
+    // never this account's failproofai, which the runner runs for this uid only.
+    const programs = hookPrograms();
+    expect(programs.length).toBeGreaterThan(0);
+    expect(new Set(programs)).toEqual(new Set([runnerPath()]));
+    expect(written).not.toContain(cliPath);
+    const runner = readFileSync(runnerPath(), "utf8");
+    const arms = runner.split("\n").filter((line) => /^ {2}\d+\) exec /.test(line));
+    expect(arms).toHaveLength(1);
+    expect(arms[0]).toContain(`  ${process.getuid!()}) exec '${cliPath}' "$@" ;;`);
+    // For this account, the runner is this account's failproofai.
+    const viaRunner = spawnSync(runnerPath(), ["--version"], { encoding: "utf8", timeout: 20_000 });
+    expect(viaRunner.status, viaRunner.stderr).toBe(0);
+    expect(viaRunner.stdout).toMatch(/\d+\.\d+\.\d+/);
+
     // Idempotent.
     expect(run(["policies", "--install", "--cli", "codex"]).exitCode).toBe(0);
     expect(readFileSync(systemConfig, "utf8")).toBe(written);
@@ -114,14 +156,60 @@ describe("E2E: Codex hooks in the system config", () => {
     expect(removed.exitCode, removed.stderr).toBe(0);
     expect(removed.stdout).toContain("from Codex's system config");
     expect(readFileSync(systemConfig, "utf8")).toBe(original);
+    expect(existsSync(runnerPath())).toBe(false);
   });
 
   it("deletes a system config it created when the hooks are removed", () => {
     expect(run(["policies", "--install", "--cli", "codex"]).exitCode).toBe(0);
     expect(existsSync(systemConfig)).toBe(true);
+    expect(existsSync(runnerPath())).toBe(true);
     expect(codexHooksInUserFile()).toBe(0);
     expect(run(["policies", "--uninstall", "--cli", "codex"]).exitCode).toBe(0);
     expect(existsSync(systemConfig)).toBe(false);
+    expect(existsSync(runnerPath())).toBe(false);
+  });
+
+  it("update rewrites hooks that run failproofai itself to run the hook runner", () => {
+    // As root, every file here is root's, so the earlier block is root's alone and stays as it is.
+    if (process.getuid?.() === 0) return;
+    // A block in the format earlier versions wrote: every hook runs failproofai itself.
+    mkdir755(dirname(systemConfig));
+    const command = (event: string) => JSON.stringify(`"${cliPath}" --hook ${event} --cli codex --agent-scope user`);
+    writeFileSync(
+      systemConfig,
+      [
+        BEGIN,
+        "",
+        "[[hooks.PreToolUse]]",
+        "[[hooks.PreToolUse.hooks]]",
+        'type = "command"',
+        `command = ${command("pre_tool_use")}`,
+        "timeout = 60",
+        "",
+        "[[hooks.Stop]]",
+        "[[hooks.Stop.hooks]]",
+        'type = "command"',
+        `command = ${command("stop")}`,
+        "timeout = 60",
+        "# <<< failproofai managed hooks <<<",
+        "",
+      ].join("\n"),
+    );
+    chmodSync(systemConfig, 0o644);
+    expect(hookPrograms()).toEqual([cliPath, cliPath]);
+
+    const updated = run(["update", "--no-daemon"]);
+    expect(updated.exitCode, updated.stdout + updated.stderr).toBe(0);
+    // The report wraps to the terminal's width.
+    expect(updated.stdout.replace(/\s+/g, " ")).toContain(`now go through ${runnerPath()},`);
+    expect(hookPrograms()).toEqual([runnerPath(), runnerPath()]);
+    expect(readFileSync(systemConfig, "utf8")).toContain("--hook stop --cli codex --agent-scope user");
+    expect(readFileSync(runnerPath(), "utf8")).toContain(`  ${process.getuid!()}) exec '${cliPath}' "$@" ;;`);
+
+    // Checked again on the next update, with nothing to say.
+    const again = run(["update", "--no-daemon"]);
+    expect(again.exitCode, again.stdout + again.stderr).toBe(0);
+    expect(again.stdout).not.toContain("Codex");
   });
 
   it("without a system config, keeps hooks.json and warns that Codex won't run them untrusted", () => {

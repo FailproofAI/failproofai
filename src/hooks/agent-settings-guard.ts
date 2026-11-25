@@ -667,6 +667,12 @@ export function agentSettingsShellMatcher(
   hint: RegExp;
   /** Whether a word (relative to `cwd` when relative) leads to one of them through a symlink. */
   throughLinks: (word: string, cwd: string | undefined) => boolean;
+  /**
+   * The files behind the session's settings links — a relocated settings
+   * file's target, a project's, the dotfiles' — in each spelling a command
+   * may use, for a glob to be matched against as well.
+   */
+  linkedFiles: string[];
 } {
   const extras = agentSettingsShellExtras(extraPaths, cwd);
   const hint = agentSettingsHintFrom(extras);
@@ -719,7 +725,8 @@ export function agentSettingsShellMatcher(
     }
     return false;
   };
-  return { names, hint, throughLinks };
+  const linkedFiles = [...extras.files].flatMap((path) => withAgentSettingsHomeForm(path));
+  return { names, hint, throughLinks, linkedFiles };
 }
 
 /** Whether a program handed to an interpreter builds an agent settings path. */

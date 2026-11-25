@@ -1953,7 +1953,8 @@ function agentSettingsShellTarget(cwd: string | undefined, extraPaths: readonly 
   return {
     namesLiteral: matcher.names,
     namesProgram: (program) => matcher.names(program) || programNamesAgentSettings(program),
-    globCandidates: agentSettingsGlobCandidates(cwd, extraPaths),
+    // A glob reaches a link's target too: `cp x /tmp/actual/prim*.json`.
+    globCandidates: [...agentSettingsGlobCandidates(cwd, extraPaths), ...matcher.linkedFiles],
     globDecoys: agentSettingsGlobDecoys(cwd, GLOB_DECOYS),
     harmlessCommands: AGENT_SETTINGS_HARMLESS_COMMANDS,
     cwd,
@@ -3124,6 +3125,317 @@ function destroysFailproofaiState(command: string): boolean {
   return destroysProtectedPath(command, FAILPROOFAI_STATE_TARGET);
 }
 
+/** What a variable may hold, for `shellWordExpansionForms`: its values, null when unknown, or "complex". */
+type ShellVariableLookup = (name: string) => string[] | "complex" | null;
+
+/** Thrown inside `shellWordExpansionForms` when a word's texts cannot be followed within the limits. */
+class ShellWordTooComplex extends Error {}
+
+/** How many texts one word may stand for before it reads as built to evade. */
+const SHELL_WORD_FORMS_LIMIT = 64;
+
+/**
+ * The texts a shell word may become once its expansions run, as far as the
+ * command's own text says: `$NAME`, `${NAME}`, an array element, and the
+ * operators a destination is built with — a default (`${A:-cfg.json}`, `-`,
+ * `=`, `:=`), an alternate (`:+`, `+`), a prefix or suffix removed (`#`, `##`,
+ * `%`, `%%`), a replacement (`/`, `//`, `/#`, `/%`), a case change (`^^`, `,,`,
+ * `@U`, `@L`), a substring with literal bounds, a length, an indirection
+ * (`${!R}`), quoting and `$'…'`.
+ *
+ * Only what the text gives is a text: a variable `lookup` cannot know (one the
+ * environment sets), a command substitution, a positional parameter add
+ * nothing, so a word made only of those has no texts at all. "complex" is a
+ * KNOWN value put through an operator this does not follow, or texts past the
+ * limits — what only a crafted command builds. Pattern matching runs on the
+ * no-backtracking glob walk, under `budget`, which every word of one command
+ * shares.
+ */
+function shellWordExpansionForms(
+  word: string,
+  lookup: ShellVariableLookup,
+  budget: { steps: number },
+  /** No text longer: past it the word was built to grow. The walk passes its command's length. */
+  maxLength = Math.max(4096, word.length),
+): string[] | "complex" {
+  const product = (left: readonly string[], right: readonly string[]): string[] => {
+    if (left.length * right.length > SHELL_WORD_FORMS_LIMIT) throw new ShellWordTooComplex();
+    const out: string[] = [];
+    for (const l of left) {
+      for (const r of right) {
+        if (l.length + r.length > maxLength) throw new ShellWordTooComplex();
+        out.push(l + r);
+      }
+    }
+    return out;
+  };
+  const union = (lists: ReadonlyArray<readonly string[]>): string[] => {
+    const out = [...new Set(lists.flat())];
+    if (out.length > SHELL_WORD_FORMS_LIMIT) throw new ShellWordTooComplex();
+    return out;
+  };
+  const valuesOf = (name: string): string[] => {
+    const values = lookup(name);
+    if (values === "complex") throw new ShellWordTooComplex();
+    return values ?? [];
+  };
+  // Where the `}` closing a `${` whose body starts at `from` is, past nested
+  // expansions, quotes and escapes; -1 when it is never closed.
+  const closeBrace = (s: string, from: number): number => {
+    let depth = 1;
+    for (let i = from; i < s.length; i++) {
+      const ch = s[i];
+      if (ch === "\\") i++;
+      else if (ch === "'") {
+        const close = s.indexOf("'", i + 1);
+        if (close === -1) return -1;
+        i = close;
+      } else if (ch === "$" && s[i + 1] === "{") {
+        depth++;
+        i++;
+      } else if (ch === "}" && --depth === 0) return i;
+    }
+    return -1;
+  };
+  // A pattern as glob atoms, or the literal it also reads as when quoted.
+  const glob = (pattern: string): GlobAtom[] => {
+    const atoms = globAtoms(pattern);
+    if (!atoms || atoms.length > 256) throw new ShellWordTooComplex();
+    return atoms;
+  };
+  const matches = (atoms: GlobAtom[], text: string): boolean => {
+    budget.steps -= (atoms.length + 1) * (text.length + 1);
+    if (budget.steps < 0) throw new ShellWordTooComplex();
+    return globSegmentMatches(atoms, text);
+  };
+  // `${v#p}`, `${v##p}`, `${v%p}`, `${v%%p}`: the shortest or longest match removed.
+  const removeAffix = (value: string, pattern: string, fromEnd: boolean, longest: boolean): string[] => {
+    // A quoted pattern is literal: `${v%"*"}` removes a star.
+    let literal = value;
+    if (fromEnd && value.endsWith(pattern)) literal = value.slice(0, value.length - pattern.length);
+    else if (!fromEnd && value.startsWith(pattern)) literal = value.slice(pattern.length);
+    if (!/[*?[]/.test(pattern)) return [literal];
+    const atoms = glob(pattern);
+    const star: GlobAtom = { kind: "star" };
+    // When no prefix (suffix) matches at all, one walk says so.
+    if (!matches(fromEnd ? [star, ...atoms] : [...atoms, star], value)) return [value, literal];
+    // A pattern with no `*` matches one length only, so there is one cut to try.
+    const fixed = atoms.every((atom) => atom.kind !== "star") ? atoms.length : -1;
+    const cuts =
+      fixed === -1
+        ? Array.from({ length: value.length + 1 }, (_, i) => i)
+        : fixed <= value.length
+          ? [fromEnd ? value.length - fixed : fixed]
+          : [];
+    const order = fromEnd === longest ? cuts : cuts.reverse();
+    let globbed = value;
+    for (const cut of order) {
+      const piece = fromEnd ? value.slice(cut) : value.slice(0, cut);
+      if (matches(atoms, piece)) {
+        globbed = fromEnd ? value.slice(0, cut) : value.slice(cut);
+        break;
+      }
+    }
+    return [globbed, literal];
+  };
+  // `${v/p/r}`, `//` every match, `/#` at the start, `/%` at the end: the longest match at each place.
+  const replaceMatches = (value: string, pattern: string, replacement: string, mode: "first" | "all" | "prefix" | "suffix"): string[] => {
+    // An empty pattern changes nothing, except where it is anchored.
+    if (pattern === "") return [mode === "prefix" ? replacement + value : mode === "suffix" ? value + replacement : value];
+    // A quoted pattern is literal; one with no glob characters is only that.
+    let literal = value;
+    if (mode === "all") {
+      if (value.split(pattern).length * (replacement.length + 1) > maxLength + value.length) throw new ShellWordTooComplex();
+      literal = value.split(pattern).join(replacement);
+    }
+    else if (mode === "prefix") literal = value.startsWith(pattern) ? replacement + value.slice(pattern.length) : value;
+    else if (mode === "suffix") literal = value.endsWith(pattern) ? value.slice(0, value.length - pattern.length) + replacement : value;
+    else if (value.includes(pattern)) {
+      const at = value.indexOf(pattern);
+      literal = value.slice(0, at) + replacement + value.slice(at + pattern.length);
+    }
+    if (!/[*?[]/.test(pattern)) return [literal];
+    const atoms = glob(pattern);
+    const star: GlobAtom = { kind: "star" };
+    // No match anywhere: one walk, not one per place. And at each place, one
+    // walk first to ask whether any match starts there.
+    if (!matches([star, ...atoms, star], value)) return [value, literal];
+    const startsHere = [...atoms, star];
+    const fixed = atoms.every((atom) => atom.kind !== "star") ? atoms.length : -1;
+    let out = "";
+    let replaced = false;
+    for (let i = 0; i <= value.length; ) {
+      let end = -1;
+      if ((mode === "all" || !replaced) && (mode !== "prefix" || i === 0) && (fixed !== -1 || matches(startsHere, value.slice(i)))) {
+        // The longest match starting here; one length only without a `*`.
+        const longest = fixed === -1 ? value.length : Math.min(value.length, i + fixed);
+        const shortest = fixed === -1 ? i + 1 : i + fixed;
+        for (let e = longest; e >= shortest && e > i; e--) {
+          if ((mode !== "suffix" || e === value.length) && matches(atoms, value.slice(i, e))) {
+            end = e;
+            break;
+          }
+          if (mode === "suffix") break;
+        }
+      }
+      if (end !== -1) {
+        out += replacement;
+        if (out.length > maxLength) throw new ShellWordTooComplex();
+        replaced = true;
+        i = end;
+        continue;
+      }
+      if (i < value.length) out += value[i];
+      i++;
+    }
+    return [out, literal];
+  };
+  const changeCase = (value: string, op: string): string => {
+    if (op === "^^" || op === "U") return value.toUpperCase();
+    if (op === ",," || op === "L") return value.toLowerCase();
+    if (op === "^" || op === "u") return value.charAt(0).toUpperCase() + value.slice(1);
+    if (op === ",") return value.charAt(0).toLowerCase() + value.slice(1);
+    const toggle = (c: string): string => (c === c.toUpperCase() ? c.toLowerCase() : c.toUpperCase());
+    return op === "~" ? toggle(value.charAt(0)) + value.slice(1) : [...value].map(toggle).join("");
+  };
+  const substring = (value: string, offset: number, length: number | undefined): string => {
+    const start = offset < 0 ? Math.max(0, value.length + offset) : Math.min(offset, value.length);
+    if (length === undefined) return value.slice(start);
+    const end = length < 0 ? value.length + length : start + length;
+    return end < start ? "" : value.slice(start, end);
+  };
+  // The first `/` of a replacement that is not escaped or inside an expansion.
+  const separatorAt = (s: string): number => {
+    for (let i = 0; i < s.length; i++) {
+      if (s[i] === "\\") i++;
+      else if (s[i] === "$" && s[i + 1] === "{") {
+        const close = closeBrace(s, i + 2);
+        if (close === -1) return -1;
+        i = close;
+      } else if (s[i] === "/") return i;
+    }
+    return -1;
+  };
+  const braced = (body: string, depth: number): string[] => {
+    let m = /^#([A-Za-z_][A-Za-z0-9_]*)(?:\[[^\]]*\])?$/.exec(body);
+    if (m) return union([valuesOf(m[1]).map((value) => String(value.length))]);
+    if (body.startsWith("#")) return [];
+    m = /^!([A-Za-z_][A-Za-z0-9_]*)$/.exec(body);
+    if (m) return union(valuesOf(m[1]).map((name) => (/^[A-Za-z_][A-Za-z0-9_]*$/.test(name) ? valuesOf(name) : [])));
+    if (body.startsWith("!")) return [];
+    m = /^(?:([A-Za-z_][A-Za-z0-9_]*)|[0-9]+|[@*?$!-])(?:\[[^\]]*\])?/.exec(body);
+    if (!m) return [];
+    const values = m[1] === undefined ? [] : valuesOf(m[1]);
+    const rest = body.slice(m[0].length);
+    if (rest === "") return values;
+    const alternate = /^:?([-=+?])/.exec(rest);
+    if (alternate) {
+      const word = expand(rest.slice(alternate[0].length), depth + 1);
+      if (alternate[1] === "+") return union([[""], word]);
+      return alternate[1] === "?" ? values : union([values, word]);
+    }
+    // Every operator below changes a value; with none known there is nothing to change.
+    if (values.length === 0) return [];
+    const affix = /^(##?|%%?)/.exec(rest);
+    if (affix) {
+      const fromEnd = affix[1][0] === "%";
+      const patterns = expand(rest.slice(affix[1].length), depth + 1);
+      // A pattern the text does not give may remove any suffix (or prefix):
+      // every cut of a short value is a candidate.
+      if (patterns.length === 0) {
+        return union(values.map((value) => Array.from({ length: value.length + 1 }, (_, k) => (fromEnd ? value.slice(0, k) : value.slice(k)))));
+      }
+      return union(values.flatMap((value) => patterns.map((p) => removeAffix(value, p, fromEnd, affix[1].length === 2))));
+    }
+    if (rest.startsWith("/")) {
+      const mode = rest[1] === "/" ? "all" : rest[1] === "#" ? "prefix" : rest[1] === "%" ? "suffix" : "first";
+      const spec = rest.slice(mode === "first" ? 1 : 2);
+      const at = separatorAt(spec);
+      const patterns = expand(at === -1 ? spec : spec.slice(0, at), depth + 1);
+      const replacements = expand(at === -1 ? "" : spec.slice(at + 1), depth + 1);
+      if (patterns.length === 0 || replacements.length === 0) throw new ShellWordTooComplex();
+      return union(values.flatMap((value) => patterns.flatMap((p) => replacements.map((r) => replaceMatches(value, p, r, mode)))));
+    }
+    const caseChange = /^(\^\^|\^|,,|,|~~|~)$/.exec(rest) ?? /^@([ULu])$/.exec(rest);
+    if (caseChange) return union([values.map((value) => changeCase(value, caseChange[1]))]);
+    if (rest === "@E") return union([values.map((value) => decodeAnsiC(value))]);
+    if (rest === "@Q" || rest === "@a" || rest === "@A" || rest === "@K" || rest === "@k") return [];
+    const sub = /^:[ \t]*(-?[0-9]+)(?::[ \t]*(-?[0-9]+))?$/.exec(rest);
+    if (sub) {
+      const cut = values.map((value) => substring(value, Number(sub[1]), sub[2] === undefined ? undefined : Number(sub[2])));
+      // On `[@]` or `[*]` it slices the array: its elements stay whole.
+      return /\[[@*]\]$/.test(m[0]) ? union([values, cut]) : union([cut]);
+    }
+    // An operator on a known value that this does not follow: offsets that are
+    // arithmetic, a case change limited to a pattern, a prompt expansion.
+    throw new ShellWordTooComplex();
+  };
+  const expand = (s: string, depth: number): string[] => {
+    if (depth > 8) throw new ShellWordTooComplex();
+    let forms: string[] = [""];
+    let literal = "";
+    let inDouble = false;
+    const take = (next: readonly string[]): void => {
+      forms = product(product(forms, [literal]), next);
+      literal = "";
+    };
+    for (let i = 0; i < s.length; i++) {
+      const ch = s[i];
+      if (ch === "\\") {
+        if (i + 1 < s.length) {
+          const next = s[++i];
+          if (inDouble && !/[$`"\\\n]/.test(next)) literal += "\\";
+          if (next !== "\n") literal += next;
+        }
+      } else if (ch === "'" && !inDouble) {
+        const close = s.indexOf("'", i + 1);
+        const stop = close === -1 ? s.length : close;
+        literal += s.slice(i + 1, stop);
+        i = stop;
+      } else if (ch === '"') {
+        inDouble = !inDouble;
+      } else if (ch === "`") {
+        return [];
+      } else if (ch === "$" && s[i + 1] === "'" && !inDouble) {
+        let j = i + 2;
+        let body = "";
+        for (; j < s.length && s[j] !== "'"; j++) {
+          if (s[j] === "\\" && j + 1 < s.length) body += s[j++];
+          body += s[j];
+        }
+        literal += decodeAnsiC(body);
+        i = j;
+      } else if (ch === "$" && s[i + 1] === "(") {
+        return [];
+      } else if (ch === "$" && s[i + 1] === "{") {
+        // Unclosed, it runs to the end: the walk's command words come with
+        // their outer braces stripped (`"${A:-x}"` arrives as `${A:-x`), and
+        // a word really left open is a syntax error that writes nothing.
+        const close = closeBrace(s, i + 2);
+        const end = close === -1 ? s.length : close;
+        take(braced(s.slice(i + 2, end), depth));
+        i = end;
+      } else if (ch === "$" && /[A-Za-z_]/.test(s[i + 1] ?? "")) {
+        let j = i + 1;
+        while (j < s.length && /[A-Za-z0-9_]/.test(s[j])) j++;
+        take(valuesOf(s.slice(i + 1, j)));
+        i = j - 1;
+      } else if (ch === "$" && /[0-9@*#?!$-]/.test(s[i + 1] ?? "")) {
+        return [];
+      } else {
+        literal += ch;
+      }
+    }
+    return product(forms, [literal]);
+  };
+  try {
+    return expand(word, 0);
+  } catch (error) {
+    if (error instanceof ShellWordTooComplex) return "complex";
+    throw error;
+  }
+}
+
 /**
  * True when `command` would delete, move or overwrite the target — written for
  * failproofai's own state, which is what the examples below are about.
@@ -3182,9 +3494,17 @@ function destroysProtectedPath(command: string, target: ProtectedPathTarget, dep
   // counts too. Repeating to a fixpoint costs four lines and makes the result
   // independent of the order the assignments appear in, rather than resting on
   // a shell evaluating them top to bottom.
-  const assignments = [
-    ...lexed.readable.matchAll(/(?:^|[\s;&|(])(?:export\s+)?([A-Za-z_][A-Za-z0-9_]*)=("[^"]*"|'[^']*'|[^\s;&|)]+)/g),
+  const assignments: Array<readonly [string, string]> = [
+    ...lexed.readable.matchAll(/(?:^|[\s;&|(])(?:export\s+)?([A-Za-z_][A-Za-z0-9_]*)=("[^"]*"|'[^']*'|[^\s;&|)(][^\s;&|)]*)/g),
   ].map(([, name, value]) => [name, value.replace(/^["']|["']$/g, "")] as const);
+  // `A+=x` appends to A, the way `A=${A}x` does; `A=(x y)` and `A+=(z)` give
+  // an array whose every element may be the one a reference reads.
+  for (const [, name, value] of lexed.readable.matchAll(/(?:^|[\s;&|(])([A-Za-z_][A-Za-z0-9_]*)\+=("[^"]*"|'[^']*'|[^\s;&|)(][^\s;&|)]*)/g)) {
+    assignments.push([name, `\${${name}}${value.replace(/^["']|["']$/g, "")}`]);
+  }
+  for (const [, name, elements] of lexed.readable.matchAll(/(?:^|[\s;&|(])([A-Za-z_][A-Za-z0-9_]*)\+?=\(([^()]*)\)/g)) {
+    for (const element of quoteAwareWords(elements).slice(0, 64)) assignments.push([name, element.replace(/^["']|["']$/g, "")]);
+  }
   const stateVars = new Set<string>();
   const assignedValues = new Map<string, string[]>();
   // A variable given more values than are kept is not known: the value that
@@ -3289,11 +3609,25 @@ function destroysProtectedPath(command: string, target: ProtectedPathTarget, dep
     const values = resolveVariable(name);
     return values === COMPLEX ? null : values;
   };
-  // A word that is just `$NAME` for a variable whose values are known: those
-  // values; null for anything else.
+  // The texts a word built by expansions may become (shellWordExpansionForms),
+  // each word once, under one budget for the whole command.
+  const wordForms = new Map<string, string[] | typeof COMPLEX>();
+  const expansionBudget = { steps: 4_000_000 };
+  const formsOfWord = (word: string): string[] | typeof COMPLEX => {
+    let forms = wordForms.get(word);
+    if (forms === undefined) {
+      const found = shellWordExpansionForms(word, resolveVariable, expansionBudget, Math.max(4096, command.length));
+      forms = found === "complex" ? COMPLEX : found;
+      wordForms.set(word, forms);
+    }
+    return forms;
+  };
+  // A word with expansions in it whose texts the command gives: those texts
+  // (`$D`, `"${D:-out}/x"`); null for anything else.
   const valuesOfWord = (word: string): string[] | null => {
-    const ref = /^\$(?:\{([A-Za-z_][A-Za-z0-9_]*)\}|([A-Za-z_][A-Za-z0-9_]*))$/.exec(stripShellQuoting(word));
-    return ref ? resolvedValues(ref[1] ?? ref[2]) : null;
+    if (!word.includes("$")) return null;
+    const forms = formsOfWord(word);
+    return forms === COMPLEX || forms.length === 0 ? null : forms;
   };
   for (let pass = 0; pass < assignments.length + 1; pass++) {
     const before = stateVars.size;
@@ -3337,8 +3671,34 @@ function destroysProtectedPath(command: string, target: ProtectedPathTarget, dep
     return verdict;
   };
 
+  // Whether one text a word may become reaches the target, judged as a word
+  // the shell hands over: by name, as a glob, through a link, relative to
+  // where the shell stands.
+  const formNamesTarget = (form: string): boolean => {
+    if (target.namesLiteral(form)) return true;
+    if (GLOB_METACHAR_RE.test(form) && globNames(form)) return true;
+    for (const cwd of walkCwds) {
+      if (target.namesThroughLinks?.(form, cwd)) return true;
+      if (cwd === undefined) continue;
+      if (isRelativeShellWord(form) && target.namesLiteral(resolve(cwd, form))) return true;
+      if (GLOB_METACHAR_RE.test(form) && !/^[-/~$]/.test(form) && globNames(resolve(cwd, form))) return true;
+    }
+    return false;
+  };
+
   const namesState = (text: string): boolean => {
     if (target.namesLiteral(text)) return true;
+    // A word built by expansions, as each text the command says it may become:
+    // after `cd sub`, `"${A:-cfg.json}"` may be sub/cfg.json, and with
+    // `A=cfg.json.bak`, `"${A%.bak}"` is.
+    if (text.includes("$")) {
+      for (const word of quoteAwareWords(text)) {
+        if (!word.includes("$")) continue;
+        const forms = formsOfWord(word);
+        if (forms === COMPLEX) return true;
+        if (forms.some((form) => form !== word && formNamesTarget(form))) return true;
+      }
+    }
     for (const [, name] of text.matchAll(VAR_REFERENCE_RE)) {
       if (stateVars.has(name)) return true;
       // Its value judged from where the shell stands where it is used:
@@ -4783,10 +5143,13 @@ function agentCliHooksOffByArgv(lexed: ShellLex): boolean {
     list.push({ at: match.index, value: match[2].replace(/^["']|["']$/g, "") });
     assignments.set(match[1], list);
   }
+  // A variable appended to (`F=ho; F+=oks`) holds what no single assignment says.
+  const appended = new Set([...lexed.readable.matchAll(/(?:^|[\s;&|(])([A-Za-z_][A-Za-z0-9_]*)\+=/g)].map((m) => m[1]));
   // A word's possible texts, or null for any word at all.
   const optionsOf = (word: string, at: number): string[] | null => {
     if (!EXPANSION_IN_WORD_RE.test(word)) return [word];
     const ref = /^\$(?:\{([A-Za-z_][A-Za-z0-9_]*)\}|([A-Za-z_][A-Za-z0-9_]*))$/.exec(word);
+    if (ref && appended.has(ref[1] ?? ref[2])) return null;
     const list = ref ? assignments.get(ref[1] ?? ref[2]) : undefined;
     if (!list || list.length > 64 || list.some((a) => a.at > at || EXPANSION_IN_WORD_RE.test(a.value))) return null;
     return list.map((a) => a.value);
@@ -4907,6 +5270,12 @@ function agentCliArgvLines(lexed: ShellLex): string {
     const known = values.get(name) ?? [];
     if (known.length < 64) known.push(value.replace(/^["']|["']$/g, ""));
     values.set(name, known);
+  }
+  // `F+=oks` appends to every value F had, or is the whole value of an unset F.
+  for (const [, name, value] of lexed.readable.matchAll(/(?:^|[\s;&|(])([A-Za-z_][A-Za-z0-9_]*)\+=("[^"]*"|'[^']*'|[^\s;&|)]*)/g)) {
+    const tail = value.replace(/^["']|["']$/g, "");
+    const known = values.get(name) ?? [];
+    values.set(name, [...new Set([...known, ...known.map((v) => v + tail), tail])].slice(0, 64));
   }
   // Of the values a reference may take, the one that would turn hooks off if
   // any would: what the check needs to know is whether some run does.

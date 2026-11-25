@@ -1452,6 +1452,86 @@ describe("block-failproofai-commands — review round seven", () => {
     },
   );
 
+  it("follows a destination built by parameter expansion, arrays and appends", async () => {
+    // A name that is a settings link only where the shell has moved to.
+    mkdirSync(join(p7, "sub10"), { recursive: true });
+    symlinkSync(settings(), join(p7, "sub10", "cfg10.json"));
+    for (const command of [
+      `cd sub10; cp /tmp/evil.json "\${A:-cfg10.json}"`,
+      `cd sub10; cp /tmp/evil.json "\${A=cfg10.json}"`,
+      `cd sub10; A=cfg10.json.bak; cp /tmp/evil.json "\${A%.bak}"`,
+      `cd sub10; A=cfg10.json.bak; cp /tmp/evil.json "\${A%.*}"`,
+      `cd sub10; A=/x/y/cfg10.json; cp /tmp/evil.json "\${A##*/}"`,
+      `cd sub10; A=xcfg10.json; tee "\${A#x}" < /dev/null`,
+      `cd sub10; A=cfg10Xjson; cp /tmp/evil.json "\${A/X/.}"`,
+      `cd sub10; A=CFG10.JSON; cp /tmp/evil.json "\${A,,}"`,
+      `cd sub10; A=zzcfg10.json; cp /tmp/evil.json "\${A:2}"`,
+      `cd sub10; A=cfg10.json; R=A; cp /tmp/evil.json "\${!R}"`,
+      `cd sub10; A=(x cfg10.json); cp /tmp/evil.json "\${A[1]}"`,
+      `cd sub10; A=cf; A+=g10.json; cp /tmp/evil.json "$A"`,
+      `cd sub10; printf '{}' > "\${A:-cfg10.json}"`,
+      `cd sub10; A=cfg10.json.bak; cp /tmp/evil.json "\${A%$SUFFIX}"`,
+      `cd sub10; A=(x cfg10.json); cp /tmp/evil.json "\${A[@]:1}"`,
+    ]) {
+      expect(await bash(command, p7), command).toBe(true);
+    }
+    // An operator this does not follow, over a known value, counts as naming it.
+    expect(await bashDecision(`cd sub10; A=cfg10.json; cp /tmp/evil.json "\${A:0:$((10))}"`, p7)).toBe("deny");
+  });
+
+  it("leaves ordinary parameter expansions alone", async () => {
+    for (const command of [
+      `cp a "\${OUT:-build}/x.txt"`,
+      `f=report.txt; mv "$f" "\${f%.txt}.md"`,
+      `for f in *.txt; do mv "$f" "\${f%.txt}.md"; done`,
+      `cp a "\${1:-out}/x"`,
+      `A=(a b c); for x in "\${A[@]}"; do cp "$x" /tmp/; done`,
+      `NAME=report; cp a "\${NAME^^}.txt"`,
+      `PATH+=:/opt/bin; npm test`,
+      `A=a/b/c; cp x "/tmp/\${A//\\//_}.txt"`,
+      `x=${"ab-".repeat(100)}; cp a "/tmp/\${x//[^a-z]/}"`,
+      `A=${"a".repeat(1000)}; cp a "/tmp/\${A//*b*/x}"`,
+      `f=report.txt; cp a "/tmp/\${f%$EXT}.bak"`,
+    ]) {
+      expect(await bashDecision(command, p7), command).toBe("allow");
+    }
+  });
+
+  it("bounds the pattern matching an expansion can ask for", async () => {
+    // A match that starts early and ends early makes every longer end a try.
+    const long = "ab" + "c".repeat(4000);
+    const started = performance.now();
+    // Past the budget the word reads as built to evade.
+    expect(await bashDecision(`A=${long}; cp x "\${A//a*b/x}"`, p7)).toBe("deny");
+    expect(await bashDecision(`A=${long}; cp x "\${A##a*b}"`, p7)).toBe("deny");
+    // A pattern that matches nowhere costs one walk, and changes nothing.
+    expect(await bashDecision(`A=${"a".repeat(4000)}; cp x "\${A//*a*a*a*a*b/x}"`, p7)).toBe("allow");
+    expect(performance.now() - started).toBeLessThan(2000);
+  });
+
+  it("matches a glob against the files behind settings links", async () => {
+    const profile = join(root, "profile10");
+    const actual = join(root, "actual10");
+    mkdirSync(profile, { recursive: true });
+    mkdirSync(actual, { recursive: true });
+    writeFileSync(join(actual, "primary.json"), "{}");
+    symlinkSync(join(actual, "primary.json"), join(profile, "settings.json"));
+    const session = { cwd: p7, agentSettingsPath: join(profile, "settings.json") };
+    const decide = async (command: string) =>
+      (await policy.fn({ eventType: "PreToolUse", payload: {}, toolName: "Bash", toolInput: { command }, session })).decision;
+    expect(await decide(`cp /tmp/disable.json ${join(actual, "prim*.json")}`)).toBe("deny");
+    expect(await decide(`printf '{}' > ${join(actual, "prim?ry.json")}`)).toBe("deny");
+    expect(await decide(`cd ${actual} && cp /tmp/disable.json prim*.json`)).toBe("deny");
+    expect(await decide(`cp /tmp/x ${join(actual, "notes*.json")}`)).toBe("allow");
+    // A project's settings link target too: `.claude/settings.local.json -> ../config/claude.json`.
+    expect(await bash(`cp /tmp/x config/cl*.json`, p7)).toBe(true);
+  });
+
+  it("reads an appended variable in an agent CLI's hooks-off command", async () => {
+    expect(await bashDecision(`F=ho; F+=oks; codex features disable "$F"`, p7)).toBe("deny");
+    expect(await bashDecision(`F+=hooks; codex features disable $F`, p7)).toBe("deny");
+  });
+
   it("reads an empty heredoc delimiter the way bash does", async () => {
     expect(await bash(`cat > /tmp/notes <<''\ncat > /tmp/y <<EOF\n\ncp /tmp/evil ${settings()}\nEOF\n`, p7)).toBe(true);
     expect(await bashDecision(`cat > /tmp/notes <<''\nrm -rf ~/.claude\n\necho done\n`, p7)).toBe("allow");

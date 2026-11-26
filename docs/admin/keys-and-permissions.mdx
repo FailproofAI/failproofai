@@ -12,8 +12,10 @@ API keys belong to an organization and carry explicit permissions. Use separate 
   <Tab title="Dashboard">
     1. Go to **settings → api keys** and, in the **new key** form beside the table, enter a workload name.
     2. Answer **what is it for?**: **a machine running failproofai**, **sending logs only**, or **your own evaluator worker**. Choose **pick permissions yourself** only when none of these fits.
-    3. Select **create key** and copy its one-time secret immediately.
-    4. Open the key later to edit its permissions, regenerate the secret, or revoke it.
+    3. Under **where is it used?**, name the repository, pipeline or machine that will hold the key, so whoever renews or revokes it later knows what depends on it.
+    4. Choose when it **expires**: 30 days, 90 days, 1 year or never. If your organization sets a maximum key lifetime, the longer choices are not offered.
+    5. Select **create key** and copy its one-time secret immediately.
+    6. Open the key later to edit its permissions or where it is used, regenerate the secret, renew it, or revoke it.
 
     Choose the narrowest purpose, or the narrowest individual grants, the workload needs. A key never has more access than the person who made it.
 
@@ -49,18 +51,39 @@ To run [Jev policies through FailproofAI Cloud](/policies/jev), choose **a machi
 
 Key secrets are shown when created or regenerated. Store them in a secret manager and rotate them without reusing an operator's interactive credentials.
 
+## Personal keys and organization keys
+
+A key belongs either to a person or to the organization:
+
+- **Personal keys** are the keys `failproofai config` creates on someone's own machine after they approve the sign-in. A personal key acts as that person. It stops working when they are removed from the organization or their account is disabled, it never does more than they are currently allowed to do, and it is refused while the organization's allowed sign-ins list excludes them. The keys page marks these keys **personal**.
+- **Organization keys** are every key created on the **api keys** page or through the API. They keep working when the person who created them leaves, so CI pipelines, collectors and evaluator workers do not break. The keys page shows who created each one, what it is used for, and when it was last used.
+
+When you remove a member, the confirmation lists the organization keys they created, with a link to rotate or revoke each one, and members who manage keys get an email listing them. The person who left knew those secrets, so regenerate any key that still matters.
+
+Organization keys cannot manage people, keys or settings. Creating or editing a key with `users:create`, `users:update`, `users:delete`, `keys:create`, `keys:disable`, `keys:regenerate` or `settings:write` is refused (`422 identity_permission_on_key`); do those things from the dashboard as yourself. A key created before this rule that holds one of them keeps working and is marked **too broad** on the keys page. Open it and save its permissions without them to narrow it.
+
+## Key expiry and renewal
+
+By default keys never expire. An organization can set **keys may live for** under **settings → general → api keys**. With a limit set:
+
+- a new key, a renewed key and a `failproofai config` machine key expire no later than the limit allows, and a key created without an expiry gets the limit;
+- setting the limit, or lowering it, brings the expiry of every working key that would outlive it forward. The setting shows how many keys move, and to which date, before it saves;
+- raising or removing the limit does not change existing keys.
+
+Fifteen days before a key expires, the member who created it (if they are still in the organization) and the members who can create keys get one email. The **api keys** page also lists keys that stop working within 15 days. An expired key stays on the page: open it and choose **renew** to get a new secret and a new expiry.
+
 ## Permission catalog
 
 | Area | Permissions |
 | --- | --- |
 | Events | `events:add`, `events:read` |
-| Keys | `keys:create`, `keys:read`, `keys:disable`, `keys:regenerate`; `keys:update` is human-session only |
-| Users | `users:create`, `users:read`, `users:update`, `users:delete` |
+| Keys | `keys:create`, `keys:read`, `keys:disable`, `keys:regenerate`; `keys:update` is human-session only. Only `keys:read` can be granted to a key you create |
+| Users | `users:create`, `users:read`, `users:update`, `users:delete`. Only `users:read` can be granted to a key you create |
 | Evaluations | `evaluations:read`, `evaluations:trigger`, `evaluations:run` |
 | Dashboards | `dashboards:read`, `dashboards:write`, `dashboards:delete` |
 | Queries | `queries:read`, `queries:write`, `queries:delete`, `queries:run` |
 | Failproof agent | `agent:use` |
-| Settings | `settings:read`, `settings:write` |
+| Settings | `settings:read`, `settings:write`. Only `settings:read` can be granted to a key you create |
 | Alerts | `alerts:read`, `alerts:write` |
 | Insights | `issues:read`, `issues:create`, `issues:close` |
 | Audits | `audits:read`, `audits:write` |

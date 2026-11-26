@@ -48,7 +48,7 @@ import {
 import { listInstallableIds, getIntegration } from "./integrations";
 import type { IntegrationType } from "./types";
 import { removeHooks } from "./manager";
-import { removeSelfReportMcp } from "./self-report-install";
+import { removeSelfReportMcp, selfReportRegistrationStatus } from "./self-report-install";
 import { shellQuote } from "./shell-quote";
 import { NO_PRINTED_COMMAND_REASON, sudoCommandLine } from "./system-command";
 import { installedAgentSkillDirs, removeAgentSkill } from "./agent-skill";
@@ -129,6 +129,12 @@ interface Leftovers {
   stagedBinaryDir: string | null;
   daemonConfigured: boolean;
   homeExists: boolean;
+  /**
+   * Agent config files holding failproofai's own Self Reports MCP entry, hooked
+   * or not: an entry left after its hooks were removed by hand is exactly the
+   * kind of orphan this command clears.
+   */
+  selfReportMcpPaths: string[];
 }
 
 function survey(cwd?: string): Leftovers {
@@ -170,7 +176,19 @@ function survey(cwd?: string): Leftovers {
     stagedBinaryDir: stagedBinaryDir && existsSync(stagedBinaryDir) ? stagedBinaryDir : null,
     daemonConfigured,
     homeExists: existsSync(failproofaiHome()),
+    selfReportMcpPaths: ownedSelfReportMcpPaths(),
   };
+}
+
+function ownedSelfReportMcpPaths(): string[] {
+  try {
+    return selfReportRegistrationStatus({ hooksInstalled: () => false })
+      .filter((r) => r.registered)
+      .map((r) => r.path);
+  } catch {
+    // Unreadable files are reported by the removal step itself.
+    return [];
+  }
 }
 
 export async function runUninstallCommand(opts: UninstallOptions = {}): Promise<UninstallResult> {
@@ -182,7 +200,8 @@ export async function runUninstallCommand(opts: UninstallOptions = {}): Promise<
   const lines: string[] = [];
 
   const nothingToDo =
-    found.clis.length === 0 && found.skillDirs.length === 0 && !found.serviceInstalled && !found.stagedBinaryDir && !found.daemonConfigured &&
+    found.clis.length === 0 && found.skillDirs.length === 0 && found.selfReportMcpPaths.length === 0 &&
+    !found.serviceInstalled && !found.stagedBinaryDir && !found.daemonConfigured &&
     !(opts.purge && found.homeExists);
   if (nothingToDo) {
     return {
@@ -208,6 +227,9 @@ export async function runUninstallCommand(opts: UninstallOptions = {}): Promise<
   const removals: string[] = [];
   if (found.clis.length > 0) removals.push(`failproofai's hooks from ${many(found.clis.length, "agent")}`);
   if (found.skillDirs.length > 0) removals.push(`the failproofai skill from ${many(found.skillDirs.length, "agent folder")}`);
+  if (found.selfReportMcpPaths.length > 0) {
+    removals.push(`the Self Reports MCP server from ${many(found.selfReportMcpPaths.length, "agent config")}`);
+  }
   if (found.serviceInstalled) removals.push("the failproofaid service (needs sudo)");
   else if (found.stagedBinaryDir) removals.push(`the failproofaid binary in ${found.stagedBinaryDir} (needs sudo)`);
   if (purging) removals.push(home);

@@ -298,11 +298,14 @@ class EventNamespace:
     def __init__(self, writer) -> None:
         self._writer = writer
         self._pending: dict[str, datetime] = {}
-        # tool_call_id -> (session_id, agent_id, tool_name) for every tool_use
-        # not yet closed by its tool_result. Read only by `self_report`, so a
-        # report made from inside a tool the caller already brackets lands on
-        # that tool's session and agent. Same cap and eviction as `_pending`.
-        self._open_tools: dict[str, tuple[str, str, str]] = {}
+        # _tool_key(session_id, tool_call_id) -> (session_id, agent_id,
+        # tool_name, tool_call_id) for every tool_use not yet closed by its
+        # tool_result. Keyed by session like `_pending`: two sessions may reuse
+        # one call id, and a bare key let the second replace (and its result
+        # remove) the first's entry. Read only by `self_report`, so a report
+        # made from inside a tool the caller already brackets lands on that
+        # tool's session and agent. Same cap and eviction as `_pending`.
+        self._open_tools: dict[str, tuple[str, str, str, str]] = {}
 
     def _track_pending(self, key: str, ts: datetime) -> None:
         # Evicting has to tolerate another thread doing the same thing, because
@@ -337,7 +340,7 @@ class EventNamespace:
                 self._pending.pop(oldest, None)  # may already be gone
         self._pending[key] = ts
 
-    def _track_open_tool(self, tool_call_id: str, entry: "tuple[str, str, str]") -> None:
+    def _track_open_tool(self, key: str, entry: "tuple[str, str, str, str]") -> None:
         # Tolerant for the reasons spelled out in `_track_pending`.
         if len(self._open_tools) >= _PENDING_CAP:
             try:
@@ -346,8 +349,8 @@ class EventNamespace:
                 pass
             else:
                 self._open_tools.pop(oldest, None)
-        self._open_tools.pop(tool_call_id, None)  # re-insert at the end: newest last
-        self._open_tools[tool_call_id] = entry
+        self._open_tools.pop(key, None)  # re-insert at the end: newest last
+        self._open_tools[key] = entry
 
     def _report_identity(
         self, tool_call_id: "str | None", agent_id: "str | None"
@@ -357,7 +360,9 @@ class EventNamespace:
         Most specific first, within the ambient session when one is bound:
         the open `tool_use` with this `tool_call_id`; then the newest open
         `tool_use` of the report tool itself; then the enclosing scope; then
-        `"unattributed"` with one warning. Never raises: a report is evidence,
+        `"unattributed"` with one warning. With no ambient session, an open
+        `tool_use` is used only when every candidate is in one session: the
+        newest of several sessions would be a guess. Never raises: a report is evidence,
         and losing it to a missing scope is the worse outcome.
 
         The third item is the `tool_call_id` to record: the caller's, else the
@@ -369,20 +374,24 @@ class EventNamespace:
 
         ambient = _context.session_id()
         try:
-            open_tools = list(self._open_tools.items())
+            open_tools = list(self._open_tools.values())
         except RuntimeError:  # resized under us by another thread
             open_tools = []
-        candidates = [
-            (call_id, entry) for call_id, entry in open_tools
-            if ambient is None or entry[0] == ambient
-        ]
+        candidates = [e for e in open_tools if ambient is None or e[0] == ambient]
+
+        def unambiguous(found: "list[tuple[str, str, str, str]]") -> "tuple[str, str, str, str] | None":
+            if not found or (ambient is None and len({e[0] for e in found}) > 1):
+                return None
+            return found[-1]
+
         match = None
         if tool_call_id is not None:
-            match = next(((c, e) for c, e in candidates if c == tool_call_id), None)
+            match = unambiguous([e for e in candidates if e[3] == tool_call_id])
         if match is None:
-            match = next(((c, e) for c, e in reversed(candidates) if is_self_report_tool(e[2])), None)
+            match = unambiguous([e for e in candidates if is_self_report_tool(e[2])])
         if match is not None:
-            call_id, entry = match
+            entry = match
+            call_id = entry[3]
             return (
                 entry[0],
                 agent_id if agent_id is not None else entry[1],
@@ -407,11 +416,11 @@ class EventNamespace:
         from failproofai_sdk._self_report import is_self_report_tool
 
         try:
-            open_tools = list(self._open_tools.items())
+            open_tools = list(self._open_tools.values())
         except RuntimeError:  # resized under us by another thread
             return None
         return next(
-            (c for c, e in reversed(open_tools) if e[0] == session_id and is_self_report_tool(e[2])),
+            (e[3] for e in reversed(open_tools) if e[0] == session_id and is_self_report_tool(e[2])),
             None,
         )
 
@@ -461,7 +470,7 @@ class EventNamespace:
         session_id, agent_id = _resolve_identity(session_id, agent_id)
         ts = self._now()
         self._track_pending(_tool_key(session_id, tool_call_id), ts)
-        self._track_open_tool(tool_call_id, (session_id, agent_id, tool_name))
+        self._track_open_tool(_tool_key(session_id, tool_call_id), (session_id, agent_id, tool_name, tool_call_id))
         self._writer.submit(
             ToolUseEvent(
                 timestamp=self._fmt_ts(ts),
@@ -491,7 +500,7 @@ class EventNamespace:
         session_id, agent_id = _resolve_identity(session_id, agent_id)
         ts = self._now()
         start_ts = self._pending.pop(_tool_key(session_id, tool_call_id), None)
-        self._open_tools.pop(tool_call_id, None)
+        self._open_tools.pop(_tool_key(session_id, tool_call_id), None)
         duration_ms = _measured_duration_ms(start_ts, ts)
         self._writer.submit(
             ToolResultEvent(

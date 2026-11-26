@@ -85,6 +85,11 @@ an unnamed agent would escape: there it fails closed.
 
 ```jsonc
 { "type": "pong", "protocolVersion": 2 }
+// While the Self Reports MCP listener is bound, a pong also carries
+//   "selfReport": { "instanceId": "<random per process>", "port": 4319 }
+// (optional and additive: older clients ignore it). The endpoint's MCP
+// initialize returns the same id as serverInfo.instanceId, so a client can
+// prove the HTTP port belongs to the daemon behind this socket.
 
 {
   "type": "hookResult",

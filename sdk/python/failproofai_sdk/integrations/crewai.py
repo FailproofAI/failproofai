@@ -1727,6 +1727,41 @@ def _report_call_id() -> "str | None":
     return None
 
 
+def _never_cache(_args=None, _result=None) -> bool:
+    """The report tool's `cache_function`: every call must run and record."""
+    return False
+
+
+_context_tool_classes: dict = {}
+
+
+def _context_preserving(structured):
+    """`structured` with an `ainvoke` that runs the tool in the caller's context.
+
+    CrewAI before 1.15 runs a sync tool's function through `run_in_executor`
+    without copying the context, so the report tool's `_run` saw an empty
+    CrewAI event stack in a fresh worker thread and could take another,
+    newer crew's identity. `asyncio.to_thread` copies the context (what 1.15+
+    does itself). Same validation and usage counting: it calls the tool's own
+    sync `invoke`. Left unchanged if the instance cannot take the subclass.
+    """
+    import asyncio
+
+    base = type(structured)
+    cls = _context_tool_classes.get(base)
+    if cls is None:
+        async def ainvoke(self, input, config=None, **kwargs):  # noqa: A002 - CrewAI's name
+            return await asyncio.to_thread(self.invoke, input, config, **kwargs)
+
+        cls = type(base.__name__, (base,), {"__module__": __name__, "ainvoke": ainvoke})
+        _context_tool_classes[base] = cls
+    try:
+        object.__setattr__(structured, "__class__", cls)
+    except TypeError:
+        logger.debug("failproofai_sdk: could not wrap CrewAI's structured tool", exc_info=True)
+    return structured
+
+
 def self_report_tool(
     *,
     session_id: "str | None" = None,
@@ -1743,6 +1778,7 @@ def self_report_tool(
     read when the tool is built. Identity: the factory's `session_id` /
     `agent_id`, else the crew run this adapter is recording (when instrumented),
     else the ambient scope, else "unattributed". Always returns `"Recorded."`.
+    Never cached, and run in the caller's context on CrewAI's async path.
     """
     from crewai.tools import BaseTool
 
@@ -1767,6 +1803,9 @@ def self_report_tool(
 
     _run.__annotations__ = _self_report.framework_signature(names)
 
+    def to_structured_tool(self):
+        return _context_preserving(BaseTool.to_structured_tool(self))
+
     tool_cls = type(
         "FailproofAIReportTool",
         (BaseTool,),
@@ -1777,6 +1816,9 @@ def self_report_tool(
             "name": spec["name"],
             "description": spec["description"],
             "_run": _run,
+            "to_structured_tool": to_structured_tool,
         },
     )
-    return tool_cls()
+    # Never cached: CrewAI's cache would answer a repeated report (same
+    # arguments) with the stored "Recorded." and the report would not be made.
+    return tool_cls(cache_function=_never_cache)

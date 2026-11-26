@@ -20,7 +20,11 @@ section is missing or empty is refused before anything is built.
   Edge build. Categories and guidance come from `$FAILPROOFAI_HOME/self-report.json`
   (`selfReportSettings()`), with the six defaults when it is missing or disabled.
   A report made inside a framework's tool loop joins the agent whose loop called
-  it, and never throws for want of a session.
+  it, and never throws for want of a session; with no scope it joins an open
+  call only when all candidates are in one session. The `/ai` tool carries both
+  schema keys for a `module` passed in, and the Edge `/langchain` tool builds a
+  real LangChain tool with a `module` passed in (the tool needs
+  `@langchain/core` 0.3.44 or later).
 
 ### Fixes
 

@@ -73,7 +73,7 @@ fn wait(what: &str, predicate: impl Fn() -> bool) {
     }
 }
 
-fn ping(daemon: &Daemon) {
+fn ping(daemon: &Daemon) -> ServerMessage {
     let mut stream = UnixStream::connect(daemon.home.join("run/failproofaid.sock")).unwrap();
     stream
         .set_read_timeout(Some(Duration::from_secs(2)))
@@ -87,6 +87,24 @@ fn ping(daemon: &Daemon) {
     .unwrap();
     let response: ServerMessage = read_message(&mut stream).unwrap();
     assert!(matches!(response, ServerMessage::Pong { .. }));
+    response
+}
+
+fn pong_self_report(daemon: &Daemon) -> Option<fpai_ipc::SelfReportServer> {
+    match ping(daemon) {
+        ServerMessage::Pong { self_report, .. } => self_report,
+        other => panic!("{other:?}"),
+    }
+}
+
+fn initialize(port: u16) -> Option<serde_json::Value> {
+    reqwest::blocking::Client::new()
+        .post(format!("http://127.0.0.1:{port}/mcp"))
+        .header("Content-Type", "application/json")
+        .body(r#"{"jsonrpc":"2.0","id":1,"method":"initialize","params":{}}"#)
+        .send()
+        .ok()
+        .and_then(|r| r.json::<serde_json::Value>().ok())
 }
 
 fn free_port() -> u16 {
@@ -172,4 +190,46 @@ fn a_busy_self_report_port_never_costs_the_enforcement_socket() {
         "logged once, not restarted in a loop"
     );
     drop(holder);
+}
+
+/// Two daemons with separate homes and one port: the second's bind fails. Its
+/// pong must say it serves no MCP endpoint, and the first's pong must name the
+/// instance that answers the port, so a client of the second never takes the
+/// first's endpoint for its own.
+#[test]
+fn the_pong_names_the_daemon_that_holds_the_mcp_port() {
+    let port = free_port();
+    let first = spawn(port);
+    wait("the first daemon's MCP endpoint", || {
+        initialize(port).is_some()
+    });
+    wait("the first daemon's socket", || {
+        first.home.join("run/failproofaid.sock").exists()
+    });
+    let served = initialize(port).unwrap();
+    let id = served["result"]["serverInfo"]["instanceId"]
+        .as_str()
+        .expect("an instanceId")
+        .to_string();
+    let mine = pong_self_report(&first).expect("the first daemon serves MCP");
+    assert_eq!(mine.instance_id, id);
+    assert_eq!(mine.port, port);
+
+    let second = spawn(port);
+    wait("the second daemon's busy-port warning", || {
+        second
+            .log
+            .lock()
+            .unwrap()
+            .contains("Self Reports MCP server off")
+    });
+    wait("the second daemon's socket", || {
+        second.home.join("run/failproofaid.sock").exists()
+    });
+    assert_eq!(pong_self_report(&second), None);
+    // The port still answers, as the first daemon.
+    assert_eq!(
+        initialize(port).unwrap()["result"]["serverInfo"]["instanceId"],
+        id.as_str()
+    );
 }

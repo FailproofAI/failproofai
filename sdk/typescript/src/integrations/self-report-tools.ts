@@ -83,16 +83,21 @@ function handMadeJsonSchema(schema: Record<string, unknown>): Record<PropertyKey
  *     tools: { failproofai_report: selfReportTool(), ...yourTools }
  *
  * Built with `ai`'s own `tool()` and `jsonSchema()` (no zod). The schema goes
- * under `parameters` on v4 and `inputSchema` from v5. The report lands on the
+ * under `parameters` on v4 and `inputSchema` from v5, and under both when the
+ * version is unknown (including a `module` passed in). The report lands on the
  * agent whose loop called it: the model's `toolCallId` finds the `tool_use`
  * the adapter recorded, else the enclosing `failproofai` scope.
  */
 export function aiSelfReportTool<T = AiSelfReportTool>(options: AiSelfReportToolOptions = {}): T {
   const spec = selfReportSpec();
-  const major = versionTuple("ai")?.[0];
+  const resolved = versionTuple("ai")?.[0];
   // v4–v6 ship CommonJS; v7 does not, and a `require` of it would print
   // Node's require(esm) warning in the customer's process for nothing.
-  const ai = options.module ?? (major !== undefined && major <= 6 ? tryRequire<AiModule>("ai") : null);
+  const ai = options.module ?? (resolved !== undefined && resolved <= 6 ? tryRequire<AiModule>("ai") : null);
+  // The resolved `ai` says nothing about a module the caller passed in (an
+  // application can resolve v6 and hand over a v4 copy), so its version is
+  // unknown and the definition carries both schema keys.
+  const major = options.module ? undefined : resolved;
   const schema =
     typeof ai?.jsonSchema === "function"
       ? ai.jsonSchema(spec.inputSchema as never)

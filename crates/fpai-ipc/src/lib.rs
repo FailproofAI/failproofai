@@ -7,7 +7,7 @@ pub mod framing;
 pub mod peer;
 
 pub use envelope::{
-    ClientMessage, MIN_PROTOCOL_VERSION, PROTOCOL_VERSION, ServerMessage,
+    ClientMessage, MIN_PROTOCOL_VERSION, PROTOCOL_VERSION, SelfReportServer, ServerMessage,
     is_supported_protocol_version,
 };
 pub use framing::{FramingError, MAX_FRAME_LEN, read_message, write_message};

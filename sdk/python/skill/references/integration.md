@@ -94,6 +94,11 @@ fixes. That is deliberate: the alternative is dropping the event silently, and
 this SDK already asks you to debug enough invisible failures. `agent_id` never
 raises — it is a label, and it falls back to `"main"`.
 
+`self_report()` is the exception: with no session bound and none passed it
+records the report under `session_id="unattributed"` and logs one warning per
+process, because losing a report to a missing scope is worse than filing it
+unattributed. Every other event method raises as above.
+
 ## Don't use a module global
 
 The shortcut the scopes exist to replace, because it breaks silently:

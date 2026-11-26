@@ -23,8 +23,11 @@ see `scripts/changelog-section.py`.
   `integrations.<langchain|crewai|llama_index|pydantic_ai>.self_report_tool()`,
   and the Pydantic AI capability adds it with `FailproofAI(self_report=True)` /
   `instrument("pydantic_ai", self_report=True)`. Categories and guidance come from
-  `$FAILPROOFAI_HOME/self-report.json`, else six defaults. Still no runtime
-  dependencies.
+  `$FAILPROOFAI_HOME/self-report.json`, else six defaults. A report with no
+  session bound matches an open tool call only within one session (never the
+  newest of several), and open calls are tracked per session. The CrewAI tool is
+  never cached and runs in the caller's context on CrewAI's async path. Still no
+  runtime dependencies.
 
 ### Dependencies
 

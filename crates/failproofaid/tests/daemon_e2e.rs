@@ -176,11 +176,15 @@ fn real_binary_answers_ping_over_a_real_socket() {
     )
     .unwrap();
     let response: ServerMessage = read_message(&mut stream).unwrap();
-    assert_eq!(
-        response,
-        ServerMessage::Pong {
-            protocol_version: PROTOCOL_VERSION
-        }
+    assert!(
+        matches!(
+            response,
+            ServerMessage::Pong {
+                protocol_version: PROTOCOL_VERSION,
+                ..
+            }
+        ),
+        "{response:?}"
     );
 
     let status = daemon.terminate();
@@ -226,11 +230,15 @@ fn a_second_daemon_on_the_same_socket_refuses_to_start() {
     )
     .unwrap();
     let response: ServerMessage = read_message(&mut stream).unwrap();
-    assert_eq!(
-        response,
-        ServerMessage::Pong {
-            protocol_version: PROTOCOL_VERSION
-        }
+    assert!(
+        matches!(
+            response,
+            ServerMessage::Pong {
+                protocol_version: PROTOCOL_VERSION,
+                ..
+            }
+        ),
+        "{response:?}"
     );
 
     first.terminate();
@@ -256,11 +264,15 @@ fn a_fresh_daemon_can_bind_again_after_the_previous_one_shut_down_cleanly() {
     )
     .unwrap();
     let response: ServerMessage = read_message(&mut stream).unwrap();
-    assert_eq!(
-        response,
-        ServerMessage::Pong {
-            protocol_version: PROTOCOL_VERSION
-        }
+    assert!(
+        matches!(
+            response,
+            ServerMessage::Pong {
+                protocol_version: PROTOCOL_VERSION,
+                ..
+            }
+        ),
+        "{response:?}"
     );
 
     second.terminate();
@@ -442,11 +454,15 @@ fn a_fifo_log_after_an_unclean_exit_does_not_stall_startup() {
         )
         .unwrap();
         let response: ServerMessage = read_message(&mut stream).unwrap();
-        assert_eq!(
-            response,
-            ServerMessage::Pong {
-                protocol_version: PROTOCOL_VERSION
-            }
+        assert!(
+            matches!(
+                response,
+                ServerMessage::Pong {
+                    protocol_version: PROTOCOL_VERSION,
+                    ..
+                }
+            ),
+            "{response:?}"
         );
         assert!(daemon.terminate().success());
     }

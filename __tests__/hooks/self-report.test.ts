@@ -293,6 +293,31 @@ function runMcp(agentArgs: string[], messages: unknown[], cwd: string): Promise<
   });
 }
 
+describe("self-report sync on a stale home", () => {
+  it("refuses, like a scheduled audit, instead of migrating (and resetting) the home unattended", async () => {
+    // What failproofaid runs at startup and after each settings change.
+    writeFileSync(join(home, "VERSION"), JSON.stringify({ layout: 1, cli: "0.0.1" }));
+    const toml = "[telemetry]\nenabled = false\n";
+    writeFileSync(join(home, "config.toml"), toml);
+    const { code, stderr } = await new Promise<{ code: number | null; stderr: string }>((ok, fail) => {
+      const child = spawn("bun", [BINARY, "self-report", "sync", "--quiet"], {
+        cwd: home,
+        env: { ...process.env, HOME: home, FAILPROOFAI_HOME: home, FAILPROOFAI_TELEMETRY_DISABLED: "1" },
+        stdio: ["ignore", "pipe", "pipe"],
+      });
+      let err = "";
+      child.stderr.on("data", (b: Buffer) => (err += b.toString()));
+      child.on("error", fail);
+      child.on("close", (c) => ok({ code: c, stderr: err }));
+    });
+    expect(code).toBe(1);
+    expect(stderr).toContain("refusing to run unattended");
+    expect(stderr).toContain("failproofai config");
+    expect(readFileSync(join(home, "config.toml"), "utf8")).toBe(toml);
+    expect(JSON.parse(readFileSync(join(home, "VERSION"), "utf8")).layout).toBe(1);
+  }, 30_000);
+});
+
 const INIT = { jsonrpc: "2.0", id: 1, method: "initialize", params: { protocolVersion: "2025-06-18", capabilities: {}, clientInfo: { name: "t", version: "1" } } };
 const INITIALIZED = { jsonrpc: "2.0", method: "notifications/initialized" };
 const LIST = { jsonrpc: "2.0", id: 2, method: "tools/list" };
@@ -546,6 +571,23 @@ describe("failproofai self-report enable | disable | status", () => {
     await runSelfReportCommand(["status"], { probeEndpoint: async () => true, registrations: () => rows, sync: async () => (synced++, []) });
     await runSelfReportCommand(["status"], { skipSync: true, probeEndpoint: async () => false, registrations: () => rows, sync: async () => (synced++, []) });
     expect(synced).toBe(0);
+  });
+
+  it("status moves a server-recorded agent off HTTP even while the endpoint answers", async () => {
+    writeEffectiveSelfReport({ enabled: true });
+    let synced = 0;
+    let rows = [row({ agent: "copilot", transport: "http", endpoint: "http://127.0.0.1:4319/mcp?agent=copilot" })];
+    const r = await runSelfReportCommand(["status"], {
+      probeEndpoint: async () => true,
+      registrations: () => rows,
+      sync: async () => {
+        synced++;
+        rows = [row({ agent: "copilot", transport: "stdio", endpoint: "/usr/bin/failproofai" })];
+        return [{ agent: "copilot", path: "/x", action: "updated", transport: "stdio", status: "ok" }];
+      },
+    });
+    expect(synced).toBe(1);
+    expect(r.lines.join("\n")).toContain("Repaired:");
   });
 
   it("enable says \"Agents updated.\" only when a sync changed something", async () => {

@@ -2,14 +2,23 @@
  * Self Reports: register failproofai's `report` MCP server in every agent that
  * has failproofai hooks, and take it out again.
  *
- * The server is named `failproofai` everywhere (CONTRACT §1). It is served by
- * the daemon over Streamable HTTP at `http://127.0.0.1:<port>/mcp` when a
- * daemon is live here (it answers a ping on its socket AND the endpoint
- * answers an MCP initialize), and otherwise by `failproofai mcp` over stdio
- * (CONTRACT §7). The daemon runs `self-report sync` once it is listening, so
- * agents move to HTTP when it comes up. Both carry the agent, `?agent=<id>` / `--agent <id>`, so the
- * server can record a report itself for agents whose hooks do not see MCP
- * calls (CONTRACT §8).
+ * The server is named `failproofai` everywhere (CONTRACT §1). Which transport
+ * an agent gets depends on who records its reports (CONTRACT §7, §8):
+ *
+ * - Hook-recorded agents (claude, codex: not in `SELF_REPORT_SERVER_RECORDS`)
+ *   are served by the daemon over Streamable HTTP at
+ *   `http://127.0.0.1:<port>/mcp?agent=<id>` when the daemon behind this home's
+ *   socket is serving that port (`selfReportDaemonLive`), else stdio. Their
+ *   hook records the report against the exact session, so the server records
+ *   nothing and needs no caller identity.
+ * - Server-recorded agents (everything in `SELF_REPORT_SERVER_RECORDS`) always
+ *   get `failproofai mcp --agent <id>` over stdio. The server records their
+ *   report itself and must pick the session; one user-scope HTTP entry serves
+ *   every project and carries only `?agent=`, so over HTTP it could not tell
+ *   which project called, while a stdio server knows its real cwd.
+ *
+ * The daemon runs `self-report sync` once it is listening, so hook-recorded
+ * agents move to HTTP when it comes up.
  *
  * ## Where each agent keeps user-scope MCP servers (checked 2026-11-25)
  *
@@ -47,8 +56,8 @@
  * OpenClaw (`tools.toolSearch`) defer MCP tools with a global switch only;
  * neither has a per-server "always load" option, so their entries set none.
  *
- * Every agent supports Streamable HTTP, so the transport choice is purely
- * "is a daemon live here". Every path is the user-scope one: MCP servers are a per
+ * Every agent supports Streamable HTTP; HTTP is still used only for the
+ * hook-recorded ones (see above). Every path is the user-scope one: MCP servers are a per
  * user (per profile) setting even where failproofai's hooks are per project.
  * Codex: user scope only. Its system config (`/etc/codex/config.toml`, where
  * root installs put the hooks) is not documented to honour `[mcp_servers]`, so
@@ -75,8 +84,8 @@ import { isMap, type Document } from "yaml";
 import { writeConfigFileAtomic } from "./safe-config-write";
 import { codexHome } from "./codex-system-hooks";
 import { claudeConfigDir, getIntegration, readYamlDoc, writeYamlDoc, UnreadableAgentConfigError } from "./integrations";
-import { daemonAnswersPing } from "./daemon-client";
-import { readEffectiveSelfReport, selfReportPort, selfReportSettingsFile, SELF_REPORT_SERVER_NAME } from "./self-report";
+import { daemonSelfReportServer } from "./daemon-client";
+import { readEffectiveSelfReport, selfReportPort, selfReportSettingsFile, SELF_REPORT_SERVER_NAME, SELF_REPORT_SERVER_RECORDS } from "./self-report";
 import { listHermesProfiles } from "../../lib/hermes-profiles";
 import { listOpenClawProfiles } from "../../lib/openclaw-profiles";
 import { INTEGRATION_TYPES, type IntegrationType } from "./types";
@@ -109,6 +118,14 @@ export function readSelfReportMcpSettings(path = selfReportSettingsPath()): Self
 }
 
 // ── Transports ──────────────────────────────────────────────────────────────
+
+/**
+ * Whether an agent may be registered over HTTP at all: only when its hook,
+ * not the server, records the report (see the header).
+ */
+export function selfReportHttpAllowed(agent: IntegrationType): boolean {
+  return SELF_REPORT_MCP_TARGETS[agent]?.http === true && !SELF_REPORT_SERVER_RECORDS.includes(agent);
+}
 
 export type SelfReportTransport =
   | { kind: "http"; url: string }
@@ -166,11 +183,12 @@ function endpointOf(entry: unknown): string | null {
 const SELF_REPORT_PROBE_TIMEOUT_MS = 1500;
 
 /**
- * Whether `http://127.0.0.1:<port>/mcp` answers an MCP `initialize` as
- * failproofai's server, within the timeout. Anything else (refused, timed out,
- * a different server on the port) is false.
+ * The `serverInfo.instanceId` that `http://127.0.0.1:<port>/mcp` returns when
+ * it answers an MCP `initialize` as failproofai's server within the timeout,
+ * `""` when it answers as failproofai's server with no id (an older daemon),
+ * or null for anything else (refused, timed out, another server on the port).
  */
-export async function probeSelfReportHttp(port: number, timeoutMs = SELF_REPORT_PROBE_TIMEOUT_MS): Promise<boolean> {
+export async function probeSelfReportHttpInstance(port: number, timeoutMs = SELF_REPORT_PROBE_TIMEOUT_MS): Promise<string | null> {
   try {
     const res = await fetch(`http://127.0.0.1:${port}/mcp`, {
       method: "POST",
@@ -183,23 +201,36 @@ export async function probeSelfReportHttp(port: number, timeoutMs = SELF_REPORT_
       }),
       signal: AbortSignal.timeout(timeoutMs),
     });
-    if (!res.ok) return false;
-    const body = (await res.json()) as { result?: { serverInfo?: { name?: unknown } } };
-    return body?.result?.serverInfo?.name === SELF_REPORT_SERVER_NAME;
+    if (!res.ok) return null;
+    const body = (await res.json()) as { result?: { serverInfo?: { name?: unknown; instanceId?: unknown } } };
+    const info = body?.result?.serverInfo;
+    if (info?.name !== SELF_REPORT_SERVER_NAME) return null;
+    return typeof info.instanceId === "string" ? info.instanceId : "";
   } catch {
-    return false;
+    return null;
   }
+}
+
+/** Whether the endpoint answers an MCP `initialize` as failproofai's server. */
+export async function probeSelfReportHttp(port: number, timeoutMs = SELF_REPORT_PROBE_TIMEOUT_MS): Promise<boolean> {
+  return (await probeSelfReportHttpInstance(port, timeoutMs)) !== null;
 }
 
 /**
  * Whether agents should be pointed at the daemon's HTTP server: the daemon
- * answers a ping on its socket AND its MCP endpoint answers an initialize. A
- * socket file alone is not enough (a hard-killed daemon leaves one behind),
- * and neither is the port alone (something else may hold it).
+ * behind THIS home's socket answers a ping naming the MCP server it is
+ * serving (its pong's `selfReport`: present only while its listener is bound,
+ * on this port), AND the endpoint answers an initialize with that same
+ * `instanceId`. A socket file alone is not enough (a hard-killed daemon leaves
+ * one behind), and neither is a ping plus an answering port: the port may be
+ * held by a different daemon (another user's, or another FAILPROOFAI_HOME's)
+ * whose bind won while this one's failed, and a report sent there would be
+ * recorded under that daemon's home and credentials. Anything short of a match
+ * is stdio.
  */
 export async function selfReportDaemonLive(port: number): Promise<boolean> {
-  const [ping, http] = await Promise.all([daemonAnswersPing(), probeSelfReportHttp(port)]);
-  return ping && http;
+  const [mine, served] = await Promise.all([daemonSelfReportServer(), probeSelfReportHttpInstance(port)]);
+  return !!mine && mine.port === port && !!served && served === mine.instanceId;
 }
 
 /** Whether a stdio command can be run (exists and is executable). */
@@ -627,8 +658,9 @@ function defaultHooksInstalled(agent: IntegrationType): boolean {
 /**
  * Add (enabled) or remove (disabled) our `failproofai` MCP server in every
  * agent. Enabled: only agents with failproofai hooks get it, and agents without
- * hooks are left as they are; HTTP when the daemon is live right now (see
- * `selfReportDaemonLive`), stdio otherwise. Disabled: ours is removed from
+ * hooks are left as they are; HTTP for a hook-recorded agent when this home's
+ * daemon is serving the port right now (see `selfReportDaemonLive`), stdio
+ * otherwise and always for a server-recorded agent. Disabled: ours is removed from
  * every agent's file, hooked or not. Idempotent; never touches an entry that
  * is not ours; one agent's failure never stops the others.
  */
@@ -646,9 +678,31 @@ export async function syncSelfReportMcp(opts: SyncSelfReportMcpOptions = {}): Pr
   // it runs only when some agent will get an HTTP-capable entry.
   const also = opts.alsoHooked ?? [];
   const wanted =
-    enabled && agents.some((a) => SELF_REPORT_MCP_TARGETS[a]?.http && (also.includes(a) || hooked(a)));
+    enabled && agents.some((a) => selfReportHttpAllowed(a) && (also.includes(a) || hooked(a) || ownedRegistrationIn(a)));
   const daemonHere = wanted ? await (opts.deps?.daemonLive ?? selfReportDaemonLive)(settings.port) : false;
   return applySelfReportMcp({ ...opts, deps: { ...opts.deps, settings, hooksInstalled: hooked } }, enabled, daemonHere);
+}
+
+/**
+ * Whether any of an agent's files already holds our entry. An agent whose
+ * hooks are installed only at project/local scope is registered by the
+ * install itself (`alsoHooked`), and later syncs do not see those hooks; its
+ * existing entry is still kept and its transport repaired.
+ */
+function ownedRegistrationIn(agent: IntegrationType): boolean {
+  const target = SELF_REPORT_MCP_TARGETS[agent];
+  if (!target) return false;
+  try {
+    return target.paths().some((path) => {
+      try {
+        return existsSync(path) && opsFor(target, path).current().state === "ours";
+      } catch {
+        return false;
+      }
+    });
+  } catch {
+    return false;
+  }
 }
 
 function applySelfReportMcp(opts: SyncSelfReportMcpOptions, enabled: boolean, daemonHere: boolean): SelfReportMcpResult[] {
@@ -672,23 +726,39 @@ function applySelfReportMcp(opts: SyncSelfReportMcpOptions, enabled: boolean, da
       results.push({ agent, path: "", action: "skipped", transport: null, status: "error", detail: errText(err) });
       continue;
     }
-    const wantIt = enabled && (also.has(agent) || hooked(agent));
+    const agentHooked = enabled && (also.has(agent) || hooked(agent));
 
-    let transport: SelfReportTransport | null = null;
-    if (wantIt) {
-      if (daemonHere && target.http) {
-        transport = { kind: "http", url: selfReportHttpUrl(settings.port, agent) };
+    let chosen: SelfReportTransport | null | undefined;
+    const transportFor = (): SelfReportTransport | null => {
+      if (chosen !== undefined) return chosen;
+      chosen = null;
+      if (daemonHere && selfReportHttpAllowed(agent)) {
+        chosen = { kind: "http", url: selfReportHttpUrl(settings.port, agent) };
       } else {
         if (cliPath === undefined) cliPath = (opts.deps?.resolveCliPath ?? resolveSelfReportCliPath)();
-        if (cliPath) transport = { kind: "stdio", command: cliPath, args: selfReportStdioArgs(agent) };
+        if (cliPath) chosen = { kind: "stdio", command: cliPath, args: selfReportStdioArgs(agent) };
       }
-    }
+      return chosen;
+    };
 
     for (const path of paths) {
+      // No hooks detected (user scope), but our entry is already in this file:
+      // keep it and repair its transport. A file without ours is left alone.
+      let wantIt = agentHooked;
       if (enabled && !wantIt) {
-        results.push({ agent, path, action: "skipped", transport: null, status: "not-hooked" });
-        continue;
+        let owned = false;
+        try {
+          owned = existsSync(path) && opsFor(target, path).current().state === "ours";
+        } catch {
+          owned = false;
+        }
+        if (!owned) {
+          results.push({ agent, path, action: "skipped", transport: null, status: "not-hooked" });
+          continue;
+        }
+        wantIt = true;
       }
+      const transport = wantIt ? transportFor() : null;
       if (wantIt && !transport) {
         results.push({
           agent, path, action: "skipped", transport: null, status: "error",

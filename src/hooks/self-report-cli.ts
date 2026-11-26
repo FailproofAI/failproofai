@@ -32,6 +32,7 @@ import { daemonSocketPresent, isDaemonConfigured } from "./daemon-client";
 import {
   SELF_REPORT_CURSOR_APPROVAL_HINT,
   probeSelfReportHttp,
+  selfReportHttpAllowed,
   selfReportCommandRunnable,
   selfReportRegistrationStatus,
   selfReportSyncChanged,
@@ -148,9 +149,15 @@ function selfReportRegistrationLines(rows: readonly SelfReportRegistration[], he
   ];
 }
 
-/** Whether a row is registered over HTTP at an endpoint that is not answering. */
+/**
+ * Whether a row is registered over HTTP where it should not be: an endpoint
+ * that is not answering, or an agent whose reports the server records (those
+ * belong on stdio, where the server knows the caller's cwd; an older version
+ * registered them over HTTP).
+ */
 function selfReportStranded(r: SelfReportRegistration, health: ReadonlyMap<number, boolean>): boolean {
   if (!r.registered || r.transport !== "http") return false;
+  if (!selfReportHttpAllowed(r.agent)) return true;
   const port = selfReportUrlPort(r.endpoint);
   return port === null || health.get(port) !== true;
 }
@@ -180,7 +187,7 @@ async function selfReportStatus(deps: SelfReportCliDeps): Promise<SelfReportCliR
     try {
       const results = await (deps.sync ?? (() => syncSelfReportMcp({ quiet: true })))();
       if (selfReportSyncChanged(results)) {
-        lines.push("Repaired:   agents pointed at an HTTP endpoint that is not answering were re-synced:");
+        lines.push("Repaired:   agents on an HTTP endpoint that is not answering, or that belong on stdio, were re-synced:");
         lines.push(...selfReportSyncLines(results).map((l) => `  ${l}`));
         rows = readRows();
         health = await selfReportHttpHealth(rows, deps);

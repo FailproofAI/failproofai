@@ -457,7 +457,7 @@ With a framework, add the ready-made tool from its subpath:
 import { selfReportTool } from "@failproofai/sdk/ai";          // Vercel AI SDK 4–7
 await generateText({ model, prompt, tools: { failproofai_report: selfReportTool(), ...tools } });
 
-import { selfReportTool } from "@failproofai/sdk/langchain";   // @langchain/core >=0.3
+import { selfReportTool } from "@failproofai/sdk/langchain";   // @langchain/core >=0.3.44
 createReactAgent({ llm, tools: [selfReportTool<StructuredToolInterface>(), ...tools] });
 
 import { selfReportTool } from "@failproofai/sdk/mastra";      // createTool + your zod
@@ -503,8 +503,12 @@ other tool format.
   tool needs no zod and works on v7, which cannot be `require`d, by building the
   `jsonSchema()` object itself. The LangChain, Mastra and LlamaIndex tools return
   `unknown` unless you name the type, as above.
+- **LangChain needs `@langchain/core` 0.3.44 or later for this tool**: older
+  0.3 releases read a tool's schema only as zod and send the model an empty one.
 - **Edge builds** offer the same spec and tools, which answer `Recorded.` and
-  record nothing.
+  record nothing. The Edge LangChain tool is a real LangChain tool when you pass
+  `{ module: await import("@langchain/core/tools") }`; without it, it is a plain
+  named-tool object that `@langchain/core` 0.3.52 and later recognise.
 
 ---
 

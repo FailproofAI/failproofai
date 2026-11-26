@@ -688,7 +688,14 @@ async function runCli() {
   {
     const isHelpOrVersion =
       args.includes("--help") || args.includes("-h") || args.includes("--version") || args.includes("-v");
-    if (args[0] === "audit" && args.includes("--scheduled")) {
+    // `self-report sync` takes it too: failproofaid runs it (`--quiet`) at
+    // startup and after every settings change, unattended, exactly like a
+    // scheduled audit. A person running it by hand on a stale home is told to
+    // run `failproofai config`, which migrates visibly.
+    const unattended =
+      (args[0] === "audit" && args.includes("--scheduled")) ||
+      (args[0] === "self-report" && args[1] === "sync" && !isHelpOrVersion);
+    if (unattended) {
       // NOT `layoutWarningForHook` — that one answers the hook's question
       // ("are policies unenforced?") and deliberately stays quiet when the
       // global config is readable. This gate is about the LAYOUT, and must

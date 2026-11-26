@@ -110,8 +110,11 @@ export interface SelfReportSessionMatch {
  * ancestor or descendant of it; else the newest session of that integration
  * anywhere. The stdio server's cwd is wherever the agent started it, which is
  * often not the project (Hermes runs it from its own directory), so an exact
- * match alone left those reports unattributed. The daemon's HTTP fallback
- * (crates/fpai-collect/src/self_report.rs `find_session`) does the same.
+ * match alone left those reports unattributed. Every server-recorded agent is
+ * registered over stdio, so this server always has a cwd. The daemon's HTTP
+ * fallback (crates/fpai-collect/src/self_report.rs `find_session`) ranks the
+ * same way but, having no cwd from an HTTP entry, refuses a guess across
+ * projects and records such a report as unattributed.
  *
  * Reads `current.jsonl` and, because it holds at most one page (25 rows) and
  * may have just rotated, the newest archived page too.

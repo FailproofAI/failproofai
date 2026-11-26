@@ -470,6 +470,12 @@ fn evaluate(request: ClientMessage, worker: &Worker) -> ServerMessage {
     match request {
         ClientMessage::Ping { .. } => ServerMessage::Pong {
             protocol_version: PROTOCOL_VERSION,
+            self_report: fpai_collect::self_report::listening().map(|port| {
+                fpai_ipc::SelfReportServer {
+                    instance_id: fpai_collect::self_report::instance_id().to_string(),
+                    port,
+                }
+            }),
         },
         ClientMessage::Hook {
             hook_event,
@@ -691,7 +697,8 @@ mod tests {
         assert_eq!(
             response,
             ServerMessage::Pong {
-                protocol_version: PROTOCOL_VERSION
+                protocol_version: PROTOCOL_VERSION,
+                self_report: None
             }
         );
     }
@@ -1042,7 +1049,8 @@ mod tests {
         assert_eq!(
             response,
             ServerMessage::Pong {
-                protocol_version: 1
+                protocol_version: 1,
+                self_report: None
             }
         );
 
@@ -1223,7 +1231,8 @@ mod tests {
                     assert_eq!(
                         response,
                         ServerMessage::Pong {
-                            protocol_version: PROTOCOL_VERSION
+                            protocol_version: PROTOCOL_VERSION,
+                            self_report: None
                         }
                     );
                 })
@@ -1264,7 +1273,8 @@ mod tests {
         assert_eq!(
             response,
             ServerMessage::Pong {
-                protocol_version: PROTOCOL_VERSION
+                protocol_version: PROTOCOL_VERSION,
+                self_report: None
             }
         );
     }

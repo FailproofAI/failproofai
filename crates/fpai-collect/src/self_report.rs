@@ -23,8 +23,8 @@ use std::fs;
 use std::io::{self, Write};
 use std::net::{Ipv4Addr, SocketAddr};
 use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicU64, Ordering};
-use std::sync::{Arc, Mutex};
+use std::sync::atomic::{AtomicU32, AtomicU64, Ordering};
+use std::sync::{Arc, Mutex, OnceLock};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use axum::Router;
@@ -402,6 +402,31 @@ impl SettingsCache {
     }
 }
 
+// ── This daemon's identity ───────────────────────────────────────────────────
+
+/// Random per process, sent as `serverInfo.instanceId` in the MCP
+/// `initialize` result and in the daemon's IPC `Pong`. The CLI points agents at
+/// the HTTP endpoint only when the two agree: a socket ping and a port probe
+/// can otherwise reach two different daemons (another user's, or another
+/// FAILPROOFAI_HOME's whose bind won the port), and the report would then be
+/// recorded and uploaded under that daemon's home and credentials.
+pub fn instance_id() -> &'static str {
+    static ID: OnceLock<String> = OnceLock::new();
+    ID.get_or_init(crate::uploader::new_request_id)
+}
+
+/// The port this process's MCP listener is bound to, 0 while none is.
+static LISTENING_PORT: AtomicU32 = AtomicU32::new(0);
+
+/// The port [`spawn`]'s listener holds right now, or `None` when it never
+/// bound (a busy port) or has stopped. The daemon's `Pong` carries it.
+pub fn listening() -> Option<u16> {
+    match LISTENING_PORT.load(Ordering::SeqCst) {
+        0 => None,
+        port => u16::try_from(port).ok(),
+    }
+}
+
 // ── The HTTP server ──────────────────────────────────────────────────────────
 
 struct Server {
@@ -456,10 +481,12 @@ pub fn spawn(
                     }
                 };
                 tracing::info!(port, "Self Reports MCP server listening on 127.0.0.1");
+                LISTENING_PORT.store(u32::from(port), Ordering::SeqCst);
                 let _ = listening.send(true);
                 if let Err(err) = serve(listener, home, Shutdown::from_daemon(shutdown)).await {
                     tracing::warn!(%err, "Self Reports MCP server stopped");
                 }
+                LISTENING_PORT.store(0, Ordering::SeqCst);
             });
         })
         .inspect_err(|err| tracing::warn!(%err, "could not start the Self Reports MCP server"))
@@ -653,7 +680,11 @@ impl Server {
                     // stream to push the notification on. A client sees a
                     // changed list on its next tools/list.
                     "capabilities": {"tools": {"listChanged": false}},
-                    "serverInfo": {"name": SERVER_NAME, "version": env!("CARGO_PKG_VERSION")},
+                    "serverInfo": {
+                        "name": SERVER_NAME,
+                        "version": env!("CARGO_PKG_VERSION"),
+                        "instanceId": instance_id(),
+                    },
                 });
                 if let Some(text) = server_instructions(self.settings.current().as_ref()) {
                     result["instructions"] = Value::String(text);
@@ -685,6 +716,11 @@ impl Server {
 
     /// The fallback recording. A failure is logged and never reaches the agent:
     /// the call's answer is `Recorded.` whatever happens here.
+    ///
+    /// Nothing is recorded unless the settings file says enabled right now: a
+    /// client that listed the tool before it was turned off (or that never
+    /// listed it) can still send a call. Read from disk, not the cache, so a
+    /// disable is honoured on the very next call (as the stdio server does).
     fn record(&self, args: &Value, caller: &Caller) {
         let Some(agent) = caller
             .agent
@@ -693,6 +729,9 @@ impl Server {
         else {
             return;
         };
+        if !read_settings(&settings_path(&self.home)).is_some_and(|s| s.enabled) {
+            return;
+        }
         let report = Report::from_args(args);
         let event = fallback_event(&self.home, agent, caller.cwd.as_deref(), &report, now_ms());
         if let Err(err) = write_event_file(&self.home, &[event]) {
@@ -772,9 +811,15 @@ pub fn cwd_affinity(want: &str, have: Option<&str>) -> u8 {
 /// The session a report from `integration` belongs to, in hook activity
 /// within [`SESSION_LOOKBACK`] of `now_ms`, with the cwd its row had. Most
 /// specific first when `cwd` is known: the newest session in exactly that
-/// directory, else in one above or below it, else the newest of that
-/// integration anywhere. The CLI's stdio server (`selfReportFindSessionMatch`)
-/// does the same.
+/// directory, else in one above or below it.
+///
+/// Never a cross-project guess. When `cwd` is unknown (an HTTP call carries
+/// only `?agent=`) or no row is related to it, the newest row is taken only if
+/// every row of that integration in the window has the same cwd, i.e. there is
+/// one project to choose from; otherwise `None`, and the report is
+/// `unattributed`. The installer registers every agent recorded here over
+/// stdio, where the CLI knows the server's real cwd; this guards a
+/// hand-written or older HTTP registration.
 pub fn find_session(
     home: &Path,
     integration: &str,
@@ -800,6 +845,8 @@ pub fn find_session(
     }
     let oldest = now_ms - SESSION_LOOKBACK.as_millis() as i64;
     let mut best: Option<(u8, i64, String, Option<String>)> = None;
+    // The distinct cwds seen, to tell one project from several.
+    let mut cwds: Vec<Option<String>> = Vec::new();
     for file in files {
         let Ok(text) = read_tail(&file, 1024 * 1024) else {
             continue;
@@ -814,6 +861,13 @@ pub fn find_session(
             if row.integration.as_deref() != Some(integration) || row.timestamp < oldest {
                 continue;
             }
+            let row_cwd = row
+                .cwd
+                .as_deref()
+                .map(|c| c.trim_end_matches('/').to_string());
+            if !cwds.contains(&row_cwd) {
+                cwds.push(row_cwd);
+            }
             let rank = cwd.map_or(0, |want| cwd_affinity(want, row.cwd.as_deref()));
             if best
                 .as_ref()
@@ -824,7 +878,11 @@ pub fn find_session(
             best = Some((rank, row.timestamp, session.to_string(), row.cwd.clone()));
         }
     }
-    best.map(|(_, _, session, cwd)| (session, cwd))
+    match best {
+        Some((0, ..)) if cwds.len() > 1 => None,
+        Some((_, _, session, cwd)) => Some((session, cwd)),
+        None => None,
+    }
 }
 
 /// The last `max` bytes of a file, from the first whole line in them.
@@ -1217,23 +1275,21 @@ mod tests {
                 + "\n",
         )
         .unwrap();
-        assert_eq!(
-            find_session(&home, "openclaw", None, now),
-            Some(("s-page".to_string(), Some("/w/a".to_string())))
-        );
+        // No cwd and openclaw rows in /w/a and /w/b: two projects, no guess.
+        assert_eq!(find_session(&home, "openclaw", None, now), None);
         assert_eq!(
             find_session(&home, "openclaw", Some("/w/b"), now).map(|s| s.0),
             Some("s-older".to_string())
         );
-        // A descendant beats a newer unrelated row; no relation at all falls
-        // back to the newest session anywhere.
+        // A descendant beats a newer unrelated row; no relation at all, with
+        // rows from two projects, is not a guess at either.
         assert_eq!(
             find_session(&home, "openclaw", Some("/w/b/sub"), now),
             Some(("s-older".to_string(), Some("/w/b".to_string())))
         );
         assert_eq!(
             find_session(&home, "openclaw", Some("/elsewhere"), now),
-            Some(("s-page".to_string(), Some("/w/a".to_string())))
+            None
         );
         assert_eq!(find_session(&home, "goose", Some("/w/a"), now), None);
         assert_eq!(find_session(&home, "goose", None, now), None);
@@ -1245,7 +1301,7 @@ mod tests {
         let event = fallback_event(
             &home,
             "openclaw",
-            None,
+            Some("/w/a"),
             &Report {
                 category: "looping".into(),
                 detail: "stuck".into(),
@@ -1272,6 +1328,148 @@ mod tests {
         );
         assert_eq!(event["session_id"], UNATTRIBUTED_SESSION);
         assert_eq!(event["agent_id"], "goose-proj");
+        let _ = fs::remove_dir_all(home);
+    }
+
+    fn server_for(home: &Path) -> Server {
+        Server {
+            home: home.to_path_buf(),
+            port: DEFAULT_PORT,
+            settings: SettingsCache::new(settings_path(home)),
+        }
+    }
+
+    fn event_files(home: &Path) -> usize {
+        fs::read_dir(home.join("custom-agents/events"))
+            .map(|d| {
+                d.filter_map(Result::ok)
+                    .filter(|e| e.path().extension().is_some_and(|x| x == "jsonl"))
+                    .count()
+            })
+            .unwrap_or(0)
+    }
+
+    fn call_report(server: &Server, agent: &str) -> Value {
+        let caller = Caller {
+            agent: Some(agent.to_string()),
+            cwd: None,
+        };
+        server
+            .dispatch(
+                json!({"jsonrpc": "2.0", "id": 7, "method": "tools/call",
+                       "params": {"name": "report", "arguments": {"category": "looping", "detail": "d"}}}),
+                &caller,
+            )
+            .unwrap()
+    }
+
+    #[test]
+    fn an_http_report_is_recorded_only_while_the_settings_say_enabled() {
+        let home = temp_home("http-enabled");
+        let server = server_for(&home);
+        let path = settings_path(&home);
+        // Missing settings: answered, not recorded.
+        let reply = call_report(&server, "copilot");
+        assert_eq!(reply["result"]["content"][0]["text"], RESULT_TEXT);
+        assert_eq!(event_files(&home), 0, "missing settings");
+        // Malformed settings.
+        fs::write(&path, "{not json").unwrap();
+        call_report(&server, "copilot");
+        assert_eq!(event_files(&home), 0, "malformed settings");
+        // Disabled.
+        let mut off = enabled(default_categories(), None);
+        off.enabled = false;
+        write_settings(&path, &off).unwrap();
+        let reply = call_report(&server, "copilot");
+        assert_eq!(reply["result"]["isError"], false);
+        assert_eq!(event_files(&home), 0, "disabled settings");
+        // Enabled: one event.
+        write_settings(&path, &enabled(default_categories(), None)).unwrap();
+        call_report(&server, "copilot");
+        assert_eq!(event_files(&home), 1, "enabled settings");
+        // Disabled again, with the cache primed by the enabled read: honoured
+        // on the next call.
+        assert!(server.settings.current().unwrap().enabled);
+        write_settings(&path, &off).unwrap();
+        call_report(&server, "copilot");
+        assert_eq!(event_files(&home), 1, "disabled after enabled");
+        // A hook-recorded agent is never recorded here.
+        write_settings(&path, &enabled(default_categories(), None)).unwrap();
+        call_report(&server, "claude");
+        assert_eq!(event_files(&home), 1, "claude is recorded by its hook");
+        let _ = fs::remove_dir_all(home);
+    }
+
+    #[test]
+    fn initialize_names_this_process() {
+        let home = temp_home("instance");
+        let server = server_for(&home);
+        let reply = server
+            .dispatch(
+                json!({"jsonrpc": "2.0", "id": 1, "method": "initialize", "params": {}}),
+                &Caller::default(),
+            )
+            .unwrap();
+        let info = &reply["result"]["serverInfo"];
+        assert_eq!(info["name"], SERVER_NAME);
+        assert_eq!(info["instanceId"], instance_id());
+        assert_eq!(instance_id().len(), 32);
+        assert_eq!(instance_id(), instance_id(), "stable for the process");
+        let _ = fs::remove_dir_all(home);
+    }
+
+    #[test]
+    fn no_cwd_is_attributed_only_within_one_project() {
+        let home = temp_home("one-project");
+        let dir = home.join("hook-activity");
+        fs::create_dir_all(&dir).unwrap();
+        let now = 1_800_000_000_000_i64;
+        let row = |at: i64, session: &str, cwd: &str| {
+            json!({"timestamp": at, "eventType": "PreToolUse", "integration": "copilot",
+                   "sessionId": session, "cwd": cwd, "toolName": "x", "decision": "allow"})
+            .to_string()
+        };
+        // One project (two sessions in it): the newest owns the report.
+        fs::write(
+            dir.join("current.jsonl"),
+            [
+                row(now - 3000, "a-1", "/repo/a"),
+                row(now - 2000, "a-2", "/repo/a/"),
+            ]
+            .join("\n")
+                + "\n",
+        )
+        .unwrap();
+        assert_eq!(
+            find_session(&home, "copilot", None, now),
+            Some(("a-2".to_string(), Some("/repo/a/".to_string())))
+        );
+        // Then project B is active too: a report with no cwd is not given to
+        // B's (newer) session, nor to A's.
+        fs::write(
+            dir.join("current.jsonl"),
+            [
+                row(now - 3000, "a-1", "/repo/a"),
+                row(now - 1000, "b-1", "/repo/b"),
+            ]
+            .join("\n")
+                + "\n",
+        )
+        .unwrap();
+        assert_eq!(find_session(&home, "copilot", None, now), None);
+        let report = Report {
+            category: "looping".into(),
+            detail: "d".into(),
+        };
+        let event = fallback_event(&home, "copilot", None, &report, now);
+        assert_eq!(event["session_id"], UNATTRIBUTED_SESSION);
+        // A known cwd still picks its own project.
+        assert_eq!(
+            find_session(&home, "copilot", Some("/repo/a"), now).map(|s| s.0),
+            Some("a-1".to_string())
+        );
+        let event = fallback_event(&home, "copilot", Some("/repo/a"), &report, now);
+        assert_eq!(event["session_id"], "a-1");
         let _ = fs::remove_dir_all(home);
     }
 

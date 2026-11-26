@@ -154,6 +154,42 @@ def test_a_closed_or_foreign_session_tool_use_is_not_used(recorded):
     assert [r["session_id"] for r in reports] == ["s-mine", "s-mine"]
 
 
+def test_two_sessions_reusing_one_call_id_keep_their_own_open_calls(recorded):
+    ev = _runtime.event
+    ev.tool_use(session_id="s-1", agent_id="a-1", tool_name="failproofai_report", tool_call_id="call_0")
+    ev.tool_use(session_id="s-2", agent_id="a-2", tool_name="failproofai_report", tool_call_id="call_0")
+    # Each session's report finds its own call, not the other's.
+    with fp.session("s-1"):
+        fp.self_report("looping", "one", tool_call_id="call_0")
+    with fp.session("s-2"):
+        fp.self_report("looping", "two", tool_call_id="call_0")
+    # Closing s-1's call leaves s-2's open.
+    ev.tool_result(session_id="s-1", agent_id="a-1", tool_name="failproofai_report", tool_call_id="call_0")
+    with fp.session("s-2"):
+        fp.self_report("looping", "after", tool_call_id="call_0")
+    with fp.session("s-1"):
+        fp.self_report("looping", "closed", tool_call_id="call_0")
+    reports = [e for e in recorded if e["type"] == "self_report"]
+    assert [(r["detail"], r["session_id"], r["agent_id"]) for r in reports] == [
+        ("one", "s-1", "a-1"), ("two", "s-2", "a-2"), ("after", "s-2", "a-2"), ("closed", "s-1", "main"),
+    ]
+
+
+def test_with_nothing_bound_open_calls_in_two_sessions_are_not_guessed(recorded):
+    ev = _runtime.event
+    ev.tool_use(session_id="s-x", agent_id="a-x", tool_name="failproofai_report", tool_call_id="cx")
+    ev.tool_use(session_id="s-y", agent_id="a-y", tool_name="failproofai_report", tool_call_id="cy")
+    ev.tool_use(session_id="s-y", agent_id="a-y", tool_name="failproofai_report", tool_call_id="shared")
+    ev.tool_use(session_id="s-x", agent_id="a-x", tool_name="failproofai_report", tool_call_id="shared")
+    fp.self_report("looping", "no id")             # newest of two sessions: no guess
+    fp.self_report("looping", "shared id", tool_call_id="shared")  # id open in two sessions
+    fp.self_report("looping", "unique id", tool_call_id="cy")      # one candidate: used
+    reports = [e for e in recorded if e["type"] == "self_report"]
+    assert [(r["detail"], r["session_id"]) for r in reports] == [
+        ("no id", "unattributed"), ("shared id", "unattributed"), ("unique id", "s-y"),
+    ]
+
+
 def test_written_to_the_spool_by_the_real_writer(tmp_path):
     with fp.session("disk"):
         fp.self_report("looping", "on disk")

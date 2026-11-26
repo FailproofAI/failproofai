@@ -42,6 +42,7 @@ vi.mock("../../src/hooks/manager", () => ({
 // its own behaviour is covered in self-report-install.test.ts.
 vi.mock("../../src/hooks/self-report-install", () => ({
   removeSelfReportMcp: vi.fn(() => []),
+  selfReportRegistrationStatus: vi.fn(() => []),
 }));
 vi.mock("../../src/hooks/agent-skill", () => ({
   installedAgentSkillDirs: () => skillDirs,
@@ -573,6 +574,34 @@ describe("hooks/uninstall-cli — the agent selection is not uninstall's to chan
 });
 
 describe("hooks/uninstall-cli — Self Reports MCP server", () => {
+  it("an orphan MCP registration alone is something to uninstall, named in the plan", async () => {
+    installedClis = [];
+    configured = false;
+    rmSync(servicePath, { force: true });
+    const mod = await import("../../src/hooks/self-report-install");
+    const orphan = { agent: "copilot", path: "/x/.copilot/mcp-config.json", hooked: false, registered: true, transport: "stdio", endpoint: "/x/failproofai", conflict: false } as const;
+    vi.mocked(mod.selfReportRegistrationStatus).mockReturnValue([
+      orphan,
+      { ...orphan, agent: "claude", path: "/x/.claude.json", registered: false, transport: null, endpoint: null },
+    ]);
+    const { runUninstallCommand } = await import("../../src/hooks/uninstall-cli");
+    try {
+      const dry = await runUninstallCommand({ dryRun: true });
+      expect(dry.lines.join("\n")).not.toContain("Nothing to uninstall");
+      expect(dry.lines.join("\n")).toContain("the Self Reports MCP server from 1 agent config");
+      expect(vi.mocked(mod.removeSelfReportMcp)).not.toHaveBeenCalled();
+
+      vi.mocked(mod.removeSelfReportMcp).mockReturnValueOnce([
+        { agent: "copilot", path: orphan.path, action: "removed", transport: "stdio", status: "ok" },
+      ]);
+      const res = await runUninstallCommand({ yes: true });
+      expect(res.exitCode).toBe(0);
+      expect(res.lines.join("\n")).toContain("Removed the Self Reports MCP server from 1 agent config.");
+    } finally {
+      vi.mocked(mod.selfReportRegistrationStatus).mockReturnValue([]);
+    }
+  });
+
   it("removes failproofai's MCP server from every agent and says so", async () => {
     const mod = await import("../../src/hooks/self-report-install");
     vi.mocked(mod.removeSelfReportMcp).mockReturnValueOnce([

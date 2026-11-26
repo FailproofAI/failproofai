@@ -171,29 +171,32 @@ describe("event.selfReport and selfReport()", () => {
   });
 
   it("joins the open tool call it was made from, by id, even outside any scope", async () => {
+    const ns = new EventNamespace(runtime.writer);
     await session({ sessionId: "framework-run" }, () =>
       agent("weather-agent", () => {
-        failproofai.event.toolUse({ toolName: "failproofai_report", toolCallId: "call-7" });
+        ns.toolUse({ toolName: "failproofai_report", toolCallId: "call-7" });
       }),
     );
-    failproofai.selfReport("looping", "d", { toolCallId: "call-7" });
+    ns.selfReport("looping", "d", { toolCallId: "call-7" });
     const [report] = await reports();
     expect(report).toMatchObject({ session_id: "framework-run", agent_id: "weather-agent", tool_call_id: "call-7" });
   });
 
   it("joins an open report-tool call by name when there is no id", async () => {
+    const ns = new EventNamespace(runtime.writer);
     await session({ sessionId: "s2" }, () =>
-      agent("reporter", () => failproofai.event.toolUse({ toolName: "failproofai_report", toolCallId: "own-id" })),
+      agent("reporter", () => ns.toolUse({ toolName: "failproofai_report", toolCallId: "own-id" })),
     );
-    failproofai.selfReport("looping", "d");
+    ns.selfReport("looping", "d");
     expect((await reports())[0]).toMatchObject({ session_id: "s2", agent_id: "reporter", tool_call_id: "own-id" });
   });
 
   it("keeps the caller's call id over the matched tool call's", async () => {
+    const ns = new EventNamespace(runtime.writer);
     await session({ sessionId: "s3" }, () =>
-      agent("reporter", () => failproofai.event.toolUse({ toolName: "failproofai_report", toolCallId: "adapter-id" })),
+      agent("reporter", () => ns.toolUse({ toolName: "failproofai_report", toolCallId: "adapter-id" })),
     );
-    failproofai.selfReport("looping", "d", { toolCallId: "model-id" });
+    ns.selfReport("looping", "d", { toolCallId: "model-id" });
     expect((await reports())[0]).toMatchObject({ session_id: "s3", tool_call_id: "model-id" });
   });
 
@@ -211,6 +214,31 @@ describe("event.selfReport and selfReport()", () => {
     );
     const [report] = await reports();
     expect(report).toMatchObject({ session_id: "mine" });
+  });
+
+  it("with no scope, never picks among open report calls of different sessions by recency", async () => {
+    const ns = new EventNamespace(runtime.writer);
+    quietLogger();
+    // Two concurrent runs (LlamaIndex gives its tool no id and binds no scope),
+    // each with a report-tool call open.
+    await session({ sessionId: "run-a" }, () =>
+      agent("a", () => ns.toolUse({ toolName: "failproofai_report", toolCallId: "a-1" })),
+    );
+    await session({ sessionId: "run-b" }, () =>
+      agent("b", () => ns.toolUse({ toolName: "failproofai_report", toolCallId: "b-1" })),
+    );
+    ns.selfReport("looping", "no id");
+    // An id open in both sessions is ambiguous too; one open in only one is not.
+    await session({ sessionId: "run-a" }, () => ns.toolUse({ toolName: "x", toolCallId: "dup" }));
+    await session({ sessionId: "run-b" }, () => ns.toolUse({ toolName: "x", toolCallId: "dup" }));
+    ns.selfReport("looping", "dup id", { toolCallId: "dup" });
+    ns.selfReport("looping", "unique id", { toolCallId: "a-1" });
+    const recorded = await reports();
+    expect(recorded.map((e) => [e.detail, e.session_id])).toEqual([
+      ["no id", UNATTRIBUTED_SESSION],
+      ["dup id", UNATTRIBUTED_SESSION],
+      ["unique id", "run-a"],
+    ]);
   });
 
   it("files a report with no session under unattributed and warns once, never throwing", async () => {
@@ -535,6 +563,24 @@ describe("the edge build", () => {
       expect(await tool.execute()).toBe("Recorded.");
       expect(await tool.call()).toBe("Recorded.");
     }
+    expect(await reports()).toEqual([]);
+  });
+
+  it("builds a real LangChain tool with the module it is handed, still recording nothing", async () => {
+    const tool = vi.fn((func: (input: unknown) => Promise<string>, fields: Record<string, unknown>) => ({ func, fields }));
+    const built = edgeLangchain.selfReportTool<{ func: (i: unknown) => Promise<string>; fields: Record<string, unknown> }>({
+      module: { tool: tool },
+    });
+    expect(tool).toHaveBeenCalledTimes(1);
+    expect(built.fields).toEqual({ name: "failproofai_report", description: DEFAULT_DESCRIPTION, schema: DEFAULT_SCHEMA });
+    expect(await built.func({ category: "looping", detail: "d" })).toBe("Recorded.");
+    class DynamicStructuredTool {
+      constructor(readonly fields: Record<string, unknown>) {}
+    }
+    const viaClass = edgeLangchain.selfReportTool<DynamicStructuredTool>({ module: { DynamicStructuredTool: DynamicStructuredTool } });
+    expect(viaClass).toBeInstanceOf(DynamicStructuredTool);
+    expect(viaClass.fields).toMatchObject({ name: "failproofai_report", schema: DEFAULT_SCHEMA });
+    expect(await (viaClass.fields.func as () => Promise<string>)()).toBe("Recorded.");
     expect(await reports()).toEqual([]);
   });
 });

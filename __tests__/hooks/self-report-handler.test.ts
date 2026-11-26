@@ -260,6 +260,29 @@ describe("Self Reports short-circuit", () => {
     expect(theirs.evaluation?.decision).toBe("deny");
   });
 
+  it("never lets a Cursor call that fails the server check through by its name alone", async () => {
+    // Another server's tool, or one with no server named, spelled like ours:
+    // it keeps its own name, is not recorded as a report, and the policies run.
+    for (const name of ["mcp__failproofai__report", "failproofai__report", "failproofai-report", "mcp_failproofai_report"]) {
+      for (const extra of [{ mcp_server_name: "linear" }, {}]) {
+        vi.mocked(loadAllCustomHooks).mockClear();
+        for (const event of ["preToolUse", "beforeMCPExecution"]) {
+          const out = await evaluateHookEvent(event, "cursor", payload(name, { category: "looping", detail: "x" }, extra));
+          expect(out.evaluation?.decision, `${event} ${name} ${JSON.stringify(extra)}`).toBe("deny");
+          expect(out.evaluation?.toolName).toBe(name);
+        }
+        expect(loadAllCustomHooks).toHaveBeenCalled();
+      }
+    }
+    expect(rows().some((r) => r.selfReport !== undefined)).toBe(false);
+    // The same spelling WITH our server is still ours.
+    const ours = await evaluateHookEvent(
+      "preToolUse", "cursor",
+      payload("mcp__failproofai__report", { category: "looping", detail: "x" }, { mcp_server_name: "failproofai" }),
+    );
+    expect(ours.evaluation?.decision).toBe("allow");
+  });
+
   describe("Antigravity's lazy MCP path (call_mcp_tool)", () => {
     const agy = (args: Record<string, unknown>) =>
       JSON.stringify({ conversationId: SESSION, workspacePaths: ["/tmp/project"], toolCall: { name: "call_mcp_tool", args } });

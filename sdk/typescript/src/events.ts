@@ -906,13 +906,17 @@ export class EventNamespace {
    * The newest open tool call a report belongs to: the one with this id, else
    * one named like the report tool (LlamaIndex gives a tool no id, and an
    * adapter may have recorded its own id rather than the model's). Inside a
-   * scope only that scope's session is searched.
+   * scope only that scope's session is searched. With no scope, a match is
+   * used only when every candidate is in one session: picking the newest of
+   * several sessions (two concurrent LlamaIndex runs, each with a report call
+   * open) would be a guess, and the report goes the unattributed way instead.
    */
   private openToolFor(toolCallId: string | undefined, preferSession: string | null): OpenLeaf | undefined {
     const leaves = [...this.openLeaves.values()].filter((leaf) => leaf.kind === "tool").reverse();
     const pick = (matches: (leaf: OpenLeaf) => boolean): OpenLeaf | undefined => {
       const found = leaves.filter(matches);
-      return preferSession === null ? found[0] : found.find((leaf) => leaf.sessionId === preferSession);
+      if (preferSession !== null) return found.find((leaf) => leaf.sessionId === preferSession);
+      return new Set(found.map((leaf) => leaf.sessionId)).size === 1 ? found[0] : undefined;
     };
     return (
       (toolCallId !== undefined ? pick((leaf) => leaf.id === toolCallId) : undefined) ??

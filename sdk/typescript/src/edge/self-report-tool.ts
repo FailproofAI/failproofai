@@ -53,3 +53,29 @@ export function inertNamedTool<T>(): T {
     execute: inertAnswer,
   } as T;
 }
+
+/** The `@langchain/core/tools` exports the Edge LangChain tool can build with. */
+export interface EdgeLangChainToolsModule {
+  tool?: (func: never, fields: never) => unknown;
+  DynamicStructuredTool?: new (fields: never) => unknown;
+}
+
+/**
+ * The LangChain report tool for runtimes with no filesystem. Handed the
+ * application's `@langchain/core/tools` (`{ module: await import(...) }`), it is
+ * a real structured tool built by that module, which every `@langchain/core`
+ * from 0.3.44 converts for the model and runs like any other. Without one it is
+ * the plain named-tool object: `@langchain/core` 0.3.52 and later recognise it
+ * as a tool (name + JSON Schema); older ones would pass it to the model as it
+ * is, so pass the module there. No framework is ever imported here.
+ */
+export function inertLangChainTool<T>(module?: EdgeLangChainToolsModule): T {
+  const spec = inertSpec();
+  const fields = { name: SELF_REPORT_TOOL_NAME, description: spec.description, schema: spec.inputSchema };
+  const func = () => inertAnswer();
+  if (typeof module?.tool === "function") return module.tool(func as never, fields as never) as T;
+  if (typeof module?.DynamicStructuredTool === "function") {
+    return new module.DynamicStructuredTool({ ...fields, func } as never) as T;
+  }
+  return inertNamedTool<T>();
+}

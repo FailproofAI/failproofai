@@ -1341,6 +1341,50 @@ class TestSelfReportTool:
         (use,) = [e for e in events if e["type"] == "tool_use" and e["tool_name"] == "failproofai_report"]
         assert use["tool_call_id"] and report["tool_call_id"] == use["tool_call_id"]
 
+    def test_is_never_cached(self, emitted):
+        from failproofai_sdk.integrations.crewai import self_report_tool
+
+        tool = self_report_tool()
+        args = {"category": "looping", "detail": "same"}
+        assert tool.cache_function(args, "Recorded.") is False
+        assert tool.to_structured_tool().cache_function(args, "Recorded.") is False
+
+    def test_async_invoke_runs_in_the_callers_context(self, emitted):
+        import asyncio
+        import contextvars
+        import threading
+
+        from failproofai_sdk.integrations.crewai import self_report_tool
+
+        seen = []
+        probe = contextvars.ContextVar("probe", default=None)
+        tool = self_report_tool()
+        structured = tool.to_structured_tool()
+        # Its own ainvoke, not CrewAI's: CrewAI < 1.15 hands a sync tool to
+        # run_in_executor without the caller's context.
+        from crewai.tools.structured_tool import CrewStructuredTool
+
+        assert isinstance(structured, CrewStructuredTool)
+        assert type(structured).ainvoke is not CrewStructuredTool.ainvoke
+        original = structured.func
+
+        def spy(**kw):
+            seen.append((probe.get(), threading.current_thread() is threading.main_thread()))
+            return original(**kw)
+
+        structured.func = spy
+
+        async def call():
+            probe.set("caller")
+            with failproofai_sdk.session("crew-async"):
+                return await structured.ainvoke({"category": "looping", "detail": "d"})
+
+        assert asyncio.run(call()) == "Recorded."
+        # Off the loop's thread, with the caller's context (and its session).
+        assert seen == [("caller", False)]
+        (report,) = [e for e in emitted() if e["type"] == "self_report"]
+        assert report["session_id"] == "crew-async"
+
     def test_ambient_and_explicit_identity(self, emitted):
         from failproofai_sdk.integrations.crewai import self_report_tool
 

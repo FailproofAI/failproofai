@@ -78,7 +78,18 @@ pub enum ClientMessage {
 #[serde(tag = "type", rename_all = "camelCase")]
 pub enum ServerMessage {
     #[serde(rename_all = "camelCase")]
-    Pong { protocol_version: u32 },
+    Pong {
+        protocol_version: u32,
+        /// The Self Reports MCP server this daemon is serving, present only
+        /// while its loopback listener is bound. An optional, additive field
+        /// that older clients ignore. A client about to point agents at
+        /// `http://127.0.0.1:<port>/mcp` compares this with the `instanceId`
+        /// the endpoint's `initialize` returns, which proves the port is held
+        /// by the daemon behind THIS socket and not by another daemon (another
+        /// user or another FAILPROOFAI_HOME) whose own bind won.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        self_report: Option<SelfReportServer>,
+    },
     #[serde(rename_all = "camelCase")]
     HookResult {
         protocol_version: u32,
@@ -107,6 +118,17 @@ pub enum ServerMessage {
         protocol_version: u32,
         message: String,
     },
+}
+
+/// See [`ServerMessage::Pong`].
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct SelfReportServer {
+    /// Random per daemon process; the MCP `initialize` result carries the
+    /// same value as `serverInfo.instanceId`.
+    pub instance_id: String,
+    /// The loopback port the MCP listener bound.
+    pub port: u16,
 }
 
 impl ClientMessage {
@@ -170,7 +192,9 @@ impl ServerMessage {
     /// checks for its own version accepts an answer from a newer daemon.
     pub fn with_protocol_version(mut self, version: u32) -> Self {
         match &mut self {
-            ServerMessage::Pong { protocol_version }
+            ServerMessage::Pong {
+                protocol_version, ..
+            }
             | ServerMessage::HookResult {
                 protocol_version, ..
             }
@@ -186,7 +210,9 @@ impl ServerMessage {
 
     pub fn protocol_version(&self) -> u32 {
         match self {
-            ServerMessage::Pong { protocol_version } => *protocol_version,
+            ServerMessage::Pong {
+                protocol_version, ..
+            } => *protocol_version,
             ServerMessage::HookResult {
                 protocol_version, ..
             } => *protocol_version,
@@ -298,6 +324,32 @@ mod tests {
         let json = serde_json::to_string(&msg).unwrap();
         let decoded: ServerMessage = serde_json::from_str(&json).unwrap();
         assert_eq!(decoded, msg);
+    }
+
+    #[test]
+    fn a_pong_carries_the_self_report_server_only_when_there_is_one() {
+        let bare = ServerMessage::Pong {
+            protocol_version: PROTOCOL_VERSION,
+            self_report: None,
+        };
+        let json = serde_json::to_value(&bare).unwrap();
+        assert!(json.get("selfReport").is_none(), "{json}");
+        // A pong from a daemon that predates the field still parses.
+        let old: ServerMessage =
+            serde_json::from_value(serde_json::json!({"type": "pong", "protocolVersion": 2}))
+                .unwrap();
+        assert_eq!(old, bare);
+        let full = ServerMessage::Pong {
+            protocol_version: PROTOCOL_VERSION,
+            self_report: Some(SelfReportServer {
+                instance_id: "abc".into(),
+                port: 4319,
+            }),
+        };
+        let json = serde_json::to_value(&full).unwrap();
+        assert_eq!(json["selfReport"]["instanceId"], "abc");
+        assert_eq!(json["selfReport"]["port"], 4319);
+        assert_eq!(serde_json::from_value::<ServerMessage>(json).unwrap(), full);
     }
 
     #[test]

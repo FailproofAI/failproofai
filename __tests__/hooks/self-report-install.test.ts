@@ -12,7 +12,9 @@ import {
   SELF_REPORT_MCP_TARGETS,
   isOurMcpEntry,
   probeSelfReportHttp,
+  probeSelfReportHttpInstance,
   selfReportDaemonLive,
+  selfReportHttpAllowed,
   selfReportSyncChanged,
   readSelfReportMcpSettings,
   removeSelfReportMcp,
@@ -22,6 +24,7 @@ import {
 } from "../../src/hooks/self-report-install";
 import { mergeTomlManagedBlock } from "../../src/hooks/toml-managed-block";
 import { INTEGRATION_TYPES, type IntegrationType } from "../../src/hooks/types";
+import { SELF_REPORT_SERVER_RECORDS } from "../../src/hooks/self-report";
 
 const CLI = "/usr/local/bin/failproofai";
 let home: string;
@@ -108,13 +111,18 @@ describe("syncSelfReportMcp: every agent round-trips", () => {
       }
       put(path, original);
 
+      // With a live daemon: HTTP for a hook-recorded agent, stdio for one the
+      // server records (it must know the caller's cwd).
+      const want = selfReportHttpAllowed(agent) ? "http" : "stdio";
       const first = await syncSelfReportMcp(enabledOpts({ agents: [agent] }));
       expect(first.map((r) => [r.action, r.status, r.transport])).toEqual(
-        first.map(() => ["added", "ok", "http"]),
+        first.map(() => ["added", "ok", want]),
       );
       const entry = entryIn(agent)!;
       expect(isOurMcpEntry(entry)).toBe(true);
-      expect(JSON.stringify(entry)).toContain(`http://127.0.0.1:4319/mcp?agent=${agent}`);
+      expect(JSON.stringify(entry)).toContain(
+        want === "http" ? `http://127.0.0.1:4319/mcp?agent=${agent}` : JSON.stringify(["mcp", "--agent", agent]).slice(1, -1),
+      );
       const afterAdd = read(path);
       // the user's things are still there, comments included
       expect(afterAdd).toContain("mine");
@@ -139,6 +147,31 @@ describe("syncSelfReportMcp: every agent round-trips", () => {
 });
 
 describe("transport choice", () => {
+  it("uses HTTP only for hook-recorded agents; every server-recorded agent stays on stdio", async () => {
+    expect(INTEGRATION_TYPES.filter((a) => selfReportHttpAllowed(a))).toEqual(["claude", "codex"]);
+    for (const a of SELF_REPORT_SERVER_RECORDS) expect(selfReportHttpAllowed(a as IntegrationType)).toBe(false);
+    const r = await syncSelfReportMcp(enabledOpts({}, true));
+    for (const x of r) expect(x.transport).toBe(selfReportHttpAllowed(x.agent) ? "http" : "stdio");
+    // Every agent's HTTP shape is still one we recognise (a stale one is moved).
+    for (const a of INTEGRATION_TYPES) {
+      const t = SELF_REPORT_MCP_TARGETS[a];
+      expect(isOurMcpEntry(t.entry({ kind: "http", url: `http://127.0.0.1:4319/mcp?agent=${a}` }, t.container({})))).toBe(true);
+    }
+  });
+
+  it("never asks for the live check when only server-recorded agents want an entry", async () => {
+    const daemonLive = vi.fn(async () => true);
+    await syncSelfReportMcp(enabledOpts({ agents: ["copilot", "pi", "hermes"], deps: { daemonLive } }));
+    expect(daemonLive).not.toHaveBeenCalled();
+  });
+
+  it("moves a server-recorded agent's older HTTP entry to stdio", async () => {
+    put(pathOf("copilot"), JSON.stringify({ mcpServers: { failproofai: { type: "http", url: "http://127.0.0.1:4319/mcp?agent=copilot", tools: ["*"] } } }));
+    const r = await syncSelfReportMcp(enabledOpts({ agents: ["copilot"] }, true));
+    expect(r[0]).toMatchObject({ action: "updated", transport: "stdio" });
+    expect(entryIn("copilot")).toEqual({ type: "local", command: CLI, args: ["mcp", "--agent", "copilot"], tools: ["*"] });
+  });
+
   it("uses stdio with the CLI path and --agent when no daemon is live", async () => {
     await syncSelfReportMcp(enabledOpts({ agents: ["claude", "codex", "opencode", "goose"] }, false));
     expect(entryIn("claude")).toEqual({ type: "stdio", command: CLI, args: ["mcp", "--agent", "claude"] });
@@ -150,11 +183,12 @@ describe("transport choice", () => {
   it("exposes Pi's entry directly, on both transports, and moves an old entry to it", async () => {
     await syncSelfReportMcp(enabledOpts({ agents: ["pi"] }, false));
     expect(entryIn("pi")).toEqual({ command: CLI, args: ["mcp", "--agent", "pi"], exposure: "direct" });
-    // An entry written before `exposure` was set is ours and gets updated.
+    // An older HTTP entry, written before `exposure` was set, is ours: it is
+    // moved to stdio (Pi is server-recorded) with exposure set.
     put(pathOf("pi"), JSON.stringify({ mcpServers: { failproofai: { url: "http://127.0.0.1:4319/mcp?agent=pi" } } }));
     const r = await syncSelfReportMcp(enabledOpts({ agents: ["pi"] }, true));
-    expect(r[0]).toMatchObject({ action: "updated", transport: "http" });
-    expect(entryIn("pi")).toEqual({ url: "http://127.0.0.1:4319/mcp?agent=pi", exposure: "direct" });
+    expect(r[0]).toMatchObject({ action: "updated", transport: "stdio" });
+    expect(entryIn("pi")).toEqual({ command: CLI, args: ["mcp", "--agent", "pi"], exposure: "direct" });
   });
 
   it("tells the user how cursor-agent approves the server when Cursor's entry is written", async () => {
@@ -179,8 +213,8 @@ describe("transport choice", () => {
     const p = resolve(home, ".failproofai", "self-report.json");
     put(p, JSON.stringify({ version: 1, enabled: true, mcp: { port: 5555, url: "http://127.0.0.1:5555/mcp" } }));
     expect(readSelfReportMcpSettings()).toEqual({ enabled: true, port: 5555 });
-    await syncSelfReportMcp({ quiet: true, agents: ["cursor"], deps: { daemonLive: async () => true, hooksInstalled: () => true } });
-    expect(entryIn("cursor")).toEqual({ url: "http://127.0.0.1:5555/mcp?agent=cursor" });
+    await syncSelfReportMcp({ quiet: true, agents: ["claude"], deps: { daemonLive: async () => true, hooksInstalled: () => true } });
+    expect(entryIn("claude")).toEqual({ type: "http", url: "http://127.0.0.1:5555/mcp?agent=claude" });
   });
 
   it("reads a missing or broken settings file as disabled", async () => {
@@ -256,6 +290,28 @@ describe("which agents", () => {
     expect(r[0].action).toBe("added");
   });
 
+  it("keeps and repairs an existing registration whose hooks are only at project scope", async () => {
+    // Installed with project-scope hooks (alsoHooked) while the daemon was up.
+    await syncSelfReportMcp(enabledOpts({ agents: ["claude"], alsoHooked: ["claude"], deps: { hooksInstalled: () => false } }, true));
+    expect(entryIn("claude")).toEqual({ type: "http", url: "http://127.0.0.1:4319/mcp?agent=claude" });
+    // A later sync sees no user-scope hooks; the daemon is gone. The entry is
+    // moved to stdio, not stranded on a dead endpoint.
+    const r = await syncSelfReportMcp(enabledOpts({ agents: ["claude", "factory"], deps: { hooksInstalled: () => false } }, false));
+    expect(r.find((x) => x.agent === "claude")).toMatchObject({ action: "updated", transport: "stdio", status: "ok" });
+    expect(entryIn("claude")).toEqual({ type: "stdio", command: CLI, args: ["mcp", "--agent", "claude"] });
+    // An agent never registered and without hooks is still left alone.
+    expect(r.find((x) => x.agent === "factory")).toMatchObject({ action: "skipped", status: "not-hooked" });
+    expect(existsSync(pathOf("factory"))).toBe(false);
+  });
+
+  it("the live check is asked for an unhooked agent that already has our entry", async () => {
+    await syncSelfReportMcp(enabledOpts({ agents: ["codex"], alsoHooked: ["codex"], deps: { hooksInstalled: () => false } }, false));
+    const daemonLive = vi.fn(async () => true);
+    const r = await syncSelfReportMcp(enabledOpts({ agents: ["codex"], deps: { daemonLive, hooksInstalled: () => false } }));
+    expect(daemonLive).toHaveBeenCalledTimes(1);
+    expect(r[0]).toMatchObject({ action: "updated", transport: "http" });
+  });
+
   it("disabled: removes ours from every agent, hooked or not", async () => {
     await syncSelfReportMcp(enabledOpts({ agents: ["claude", "factory"] }));
     const r = await syncSelfReportMcp({ quiet: true, deps: { settings: { enabled: false, port: 4319 }, hooksInstalled: () => false, daemonLive: async () => true } });
@@ -269,8 +325,8 @@ describe("which agents", () => {
     const r = await syncSelfReportMcp(enabledOpts({ agents: ["hermes"] }));
     expect(r.map((x) => x.action)).toEqual(["added", "added"]);
     for (const p of [resolve(home, ".hermes", "config.yaml"), resolve(home, ".hermes", "profiles", "work", "config.yaml")]) {
-      const doc = parseYaml(read(p)) as { mcp_servers: { failproofai: { url: string } } };
-      expect(doc.mcp_servers.failproofai.url).toBe("http://127.0.0.1:4319/mcp?agent=hermes");
+      const doc = parseYaml(read(p)) as { mcp_servers: { failproofai: unknown } };
+      expect(doc.mcp_servers.failproofai).toEqual({ command: CLI, args: ["mcp", "--agent", "hermes"] });
       expect(read(p)).toContain("failproofai self-report MCP server");
     }
   });
@@ -288,7 +344,7 @@ describe("which agents", () => {
     put(pathOf("opencode"), JSON.stringify({ mcp: { servers: { mine: { type: "local", command: ["node"] } } } }));
     await syncSelfReportMcp(enabledOpts({ agents: ["opencode"] }));
     const doc = JSON.parse(read(pathOf("opencode")));
-    expect(doc.mcp.servers.failproofai).toEqual({ type: "remote", url: "http://127.0.0.1:4319/mcp?agent=opencode" });
+    expect(doc.mcp.servers.failproofai).toEqual({ type: "local", command: [CLI, "mcp", "--agent", "opencode"] });
     expect(doc.mcp.failproofai).toBeUndefined();
   });
 
@@ -301,8 +357,11 @@ describe("which agents", () => {
 
 // ── Live transport check ────────────────────────────────────────────────────
 
-/** A fake daemon socket: answers every framed request with a framed pong. */
-function fakeDaemon(path: string, answer = true): Promise<NetServer> {
+/**
+ * A fake daemon socket: answers every framed request with a framed pong. With
+ * `selfReport`, the pong names the MCP server it serves (instance id + port).
+ */
+function fakeDaemon(path: string, answer = true, selfReport?: { instanceId: string; port: number }): Promise<NetServer> {
   const server = createNetServer((sock) => {
     let buf = Buffer.alloc(0);
     sock.on("data", (chunk) => {
@@ -310,7 +369,7 @@ function fakeDaemon(path: string, answer = true): Promise<NetServer> {
       if (buf.length < 4 || buf.length < 4 + buf.readUInt32BE(0)) return;
       if (!answer) return; // accepted, never answered
       const req = JSON.parse(buf.subarray(4, 4 + buf.readUInt32BE(0)).toString("utf8"));
-      const body = Buffer.from(JSON.stringify({ type: "pong", protocolVersion: req.protocolVersion }));
+      const body = Buffer.from(JSON.stringify({ type: "pong", protocolVersion: req.protocolVersion, ...(selfReport ? { selfReport } : {}) }));
       const head = Buffer.alloc(4);
       head.writeUInt32BE(body.length, 0);
       sock.end(Buffer.concat([head, body]));
@@ -320,14 +379,14 @@ function fakeDaemon(path: string, answer = true): Promise<NetServer> {
 }
 
 /** A fake MCP endpoint on an ephemeral loopback port. */
-function fakeMcp(serverName = "failproofai"): Promise<{ server: HttpServer; port: number }> {
+function fakeMcp(serverName = "failproofai", instanceId: string | null = "inst-1"): Promise<{ server: HttpServer; port: number }> {
   const server = createHttpServer((req, res) => {
     let body = "";
     req.on("data", (c) => (body += c));
     req.on("end", () => {
       const msg = JSON.parse(body || "{}");
       res.setHeader("content-type", "application/json");
-      res.end(JSON.stringify({ jsonrpc: "2.0", id: msg.id, result: { protocolVersion: "2025-06-18", capabilities: {}, serverInfo: { name: serverName, version: "1" } } }));
+      res.end(JSON.stringify({ jsonrpc: "2.0", id: msg.id, result: { protocolVersion: "2025-06-18", capabilities: {}, serverInfo: { name: serverName, version: "1", ...(instanceId === null ? {} : { instanceId }) } } }));
     });
   });
   return new Promise((ok) => server.listen(0, "127.0.0.1", () => ok({ server, port: (server.address() as { port: number }).port })));
@@ -368,8 +427,8 @@ describe("live transport check", () => {
 
   it("a daemon answering ping AND an MCP initialize gives http; a later sync moves it back once it is gone", async () => {
     vi.stubEnv("FAILPROOFAI_DAEMON_SOCKET", socket());
-    const daemon = await fakeDaemon(socket());
     const { server, port } = await fakeMcp();
+    const daemon = await fakeDaemon(socket(), true, { instanceId: "inst-1", port });
     expect(await selfReportDaemonLive(port)).toBe(true);
     const opts = { quiet: true, agents: ["claude"] as IntegrationType[], binaryPath: CLI, deps: { hooksInstalled: () => true, settings: { enabled: true, port } } };
     expect((await syncSelfReportMcp(opts))[0]).toMatchObject({ action: "added", transport: "http" });
@@ -382,8 +441,9 @@ describe("live transport check", () => {
 
   it("needs both halves: a ping without the endpoint, or the endpoint without a ping, is stdio", async () => {
     vi.stubEnv("FAILPROOFAI_DAEMON_SOCKET", socket());
-    const daemon = track(await fakeDaemon(socket()));
-    expect(await selfReportDaemonLive(await deadPort())).toBe(false);
+    const dead = await deadPort();
+    const daemon = track(await fakeDaemon(socket(), true, { instanceId: "inst-1", port: dead }));
+    expect(await selfReportDaemonLive(dead)).toBe(false);
     await new Promise((ok) => daemon.close(ok));
     closeAll.pop();
     const { server, port } = await fakeMcp();
@@ -398,6 +458,43 @@ describe("live transport check", () => {
     track(server);
     expect(await selfReportDaemonLive(port)).toBe(false);
   }, 10_000);
+
+  it("the endpoint must be served by the daemon behind this socket", async () => {
+    vi.stubEnv("FAILPROOFAI_DAEMON_SOCKET", socket());
+    // Another daemon (another home) holds the port; this one's bind failed, so
+    // its pong names no MCP server: stdio, even though the port answers.
+    const { server, port } = await fakeMcp("failproofai", "other-daemon");
+    track(server);
+    const daemon = track(await fakeDaemon(socket()));
+    expect(await probeSelfReportHttpInstance(port)).toBe("other-daemon");
+    expect(await selfReportDaemonLive(port)).toBe(false);
+    const r = await syncSelfReportMcp({
+      quiet: true, agents: ["claude"], binaryPath: CLI,
+      deps: { hooksInstalled: () => true, settings: { enabled: true, port } },
+    });
+    expect(r[0]).toMatchObject({ transport: "stdio" });
+    await new Promise((ok) => daemon.close(ok));
+    closeAll.pop();
+    // This daemon serves MCP too, under its own id, but the port answers with
+    // another id: still stdio.
+    track(await fakeDaemon(socket(), true, { instanceId: "this-daemon", port }));
+    expect(await selfReportDaemonLive(port)).toBe(false);
+  });
+
+  it("a pong naming another port, or an endpoint with no instance id, is stdio", async () => {
+    vi.stubEnv("FAILPROOFAI_DAEMON_SOCKET", socket());
+    const { server, port } = await fakeMcp("failproofai", "inst-1");
+    track(server);
+    const daemon = track(await fakeDaemon(socket(), true, { instanceId: "inst-1", port: port + 1 }));
+    expect(await selfReportDaemonLive(port)).toBe(false);
+    await new Promise((ok) => daemon.close(ok));
+    closeAll.pop();
+    const old = await fakeMcp("failproofai", null);
+    track(old.server);
+    expect(await probeSelfReportHttpInstance(old.port)).toBe("");
+    track(await fakeDaemon(socket(), true, { instanceId: "inst-1", port: old.port }));
+    expect(await selfReportDaemonLive(old.port)).toBe(false);
+  });
 
   it("another server on the port is not ours", async () => {
     const { server, port } = await fakeMcp("someone-else");

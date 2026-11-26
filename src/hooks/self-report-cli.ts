@@ -28,7 +28,15 @@ import {
   type SelfReportCategory,
 } from "./self-report";
 import { INTEGRATION_TYPES } from "./types";
-import { selfReportRegistrationStatus, syncSelfReportMcp } from "./self-report-install";
+import {
+  probeSelfReportHttp,
+  selfReportCommandRunnable,
+  selfReportRegistrationStatus,
+  selfReportSyncChanged,
+  selfReportSyncLines,
+  syncSelfReportMcp,
+  type SelfReportRegistration,
+} from "./self-report-install";
 
 export interface SelfReportCliResult {
   exitCode: number;
@@ -38,8 +46,12 @@ export interface SelfReportCliResult {
 export interface SelfReportCliDeps {
   /** argv prefix that runs this CLI: `[node, dist/cli.mjs]`. */
   cliCommand?: string[];
-  /** Health probe override (tests). */
+  /** Health probe override (tests): does the HTTP endpoint on this port answer? */
   probeEndpoint?: (url: string, port: number) => Promise<boolean>;
+  /** Registration rows override (tests). */
+  registrations?: () => SelfReportRegistration[];
+  /** Sync override (tests). */
+  sync?: () => Promise<import("./self-report-install").SelfReportMcpResult[]>;
   /** Skip the agent sync after enable/disable (tests). */
   skipSync?: boolean;
   cwd?: string;
@@ -81,41 +93,61 @@ function selfReportRunChild(
   });
 }
 
-/** POST a JSON-RPC ping to the daemon's MCP endpoint, with the Host it requires. */
-async function selfReportProbe(url: string): Promise<boolean> {
+/** The port of one of our endpoint URLs, or null. */
+function selfReportUrlPort(url: string | null): number | null {
+  if (!url) return null;
   try {
-    const res = await fetch(url, {
-      method: "POST",
-      headers: { "content-type": "application/json", accept: "application/json, text/event-stream" },
-      body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "ping" }),
-      signal: AbortSignal.timeout(1500),
-    });
-    return res.ok;
+    const port = Number(new URL(url).port);
+    return Number.isInteger(port) && port > 0 ? port : null;
   } catch {
-    return false;
+    return null;
   }
 }
 
-/** Per-agent registration state. */
-function selfReportRegistrationLines(): string[] {
-  const rows = selfReportRegistrationStatus();
+/** Probe each distinct HTTP port among the rows once. */
+async function selfReportHttpHealth(rows: readonly SelfReportRegistration[], deps: SelfReportCliDeps): Promise<Map<number, boolean>> {
+  const probe = deps.probeEndpoint ?? ((_url: string, port: number) => probeSelfReportHttp(port));
+  const ports = new Set<number>();
+  for (const r of rows) {
+    const port = r.registered && r.transport === "http" ? selfReportUrlPort(r.endpoint) : null;
+    if (port !== null) ports.add(port);
+  }
+  const health = new Map<number, boolean>();
+  await Promise.all(
+    [...ports].map(async (port) => health.set(port, await probe(`http://127.0.0.1:${port}/mcp`, port))),
+  );
+  return health;
+}
+
+/** Per-agent registration state: transport, endpoint and whether it answers. */
+function selfReportRegistrationLines(rows: readonly SelfReportRegistration[], health: ReadonlyMap<number, boolean>): string[] {
   const hooked = rows.filter((r) => r.hooked || r.registered || r.conflict || r.error);
   if (hooked.length === 0) return ["Agents:     none with failproofai hooks"];
   return [
     "Agents:",
     ...hooked.map((r) => {
-      const state = r.error
-        ? `unreadable (${r.error})`
-        : r.conflict
-          ? "another failproofai MCP server is configured; left alone"
-          : r.registered
-            ? `registered (${r.transport})`
-            : r.hooked
-              ? "not registered"
-              : "registered, no hooks";
+      let state: string;
+      if (r.error) state = `unreadable (${r.error})`;
+      else if (r.conflict) state = "another failproofai MCP server is configured; left alone";
+      else if (r.registered && r.transport === "http") {
+        const port = selfReportUrlPort(r.endpoint);
+        const ok = port !== null && health.get(port) === true;
+        state = `http   ${r.endpoint ?? "?"} ${ok ? "(answering)" : "(NOT answering)"}`;
+      } else if (r.registered) {
+        const ok = !!r.endpoint && selfReportCommandRunnable(r.endpoint);
+        state = `stdio  ${r.endpoint ?? "?"} ${ok ? "(runnable)" : "(NOT runnable)"}`;
+      } else state = r.hooked ? "not registered" : "registered, no hooks";
+      if (r.registered && !r.hooked) state += ", no hooks";
       return `  ${r.agent.padEnd(12)} ${state}`;
     }),
   ];
+}
+
+/** Whether a row is registered over HTTP at an endpoint that is not answering. */
+function selfReportStranded(r: SelfReportRegistration, health: ReadonlyMap<number, boolean>): boolean {
+  if (!r.registered || r.transport !== "http") return false;
+  const port = selfReportUrlPort(r.endpoint);
+  return port === null || health.get(port) !== true;
 }
 
 async function selfReportStatus(deps: SelfReportCliDeps): Promise<SelfReportCliResult> {
@@ -134,22 +166,42 @@ async function selfReportStatus(deps: SelfReportCliDeps): Promise<SelfReportCliR
   if (settings.updatedAt) lines.push(`Updated:    ${settings.updatedAt}`);
   lines.push(`Categories: ${settings.categories.map((c) => c.name).join(", ")}`);
   if (settings.guidance) lines.push(`Guidance:   ${settings.guidance.length > 60 ? `${settings.guidance.slice(0, 57)}...` : settings.guidance}`);
-  const probe = deps.probeEndpoint ?? ((url: string) => selfReportProbe(url));
-  const healthy = await probe(settings.mcp.url, settings.mcp.port);
-  lines.push(`Endpoint:   ${settings.mcp.url} ${healthy ? "(answering)" : "(not answering; stdio `failproofai mcp` still works)"}`);
-  lines.push(...selfReportRegistrationLines());
+  const readRows = deps.registrations ?? (() => selfReportRegistrationStatus());
+  let rows = readRows();
+  let health = await selfReportHttpHealth(rows, deps);
+  // An agent left on the daemon's HTTP endpoint after the daemon died would
+  // have no report tool. Move it (live check: stdio unless a daemon answers).
+  if (settings.enabled && !deps.skipSync && rows.some((r) => selfReportStranded(r, health))) {
+    try {
+      const results = await (deps.sync ?? (() => syncSelfReportMcp({ quiet: true })))();
+      if (selfReportSyncChanged(results)) {
+        lines.push("Repaired:   agents pointed at an HTTP endpoint that is not answering were re-synced:");
+        lines.push(...selfReportSyncLines(results).map((l) => `  ${l}`));
+        rows = readRows();
+        health = await selfReportHttpHealth(rows, deps);
+      }
+    } catch {
+      lines.push("▲ Could not re-sync agents whose HTTP endpoint is not answering. Run `failproofai self-report sync`.");
+    }
+  }
+  if (!health.has(settings.mcp.port)) {
+    const probe = deps.probeEndpoint ?? ((_url: string, port: number) => probeSelfReportHttp(port));
+    health.set(settings.mcp.port, await probe(settings.mcp.url, settings.mcp.port));
+  }
+  lines.push(`Daemon MCP: ${settings.mcp.url} (${health.get(settings.mcp.port) ? "answering" : "not answering"})`);
+  lines.push(...selfReportRegistrationLines(rows, health));
   return { exitCode: 0, lines };
 }
 
 /** Update every hooked agent's MCP entry to match the settings just written. */
-function selfReportSync(deps: SelfReportCliDeps): string[] {
+async function selfReportSync(deps: SelfReportCliDeps): Promise<string[]> {
   if (deps.skipSync) return [];
   try {
-    const results = syncSelfReportMcp({ quiet: true });
+    const results = await (deps.sync ?? (() => syncSelfReportMcp({ quiet: true })))();
     if (results.some((r) => r.status === "error")) {
       return ["▲ Could not update every agent's MCP settings. Run `failproofai self-report sync` to see why."];
     }
-    return ["Agents updated."];
+    return selfReportSyncChanged(results) ? ["Agents updated."] : [];
   } catch {
     return ["▲ Could not update your agents' MCP settings. Run `failproofai self-report sync` to see why."];
   }
@@ -204,7 +256,7 @@ async function selfReportEnable(args: string[], deps: SelfReportCliDeps): Promis
     "✓ Self Reports is on.",
     `  Categories: ${written.categories.map((c) => c.name).join(", ")}${categories ? "" : " (defaults)"}`,
     `  Settings:   ${selfReportSettingsFile()}`,
-    ...selfReportSync(deps).map((l) => (l.startsWith("▲") ? l : `  ${l}`)),
+    ...(await selfReportSync(deps)).map((l) => (l.startsWith("▲") ? l : `  ${l}`)),
   ];
   return { exitCode: 0, lines };
 }
@@ -218,7 +270,7 @@ async function selfReportDisable(args: string[], deps: SelfReportCliDeps): Promi
   writeEffectiveSelfReport({ enabled: false, categories: previous?.categories, guidance: previous?.guidance });
   return {
     exitCode: 0,
-    lines: ["✓ Self Reports is off.", ...selfReportSync(deps).map((l) => (l.startsWith("▲") ? l : `  ${l}`))],
+    lines: ["✓ Self Reports is off.", ...(await selfReportSync(deps)).map((l) => (l.startsWith("▲") ? l : `  ${l}`))],
   };
 }
 

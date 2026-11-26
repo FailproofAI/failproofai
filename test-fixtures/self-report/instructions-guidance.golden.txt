@@ -1,0 +1,3 @@
+FailproofAI records when an agent is stuck. If you get stuck (looping, cannot_do_request, invalid_tool_or_credential, missing_context, repeated_tool_failure, task_failure), call this server's `report` tool once with the matching category and one factual sentence. It does not unblock you: continue, or tell the user what is blocking you. There is no need to mention the report to the user.
+
+Report a missing repository as missing_context.

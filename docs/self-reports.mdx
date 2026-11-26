@@ -51,7 +51,11 @@ A report with a category that is not on the list is still recorded under the nam
 
 ## Agent support
 
-failproofai registers one MCP server, named `failproofai`, in each agent's user-level MCP settings. When `failproofaid` runs on the machine, the entry points at the daemon's local server, `http://127.0.0.1:4319/mcp` (set `FAILPROOFAI_SELF_REPORT_PORT` to move it). Otherwise it runs `failproofai mcp` over stdio. Every entry is marked as failproofai's, so removing it never touches a server you added.
+failproofai registers one MCP server, named `failproofai`, in each agent's user-level MCP settings. When `failproofaid` is answering on the machine, the entry points at the daemon's local server, `http://127.0.0.1:4319/mcp` (set `FAILPROOFAI_SELF_REPORT_PORT` to move it). Otherwise it runs `failproofai mcp` over stdio. Every entry is marked as failproofai's, so removing it never touches a server you added.
+
+The transport is chosen when the entries are written, from a live check: the daemon must answer on its socket and its MCP endpoint must answer. When the daemon starts, it re-runs `failproofai self-report sync`, so agents move to HTTP. If the daemon stops, `failproofai self-report status` finds agents pointing at an endpoint that does not answer and moves them back to stdio. A running agent keeps the server it loaded at startup.
+
+Both transports send the model short server instructions in the MCP handshake: when to report, the category names, and your guidance. Some agents, Claude Code among them, load MCP tools only on demand. They add a server's instructions to the system prompt, though, so the model knows the tool exists.
 
 Where an agent's hooks see MCP tool calls, the hook records the report. Where they do not, failproofai's MCP server records it and attributes it to that agent's newest session in the same working directory.
 
@@ -70,7 +74,7 @@ Where an agent's hooks see MCP tool calls, the hook records the report. Where th
 | Antigravity | `~/.gemini/config/mcp_config.json` | MCP server |
 | Goose | `~/.config/goose/config.yaml` | MCP server |
 
-`failproofai self-report status` shows, per agent, whether the server is registered and over which transport. If an MCP server named `failproofai` that failproofai did not write is already there, such as the [Cloud MCP gateway](/reference/mcp) added under that name, it is left alone and reported as a conflict.
+`failproofai self-report status` shows, per agent, whether the server is registered, over which transport, and whether that endpoint answers (HTTP) or the command can run (stdio). If an MCP server named `failproofai` that failproofai did not write is already there, such as the [Cloud MCP gateway](/reference/mcp) added under that name, it is left alone and reported as a conflict.
 
 ## Containers
 

@@ -19,6 +19,7 @@ import {
   isSelfReportCursorCall,
   isSelfReportToolName,
   selfReportInputSchema,
+  selfReportInstructions,
 } from "../../src/hooks/self-report";
 import { writeSelfReportEvent } from "../../src/hooks/self-report-mcp";
 
@@ -33,6 +34,14 @@ describe("Self Reports golden files (CLI)", () => {
     expect(
       describeSelfReportTool(SELF_REPORT_DEFAULT_CATEGORIES, "Report a missing repository as missing_context."),
     ).toBe(golden("description-guidance.golden.txt"));
+  });
+
+  it("builds the MCP server instructions byte for byte", () => {
+    expect(selfReportInstructions(SELF_REPORT_DEFAULT_CATEGORIES, null)).toBe(golden("instructions.golden.txt"));
+    expect(
+      selfReportInstructions(SELF_REPORT_DEFAULT_CATEGORIES, "Report a missing repository as missing_context."),
+    ).toBe(golden("instructions-guidance.golden.txt"));
+    expect(golden("instructions.golden.txt").length).toBeLessThan(600);
   });
 
   it("builds the input schema byte for byte", () => {

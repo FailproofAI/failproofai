@@ -141,6 +141,15 @@ async fn initialize_list_and_call_the_report_tool() {
     assert_eq!(reply["result"]["protocolVersion"], "2025-06-18");
     assert_eq!(reply["result"]["serverInfo"]["name"], "failproofai");
     assert!(reply["result"]["capabilities"]["tools"].is_object());
+    // The instructions Claude Code puts in the system prompt (its tools are
+    // deferred behind tool search, so the description alone is never seen).
+    assert_eq!(
+        reply["result"]["instructions"],
+        self_report::instructions(
+            &self_report::default_categories(),
+            Some("Prefer one report.")
+        )
+    );
 
     // An unknown revision is answered in ours.
     let (_, reply) = server
@@ -240,6 +249,13 @@ async fn the_tool_list_follows_the_settings_file() {
     let home = tmpdir("follow");
     let server = Running::start(&home).await;
     assert_eq!(list(&server).await, json!([]), "no file: off");
+    let init = json!({"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18"}});
+    let instructions = |reply: Option<Value>| reply.unwrap()["result"].get("instructions").cloned();
+    assert_eq!(
+        instructions(server.rpc("", init.clone()).await.1),
+        None,
+        "no file: no instructions field"
+    );
 
     write_settings(
         &home,
@@ -254,9 +270,20 @@ async fn the_tool_list_follows_the_settings_file() {
         tools[0]["inputSchema"]["properties"]["category"]["enum"],
         json!(["org_custom"])
     );
+    let text = instructions(server.rpc("", init.clone()).await.1).unwrap();
+    assert!(text.as_str().unwrap().contains("(org_custom)"), "{text}");
+    assert!(
+        text.as_str().unwrap().ends_with("\n\nPrefer one report."),
+        "{text}"
+    );
 
     write_settings(&home, false, self_report::default_categories());
     assert_eq!(list(&server).await, json!([]), "disabled: empty list");
+    assert_eq!(
+        instructions(server.rpc("", init.clone()).await.1),
+        None,
+        "disabled: no instructions field"
+    );
 
     fs::write(self_report::settings_path(&home), "garbage").unwrap();
     assert_eq!(list(&server).await, json!([]), "unparsable: off");
@@ -381,5 +408,36 @@ async fn a_server_recorded_agent_gets_its_report_written() {
     assert_eq!(goose["category"], "made_up");
 
     server.stop().await;
+    fs::remove_dir_all(&home).ok();
+}
+
+#[test]
+fn spawn_reports_whether_it_is_listening() {
+    let home = tmpdir("spawn");
+    let stop = Arc::new(AtomicBool::new(false));
+
+    // Bound: `true`, and the port answers.
+    let holder = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+    let port = holder.local_addr().unwrap().port();
+    drop(holder);
+    let (tx, rx) = std::sync::mpsc::channel();
+    let handle = self_report::spawn(home.clone(), port, stop.clone(), tx).unwrap();
+    assert_eq!(
+        rx.recv_timeout(std::time::Duration::from_secs(10)),
+        Ok(true)
+    );
+    assert!(std::net::TcpStream::connect(("127.0.0.1", port)).is_ok());
+
+    // Busy port: `false`, and the daemon carries on.
+    let (tx2, rx2) = std::sync::mpsc::channel();
+    let busy = self_report::spawn(home.clone(), port, stop.clone(), tx2).unwrap();
+    assert_eq!(
+        rx2.recv_timeout(std::time::Duration::from_secs(10)),
+        Ok(false)
+    );
+    busy.join().unwrap();
+
+    stop.store(true, std::sync::atomic::Ordering::Relaxed);
+    handle.join().unwrap();
     fs::remove_dir_all(&home).ok();
 }

@@ -6,9 +6,14 @@ import { dirname, resolve } from "node:path";
 import { parse as parseToml } from "smol-toml";
 import { parse as parseYaml } from "yaml";
 import { parse as parseJsonc } from "jsonc-parser/lib/esm/main.js";
+import { createServer as createHttpServer, type Server as HttpServer } from "node:http";
+import { createServer as createNetServer, type Server as NetServer } from "node:net";
 import {
   SELF_REPORT_MCP_TARGETS,
   isOurMcpEntry,
+  probeSelfReportHttp,
+  selfReportDaemonLive,
+  selfReportSyncChanged,
   readSelfReportMcpSettings,
   removeSelfReportMcp,
   selfReportRegistrationStatus,
@@ -27,7 +32,7 @@ function enabledOpts(extra: Partial<SyncSelfReportMcpOptions> = {}, daemon = tru
     binaryPath: CLI,
     ...extra,
     deps: {
-      daemonSocketPresent: () => daemon,
+      daemonLive: async () => daemon,
       hooksInstalled: () => true,
       settings: { enabled: true, port: 4319 },
       ...extra.deps,
@@ -89,7 +94,7 @@ const USER_JSON = (container: string[]) => {
 describe("syncSelfReportMcp: every agent round-trips", () => {
   for (const agent of INTEGRATION_TYPES) {
     const target = SELF_REPORT_MCP_TARGETS[agent];
-    it(`${agent}: adds, is idempotent, keeps the user's entries, removes only ours`, () => {
+    it(`${agent}: adds, is idempotent, keeps the user's entries, removes only ours`, async () => {
       const path = pathOf(agent);
       let original: string;
       if (target.format === "toml") {
@@ -103,7 +108,7 @@ describe("syncSelfReportMcp: every agent round-trips", () => {
       }
       put(path, original);
 
-      const first = syncSelfReportMcp(enabledOpts({ agents: [agent] }));
+      const first = await syncSelfReportMcp(enabledOpts({ agents: [agent] }));
       expect(first.map((r) => [r.action, r.status, r.transport])).toEqual(
         first.map(() => ["added", "ok", "http"]),
       );
@@ -115,7 +120,7 @@ describe("syncSelfReportMcp: every agent round-trips", () => {
       expect(afterAdd).toContain("mine");
       expect(afterAdd).toContain(target.format === "json" && agent === "claude" ? "dark" : target.format === "toml" ? "# inline note" : target.format === "yaml" ? "# my server" : "// a comment");
 
-      const second = syncSelfReportMcp(enabledOpts({ agents: [agent] }));
+      const second = await syncSelfReportMcp(enabledOpts({ agents: [agent] }));
       expect(second.every((r) => r.action === "unchanged" && r.status === "ok")).toBe(true);
       expect(read(path)).toBe(afterAdd);
 
@@ -134,82 +139,82 @@ describe("syncSelfReportMcp: every agent round-trips", () => {
 });
 
 describe("transport choice", () => {
-  it("uses stdio with the CLI path and --agent when no daemon socket is present", () => {
-    syncSelfReportMcp(enabledOpts({ agents: ["claude", "codex", "opencode", "goose"] }, false));
+  it("uses stdio with the CLI path and --agent when no daemon is live", async () => {
+    await syncSelfReportMcp(enabledOpts({ agents: ["claude", "codex", "opencode", "goose"] }, false));
     expect(entryIn("claude")).toEqual({ type: "stdio", command: CLI, args: ["mcp", "--agent", "claude"] });
     expect(entryIn("codex")).toEqual({ command: CLI, args: ["mcp", "--agent", "codex"] });
     expect(entryIn("opencode")).toEqual({ type: "local", command: [CLI, "mcp", "--agent", "opencode"], enabled: true });
     expect(entryIn("goose")).toMatchObject({ type: "stdio", cmd: CLI, args: ["mcp", "--agent", "goose"], enabled: true });
   });
 
-  it("switches an existing entry between transports in place", () => {
-    syncSelfReportMcp(enabledOpts({ agents: ["codex"] }, false));
-    const r = syncSelfReportMcp(enabledOpts({ agents: ["codex"] }, true));
+  it("switches an existing entry between transports in place", async () => {
+    await syncSelfReportMcp(enabledOpts({ agents: ["codex"] }, false));
+    const r = await syncSelfReportMcp(enabledOpts({ agents: ["codex"] }, true));
     expect(r[0]).toMatchObject({ action: "updated", transport: "http" });
     const text = read(pathOf("codex"));
     expect(text.match(/\[mcp_servers\.failproofai\]/g)).toHaveLength(1);
     expect(entryIn("codex")).toEqual({ url: "http://127.0.0.1:4319/mcp?agent=codex" });
   });
 
-  it("takes the port from self-report.json", () => {
+  it("takes the port from self-report.json", async () => {
     const p = resolve(home, ".failproofai", "self-report.json");
     put(p, JSON.stringify({ version: 1, enabled: true, mcp: { port: 5555, url: "http://127.0.0.1:5555/mcp" } }));
     expect(readSelfReportMcpSettings()).toEqual({ enabled: true, port: 5555 });
-    syncSelfReportMcp({ quiet: true, agents: ["cursor"], deps: { daemonSocketPresent: () => true, hooksInstalled: () => true } });
+    await syncSelfReportMcp({ quiet: true, agents: ["cursor"], deps: { daemonLive: async () => true, hooksInstalled: () => true } });
     expect(entryIn("cursor")).toEqual({ url: "http://127.0.0.1:5555/mcp?agent=cursor" });
   });
 
-  it("reads a missing or broken settings file as disabled", () => {
+  it("reads a missing or broken settings file as disabled", async () => {
     expect(readSelfReportMcpSettings().enabled).toBe(false);
     put(resolve(home, ".failproofai", "self-report.json"), "{nope");
     expect(readSelfReportMcpSettings()).toEqual({ enabled: false, port: 4319 });
   });
 
-  it("reports an error, writing nothing, when stdio is needed and no CLI is known", () => {
+  it("reports an error, writing nothing, when stdio is needed and no CLI is known", async () => {
     const base = enabledOpts({ agents: ["cursor"] }, false);
-    const r = syncSelfReportMcp({ ...base, binaryPath: undefined, deps: { ...base.deps, resolveCliPath: () => null } });
+    const r = await syncSelfReportMcp({ ...base, binaryPath: undefined, deps: { ...base.deps, resolveCliPath: () => null } });
     expect(r[0]).toMatchObject({ status: "error", action: "skipped" });
     expect(existsSync(pathOf("cursor"))).toBe(false);
   });
 });
 
 describe("ownership", () => {
-  it("never touches a failproofai entry it did not write (e.g. the Cloud MCP gateway)", () => {
+  it("never touches a failproofai entry it did not write (e.g. the Cloud MCP gateway)", async () => {
     const path = pathOf("claude");
     const foreign = { mcpServers: { failproofai: { type: "http", url: "https://gateway.example.com/mcp" } } };
     put(path, JSON.stringify(foreign, null, 2) + "\n");
     const before = read(path);
-    expect(syncSelfReportMcp(enabledOpts({ agents: ["claude"] }))[0]).toMatchObject({ status: "conflict", action: "skipped" });
+    expect((await syncSelfReportMcp(enabledOpts({ agents: ["claude"] })))[0]).toMatchObject({ status: "conflict", action: "skipped" });
     expect(removeSelfReportMcp({ agents: ["claude"], quiet: true })[0]).toMatchObject({ status: "conflict" });
     expect(read(path)).toBe(before);
   });
 
-  it("treats a hand-written codex [mcp_servers.failproofai] outside our markers as foreign", () => {
+  it("treats a hand-written codex [mcp_servers.failproofai] outside our markers as foreign", async () => {
     const path = pathOf("codex");
     put(path, '[mcp_servers.failproofai]\nurl = "http://127.0.0.1:4319/mcp?agent=codex"\n');
     const before = read(path);
-    expect(syncSelfReportMcp(enabledOpts({ agents: ["codex"] }))[0].status).toBe("conflict");
+    expect((await syncSelfReportMcp(enabledOpts({ agents: ["codex"] })))[0].status).toBe("conflict");
     expect(read(path)).toBe(before);
   });
 
-  it("refuses a codex config whose inline mcp_servers table would collide, leaving it as is", () => {
+  it("refuses a codex config whose inline mcp_servers table would collide, leaving it as is", async () => {
     const path = pathOf("codex");
     put(path, 'mcp_servers = { mine = { command = "node" } }\n');
     const before = read(path);
-    const r = syncSelfReportMcp(enabledOpts({ agents: ["codex"] }))[0];
+    const r = (await syncSelfReportMcp(enabledOpts({ agents: ["codex"] })))[0];
     expect(r.status).toBe("error");
     expect(read(path)).toBe(before);
   });
 
-  it("refuses an unparsable config", () => {
+  it("refuses an unparsable config", async () => {
     const path = pathOf("cursor");
     put(path, "{ not json");
-    const r = syncSelfReportMcp(enabledOpts({ agents: ["cursor"] }))[0];
+    const r = (await syncSelfReportMcp(enabledOpts({ agents: ["cursor"] })))[0];
     expect(r.status).toBe("error");
     expect(read(path)).toBe("{ not json");
   });
 
-  it("recognises only our shapes", () => {
+  it("recognises only our shapes", async () => {
     expect(isOurMcpEntry({ url: "http://127.0.0.1:4319/mcp?agent=claude" })).toBe(true);
     expect(isOurMcpEntry({ serverUrl: "http://localhost:4319/mcp?agent=antigravity" })).toBe(true);
     expect(isOurMcpEntry({ command: "/x/bin/failproofai", args: ["mcp", "--agent", "pi"] })).toBe(true);
@@ -220,29 +225,29 @@ describe("ownership", () => {
 });
 
 describe("which agents", () => {
-  it("enabled: only hooked agents get an entry; unhooked ones are left alone", () => {
-    const r = syncSelfReportMcp(enabledOpts({ deps: { hooksInstalled: (a) => a === "claude" } }));
+  it("enabled: only hooked agents get an entry; unhooked ones are left alone", async () => {
+    const r = await syncSelfReportMcp(enabledOpts({ deps: { hooksInstalled: (a) => a === "claude" } }));
     expect(r.filter((x) => x.action === "added").map((x) => x.agent)).toEqual(["claude"]);
     expect(r.filter((x) => x.agent !== "claude").every((x) => x.status === "not-hooked")).toBe(true);
     expect(existsSync(pathOf("cursor"))).toBe(false);
   });
 
-  it("alsoHooked registers agents installHooks just wrote", () => {
-    const r = syncSelfReportMcp(enabledOpts({ agents: ["cursor"], alsoHooked: ["cursor"], deps: { hooksInstalled: () => false } }));
+  it("alsoHooked registers agents installHooks just wrote", async () => {
+    const r = await syncSelfReportMcp(enabledOpts({ agents: ["cursor"], alsoHooked: ["cursor"], deps: { hooksInstalled: () => false } }));
     expect(r[0].action).toBe("added");
   });
 
-  it("disabled: removes ours from every agent, hooked or not", () => {
-    syncSelfReportMcp(enabledOpts({ agents: ["claude", "factory"] }));
-    const r = syncSelfReportMcp({ quiet: true, deps: { settings: { enabled: false, port: 4319 }, hooksInstalled: () => false, daemonSocketPresent: () => true } });
+  it("disabled: removes ours from every agent, hooked or not", async () => {
+    await syncSelfReportMcp(enabledOpts({ agents: ["claude", "factory"] }));
+    const r = await syncSelfReportMcp({ quiet: true, deps: { settings: { enabled: false, port: 4319 }, hooksInstalled: () => false, daemonLive: async () => true } });
     expect(r.filter((x) => x.action === "removed").map((x) => x.agent).sort()).toEqual(["claude", "factory"]);
     expect(entryIn("claude")).toBeUndefined();
   });
 
-  it("writes every Hermes profile", () => {
+  it("writes every Hermes profile", async () => {
     put(resolve(home, ".hermes", "config.yaml"), "model: x\n");
     put(resolve(home, ".hermes", "profiles", "work", "config.yaml"), "model: y\n");
-    const r = syncSelfReportMcp(enabledOpts({ agents: ["hermes"] }));
+    const r = await syncSelfReportMcp(enabledOpts({ agents: ["hermes"] }));
     expect(r.map((x) => x.action)).toEqual(["added", "added"]);
     for (const p of [resolve(home, ".hermes", "config.yaml"), resolve(home, ".hermes", "profiles", "work", "config.yaml")]) {
       const doc = parseYaml(read(p)) as { mcp_servers: { failproofai: { url: string } } };
@@ -251,7 +256,7 @@ describe("which agents", () => {
     }
   });
 
-  it("honours CLAUDE_CONFIG_DIR, CODEX_HOME and COPILOT_HOME", () => {
+  it("honours CLAUDE_CONFIG_DIR, CODEX_HOME and COPILOT_HOME", async () => {
     vi.stubEnv("CLAUDE_CONFIG_DIR", resolve(home, "claude-work"));
     vi.stubEnv("CODEX_HOME", resolve(home, "codex-x"));
     vi.stubEnv("COPILOT_HOME", resolve(home, "cop"));
@@ -260,28 +265,148 @@ describe("which agents", () => {
     expect(pathOf("copilot")).toBe(resolve(home, "cop", "mcp-config.json"));
   });
 
-  it("uses OpenCode v2's mcp.servers when the file already has it", () => {
+  it("uses OpenCode v2's mcp.servers when the file already has it", async () => {
     put(pathOf("opencode"), JSON.stringify({ mcp: { servers: { mine: { type: "local", command: ["node"] } } } }));
-    syncSelfReportMcp(enabledOpts({ agents: ["opencode"] }));
+    await syncSelfReportMcp(enabledOpts({ agents: ["opencode"] }));
     const doc = JSON.parse(read(pathOf("opencode")));
     expect(doc.mcp.servers.failproofai).toEqual({ type: "remote", url: "http://127.0.0.1:4319/mcp?agent=opencode" });
     expect(doc.mcp.failproofai).toBeUndefined();
   });
 
-  it("keeps a backup of the file it changed", () => {
+  it("keeps a backup of the file it changed", async () => {
     put(pathOf("factory"), '{"mcpServers":{}}\n');
-    syncSelfReportMcp(enabledOpts({ agents: ["factory"] }));
+    await syncSelfReportMcp(enabledOpts({ agents: ["factory"] }));
     expect(read(`${pathOf("factory")}.failproofai-backup`)).toBe('{"mcpServers":{}}\n');
   });
 });
 
+// ── Live transport check ────────────────────────────────────────────────────
+
+/** A fake daemon socket: answers every framed request with a framed pong. */
+function fakeDaemon(path: string, answer = true): Promise<NetServer> {
+  const server = createNetServer((sock) => {
+    let buf = Buffer.alloc(0);
+    sock.on("data", (chunk) => {
+      buf = Buffer.concat([buf, chunk as Buffer]);
+      if (buf.length < 4 || buf.length < 4 + buf.readUInt32BE(0)) return;
+      if (!answer) return; // accepted, never answered
+      const req = JSON.parse(buf.subarray(4, 4 + buf.readUInt32BE(0)).toString("utf8"));
+      const body = Buffer.from(JSON.stringify({ type: "pong", protocolVersion: req.protocolVersion }));
+      const head = Buffer.alloc(4);
+      head.writeUInt32BE(body.length, 0);
+      sock.end(Buffer.concat([head, body]));
+    });
+  });
+  return new Promise((ok) => server.listen(path, () => ok(server)));
+}
+
+/** A fake MCP endpoint on an ephemeral loopback port. */
+function fakeMcp(serverName = "failproofai"): Promise<{ server: HttpServer; port: number }> {
+  const server = createHttpServer((req, res) => {
+    let body = "";
+    req.on("data", (c) => (body += c));
+    req.on("end", () => {
+      const msg = JSON.parse(body || "{}");
+      res.setHeader("content-type", "application/json");
+      res.end(JSON.stringify({ jsonrpc: "2.0", id: msg.id, result: { protocolVersion: "2025-06-18", capabilities: {}, serverInfo: { name: serverName, version: "1" } } }));
+    });
+  });
+  return new Promise((ok) => server.listen(0, "127.0.0.1", () => ok({ server, port: (server.address() as { port: number }).port })));
+}
+
+/** A loopback port nothing listens on. */
+async function deadPort(): Promise<number> {
+  const { server, port } = await fakeMcp();
+  await new Promise((ok) => server.close(ok));
+  return port;
+}
+
+const closeAll: Array<() => Promise<unknown>> = [];
+afterEach(async () => {
+  while (closeAll.length) await closeAll.pop()!();
+});
+function track<T extends { close(cb?: (err?: Error) => void): unknown }>(server: T): T {
+  closeAll.push(() => new Promise((ok) => server.close(() => ok(undefined))));
+  return server;
+}
+
+describe("live transport check", () => {
+  const socket = () => resolve(home, "daemon.sock");
+
+  it("a leftover socket file with no daemon behind it gives stdio, not a dead HTTP entry", async () => {
+    // What a hard-killed daemon leaves: the path exists, nothing listens on it.
+    writeFileSync(socket(), "");
+    vi.stubEnv("FAILPROOFAI_DAEMON_SOCKET", socket());
+    const port = await deadPort();
+    expect(await selfReportDaemonLive(port)).toBe(false);
+    const r = await syncSelfReportMcp({
+      quiet: true, agents: ["claude"], binaryPath: CLI,
+      deps: { hooksInstalled: () => true, settings: { enabled: true, port } },
+    });
+    expect(r[0]).toMatchObject({ action: "added", transport: "stdio" });
+    expect(entryIn("claude")).toEqual({ type: "stdio", command: CLI, args: ["mcp", "--agent", "claude"] });
+  });
+
+  it("a daemon answering ping AND an MCP initialize gives http; a later sync moves it back once it is gone", async () => {
+    vi.stubEnv("FAILPROOFAI_DAEMON_SOCKET", socket());
+    const daemon = await fakeDaemon(socket());
+    const { server, port } = await fakeMcp();
+    expect(await selfReportDaemonLive(port)).toBe(true);
+    const opts = { quiet: true, agents: ["claude"] as IntegrationType[], binaryPath: CLI, deps: { hooksInstalled: () => true, settings: { enabled: true, port } } };
+    expect((await syncSelfReportMcp(opts))[0]).toMatchObject({ action: "added", transport: "http" });
+    expect(entryIn("claude")).toEqual({ type: "http", url: `http://127.0.0.1:${port}/mcp?agent=claude` });
+
+    await new Promise((ok) => daemon.close(ok));
+    await new Promise((ok) => server.close(ok));
+    expect((await syncSelfReportMcp(opts))[0]).toMatchObject({ action: "updated", transport: "stdio" });
+  });
+
+  it("needs both halves: a ping without the endpoint, or the endpoint without a ping, is stdio", async () => {
+    vi.stubEnv("FAILPROOFAI_DAEMON_SOCKET", socket());
+    const daemon = track(await fakeDaemon(socket()));
+    expect(await selfReportDaemonLive(await deadPort())).toBe(false);
+    await new Promise((ok) => daemon.close(ok));
+    closeAll.pop();
+    const { server, port } = await fakeMcp();
+    track(server);
+    expect(await selfReportDaemonLive(port)).toBe(false);
+  });
+
+  it("a daemon that accepts but never answers the ping is not live", async () => {
+    vi.stubEnv("FAILPROOFAI_DAEMON_SOCKET", socket());
+    track(await fakeDaemon(socket(), false));
+    const { server, port } = await fakeMcp();
+    track(server);
+    expect(await selfReportDaemonLive(port)).toBe(false);
+  }, 10_000);
+
+  it("another server on the port is not ours", async () => {
+    const { server, port } = await fakeMcp("someone-else");
+    track(server);
+    expect(await probeSelfReportHttp(port)).toBe(false);
+  });
+
+  it("is not asked when the feature is off or no agent would get an entry", async () => {
+    const daemonLive = vi.fn(async () => true);
+    await syncSelfReportMcp({ quiet: true, deps: { daemonLive, hooksInstalled: () => true, settings: { enabled: false, port: 4319 } } });
+    await syncSelfReportMcp({ quiet: true, binaryPath: CLI, deps: { daemonLive, hooksInstalled: () => false, settings: { enabled: true, port: 4319 } } });
+    expect(daemonLive).not.toHaveBeenCalled();
+  });
+
+  it("selfReportSyncChanged is true only for an add, update or remove", async () => {
+    const first = await syncSelfReportMcp(enabledOpts({ agents: ["claude"] }));
+    expect(selfReportSyncChanged(first)).toBe(true);
+    expect(selfReportSyncChanged(await syncSelfReportMcp(enabledOpts({ agents: ["claude"] })))).toBe(false);
+  });
+});
+
 describe("selfReportRegistrationStatus", () => {
-  it("reports registered, transport, conflict and hooked per file without writing", () => {
-    syncSelfReportMcp(enabledOpts({ agents: ["claude"] }, false));
+  it("reports registered, transport, conflict and hooked per file without writing", async () => {
+    await syncSelfReportMcp(enabledOpts({ agents: ["claude"] }, false));
     put(pathOf("cursor"), JSON.stringify({ mcpServers: { failproofai: { url: "https://elsewhere" } } }));
     const s = selfReportRegistrationStatus({ agents: ["claude", "cursor", "factory"], hooksInstalled: (a) => a === "claude" });
     expect(s).toEqual([
-      expect.objectContaining({ agent: "claude", hooked: true, registered: true, transport: "stdio", conflict: false }),
+      expect.objectContaining({ agent: "claude", hooked: true, registered: true, transport: "stdio", endpoint: CLI, conflict: false }),
       expect.objectContaining({ agent: "cursor", hooked: false, registered: false, conflict: true }),
       expect.objectContaining({ agent: "factory", hooked: false, registered: false, conflict: false }),
     ]);
@@ -291,7 +416,7 @@ describe("selfReportRegistrationStatus", () => {
 
 describe("mergeTomlManagedBlock", () => {
   const M = { begin: "# >>> b >>>", end: "# <<< b <<<" };
-  it("appends, replaces in place and removes byte for byte", () => {
+  it("appends, replaces in place and removes byte for byte", async () => {
     const orig = 'a = 1\n[t]\nb = 2 # c\n';
     const one = mergeTomlManagedBlock(orig, "# >>> b >>>\nx = 1\n# <<< b <<<\n", M);
     expect(one).toBe(`${orig}\n# >>> b >>>\nx = 1\n# <<< b <<<\n`);
@@ -300,7 +425,7 @@ describe("mergeTomlManagedBlock", () => {
     expect(two).not.toContain("x = 1");
     expect(mergeTomlManagedBlock(two, null, M)).toBe(orig);
   });
-  it("throws on a half block", () => {
+  it("throws on a half block", async () => {
     expect(() => mergeTomlManagedBlock("# >>> b >>>\nx=1\n", null, M)).toThrow();
   });
 });

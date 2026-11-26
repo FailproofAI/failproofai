@@ -315,14 +315,47 @@ pub fn input_schema(categories: &[Category]) -> Value {
     })
 }
 
-/// The MCP tool definition, or `None` when the feature is off.
-pub fn tool_definition(settings: Option<&Settings>) -> Option<Value> {
-    let settings = settings.filter(|s| s.enabled)?;
-    let categories = if settings.categories.is_empty() {
+/// The MCP server's `instructions` (identical text in the TypeScript stdio
+/// server, `selfReportInstructions`). Claude Code defers MCP tools behind tool
+/// search, so the model never reads the tool description up front; a server's
+/// instructions go into the system prompt.
+pub fn instructions(categories: &[Category], guidance: Option<&str>) -> String {
+    let names: Vec<&str> = categories.iter().map(|c| c.name.as_str()).collect();
+    let mut text = format!(
+        "FailproofAI records when an agent is stuck. If you get stuck ({}), call this server's \
+         `report` tool once with the matching category and one factual sentence. It does not \
+         unblock you: continue, or tell the user what is blocking you. There is no need to \
+         mention the report to the user.",
+        names.join(", ")
+    );
+    if let Some(g) = guidance.filter(|g| !g.is_empty()) {
+        text.push_str("\n\n");
+        text.push_str(g);
+    }
+    text
+}
+
+fn effective_categories(settings: &Settings) -> Vec<Category> {
+    if settings.categories.is_empty() {
         default_categories()
     } else {
         settings.categories.clone()
-    };
+    }
+}
+
+/// The initialize result's `instructions`, or `None` when the feature is off.
+pub fn server_instructions(settings: Option<&Settings>) -> Option<String> {
+    let settings = settings.filter(|s| s.enabled)?;
+    Some(instructions(
+        &effective_categories(settings),
+        settings.guidance.as_deref(),
+    ))
+}
+
+/// The MCP tool definition, or `None` when the feature is off.
+pub fn tool_definition(settings: Option<&Settings>) -> Option<Value> {
+    let settings = settings.filter(|s| s.enabled)?;
+    let categories = effective_categories(settings);
     Some(json!({
         "name": TOOL_NAME,
         "description": describe(&categories, settings.guidance.as_deref()),
@@ -381,10 +414,15 @@ struct Server {
 /// never shows up in (or is cycled with) the collector's lifecycle. A busy
 /// port logs one warning and the thread ends; the daemon carries on, as with
 /// the OTLP relay. Stops when `shutdown` is set.
+///
+/// `listening` hears `true` once the port is bound (connections are accepted
+/// from then on) or `false` when it could not be; the daemon waits on it to
+/// run its startup `self-report sync` against a server that is really there.
 pub fn spawn(
     home: PathBuf,
     port: u16,
     shutdown: Arc<std::sync::atomic::AtomicBool>,
+    listening: std::sync::mpsc::Sender<bool>,
 ) -> Option<std::thread::JoinHandle<()>> {
     std::thread::Builder::new()
         .name("fpai-self-report".to_string())
@@ -396,6 +434,7 @@ pub fn spawn(
                 Ok(rt) => rt,
                 Err(err) => {
                     tracing::warn!(%err, "Self Reports MCP server off: no runtime; daemon continues");
+                    let _ = listening.send(false);
                     return;
                 }
             };
@@ -409,10 +448,12 @@ pub fn spawn(
                             %err,
                             "Self Reports MCP server off: loopback port unavailable; daemon continues"
                         );
+                        let _ = listening.send(false);
                         return;
                     }
                 };
                 tracing::info!(port, "Self Reports MCP server listening on 127.0.0.1");
+                let _ = listening.send(true);
                 if let Err(err) = serve(listener, home, Shutdown::from_daemon(shutdown)).await {
                     tracing::warn!(%err, "Self Reports MCP server stopped");
                 }
@@ -603,17 +644,18 @@ impl Server {
                 let version = asked
                     .filter(|v| PROTOCOL_VERSIONS.contains(v))
                     .unwrap_or(PROTOCOL_VERSIONS[0]);
-                rpc_result(
-                    id,
-                    json!({
-                        "protocolVersion": version,
-                        // listChanged is false: answers are plain JSON with no
-                        // stream to push the notification on. A client sees a
-                        // changed list on its next tools/list.
-                        "capabilities": {"tools": {"listChanged": false}},
-                        "serverInfo": {"name": SERVER_NAME, "version": env!("CARGO_PKG_VERSION")},
-                    }),
-                )
+                let mut result = json!({
+                    "protocolVersion": version,
+                    // listChanged is false: answers are plain JSON with no
+                    // stream to push the notification on. A client sees a
+                    // changed list on its next tools/list.
+                    "capabilities": {"tools": {"listChanged": false}},
+                    "serverInfo": {"name": SERVER_NAME, "version": env!("CARGO_PKG_VERSION")},
+                });
+                if let Some(text) = server_instructions(self.settings.current().as_ref()) {
+                    result["instructions"] = Value::String(text);
+                }
+                rpc_result(id, result)
             }
             "ping" => rpc_result(id, json!({})),
             "tools/list" => {
@@ -1234,6 +1276,20 @@ mod tests {
         );
         let want: Value = serde_json::from_str(&golden("input-schema.golden.json")).unwrap();
         assert_eq!(input_schema(&cats), want);
+    }
+
+    #[test]
+    fn golden_instructions() {
+        let cats = default_categories();
+        assert_eq!(instructions(&cats, None), golden("instructions.golden.txt"));
+        assert_eq!(
+            instructions(
+                &cats,
+                Some("Report a missing repository as missing_context.")
+            ),
+            golden("instructions-guidance.golden.txt")
+        );
+        assert!(golden("instructions.golden.txt").chars().count() < 600);
     }
 
     #[test]

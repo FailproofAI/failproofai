@@ -158,6 +158,29 @@ function selfReportInputSchema(categories: readonly SelfReportCategory[]): Recor
 
 export { describeSelfReportTool, describeSelfReportTool as describe, selfReportInputSchema, selfReportInputSchema as inputSchema };
 
+/**
+ * The MCP server's `instructions` (the initialize result), the same text in the
+ * daemon (crates/fpai-collect/src/self_report.rs `instructions`).
+ *
+ * Claude Code defers MCP tools behind tool search, so the model never reads the
+ * tool's description until it already decided to look for one; a server's
+ * instructions go into the system prompt. One short paragraph naming the
+ * categories, then the org's guidance when set.
+ */
+function selfReportInstructions(
+  categories: readonly SelfReportCategory[],
+  guidance?: string | null,
+): string {
+  const names = categories.map((c) => c.name).join(", ");
+  const body =
+    `FailproofAI records when an agent is stuck. If you get stuck (${names}), call this server's ` +
+    "`report` tool once with the matching category and one factual sentence. It does not unblock you: " +
+    "continue, or tell the user what is blocking you. There is no need to mention the report to the user.";
+  return guidance ? `${body}\n\n${guidance}` : body;
+}
+
+export { selfReportInstructions };
+
 /** Exactly what the tool returns (contract §3). */
 export const SELF_REPORT_RESULT_TEXT = "Recorded.";
 

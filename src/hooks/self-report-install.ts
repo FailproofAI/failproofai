@@ -4,8 +4,10 @@
  *
  * The server is named `failproofai` everywhere (CONTRACT §1). It is served by
  * the daemon over Streamable HTTP at `http://127.0.0.1:<port>/mcp` when a
- * daemon socket is present, and otherwise by `failproofai mcp` over stdio
- * (CONTRACT §7). Both carry the agent, `?agent=<id>` / `--agent <id>`, so the
+ * daemon is live here (it answers a ping on its socket AND the endpoint
+ * answers an MCP initialize), and otherwise by `failproofai mcp` over stdio
+ * (CONTRACT §7). The daemon runs `self-report sync` once it is listening, so
+ * agents move to HTTP when it comes up. Both carry the agent, `?agent=<id>` / `--agent <id>`, so the
  * server can record a report itself for agents whose hooks do not see MCP
  * calls (CONTRACT §8).
  *
@@ -32,7 +34,7 @@
  * | goose       | `$GOOSE_PATH_ROOT/config/config.yaml`, else `~/.config/goose/config.yaml` (YAML) | `extensions` | `{type:"streamable_http", name, enabled, uri, …}` | `{type:"stdio", name, enabled, cmd, args, …}` | not documented; would be `failproofai__report` |
  *
  * Every agent supports Streamable HTTP, so the transport choice is purely
- * "is a daemon here". Every path is the user-scope one: MCP servers are a per
+ * "is a daemon live here". Every path is the user-scope one: MCP servers are a per
  * user (per profile) setting even where failproofai's hooks are per project.
  * Codex: user scope only. Its system config (`/etc/codex/config.toml`, where
  * root installs put the hooks) is not documented to honour `[mcp_servers]`, so
@@ -49,7 +51,7 @@
  * any other shape (for example the Cloud MCP gateway) is the user's: it is never
  * changed and is reported as a conflict.
  */
-import { existsSync, readFileSync, realpathSync } from "node:fs";
+import { accessSync, constants as fsConstants, existsSync, readFileSync, realpathSync } from "node:fs";
 import { execSync } from "node:child_process";
 import { homedir } from "node:os";
 import { basename, resolve } from "node:path";
@@ -59,7 +61,7 @@ import { isMap, type Document } from "yaml";
 import { writeConfigFileAtomic } from "./safe-config-write";
 import { codexHome } from "./codex-system-hooks";
 import { claudeConfigDir, getIntegration, readYamlDoc, writeYamlDoc, UnreadableAgentConfigError } from "./integrations";
-import { daemonSocketPresent } from "./daemon-client";
+import { daemonAnswersPing } from "./daemon-client";
 import { readEffectiveSelfReport, selfReportPort, selfReportSettingsFile, SELF_REPORT_SERVER_NAME } from "./self-report";
 import { listHermesProfiles } from "../../lib/hermes-profiles";
 import { listOpenClawProfiles } from "../../lib/openclaw-profiles";
@@ -131,6 +133,69 @@ function transportOf(entry: unknown): "http" | "stdio" | null {
   if (!isOurMcpEntry(entry)) return null;
   const e = entry as Record<string, unknown>;
   return ["url", "serverUrl", "uri"].some((k) => typeof e[k] === "string") ? "http" : "stdio";
+}
+
+/** The URL (http) or command (stdio) an entry of ours points at, for status. */
+function endpointOf(entry: unknown): string | null {
+  if (!isOurMcpEntry(entry)) return null;
+  const e = entry as Record<string, unknown>;
+  for (const key of ["url", "serverUrl", "uri"]) if (typeof e[key] === "string") return e[key] as string;
+  if (typeof e.command === "string") return e.command;
+  if (typeof e.cmd === "string") return e.cmd;
+  if (Array.isArray(e.command) && typeof e.command[0] === "string") return e.command[0];
+  return null;
+}
+
+// ── Liveness ────────────────────────────────────────────────────────────────
+
+/** How long the endpoint may take to answer an MCP initialize. */
+const SELF_REPORT_PROBE_TIMEOUT_MS = 1500;
+
+/**
+ * Whether `http://127.0.0.1:<port>/mcp` answers an MCP `initialize` as
+ * failproofai's server, within the timeout. Anything else (refused, timed out,
+ * a different server on the port) is false.
+ */
+export async function probeSelfReportHttp(port: number, timeoutMs = SELF_REPORT_PROBE_TIMEOUT_MS): Promise<boolean> {
+  try {
+    const res = await fetch(`http://127.0.0.1:${port}/mcp`, {
+      method: "POST",
+      headers: { "content-type": "application/json", accept: "application/json, text/event-stream" },
+      body: JSON.stringify({
+        jsonrpc: "2.0",
+        id: 1,
+        method: "initialize",
+        params: { protocolVersion: "2025-06-18", capabilities: {}, clientInfo: { name: "failproofai-probe", version: "1" } },
+      }),
+      signal: AbortSignal.timeout(timeoutMs),
+    });
+    if (!res.ok) return false;
+    const body = (await res.json()) as { result?: { serverInfo?: { name?: unknown } } };
+    return body?.result?.serverInfo?.name === SELF_REPORT_SERVER_NAME;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Whether agents should be pointed at the daemon's HTTP server: the daemon
+ * answers a ping on its socket AND its MCP endpoint answers an initialize. A
+ * socket file alone is not enough (a hard-killed daemon leaves one behind),
+ * and neither is the port alone (something else may hold it).
+ */
+export async function selfReportDaemonLive(port: number): Promise<boolean> {
+  const [ping, http] = await Promise.all([daemonAnswersPing(), probeSelfReportHttp(port)]);
+  return ping && http;
+}
+
+/** Whether a stdio command can be run (exists and is executable). */
+export function selfReportCommandRunnable(command: string): boolean {
+  try {
+    accessSync(command, fsConstants.X_OK);
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 // ── Per-agent targets ───────────────────────────────────────────────────────
@@ -504,7 +569,8 @@ export interface SyncSelfReportMcpOptions {
   binaryPath?: string;
   /** Test seams. */
   deps?: {
-    daemonSocketPresent?: () => boolean;
+    /** The live check (default `selfReportDaemonLive`); asked only when an agent wants the server. */
+    daemonLive?: (port: number) => Promise<boolean>;
     hooksInstalled?: (agent: IntegrationType) => boolean;
     settings?: SelfReportMcpSettings;
     resolveCliPath?: () => string | null;
@@ -545,15 +611,33 @@ function defaultHooksInstalled(agent: IntegrationType): boolean {
 /**
  * Add (enabled) or remove (disabled) our `failproofai` MCP server in every
  * agent. Enabled: only agents with failproofai hooks get it, and agents without
- * hooks are left as they are. Disabled: ours is removed from every agent's
- * file, hooked or not. Idempotent; never touches an entry that is not ours;
- * one agent's failure never stops the others.
+ * hooks are left as they are; HTTP when the daemon is live right now (see
+ * `selfReportDaemonLive`), stdio otherwise. Disabled: ours is removed from
+ * every agent's file, hooked or not. Idempotent; never touches an entry that
+ * is not ours; one agent's failure never stops the others.
  */
-export function syncSelfReportMcp(opts: SyncSelfReportMcpOptions = {}): SelfReportMcpResult[] {
+export async function syncSelfReportMcp(opts: SyncSelfReportMcpOptions = {}): Promise<SelfReportMcpResult[]> {
   const settings = opts.deps?.settings ?? readSelfReportMcpSettings();
   const enabled = opts.enabled ?? settings.enabled;
   const agents = opts.agents ?? INTEGRATION_TYPES;
-  const daemonHere = (opts.deps?.daemonSocketPresent ?? daemonSocketPresent)();
+  const seen = new Map<IntegrationType, boolean>();
+  const isHooked = opts.deps?.hooksInstalled ?? defaultHooksInstalled;
+  const hooked = (a: IntegrationType): boolean => {
+    if (!seen.has(a)) seen.set(a, isHooked(a));
+    return seen.get(a)!;
+  };
+  // The live check costs up to a couple of seconds against a wedged daemon, so
+  // it runs only when some agent will get an HTTP-capable entry.
+  const also = opts.alsoHooked ?? [];
+  const wanted =
+    enabled && agents.some((a) => SELF_REPORT_MCP_TARGETS[a]?.http && (also.includes(a) || hooked(a)));
+  const daemonHere = wanted ? await (opts.deps?.daemonLive ?? selfReportDaemonLive)(settings.port) : false;
+  return applySelfReportMcp({ ...opts, deps: { ...opts.deps, settings, hooksInstalled: hooked } }, enabled, daemonHere);
+}
+
+function applySelfReportMcp(opts: SyncSelfReportMcpOptions, enabled: boolean, daemonHere: boolean): SelfReportMcpResult[] {
+  const settings = opts.deps?.settings ?? readSelfReportMcpSettings();
+  const agents = opts.agents ?? INTEGRATION_TYPES;
   const hooked = opts.deps?.hooksInstalled ?? defaultHooksInstalled;
   const also = new Set(opts.alsoHooked ?? []);
   let cliPath: string | null | undefined = opts.binaryPath;
@@ -592,7 +676,7 @@ export function syncSelfReportMcp(opts: SyncSelfReportMcpOptions = {}): SelfRepo
       if (wantIt && !transport) {
         results.push({
           agent, path, action: "skipped", transport: null, status: "error",
-          detail: "no daemon is running here and the failproofai CLI was not found for stdio",
+          detail: "no daemon is answering here and the failproofai CLI was not found for stdio",
         });
         continue;
       }
@@ -636,9 +720,14 @@ export function syncSelfReportMcp(opts: SyncSelfReportMcpOptions = {}): SelfRepo
   return results;
 }
 
-/** Remove our entries from every agent (or `agents`), whatever the settings say. */
+/** Remove our entries from every agent (or `agents`), whatever the settings say. Needs no live check. */
 export function removeSelfReportMcp(opts: Omit<SyncSelfReportMcpOptions, "enabled"> = {}): SelfReportMcpResult[] {
-  return syncSelfReportMcp({ ...opts, enabled: false });
+  return applySelfReportMcp({ ...opts, enabled: false }, false, false);
+}
+
+/** Whether a sync changed any agent's file. */
+export function selfReportSyncChanged(results: readonly SelfReportMcpResult[]): boolean {
+  return results.some((r) => r.action === "added" || r.action === "updated" || r.action === "removed");
 }
 
 function errText(err: unknown): string {
@@ -679,6 +768,8 @@ export interface SelfReportRegistration {
   /** Our entry is in this file. */
   registered: boolean;
   transport: "http" | "stdio" | null;
+  /** The URL (http) or command (stdio) our entry points at. */
+  endpoint: string | null;
   /** A `failproofai` server that is not ours is there. */
   conflict: boolean;
   /** The file could not be read. */
@@ -699,12 +790,12 @@ export function selfReportRegistrationStatus(
     try {
       paths = target.paths();
     } catch (err) {
-      out.push({ agent, path: "", hooked: isHooked, registered: false, transport: null, conflict: false, error: errText(err) });
+      out.push({ agent, path: "", hooked: isHooked, registered: false, transport: null, endpoint: null, conflict: false, error: errText(err) });
       continue;
     }
     for (const path of paths) {
       if (!existsSync(path)) {
-        out.push({ agent, path, hooked: isHooked, registered: false, transport: null, conflict: false });
+        out.push({ agent, path, hooked: isHooked, registered: false, transport: null, endpoint: null, conflict: false });
         continue;
       }
       try {
@@ -713,10 +804,11 @@ export function selfReportRegistrationStatus(
           agent, path, hooked: isHooked,
           registered: cur.state === "ours",
           transport: cur.state === "ours" ? transportOf(cur.entry) : null,
+          endpoint: cur.state === "ours" ? endpointOf(cur.entry) : null,
           conflict: cur.state === "foreign",
         });
       } catch (err) {
-        out.push({ agent, path, hooked: isHooked, registered: false, transport: null, conflict: false, error: errText(err) });
+        out.push({ agent, path, hooked: isHooked, registered: false, transport: null, endpoint: null, conflict: false, error: errText(err) });
       }
     }
   }

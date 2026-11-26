@@ -1021,7 +1021,7 @@ async function installHooksImpl(
   // when the feature is on (and lose a stale one when it is off). Best-effort:
   // a config it cannot change is reported, never a failed install.
   try {
-    const results = syncSelfReportMcp({
+    const results = await syncSelfReportMcp({
       quiet: true,
       alsoHooked: writtenSettingsPaths.map((written) => written.cli),
       binaryPath,

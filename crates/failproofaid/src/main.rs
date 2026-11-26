@@ -278,8 +278,14 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
     // runs only with an ingest credential and an OSS machine needs this too.
     // Always listening; `tools/list` is empty while `self-report.json` says
     // off. A busy port logs a warning and the daemon carries on.
+    let (self_report_listening, self_report_ready) = std::sync::mpsc::channel();
     let mut self_report_mcp = paths::failproofai_home().ok().and_then(|home| {
-        fpai_collect::self_report::spawn(home, self_report::port(), shutdown.clone())
+        fpai_collect::self_report::spawn(
+            home,
+            self_report::port(),
+            shutdown.clone(),
+            self_report_listening,
+        )
     });
 
     // Handled rather than `?`-ed, because a bare `?` here returns past every
@@ -303,6 +309,11 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
         }
     };
     tracing::info!("listening on {}", socket_path.display());
+    // Self Reports: once the MCP server is listening and this socket is bound,
+    // re-run the agent sync so agents registered over stdio while the daemon
+    // was down move to its HTTP server (the sync's live check pings this
+    // socket and the MCP port). Only when self-report.json says enabled.
+    self_report::spawn_startup_sync(self_report_ready, shutdown.clone());
 
     let run_result = srv.run_until(shutdown);
 

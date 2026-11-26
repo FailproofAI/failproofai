@@ -1,6 +1,7 @@
 //! The hook-activity source.
 //!
-//! Tails `~/.failproofai/cache/hook-activity/*.jsonl` and turns each row into
+//! Tails `~/.failproofai/hook-activity/*.jsonl` (`$FAILPROOFAI_HOME/hook-activity`;
+//! layout 1 kept it under `cache/hook-activity`) and turns each row into
 //! AgentEye hook events. This is the capability `agenteye-collector`
 //! structurally cannot have: failproofai already sits in the hook path of
 //! every supported agent CLI, and nothing else on the machine does.

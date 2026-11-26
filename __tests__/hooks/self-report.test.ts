@@ -21,6 +21,7 @@ import {
   validateSelfReportCategories,
   validateSelfReportGuidance,
   writeEffectiveSelfReport,
+  selfReportInstructions,
 } from "../../src/hooks/self-report";
 import { handleSelfReportRpc, selfReportAgentId, selfReportFindSession } from "../../src/hooks/self-report-mcp";
 import { runSelfReportCommand } from "../../src/hooks/self-report-cli";
@@ -249,6 +250,7 @@ describe("failproofai mcp (stdio, spawned)", () => {
     expect(code).toBe(0);
     expect(replies.map((r) => r.id)).toEqual([1, 2, 4]);
     expect(replies[0]).toMatchObject({ result: { protocolVersion: "2025-06-18", capabilities: { tools: {} }, serverInfo: { name: "failproofai" } } });
+    expect((replies[0].result as Record<string, unknown>)).not.toHaveProperty("instructions");
     expect(replies[1]).toEqual({ jsonrpc: "2.0", id: 2, result: { tools: [] } });
     expect(replies[2]).toEqual({ jsonrpc: "2.0", id: 4, result: {} });
   }, 30_000);
@@ -256,6 +258,9 @@ describe("failproofai mcp (stdio, spawned)", () => {
   it("lists the report tool from self-report.json and answers a call with exactly Recorded.", async () => {
     writeEffectiveSelfReport({ enabled: true, categories: [{ name: "looping", description: "loops" }], guidance: "be terse" });
     const { replies } = await runMcp(["--agent", "claude"], [INIT, LIST, CALL], home);
+    expect((replies[0].result as Record<string, unknown>).instructions).toBe(
+      selfReportInstructions([{ name: "looping", description: "loops" }], "be terse"),
+    );
     const tools = (replies[1].result as { tools: Array<Record<string, unknown>> }).tools;
     expect(tools).toHaveLength(1);
     expect(tools[0].name).toBe("report");
@@ -379,6 +384,69 @@ describe("failproofai self-report enable | disable | status", () => {
     }
     expect(readEffectiveSelfReport()).toBeNull();
     expect(() => readFileSync(join(home, "config.json"))).toThrow();
+  });
+
+  const row = (o: Record<string, unknown>) => ({
+    agent: "claude", path: "/x", hooked: true, registered: true, transport: "http", endpoint: null, conflict: false, ...o,
+  }) as never;
+
+  it("status shows each agent's actual transport and whether its endpoint answers", async () => {
+    writeEffectiveSelfReport({ enabled: true });
+    const runnable = join(home, "failproofai");
+    writeFileSync(runnable, "#!/bin/sh\n", { mode: 0o755 });
+    const r = await runSelfReportCommand(["status"], {
+      skipSync: true,
+      probeEndpoint: async (_url, port) => port === 4319,
+      registrations: () => [
+        row({ agent: "claude", transport: "http", endpoint: "http://127.0.0.1:4319/mcp?agent=claude" }),
+        row({ agent: "codex", transport: "http", endpoint: "http://127.0.0.1:4999/mcp?agent=codex" }),
+        row({ agent: "cursor", transport: "stdio", endpoint: runnable }),
+        row({ agent: "factory", transport: "stdio", endpoint: join(home, "missing", "failproofai") }),
+      ],
+    });
+    const text = r.lines.join("\n");
+    expect(text).not.toContain("still works");
+    expect(text).toContain("Daemon MCP: http://127.0.0.1:4319/mcp (answering)");
+    expect(text).toMatch(/claude +http +http:\/\/127\.0\.0\.1:4319\/mcp\?agent=claude \(answering\)/);
+    expect(text).toMatch(/codex +http +http:\/\/127\.0\.0\.1:4999\/mcp\?agent=codex \(NOT answering\)/);
+    expect(text).toMatch(new RegExp(`cursor +stdio +${runnable} \\(runnable\\)`));
+    expect(text).toMatch(/factory +stdio +.*\(NOT runnable\)/);
+  });
+
+  it("status re-syncs agents left on an HTTP endpoint that is not answering", async () => {
+    writeEffectiveSelfReport({ enabled: true });
+    let synced = 0;
+    let rows = [row({ transport: "http", endpoint: "http://127.0.0.1:4319/mcp?agent=claude" })];
+    const r = await runSelfReportCommand(["status"], {
+      probeEndpoint: async () => false,
+      registrations: () => rows,
+      sync: async () => {
+        synced++;
+        rows = [row({ transport: "stdio", endpoint: "/usr/bin/failproofai" })];
+        return [{ agent: "claude", path: "/x", action: "updated", transport: "stdio", status: "ok" }];
+      },
+    });
+    expect(synced).toBe(1);
+    const text = r.lines.join("\n");
+    expect(text).toContain("Repaired:");
+    expect(text).toContain("updated in Claude Code (stdio)");
+    expect(text).toMatch(/claude +stdio/);
+
+    // Healthy, or skipSync: no write.
+    synced = 0;
+    rows = [row({ transport: "http", endpoint: "http://127.0.0.1:4319/mcp?agent=claude" })];
+    await runSelfReportCommand(["status"], { probeEndpoint: async () => true, registrations: () => rows, sync: async () => (synced++, []) });
+    await runSelfReportCommand(["status"], { skipSync: true, probeEndpoint: async () => false, registrations: () => rows, sync: async () => (synced++, []) });
+    expect(synced).toBe(0);
+  });
+
+  it("enable says \"Agents updated.\" only when a sync changed something", async () => {
+    const quiet = await runSelfReportCommand(["enable"], { probeEndpoint: async () => false, sync: async () => [{ agent: "claude", path: "/x", action: "unchanged", transport: "http", status: "ok" }] });
+    expect(quiet.lines.join("\n")).not.toContain("Agents updated.");
+    const changed = await runSelfReportCommand(["enable"], { probeEndpoint: async () => false, sync: async () => [{ agent: "claude", path: "/x", action: "added", transport: "http", status: "ok" }] });
+    expect(changed.lines.join("\n")).toContain("Agents updated.");
+    const off = await runSelfReportCommand(["disable"], { sync: async () => [] });
+    expect(off.lines).toEqual(["✓ Self Reports is off."]);
   });
 
   it("status with no settings file says it is off", async () => {

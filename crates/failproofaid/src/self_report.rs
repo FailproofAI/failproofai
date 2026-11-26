@@ -203,6 +203,46 @@ fn now_rfc3339() -> String {
 
 // ── `failproofai self-report sync` ───────────────────────────────────────────
 
+/// How long the startup sync waits for the MCP server to report its bind.
+const STARTUP_LISTEN_WAIT: Duration = Duration::from_secs(10);
+
+/// Whether the startup sync should run: `self-report.json` says enabled.
+fn enabled_on_disk(home: &Path) -> bool {
+    sr::read_settings(&sr::settings_path(home)).is_some_and(|s| s.enabled)
+}
+
+/// Run `failproofai self-report sync --quiet` once at startup, after the MCP
+/// server has bound its port (or failed to: then the sync's live check finds
+/// no endpoint and keeps agents on stdio, which is right), when the feature is
+/// on. Off its own thread: the accept loop starts right after this returns,
+/// and the sync child's ping waits in the socket's backlog until it does.
+pub fn spawn_startup_sync(
+    listening: std::sync::mpsc::Receiver<bool>,
+    shutdown: std::sync::Arc<AtomicBool>,
+) {
+    let started = std::thread::Builder::new()
+        .name("fpai-self-report-startup".to_string())
+        .spawn(move || {
+            let bound = listening.recv_timeout(STARTUP_LISTEN_WAIT);
+            if shutdown.load(Ordering::Relaxed) {
+                return;
+            }
+            let Ok(home) = crate::paths::failproofai_home() else {
+                return;
+            };
+            if !enabled_on_disk(&home) {
+                return;
+            }
+            if bound != Ok(true) {
+                tracing::warn!("Self Reports MCP server is not listening; syncing agents to stdio");
+            }
+            spawn_sync();
+        });
+    if let Err(err) = started {
+        tracing::warn!("could not start the Self Reports startup sync: {err}");
+    }
+}
+
 static SYNC_RUNNING: AtomicBool = AtomicBool::new(false);
 static SYNC_AGAIN: AtomicBool = AtomicBool::new(false);
 
@@ -238,8 +278,8 @@ fn run_sync_once() {
     // The CLI the service unit names, the same way the audit lane runs it.
     let Some(cli) = crate::audit_lane::cli_command() else {
         tracing::warn!(
-            "Self Reports changed but this service unit carries no FAILPROOFAI_CLI_CMD, \
-             so agent configs were not updated — run `failproofai self-report sync`"
+            "this service unit carries no FAILPROOFAI_CLI_CMD, so Self Reports agent \
+             configs were not synced — run `failproofai self-report sync`"
         );
         return;
     };
@@ -552,6 +592,21 @@ mod tests {
             run_with_timeout("echo hi", &std::env::temp_dir(), Duration::from_secs(5)).unwrap(),
             Some(0)
         );
+    }
+
+    #[test]
+    fn the_startup_sync_runs_only_when_the_file_says_enabled() {
+        let home = temp_path("startup").parent().unwrap().to_path_buf();
+        assert!(!enabled_on_disk(&home), "no file: off");
+        let mut s = effective(None, 4319, "2026-11-26T00:00:00Z".into());
+        sr::write_settings(&sr::settings_path(&home), &s).unwrap();
+        assert!(!enabled_on_disk(&home), "disabled");
+        s.enabled = true;
+        sr::write_settings(&sr::settings_path(&home), &s).unwrap();
+        assert!(enabled_on_disk(&home), "enabled");
+        std::fs::write(sr::settings_path(&home), "garbage").unwrap();
+        assert!(!enabled_on_disk(&home), "unparsable: off");
+        let _ = std::fs::remove_dir_all(&home);
     }
 
     #[test]

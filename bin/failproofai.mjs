@@ -810,7 +810,7 @@ async function runCli() {
     }
     lastSubcommand = "self-report";
     const { syncSelfReportMcp, selfReportSyncLines } = await import("../src/hooks/self-report-install");
-    const results = syncSelfReportMcp({ quiet: true });
+    const results = await syncSelfReportMcp({ quiet: true });
     const failed = results.some((r) => r.status === "error");
     if (!subArgs.includes("--quiet")) {
       const lines = selfReportSyncLines(results);
@@ -2201,7 +2201,7 @@ async function runCli() {
     if (result.applied) {
       try {
         const { syncSelfReportMcp, selfReportSyncLines } = await import("../src/hooks/self-report-install");
-        const lines = selfReportSyncLines(syncSelfReportMcp({ quiet: true }));
+        const lines = selfReportSyncLines(await syncSelfReportMcp({ quiet: true }));
         if (lines.length > 0) process.stdout.write(`${lines.join("\n")}\n`);
       } catch {
         // never fail setup over it

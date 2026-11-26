@@ -173,6 +173,22 @@ export async function daemonAcceptsConnections(
   });
 }
 
+/**
+ * Whether a daemon answers a `ping` with a `pong` within `responseTimeoutMs`.
+ *
+ * Unlike `daemonSocketPresent()` this proves a live daemon: a socket file left
+ * behind by a daemon that was killed hard refuses the connection. Used where a
+ * stale answer writes something lasting (the Self Reports transport choice),
+ * never on the hook path.
+ */
+export async function daemonAnswersPing(responseTimeoutMs = 1000): Promise<boolean> {
+  const attempt = await attemptDaemonRequest(
+    (protocolVersion) => ({ type: "ping", protocolVersion }),
+    { responseTimeoutMs },
+  );
+  return attempt.ok && attempt.message.type === "pong";
+}
+
 function socketPath(): string {
   if (process.env.FAILPROOFAI_DAEMON_SOCKET) return process.env.FAILPROOFAI_DAEMON_SOCKET;
   return daemonSocketPath();

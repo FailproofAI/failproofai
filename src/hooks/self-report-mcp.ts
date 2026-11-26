@@ -7,7 +7,7 @@
  * no daemon: it reads `self-report.json` on every request and writes its
  * fallback records straight into the custom-agents spool.
  *
- * Methods: `initialize`, `ping`, `tools/list` (the report tool, or nothing
+ * Methods: `initialize` (with `instructions` while the feature is on), `ping`, `tools/list` (the report tool, or nothing
  * while the feature is off), `tools/call` (always answers `Recorded.`).
  *
  * Recording (contract §8): an agent whose hooks see MCP calls (Claude Code,
@@ -36,6 +36,7 @@ import {
   readEnabledSelfReport,
   selfReportArgs,
   selfReportInputSchema,
+  selfReportInstructions,
 } from "./self-report";
 
 /** How far back a hook-activity session may be and still own a report. */
@@ -66,6 +67,17 @@ export function selfReportToolList(): Array<Record<string, unknown>> {
       inputSchema: selfReportInputSchema(settings.categories),
     },
   ];
+}
+
+/**
+ * The initialize result's `instructions`, or undefined while the feature is
+ * off (the field is then left out). Read at initialize time: a client reads it
+ * once per connection.
+ */
+export function selfReportServerInstructions(): string | undefined {
+  const settings = readEnabledSelfReport();
+  if (!settings) return undefined;
+  return selfReportInstructions(settings.categories, settings.guidance);
 }
 
 // ── Session attribution ─────────────────────────────────────────────────────
@@ -240,12 +252,15 @@ export async function handleSelfReportRpc(
   if (!hasId) return null; // notifications/initialized and friends
 
   switch (method) {
-    case "initialize":
+    case "initialize": {
+      const instructions = selfReportServerInstructions();
       return ok({
         protocolVersion: typeof params.protocolVersion === "string" ? params.protocolVersion : SELF_REPORT_DEFAULT_PROTOCOL,
         capabilities: { tools: {} },
         serverInfo: { name: SELF_REPORT_SERVER_NAME, version: selfReportCliVersion },
+        ...(instructions ? { instructions } : {}),
       });
+    }
     case "ping":
       return ok({});
     case "tools/list":

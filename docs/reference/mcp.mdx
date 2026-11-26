@@ -94,11 +94,15 @@ An AI tool can never touch API keys, users, settings, or organization administra
 
 ## Approving changes
 
-Writes ask you first if your client can show the prompt. You see what will change and select **Approve this change** to go ahead. If you decline or don't answer within about 4 minutes, nothing changes. Some clients stop waiting after a minute, so answer promptly.
+Every write asks you first. You see what will change and select **Approve this change** to go ahead. If you decline or don't answer within about 4 minutes, nothing changes. Some clients stop waiting after a minute, so answer promptly.
 
 <Warning>
-  A client that doesn't support prompts isn't asked, and a write runs as soon as the client makes the call. There, your client's own confirmation is the only one, so keep it on for write tools.
+  A client that can't show this prompt can't make changes: its writes are refused and nothing changes. Reading still works. Make the change in the dashboard instead, or use a client that supports MCP prompts (elicitation). If your client does support them, reconnecting it lets it say so.
 </Warning>
+
+## Fixing an insight with your own agent
+
+When you ask your AI tool to fix an insight itself, it gets the insight's context: what went wrong, the likely cause, the code the audit cited, and the linked repository. Issue and audit text can be written by others, so it arrives marked as data, never as instructions. Review what your agent changes before it commits.
 
 ## Connected apps and revoking
 

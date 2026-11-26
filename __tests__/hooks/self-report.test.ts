@@ -23,7 +23,13 @@ import {
   writeEffectiveSelfReport,
   selfReportInstructions,
 } from "../../src/hooks/self-report";
-import { handleSelfReportRpc, selfReportAgentId, selfReportFindSession } from "../../src/hooks/self-report-mcp";
+import {
+  handleSelfReportRpc,
+  selfReportAgentId,
+  selfReportCwdAffinity,
+  selfReportFindSession,
+  selfReportFindSessionMatch,
+} from "../../src/hooks/self-report-mcp";
 import { runSelfReportCommand } from "../../src/hooks/self-report-cli";
 
 const BINARY = resolve(__dirname, "..", "..", "bin", "failproofai.mjs");
@@ -101,8 +107,10 @@ describe("tool-name matching (contract §1)", () => {
     (name) => expect(isSelfReportToolName(name)).toBe(false),
   );
   it("lists the server-recorded integrations from the contract", () => {
-    expect(SELF_REPORT_SERVER_RECORDS).toEqual(["openclaw", "pi", "devin", "hermes", "goose", "factory", "antigravity", "copilot", "opencode"]);
-    for (const hookRecorded of ["claude", "codex", "cursor"]) expect(SELF_REPORT_SERVER_RECORDS).not.toContain(hookRecorded);
+    expect(SELF_REPORT_SERVER_RECORDS).toEqual([
+      "openclaw", "pi", "devin", "hermes", "goose", "factory", "antigravity", "copilot", "opencode", "cursor",
+    ]);
+    for (const hookRecorded of ["claude", "codex"]) expect(SELF_REPORT_SERVER_RECORDS).not.toContain(hookRecorded);
   });
 });
 
@@ -201,8 +209,55 @@ describe("MCP fallback recording helpers", () => {
       ].join("\n") + "\n",
     );
     expect(selfReportFindSession("pi", "/p", now)).toBe("s2");
-    expect(selfReportFindSession("pi", "/nowhere", now)).toBeNull();
+    // No row in or around this cwd: the agent's newest session anywhere.
+    expect(selfReportFindSession("pi", "/nowhere", now)).toBe("wrong-cwd");
+    expect(selfReportFindSession("goose", "/nowhere", now)).toBe("wrong-agent");
+    expect(selfReportFindSession("hermes", "/p", now)).toBeNull();
     expect(selfReportFindSession("pi", "/p", now + 10 * 3600_000)).toBeNull();
+  });
+
+  it("prefers an exact cwd, then an ancestor or descendant, then any session, and returns the row's cwd", () => {
+    const now = 1_800_000_000_000;
+    mkdirSync(join(home, "hook-activity"), { recursive: true });
+    const row = (o: Record<string, unknown>) => JSON.stringify({ eventType: "PreToolUse", decision: "allow", integration: "hermes", ...o });
+    writeFileSync(
+      join(home, "hook-activity", "current.jsonl"),
+      [
+        row({ cwd: "/root/.hermes/hermes-agent", sessionId: "below", timestamp: now - 5000 }),
+        row({ cwd: "/srv/elsewhere", sessionId: "unrelated-newest", timestamp: now - 10 }),
+        row({ cwd: "/", sessionId: "root-row", timestamp: now - 9000 }),
+      ].join("\n") + "\n",
+    );
+    // Server in /root, the agent's rows below it: the descendant wins over a newer unrelated one.
+    expect(selfReportFindSessionMatch("hermes", "/root", now)).toEqual({ sessionId: "below", cwd: "/root/.hermes/hermes-agent" });
+    // `/` is an ancestor of everything; the newest related row wins.
+    expect(selfReportFindSessionMatch("hermes", "/srv/elsewhere/sub", now)?.sessionId).toBe("unrelated-newest");
+    expect(selfReportFindSessionMatch("hermes", "/srv/elsewhere/", now)?.sessionId).toBe("unrelated-newest");
+    // Nothing related except `/`, which counts as an ancestor.
+    expect(selfReportFindSessionMatch("hermes", "/work/ws", now)?.sessionId).toBe("root-row");
+    expect(selfReportCwdAffinity("/a/b", "/a/bc")).toBe(0);
+    expect(selfReportCwdAffinity("/a/b", "/a/b/")).toBe(2);
+    expect(selfReportCwdAffinity("/a/b", "/a")).toBe(1);
+    expect(selfReportCwdAffinity("/a/b", undefined)).toBe(0);
+  });
+
+  it("files a fallback report under the matched row's agent, not the server's cwd", async () => {
+    writeEffectiveSelfReport({ enabled: true });
+    const now = Date.now();
+    mkdirSync(join(home, "hook-activity"), { recursive: true });
+    writeFileSync(
+      join(home, "hook-activity", "current.jsonl"),
+      JSON.stringify({ timestamp: now - 1000, eventType: "PreToolUse", integration: "openclaw", cwd: "/root/.openclaw/workspace", sessionId: "oc-1", decision: "allow" }) + "\n",
+    );
+    const reply = await handleSelfReportRpc(
+      { jsonrpc: "2.0", id: 1, method: "tools/call", params: { name: "report", arguments: { category: "looping", detail: "d" } } },
+      { agent: "openclaw", cwd: "/work/ws", now: () => now },
+    );
+    expect(reply).toMatchObject({ result: { content: [{ text: "Recorded." }] } });
+    const dir = join(home, "custom-agents", "events");
+    const [file] = readdirSync(dir);
+    const event = JSON.parse(readFileSync(join(dir, file), "utf8").trim());
+    expect(event).toMatchObject({ session_id: "oc-1", agent_id: "openclaw-workspace", integration: "openclaw" });
   });
 
   it("an unknown method gets -32601; a notification gets no reply; an unknown tool is an error result", async () => {
@@ -421,6 +476,11 @@ describe("failproofai self-report enable | disable | status", () => {
     expect(text).toMatch(/codex +http +http:\/\/127\.0\.0\.1:4999\/mcp\?agent=codex \(NOT answering\)/);
     expect(text).toMatch(new RegExp(`cursor +stdio +${runnable} \\(runnable\\)`));
     expect(text).toMatch(/factory +stdio +.*\(NOT runnable\)/);
+    // Cursor's line is followed by how to approve the server in cursor-agent; nobody else's is.
+    const lines = text.split("\n");
+    const at = lines.findIndex((l) => /^ +cursor +stdio/.test(l));
+    expect(lines[at + 1]).toContain("cursor-agent mcp enable failproofai");
+    expect(lines.filter((l) => l.includes("cursor-agent mcp enable"))).toHaveLength(1);
   });
 
   it("status says the daemon is not running, not \"not answering\", when there is no daemon", async () => {

@@ -34,6 +34,7 @@ export {
   SELF_REPORT_SERVER_RECORDS,
   isSelfReportToolName,
   isSelfReportCursorCall,
+  selfReportAntigravityWrappedArgs,
 } from "./self-report-names";
 import { SELF_REPORT_DETAIL_MAX, SELF_REPORT_DEFAULT_PORT } from "./self-report-names";
 

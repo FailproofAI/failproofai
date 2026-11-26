@@ -2173,6 +2173,43 @@ def _report_identity(callbacks: Any) -> "tuple[Any, str | None]":
     return _STATE.tracker.identity(None, key, warn=False), tool_call_id
 
 
+#: The model's tool-call id of the report call running in this context. LangChain
+#: hands `BaseTool.run`/`arun` the id of a `ToolCall` input, but a tool with a
+#: JSON-schema `args_schema` cannot have it injected into its function, so the
+#: report tool's own `run`/`arun` put it here for the function to read.
+_REPORT_TOOL_CALL_ID: "contextvars.ContextVar[str | None]" = contextvars.ContextVar(
+    "failproofai_langchain_report_tool_call_id", default=None
+)
+
+_REPORT_TOOL_CLASS: Any = None
+
+
+def _report_tool_class() -> Any:
+    """`StructuredTool` with `run`/`arun` that keep the call's `tool_call_id`."""
+    global _REPORT_TOOL_CLASS
+    if _REPORT_TOOL_CLASS is not None:
+        return _REPORT_TOOL_CLASS
+    from langchain_core.tools import StructuredTool
+
+    class _SelfReportTool(StructuredTool):
+        def run(self, tool_input: Any, *args: Any, tool_call_id: "str | None" = None, **kwargs: Any) -> Any:
+            token = _REPORT_TOOL_CALL_ID.set(tool_call_id)
+            try:
+                return super().run(tool_input, *args, tool_call_id=tool_call_id, **kwargs)
+            finally:
+                _REPORT_TOOL_CALL_ID.reset(token)
+
+        async def arun(self, tool_input: Any, *args: Any, tool_call_id: "str | None" = None, **kwargs: Any) -> Any:
+            token = _REPORT_TOOL_CALL_ID.set(tool_call_id)
+            try:
+                return await super().arun(tool_input, *args, tool_call_id=tool_call_id, **kwargs)
+            finally:
+                _REPORT_TOOL_CALL_ID.reset(token)
+
+    _REPORT_TOOL_CLASS = _SelfReportTool
+    return _REPORT_TOOL_CLASS
+
+
 def self_report_tool(
     *,
     session_id: str | None = None,
@@ -2189,10 +2226,11 @@ def self_report_tool(
     description come from `self-report.json` (or the defaults), read when the
     tool is built. Identity: the factory's `session_id`/`agent_id`, else the run
     this adapter is recording (when instrumented), else the ambient scope, else "unattributed".
+    `tool_call_id` is the model's call id: from the instrumented run, else the
+    `ToolCall` LangChain invoked the tool with (as `ToolNode` and
+    `create_agent` do), with or without instrumentation.
     Always returns `"Recorded."`.
     """
-    from langchain_core.tools import StructuredTool
-
     from failproofai_sdk import _self_report
 
     spec = _self_report.self_report_spec(categories=categories, guidance=guidance)
@@ -2204,6 +2242,8 @@ def self_report_tool(
             identity, tool_call_id = _report_identity(callbacks)
         except Exception:  # noqa: BLE001 - identity is best-effort; the report is not
             logger.debug("failproofai_sdk: could not resolve the report's run", exc_info=True)
+        if tool_call_id is None:
+            tool_call_id = _REPORT_TOOL_CALL_ID.get()
         return _self_report.record_framework_call(
             category, detail, identity=identity, session_id=session_id,
             agent_id=agent_id, tool_call_id=tool_call_id, fields=extra,
@@ -2215,7 +2255,7 @@ def self_report_tool(
     async def areport(category: str = "", detail: str = "", callbacks: Any = None) -> str:
         return _record(category, detail, callbacks)
 
-    return StructuredTool.from_function(
+    return _report_tool_class().from_function(
         func=report,
         coroutine=areport,
         name=spec["name"],

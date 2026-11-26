@@ -1605,6 +1605,9 @@ def test_self_report_tool_records_on_the_instrumented_agent(instrumented, tmp_pa
     assert report["framework"] == "llama_index"
     results = [e for e in only(events, "tool_result") if e["tool_name"] == "failproofai_report"]
     assert results and "Recorded." in str(results[0].get("output"))
+    # LlamaIndex hands the tool no call id: the report takes the open call's.
+    (use,) = [e for e in only(events, "tool_use") if e["tool_name"] == "failproofai_report"]
+    assert use["tool_call_id"] and report["tool_call_id"] == use["tool_call_id"]
 
 
 def test_self_report_tool_uses_the_ambient_scope_when_not_instrumented(tmp_path):

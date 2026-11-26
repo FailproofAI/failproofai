@@ -7,3 +7,4 @@ factory
 antigravity
 copilot
 opencode
+cursor

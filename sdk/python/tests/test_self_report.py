@@ -129,6 +129,18 @@ def test_the_open_tool_use_resolves_a_report_with_nothing_bound(recorded):
     fp.self_report("looping", "by tool name")  # no id: newest open report-tool call
     reports = [e for e in recorded if e["type"] == "self_report"]
     assert [(r["session_id"], r["agent_id"]) for r in reports] == [("s-open", "a-open")] * 2
+    # A report with no id takes the matched call's id.
+    assert [r["tool_call_id"] for r in reports] == ["call_8", "call_8"]
+
+
+def test_the_callers_tool_call_id_beats_the_matched_calls(recorded):
+    _runtime.event.tool_use(session_id="s-own", agent_id="a", tool_name="failproofai_report", tool_call_id="adapter-id")
+    fp.self_report("looping", "d", tool_call_id="model-id")
+    with fp.session("s-none"):
+        fp.self_report("looping", "no open call")
+    first, second = [e for e in recorded if e["type"] == "self_report"]
+    assert (first["session_id"], first["tool_call_id"]) == ("s-own", "model-id")
+    assert second["session_id"] == "s-none" and "tool_call_id" not in second
 
 
 def test_a_closed_or_foreign_session_tool_use_is_not_used(recorded):
@@ -337,6 +349,7 @@ def test_anthropic_tool_shape(home):
         "failproofai__report",
         "failproofai.report",
         "failproofai/report",
+        "failproofai-report",
     ],
 )
 def test_is_self_report_tool_accepts_every_spelling(name):
@@ -344,7 +357,7 @@ def test_is_self_report_tool_accepts_every_spelling(name):
 
 
 @pytest.mark.parametrize(
-    "name", ["report", "MCP:report", "bash", "mcp__other__report", "failproofai_report_x", "failproofai-report", "", None, 3]
+    "name", ["report", "MCP:report", "bash", "mcp__other__report", "failproofai_report_x", "other-report", "failproofai-reports", "", None, 3]
 )
 def test_is_self_report_tool_rejects_others(name):
     assert not fp.is_self_report_tool(name)

@@ -14,7 +14,8 @@
  * Codex, Cursor) is recorded by its PreToolUse hook, so this server writes
  * nothing for it. For an agent in `SELF_REPORT_SERVER_RECORDS` the server
  * appends one `self_report` event itself, attributed to the newest session of
- * that agent in this working directory seen by the hooks in the last 6 hours.
+ * that agent seen by the hooks in the last 6 hours: in this working directory,
+ * else in one above or below it, else anywhere (`selfReportFindSessionMatch`).
  *
  * Nothing but JSON-RPC goes to stdout: a stray byte there corrupts the agent's
  * MCP stream. Diagnostics go to stderr.
@@ -83,11 +84,43 @@ export function selfReportServerInstructions(): string | undefined {
 // ── Session attribution ─────────────────────────────────────────────────────
 
 /**
- * Newest session id for `integration` in `cwd` seen by the hooks within the
- * window, or null. Reads `current.jsonl` and, because it holds at most one
- * page (25 rows) and may have just rotated, the newest archived page too.
+ * How closely a hook row's cwd matches the server's: 2 the same directory, 1 an
+ * ancestor or descendant of it, 0 unrelated (or unknown). Trailing slashes are
+ * ignored; `/` is an ancestor of every absolute path.
  */
-export function selfReportFindSession(integration: string, cwd: string, now: number = Date.now()): string | null {
+export function selfReportCwdAffinity(want: string, have: unknown): 0 | 1 | 2 {
+  if (typeof have !== "string" || have === "") return 0;
+  const a = want.replace(/\/+$/, "");
+  const b = have.replace(/\/+$/, "");
+  if (a === b) return 2;
+  if (a === "" || b === "") return 1;
+  return b.startsWith(`${a}/`) || a.startsWith(`${b}/`) ? 1 : 0;
+}
+
+/** A hook session that owns a report, and the cwd its row had. */
+export interface SelfReportSessionMatch {
+  sessionId: string;
+  cwd: string | undefined;
+}
+
+/**
+ * The hook-activity session a report from `integration` belongs to, seen by
+ * the hooks within the window (6 h), or null. Most specific first: the newest
+ * session whose row has exactly this `cwd`; else the newest whose cwd is an
+ * ancestor or descendant of it; else the newest session of that integration
+ * anywhere. The stdio server's cwd is wherever the agent started it, which is
+ * often not the project (Hermes runs it from its own directory), so an exact
+ * match alone left those reports unattributed. The daemon's HTTP fallback
+ * (crates/fpai-collect/src/self_report.rs `find_session`) does the same.
+ *
+ * Reads `current.jsonl` and, because it holds at most one page (25 rows) and
+ * may have just rotated, the newest archived page too.
+ */
+export function selfReportFindSessionMatch(
+  integration: string,
+  cwd: string | undefined,
+  now: number = Date.now(),
+): SelfReportSessionMatch | null {
   const dir = hookActivityDir();
   const files: string[] = [join(dir, "current.jsonl")];
   try {
@@ -99,7 +132,7 @@ export function selfReportFindSession(integration: string, cwd: string, now: num
   } catch {
     // No activity directory: nothing to attribute to.
   }
-  let best: { ts: number; id: string } | null = null;
+  let best: { rank: number; ts: number; id: string; cwd: string | undefined } | null = null;
   for (const file of files) {
     let text: string;
     try {
@@ -117,20 +150,27 @@ export function selfReportFindSession(integration: string, cwd: string, now: num
       }
       const ts = typeof row.timestamp === "number" ? row.timestamp : NaN;
       if (
-        row.integration === integration &&
-        row.cwd === cwd &&
-        typeof row.sessionId === "string" &&
-        row.sessionId &&
-        Number.isFinite(ts) &&
-        now - ts <= SELF_REPORT_SESSION_WINDOW_MS &&
-        ts - now <= 60_000 &&
-        (!best || ts > best.ts)
+        row.integration !== integration ||
+        typeof row.sessionId !== "string" ||
+        !row.sessionId ||
+        !Number.isFinite(ts) ||
+        now - ts > SELF_REPORT_SESSION_WINDOW_MS ||
+        ts - now > 60_000
       ) {
-        best = { ts, id: row.sessionId };
+        continue;
+      }
+      const rank = cwd ? selfReportCwdAffinity(cwd, row.cwd) : 0;
+      if (!best || rank > best.rank || (rank === best.rank && ts > best.ts)) {
+        best = { rank, ts, id: row.sessionId, cwd: typeof row.cwd === "string" && row.cwd ? row.cwd : undefined };
       }
     }
   }
-  return best ? best.id : null;
+  return best ? { sessionId: best.id, cwd: best.cwd } : null;
+}
+
+/** The session id of `selfReportFindSessionMatch`, or null. */
+export function selfReportFindSession(integration: string, cwd: string, now: number = Date.now()): string | null {
+  return selfReportFindSessionMatch(integration, cwd, now)?.sessionId ?? null;
 }
 
 function selfReportMtime(path: string): number {
@@ -192,11 +232,15 @@ export interface SelfReportEventInput {
  */
 export async function writeSelfReportEvent(input: SelfReportEventInput): Promise<{ path: string; event: Record<string, unknown> }> {
   const now = input.now ?? Date.now();
-  const sessionId = input.sessionId ?? selfReportFindSession(input.integration, input.cwd, now) ?? "unattributed";
+  const match = input.sessionId === undefined ? selfReportFindSessionMatch(input.integration, input.cwd, now) : null;
+  const sessionId = input.sessionId ?? match?.sessionId ?? "unattributed";
   const event: Record<string, unknown> = {
     timestamp: new Date(now).toISOString(),
     session_id: sessionId,
-    agent_id: selfReportAgentId(input.integration, input.cwd),
+    // The agent the session's hook rows are filed under: from the matched
+    // row's cwd, not the server's own (they differ when the agent starts the
+    // server elsewhere).
+    agent_id: selfReportAgentId(input.integration, match?.cwd ?? input.cwd),
     type: "self_report",
     category: input.category,
     detail: input.detail,

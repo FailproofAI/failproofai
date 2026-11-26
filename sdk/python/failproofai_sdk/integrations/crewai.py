@@ -1704,6 +1704,29 @@ def _report_identity():
     return tracker.identity(None, key, warn=False)
 
 
+def _report_call_id() -> "str | None":
+    """The id of the CrewAI tool usage running this tool, or None.
+
+    CrewAI pushes a `tool_usage_started` scope (its event's `event_id`)
+    synchronously when it emits the event, before the tool runs; that id is
+    the `tool_call_id` this adapter records the `tool_use` under. It is read
+    here because the adapter's own handler runs on CrewAI's event bus and may
+    record that `tool_use` after the report.
+    """
+    if adapter._tracker is None:
+        # Not instrumented: no `tool_use` carries this id, so it joins nothing.
+        return None
+    from crewai.events import event_context
+
+    stack = getattr(event_context, "_event_id_stack", None)
+    if stack is None:
+        return None
+    for entry in reversed(stack.get()):
+        if isinstance(entry, tuple) and len(entry) == 2 and entry[1] == "tool_usage_started":
+            return entry[0] if isinstance(entry[0], str) and entry[0] else None
+    return None
+
+
 def self_report_tool(
     *,
     session_id: "str | None" = None,
@@ -1731,13 +1754,15 @@ def self_report_tool(
 
     def _run(self, category, detail) -> str:
         identity = None
+        tool_call_id = None
         try:
             identity = _report_identity()
+            tool_call_id = _report_call_id()
         except Exception:  # noqa: BLE001 - identity is best-effort; the report is not
             logger.debug("failproofai_sdk: could not resolve the report's crew run", exc_info=True)
         return _self_report.record_framework_call(
             category, detail, identity=identity, session_id=session_id,
-            agent_id=agent_id, fields=extra,
+            agent_id=agent_id, tool_call_id=tool_call_id, fields=extra,
         )
 
     _run.__annotations__ = _self_report.framework_signature(names)

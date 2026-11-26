@@ -4,7 +4,7 @@
  * Offer the tool to a model, and when the model calls it, record a
  * `self_report` event in the current session and answer `Recorded.`:
  *
- *     const tools = [failproofai.openaiTool()];               // or anthropicTool()
+ *     const tools = [failproofai.openaiTool()];   // or openaiResponsesTool(), anthropicTool()
  *     ...
  *     const answer = failproofai.handleToolCall(call.name, call.arguments, { toolCallId: call.id });
  *     if (answer !== null) { ...send `answer` back as the tool result... }
@@ -34,10 +34,12 @@ import {
   isSelfReportTool,
   normalizeSelfReportArgs,
   toAnthropicTool,
+  toOpenAIResponsesTool,
   toOpenAITool,
   validCategories,
   validGuidance,
   type AnthropicTool,
+  type OpenAIResponsesTool,
   type OpenAITool,
   type SelfReportCategory,
   type SelfReportSpec,
@@ -51,7 +53,13 @@ export {
   describeSelfReport,
   isSelfReportTool,
 } from "./self-report-spec.js";
-export type { AnthropicTool, OpenAITool, SelfReportCategory, SelfReportSpec } from "./self-report-spec.js";
+export type {
+  AnthropicTool,
+  OpenAIResponsesTool,
+  OpenAITool,
+  SelfReportCategory,
+  SelfReportSpec,
+} from "./self-report-spec.js";
 export type { SelfReportOptions } from "./events.js";
 
 /** What `self-report.json` says, with the defaults filled in. */
@@ -124,6 +132,11 @@ export function selfReportSpec(): SelfReportSpec {
 /** The report tool as an OpenAI Chat Completions `tools[]` entry. */
 export function openaiTool(): OpenAITool {
   return toOpenAITool(selfReportSpec());
+}
+
+/** The report tool as an OpenAI Responses API `tools[]` entry (flat function shape). */
+export function openaiResponsesTool(): OpenAIResponsesTool {
+  return toOpenAIResponsesTool(selfReportSpec());
 }
 
 /** The report tool as an Anthropic Messages `tools[]` entry. */

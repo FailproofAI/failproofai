@@ -55,7 +55,14 @@ import {
 } from "./policy-authority";
 import type { CustomHook } from "./policy-types";
 import { persistHookActivity } from "./hook-activity-store";
-import { isSelfReportCursorCall, isSelfReportToolName, selfReportArgs, SELF_REPORT_MCP_TOOL_NAME, SELF_REPORT_SERVER_RECORDS } from "./self-report";
+import {
+  isSelfReportCursorCall,
+  isSelfReportToolName,
+  selfReportAntigravityWrappedArgs,
+  selfReportArgs,
+  SELF_REPORT_MCP_TOOL_NAME,
+  SELF_REPORT_SERVER_RECORDS,
+} from "./self-report";
 import { deliveryHealth, deliveryHealthLine } from "./delivery-health";
 import { trackHookEvent, flushHookTelemetry } from "./hook-telemetry";
 import * as hookTelemetry from "./hook-telemetry";
@@ -764,8 +771,23 @@ export async function evaluateHookEvent(
 
     // The daemon health probe: proof the worker answers, not an agent event.
     // Answered before anything records scope errors or activity (B3).
+    // The allow `evaluation` is what the native policy-evaluation probe needs:
+    // the daemon answers a PolicyEvaluation only from a worker decision.
     if (isHealthProbe(eventType, parsed)) {
-      return { exitCode: 0, stdout: "", stderr: "" };
+      return {
+        exitCode: 0,
+        stdout: "",
+        stderr: "",
+        evaluation: {
+          decision: "allow",
+          policyName: null,
+          policyNames: [],
+          reason: null,
+          matchedPolicies: [],
+          durationMs: Math.round(performance.now() - startTime),
+          toolName: null,
+        },
+      };
     }
 
     normalizeCliPayload(cli, parsed);
@@ -779,8 +801,19 @@ export async function evaluateHookEvent(
     // tagging consistent (they read from `parsed.tool_name`).
     // Cursor's MCP hook names our tool `report` and the server separately;
     // file it under the one name before anything else reads the tool name.
+    // Cursor's preToolUse names one `MCP:report` with no server; only a payload
+    // that also names the server (`mcp_server_name: "failproofai"`) is ours.
     if (cli === "cursor" && isSelfReportCursorCall(parsed)) {
       parsed.tool_name = SELF_REPORT_MCP_TOOL_NAME;
+    }
+    // Antigravity's lazy MCP path wraps the call in `call_mcp_tool`; unwrap it
+    // only when the wrapper names server `failproofai` and tool `report`.
+    if (cli === "antigravity") {
+      const wrapped = selfReportAntigravityWrappedArgs(parsed.tool_name, parsed.tool_input);
+      if (wrapped) {
+        parsed.tool_name = SELF_REPORT_MCP_TOOL_NAME;
+        parsed.tool_input = wrapped.args;
+      }
     }
     const rawToolName = parsed.tool_name as string | undefined;
     const canonicalToolName = canonicalizeToolName(rawToolName, cli);

@@ -131,9 +131,14 @@ export function langchainSelfReportTool<T = unknown>(options: LangChainSelfRepor
   const tools = options.module ?? tryRequire<LangChainToolsModule>("@langchain/core/tools");
   const spec = selfReportSpec();
   const identity = identityOf(options);
-  const func = (input: unknown, runManager?: { runId?: unknown }, config?: { toolCall?: { id?: unknown } }) =>
+  // `tool()` calls `func(input, config)`, with the model's call at
+  // `config.toolCall`; a `DynamicStructuredTool` calls `func(input, runManager,
+  // config)`. Read the id from whichever argument carries it. A run id is not
+  // the model's call id, so it is never used.
+  type WithToolCall = { toolCall?: { id?: unknown } } | undefined;
+  const func = (input: unknown, second?: WithToolCall, third?: WithToolCall) =>
     Promise.resolve(
-      recordToolCall(input, { ...identity, toolCallId: pickId(config?.toolCall?.id, runManager?.runId) }),
+      recordToolCall(input, { ...identity, toolCallId: pickId(second?.toolCall?.id, third?.toolCall?.id) }),
     );
   const fields = { name: SELF_REPORT_TOOL_NAME, description: spec.description, schema: spec.inputSchema };
   if (typeof tools?.tool === "function") return tools.tool(func as never, fields as never) as T;
@@ -240,8 +245,9 @@ export interface LlamaIndexSelfReportToolOptions extends SelfReportToolOptions {
  * This breaks constructor checks". Pass `module` (your `FunctionTool`) to get
  * a `FunctionTool` instead.
  *
- * LlamaIndex hands a tool no call id, so the report finds its agent by the
- * open `tool_use` named `failproofai_report`, else the enclosing scope.
+ * LlamaIndex hands a tool no call id, so the report finds its agent, and
+ * takes its call id, from the open `tool_use` named `failproofai_report`
+ * (recorded by `instrument("llamaindex")`), else the enclosing scope.
  */
 export function llamaindexSelfReportTool<T = LlamaIndexSelfReportTool>(
   options: LlamaIndexSelfReportToolOptions = {},

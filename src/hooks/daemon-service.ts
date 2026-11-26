@@ -1603,7 +1603,9 @@ export async function probeDaemonPolicyEvaluation(): Promise<boolean> {
         event: "on_session_start",
         payload: {
           hook_event_name: "on_session_start",
-          source: "failproofai-native-policy-health-probe",
+          // The shared probe marker: the worker answers it before any activity
+          // row is written, and the daemon's hook watch does not count it.
+          source: HEALTH_PROBE_SOURCE,
         },
       },
       { responseTimeoutMs: DAEMON_PROBE_TIMEOUT_MS },

@@ -1171,6 +1171,22 @@ def test_the_capability_adds_the_tool_only_when_asked():
     assert "failproofai_report" in opted
 
 
+def test_a_hand_added_self_report_capability_records_the_run_without_instrument(emitted):
+    agent = Agent(
+        one_shot_tool_model("failproofai_report", _REPORT_ARGS, tool_call_id="call-cap"),
+        name="cap_agent",
+        capabilities=[FailproofAI(self_report=True)],
+    )
+    agent.run_sync("go")
+    rows = emitted()
+    assert types_of(rows)[0] == "agent_start" and types_of(rows)[-1] == "agent_end"
+    (start,) = of_type(rows, "agent_start")
+    (report,) = of_type(rows, "self_report")
+    assert report["session_id"] == start["session_id"] != "unattributed"
+    assert report["agent_id"] == "cap_agent"
+    assert report["tool_call_id"] == "call-cap"
+
+
 def test_instrument_self_report_option_adds_the_tool(emitted):
     _core.set_strict(False)
     _compat.set_strict_integrations(False)

@@ -37,6 +37,7 @@ import { readMergedHooksConfig } from "../../src/hooks/hooks-config";
 import { jevChecksInstalled } from "../../src/hooks/effective-reviewers";
 import { writePause } from "../../src/hooks/session-pause";
 import { _resetForTest } from "../../src/hooks/hook-activity-store";
+import { HEALTH_PROBE_SOURCE } from "../../src/hooks/health-probe";
 
 const SESSION = "sr-session";
 let home: string;
@@ -207,6 +208,8 @@ describe("Self Reports short-circuit", () => {
     ["goose", "failproofai__report"],
     ["pi", "mcp__failproofai__report"],
     ["devin", "mcp__failproofai__report"],
+    ["copilot", "failproofai-report"],
+    ["copilot", "failproofai/report"],
   ] as const)("allows %s's spelling %s past a deny-everything policy", async (cli, name) => {
     const out = await evaluateHookEvent(
       "PreToolUse",
@@ -217,7 +220,7 @@ describe("Self Reports short-circuit", () => {
     expect(loadAllCustomHooks).not.toHaveBeenCalled();
   });
 
-  it("allows and records Cursor's beforeMCPExecution for the failproofai server, with a schema-valid answer", async () => {
+  it("allows Cursor's beforeMCPExecution for the failproofai server, with a schema-valid answer, leaving the report to the server", async () => {
     const out = await evaluateHookEvent(
       "beforeMCPExecution",
       "cursor",
@@ -230,16 +233,88 @@ describe("Self Reports short-circuit", () => {
     expect(JSON.parse(out.stdout)).toEqual({ permission: "allow" });
     expect(loadAllCustomHooks).not.toHaveBeenCalled();
     const [row] = rows();
-    expect(row).toMatchObject({
-      eventType: "PreToolUse",
-      integration: "cursor",
-      toolName: "mcp__failproofai__report",
-      selfReport: { category: "missing_context", detail: "no repo access", source: "mcp" },
-    });
+    // Cursor is server-recorded: the MCP server writes the report, so the
+    // hook row must not carry a second one.
+    expect(row).toMatchObject({ eventType: "PreToolUse", integration: "cursor", toolName: "mcp__failproofai__report" });
+    expect(row.selfReport).toBeUndefined();
   });
 
   it("does not early-allow Cursor's bare MCP:report without a server name", async () => {
     const out = await evaluateHookEvent("preToolUse", "cursor", payload("MCP:report", { category: "looping", detail: "x" }));
     expect(out.evaluation?.decision).toBe("deny");
+  });
+
+  it("early-allows Cursor's preToolUse MCP:report only when the payload names server failproofai", async () => {
+    const ours = await evaluateHookEvent(
+      "preToolUse",
+      "cursor",
+      payload("MCP:report", { category: "looping", detail: "x" }, { mcp_server_name: "failproofai" }),
+    );
+    expect(ours.evaluation?.decision).toBe("allow");
+    expect(rows().pop()!.selfReport).toBeUndefined();
+    const theirs = await evaluateHookEvent(
+      "preToolUse",
+      "cursor",
+      payload("MCP:report", { category: "looping", detail: "x" }, { mcp_server_name: "linear" }),
+    );
+    expect(theirs.evaluation?.decision).toBe("deny");
+  });
+
+  describe("Antigravity's lazy MCP path (call_mcp_tool)", () => {
+    const agy = (args: Record<string, unknown>) =>
+      JSON.stringify({ conversationId: SESSION, workspacePaths: ["/tmp/project"], toolCall: { name: "call_mcp_tool", args } });
+
+    it("early-allows the wrapper when it names server failproofai and tool report", async () => {
+      const out = await evaluateHookEvent(
+        "PreToolUse",
+        "antigravity",
+        agy({ ServerName: "failproofai", ToolName: "report", Arguments: { category: "looping", detail: "again" } }),
+      );
+      expect(out.evaluation?.decision).toBe("allow");
+      expect(loadAllCustomHooks).not.toHaveBeenCalled();
+      const row = rows().pop()!;
+      expect(row).toMatchObject({ integration: "antigravity", toolName: "mcp__failproofai__report", sessionId: SESSION });
+      // Antigravity is server-recorded: the MCP server writes the report.
+      expect(row.selfReport).toBeUndefined();
+    });
+
+    it("accepts the wrapped arguments as a JSON string", async () => {
+      const out = await evaluateHookEvent(
+        "PreToolUse",
+        "antigravity",
+        agy({ ServerName: "failproofai", ToolName: "report", Arguments: JSON.stringify({ category: "looping", detail: "x" }) }),
+      );
+      expect(out.evaluation?.decision).toBe("allow");
+    });
+
+    it.each([
+      [{ ServerName: "linear", ToolName: "report", Arguments: {} }],
+      [{ ServerName: "failproofai", ToolName: "search", Arguments: {} }],
+      [{ ToolName: "report", Arguments: {} }],
+      [{ ServerName: "failproofai-evil", ToolName: "report" }],
+    ])("keeps any other wrapped call on the policy path: %j", async (args) => {
+      const out = await evaluateHookEvent("PreToolUse", "antigravity", agy(args));
+      expect(out.evaluation?.decision).toBe("deny");
+    });
+
+    it("does not unwrap call_mcp_tool for any other agent", async () => {
+      const out = await evaluateHookEvent(
+        "PreToolUse",
+        "claude",
+        payload("call_mcp_tool", { ServerName: "failproofai", ToolName: "report", Arguments: {} }),
+      );
+      expect(out.evaluation?.decision).toBe("deny");
+    });
+  });
+
+  it("answers the native policy-evaluation health probe with an allow and writes no activity row", async () => {
+    const out = await evaluateHookEvent(
+      "on_session_start",
+      "hermes",
+      JSON.stringify({ hook_event_name: "on_session_start", source: HEALTH_PROBE_SOURCE }),
+    );
+    expect(out.evaluation?.decision).toBe("allow");
+    expect(rows()).toEqual([]);
+    expect(loadAllCustomHooks).not.toHaveBeenCalled();
   });
 });

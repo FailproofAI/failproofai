@@ -42,8 +42,10 @@ import {
   defaultCategories,
   isSelfReportTool,
   toAnthropicTool,
+  toOpenAIResponsesTool,
   toOpenAITool,
   type AnthropicTool,
+  type OpenAIResponsesTool,
   type OpenAITool,
   type SelfReportSpec,
 } from "../self-report-spec.js";
@@ -292,6 +294,10 @@ export function selfReportSpec(): SelfReportSpec {
 
 export function openaiTool(): OpenAITool {
   return toOpenAITool(selfReportSpec());
+}
+
+export function openaiResponsesTool(): OpenAIResponsesTool {
+  return toOpenAIResponsesTool(selfReportSpec());
 }
 
 export function anthropicTool(): AnthropicTool {

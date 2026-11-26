@@ -62,7 +62,9 @@ module-level flag that makes every hook a straight pass-through, so an agent
 built before `uninstrument()` stops recording rather than recording into a
 half-dismantled adapter. By the same token, agents constructed *before*
 `instrument()` are not instrumented; construct them after, or pass
-`capabilities=[FailproofAI()]` yourself.
+`capabilities=[FailproofAI()]` yourself. A capability you pass yourself is
+yours: it records whether or not `instrument()` ran, and `uninstrument()` does
+not stop it.
 
 What is deliberately not captured
 ---------------------------------
@@ -132,7 +134,9 @@ _tracker = RunTracker(NAME, base_fields=framework_fields(NAME, DIST))
 
 # Flipped by install()/uninstall(). Agents built while instrumented keep the
 # capability instance, so this flag — not the patch — is what actually stops the
-# recording. Read on every hook, written only under the registry lock.
+# recording of the capability install() injected. A `FailproofAI()` the user
+# passed in `capabilities=` records regardless. Read on every hook, written
+# only under the registry lock.
 _enabled = False
 _capability: "FailproofAI | None" = None
 _patcher = _core.Patcher()
@@ -613,6 +617,13 @@ class FailproofAI(AbstractCapability):
         self.session_id = session_id
         self.id = id
         self.self_report = self_report
+        # False for one you construct yourself: it records whether or not
+        # `instrument()` ran. `install()` sets True on the one it injects, which
+        # then records only while instrumented (so `uninstrument()` stops it).
+        self._installed = False
+
+    def _recording(self) -> bool:
+        return _enabled or not getattr(self, "_installed", False)
 
     def get_toolset(self):
         """The FailproofAI report tool, when `self_report=True` was asked for.
@@ -638,7 +649,7 @@ class FailproofAI(AbstractCapability):
     # -- run --------------------------------------------------------------
 
     async def wrap_run(self, ctx, *, handler):
-        if not _enabled:
+        if not self._recording():
             return await handler()
         state = self._begin_run(ctx)
         try:
@@ -745,7 +756,7 @@ class FailproofAI(AbstractCapability):
     # -- model ------------------------------------------------------------
 
     async def wrap_model_request(self, ctx, *, request_context, handler):
-        if not _enabled:
+        if not self._recording():
             return await handler(request_context)
         state = self._begin_model(ctx, request_context)
         try:
@@ -849,7 +860,7 @@ class FailproofAI(AbstractCapability):
     # -- tools ------------------------------------------------------------
 
     async def wrap_tool_execute(self, ctx, *, call, tool_def, args, handler):
-        if not _enabled:
+        if not self._recording():
             return await handler(args)
         state = self._begin_tool(ctx, call, tool_def, args)
         try:
@@ -968,6 +979,7 @@ class _Adapter:
             session_id=options.get("session_id"),
             self_report=bool(options.get("self_report", False)),
         )
+        _capability._installed = True
         _patcher.patch(Agent, "__init__", _wrap_init(Agent.__init__))
         _enabled = True
 
@@ -1015,8 +1027,10 @@ def self_report_tool(
     The JSON schema is exactly `self_report_spec()["input_schema"]` (built from
     `self-report.json`, or the defaults). The call carries the model's
     `tool_call_id`. Identity: the factory's `session_id`/`agent_id`, else the
-    run `FailproofAI` is recording (it binds the run's scope), else the ambient
-    scope, else "unattributed". Always returns `"Recorded."`.
+    run a `FailproofAI` capability on the agent is recording (it binds the run's
+    scope; `FailproofAI(self_report=True)` alone does, with or without
+    `instrument()`), else the ambient scope, else "unattributed". Always
+    returns `"Recorded."`.
     """
     from pydantic_ai import Tool
 

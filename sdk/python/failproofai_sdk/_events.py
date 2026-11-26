@@ -349,14 +349,20 @@ class EventNamespace:
         self._open_tools.pop(tool_call_id, None)  # re-insert at the end: newest last
         self._open_tools[tool_call_id] = entry
 
-    def _report_identity(self, tool_call_id: "str | None", agent_id: "str | None") -> "tuple[str, str]":
-        """Where a `self_report` with no explicit `session_id` belongs.
+    def _report_identity(
+        self, tool_call_id: "str | None", agent_id: "str | None"
+    ) -> "tuple[str, str, str | None]":
+        """Where a `self_report` with no explicit `session_id` belongs, and its call id.
 
         Most specific first, within the ambient session when one is bound:
         the open `tool_use` with this `tool_call_id`; then the newest open
         `tool_use` of the report tool itself; then the enclosing scope; then
         `"unattributed"` with one warning. Never raises: a report is evidence,
         and losing it to a missing scope is the worse outcome.
+
+        The third item is the `tool_call_id` to record: the caller's, else the
+        matched `tool_use`'s own id, so a tool that cannot see the model's call
+        id (LlamaIndex, CrewAI) still joins the call the adapter recorded.
         """
         global _warned_unattributed
         from failproofai_sdk._self_report import is_self_report_tool
@@ -372,15 +378,20 @@ class EventNamespace:
         ]
         match = None
         if tool_call_id is not None:
-            match = next((e for c, e in candidates if c == tool_call_id), None)
+            match = next(((c, e) for c, e in candidates if c == tool_call_id), None)
         if match is None:
-            match = next((e for _, e in reversed(candidates) if is_self_report_tool(e[2])), None)
+            match = next(((c, e) for c, e in reversed(candidates) if is_self_report_tool(e[2])), None)
         if match is not None:
-            return match[0], agent_id if agent_id is not None else match[1]
+            call_id, entry = match
+            return (
+                entry[0],
+                agent_id if agent_id is not None else entry[1],
+                tool_call_id if tool_call_id is not None else call_id,
+            )
         if agent_id is None:
             agent_id = _context.agent_id()
         if ambient is not None:
-            return ambient, agent_id
+            return ambient, agent_id, tool_call_id
         if not _warned_unattributed:
             _warned_unattributed = True
             logger.warning(
@@ -389,7 +400,20 @@ class EventNamespace:
                 "`failproofai_sdk.session()`.",
                 UNATTRIBUTED_SESSION,
             )
-        return UNATTRIBUTED_SESSION, agent_id
+        return UNATTRIBUTED_SESSION, agent_id, tool_call_id
+
+    def _open_report_call_id(self, session_id: str) -> "str | None":
+        """The id of the newest open report-tool `tool_use` in this session, or None."""
+        from failproofai_sdk._self_report import is_self_report_tool
+
+        try:
+            open_tools = list(self._open_tools.items())
+        except RuntimeError:  # resized under us by another thread
+            return None
+        return next(
+            (c for c, e in reversed(open_tools) if e[0] == session_id and is_self_report_tool(e[2])),
+            None,
+        )
 
     def _validate_fields(self, fields: dict) -> None:
         bad = _RESERVED & fields.keys()
@@ -869,7 +893,10 @@ class EventNamespace:
         report-tool call) within the enclosing session; the enclosing scope;
         otherwise `"unattributed"` with one warning. A missing session never
         raises here, unlike the other event methods — the TypeError/ValueError
-        checks on the arguments themselves still apply.
+        checks on the arguments themselves still apply. With no `tool_call_id`
+        given, the report takes the id of the open report-tool `tool_use` it
+        was matched to (or, with an explicit `session_id`, the newest one open
+        in that session).
         """
         if "source" in fields:
             raise ValueError("source is set by the SDK (always \"sdk\") and cannot be passed by the caller")
@@ -885,7 +912,11 @@ class EventNamespace:
         if tool_call_id is not None:
             _validate_promoted_string("tool_call_id", tool_call_id)
         if session_id is None:
-            session_id, agent_id = self._report_identity(tool_call_id, agent_id)
+            session_id, agent_id, tool_call_id = self._report_identity(tool_call_id, agent_id)
+        elif tool_call_id is None:
+            # A framework tool that resolved its session from the adapter's run
+            # (LlamaIndex, CrewAI) but cannot see the model's call id.
+            tool_call_id = self._open_report_call_id(session_id)
         session_id, agent_id = _resolve_identity(session_id, agent_id)
         ts = self._now()
         self._writer.submit(

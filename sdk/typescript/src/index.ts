@@ -11,7 +11,7 @@
  *   SDK, Mastra and LlamaIndex.TS to the scopes above.
  * * **`event.*`** — the event methods, for anything the adapters do not
  *   cover.
- * * **Self Reports** — `selfReport()` and the report tool (`openaiTool()`,
+ * * **Self Reports** — `selfReport()` and the report tool (`openaiTool()`, `openaiResponsesTool()`,
  *   `anthropicTool()`, `handleToolCall()`), so an agent can say it is stuck.
  *
  * `sessionId` and `agentId` are optional on every event method: omitted, they
@@ -88,6 +88,7 @@ export {
   anthropicTool,
   handleToolCall,
   isSelfReportTool,
+  openaiResponsesTool,
   openaiTool,
   selfReport,
   selfReportSettings,
@@ -96,6 +97,7 @@ export {
 } from "./self-report.js";
 export type {
   AnthropicTool,
+  OpenAIResponsesTool,
   OpenAITool,
   SelfReportCategory,
   SelfReportSettings,

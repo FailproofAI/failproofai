@@ -38,6 +38,11 @@ export const SELF_REPORT_DEFAULT_PORT = 4319;
  * - `failproofai__report`: OpenClaw and Goose (`<server>__<tool>`).
  * - Cursor: see `isSelfReportCursorCall`; its preToolUse name `MCP:report`
  *   carries no server, so it is never matched by name alone.
+ * - Antigravity's lazy path, `call_mcp_tool`: see
+ *   `selfReportAntigravityWrappedArgs`; matched only on its server and tool.
+ * - `failproofai-report` (`<server>-<tool>`) and `failproofai/report`: Copilot
+ *   CLI's likely forms. Its hook spelling of an MCP tool is not documented and
+ *   could not be observed without a signed-in run, so both are exempt.
  * - `failproofai.report`, `failproofai/report`, `failproofai:report`,
  *   `mcp__failproofai_report`, `mcp:failproofai:report`,
  *   `mcp:failproofai/report`: other server-qualified forms, kept so a
@@ -55,6 +60,7 @@ const SELF_REPORT_TOOL_SPELLINGS: ReadonlySet<string> = new Set([
   "mcp__failproofai_report",
   "mcp:failproofai:report",
   "mcp:failproofai/report",
+  "failproofai-report",
 ]);
 
 /** True for the report tool under any agent's spelling of it (contract §1). */
@@ -78,9 +84,42 @@ export function isSelfReportCursorCall(payload: unknown): boolean {
 }
 
 /**
- * Integrations whose hooks do not see MCP tool calls, so the MCP server itself
- * records a report (contract §8). Claude Code, Codex and Cursor are recorded by
- * the hook. Kept identical to the Rust list.
+ * Antigravity's lazy (default) MCP path: the model calls the built-in
+ * `call_mcp_tool` wrapper with `{ServerName, ToolName, Arguments}` (agy 1.5's
+ * own description says to judge it by ServerName + ToolName). Returns the
+ * wrapped call's arguments when, and only when, the wrapper names server
+ * `failproofai` and tool `report`; `undefined` for any other server or tool,
+ * whose calls keep going through the policies.
+ */
+export function selfReportAntigravityWrappedArgs(toolName: unknown, toolInput: unknown): { args: unknown } | undefined {
+  if (typeof toolName !== "string" || toolName.toLowerCase() !== "call_mcp_tool") return undefined;
+  let input: unknown = toolInput;
+  if (typeof input === "string") {
+    try {
+      input = JSON.parse(input);
+    } catch {
+      return undefined;
+    }
+  }
+  if (!input || typeof input !== "object" || Array.isArray(input)) return undefined;
+  const i = input as Record<string, unknown>;
+  const pick = (...keys: string[]): unknown => keys.map((k) => i[k]).find((v) => v !== undefined);
+  const server = pick("ServerName", "serverName", "server_name");
+  const tool = pick("ToolName", "toolName", "tool_name");
+  if (typeof server !== "string" || server.toLowerCase() !== SELF_REPORT_SERVER_NAME) return undefined;
+  if (typeof tool !== "string") return undefined;
+  const t = tool.toLowerCase();
+  if (t !== SELF_REPORT_TOOL_NAME && !isSelfReportToolName(t)) return undefined;
+  return { args: pick("Arguments", "arguments", "args") ?? {} };
+}
+
+/**
+ * Integrations whose hooks do not see MCP tool calls, or do not see which
+ * server a call is for, so the MCP server itself records a report (contract
+ * §8). Claude Code and Codex are recorded by the hook. Cursor is here because
+ * the hook failproofai installs (preToolUse) names an MCP call `MCP:<tool>`
+ * with no server, and its MCP hook (beforeMCPExecution) is not installed.
+ * Kept identical to the Rust list.
  */
 export const SELF_REPORT_SERVER_RECORDS: readonly string[] = [
   "openclaw",
@@ -92,5 +131,6 @@ export const SELF_REPORT_SERVER_RECORDS: readonly string[] = [
   "antigravity",
   "copilot",
   "opencode",
+  "cursor",
 ];
 

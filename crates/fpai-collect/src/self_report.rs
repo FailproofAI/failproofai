@@ -67,10 +67,12 @@ pub const SESSION_LOOKBACK: Duration = Duration::from_secs(6 * 3600);
 /// The session id a fallback report carries when no session matches.
 pub const UNATTRIBUTED_SESSION: &str = "unattributed";
 
-/// Integrations whose hooks do not see MCP calls, so the MCP server records
-/// the report itself. Mirrors `SELF_REPORT_SERVER_RECORDS` in the TypeScript
-/// CLI. claude, codex and cursor are recorded by their hooks and must not be
-/// here, or each of their reports would arrive twice.
+/// Integrations whose hooks do not see MCP calls (or not which server a call
+/// is for), so the MCP server records the report itself. Mirrors
+/// `SELF_REPORT_SERVER_RECORDS` in the TypeScript CLI. claude and codex are
+/// recorded by their hooks and must not be here, or each of their reports
+/// would arrive twice. cursor is here: the hook failproofai installs names an
+/// MCP call `MCP:<tool>` with no server.
 pub const SERVER_RECORDS: &[&str] = &[
     "openclaw",
     "pi",
@@ -81,6 +83,7 @@ pub const SERVER_RECORDS: &[&str] = &[
     "antigravity",
     "copilot",
     "opencode",
+    "cursor",
 ];
 
 /// MCP protocol revisions this server answers in. The first is what it offers
@@ -742,8 +745,36 @@ impl Report {
     }
 }
 
-/// The newest session for `integration` (and `cwd` when known) in hook
-/// activity within [`SESSION_LOOKBACK`] of `now_ms`, with the cwd its row had.
+/// How closely a hook row's cwd matches the caller's: 2 the same directory,
+/// 1 an ancestor or descendant of it, 0 unrelated or unknown. Trailing slashes
+/// are ignored; `/` is an ancestor of every absolute path. Same as
+/// `selfReportCwdAffinity` in the CLI's stdio server.
+pub fn cwd_affinity(want: &str, have: Option<&str>) -> u8 {
+    let Some(have) = have.filter(|h| !h.is_empty()) else {
+        return 0;
+    };
+    let a = want.trim_end_matches('/');
+    let b = have.trim_end_matches('/');
+    if a == b {
+        return 2;
+    }
+    if a.is_empty() || b.is_empty() {
+        return 1;
+    }
+    let under = |child: &str, parent: &str| {
+        child
+            .strip_prefix(parent)
+            .is_some_and(|rest| rest.starts_with('/'))
+    };
+    u8::from(under(b, a) || under(a, b))
+}
+
+/// The session a report from `integration` belongs to, in hook activity
+/// within [`SESSION_LOOKBACK`] of `now_ms`, with the cwd its row had. Most
+/// specific first when `cwd` is known: the newest session in exactly that
+/// directory, else in one above or below it, else the newest of that
+/// integration anywhere. The CLI's stdio server (`selfReportFindSessionMatch`)
+/// does the same.
 pub fn find_session(
     home: &Path,
     integration: &str,
@@ -768,7 +799,7 @@ pub fn find_session(
         files.extend(pages.into_iter().rev().take(2));
     }
     let oldest = now_ms - SESSION_LOOKBACK.as_millis() as i64;
-    let mut best: Option<(i64, String, Option<String>)> = None;
+    let mut best: Option<(u8, i64, String, Option<String>)> = None;
     for file in files {
         let Ok(text) = read_tail(&file, 1024 * 1024) else {
             continue;
@@ -780,17 +811,20 @@ pub fn find_session(
             let Some(session) = row.session_id.as_deref().filter(|s| !s.is_empty()) else {
                 continue;
             };
-            if row.integration.as_deref() != Some(integration)
-                || row.timestamp < oldest
-                || cwd.is_some_and(|want| row.cwd.as_deref() != Some(want))
-                || best.as_ref().is_some_and(|(at, _, _)| *at >= row.timestamp)
+            if row.integration.as_deref() != Some(integration) || row.timestamp < oldest {
+                continue;
+            }
+            let rank = cwd.map_or(0, |want| cwd_affinity(want, row.cwd.as_deref()));
+            if best
+                .as_ref()
+                .is_some_and(|(r, at, _, _)| (*r, *at) >= (rank, row.timestamp))
             {
                 continue;
             }
-            best = Some((row.timestamp, session.to_string(), row.cwd.clone()));
+            best = Some((rank, row.timestamp, session.to_string(), row.cwd.clone()));
         }
     }
-    best.map(|(_, session, cwd)| (session, cwd))
+    best.map(|(_, _, session, cwd)| (session, cwd))
 }
 
 /// The last `max` bytes of a file, from the first whole line in them.
@@ -1191,6 +1225,17 @@ mod tests {
             find_session(&home, "openclaw", Some("/w/b"), now).map(|s| s.0),
             Some("s-older".to_string())
         );
+        // A descendant beats a newer unrelated row; no relation at all falls
+        // back to the newest session anywhere.
+        assert_eq!(
+            find_session(&home, "openclaw", Some("/w/b/sub"), now),
+            Some(("s-older".to_string(), Some("/w/b".to_string())))
+        );
+        assert_eq!(
+            find_session(&home, "openclaw", Some("/elsewhere"), now),
+            Some(("s-page".to_string(), Some("/w/a".to_string())))
+        );
+        assert_eq!(find_session(&home, "goose", Some("/w/a"), now), None);
         assert_eq!(find_session(&home, "goose", None, now), None);
         assert_eq!(
             find_session(&home, "openclaw", None, now + 8 * 3600 * 1000),
@@ -1227,6 +1272,41 @@ mod tests {
         );
         assert_eq!(event["session_id"], UNATTRIBUTED_SESSION);
         assert_eq!(event["agent_id"], "goose-proj");
+        let _ = fs::remove_dir_all(home);
+    }
+
+    #[test]
+    fn cwd_affinity_ranks_exact_then_related() {
+        assert_eq!(cwd_affinity("/a/b", Some("/a/b/")), 2);
+        assert_eq!(cwd_affinity("/a/b", Some("/a")), 1);
+        assert_eq!(cwd_affinity("/a", Some("/a/b/c")), 1);
+        assert_eq!(cwd_affinity("/a/b", Some("/a/bc")), 0);
+        assert_eq!(cwd_affinity("/root", Some("/")), 1);
+        assert_eq!(cwd_affinity("/a", None), 0);
+        assert_eq!(cwd_affinity("/a", Some("")), 0);
+    }
+
+    #[test]
+    fn a_fallback_report_takes_the_matched_rows_agent() {
+        let home = temp_home("row-agent");
+        let dir = home.join("hook-activity");
+        fs::create_dir_all(&dir).unwrap();
+        let now = 1_800_000_000_000_i64;
+        fs::write(
+            dir.join("current.jsonl"),
+            json!({"timestamp": now - 1000, "eventType": "PreToolUse", "integration": "hermes",
+                   "sessionId": "local-1", "cwd": "/root/.hermes/hermes-agent", "decision": "allow"})
+            .to_string()
+                + "\n",
+        )
+        .unwrap();
+        let report = Report {
+            category: "looping".into(),
+            detail: "d".into(),
+        };
+        let event = fallback_event(&home, "hermes", Some("/root"), &report, now);
+        assert_eq!(event["session_id"], "local-1");
+        assert_eq!(event["agent_id"], "hermes-hermes-agent");
         let _ = fs::remove_dir_all(home);
     }
 
@@ -1341,7 +1421,7 @@ mod tests {
     fn golden_server_records() {
         let got: Vec<String> = SERVER_RECORDS.iter().map(|s| s.to_string()).collect();
         assert_eq!(got, golden_lines("server-records.golden.txt"));
-        for hooked in ["claude", "codex", "cursor"] {
+        for hooked in ["claude", "codex"] {
             assert!(!SERVER_RECORDS.contains(&hooked), "{hooked}");
         }
     }

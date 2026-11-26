@@ -470,7 +470,7 @@ agent({ llm, tools: [selfReportTool<typeof myTool>(), ...tools] });
 With a provider SDK directly:
 
 ```ts
-const tools = [failproofai.openaiTool(), ...yours];   // or failproofai.anthropicTool()
+const tools = [failproofai.openaiTool(), ...yours];   // or openaiResponsesTool(), anthropicTool()
 // for each tool call the model makes:
 const answer = failproofai.handleToolCall(call.name, call.arguments, { toolCallId: call.id });
 if (answer !== null) toolResults.push({ id: call.id, content: answer });   // "Recorded."

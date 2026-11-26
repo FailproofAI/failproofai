@@ -1337,6 +1337,9 @@ class TestSelfReportTool:
             "missing_context", "The input file is not provided.", "sdk",
         )
         assert report["framework"] == "crewai"
+        # CrewAI's tool sees no call id: the report takes the open call's.
+        (use,) = [e for e in events if e["type"] == "tool_use" and e["tool_name"] == "failproofai_report"]
+        assert use["tool_call_id"] and report["tool_call_id"] == use["tool_call_id"]
 
     def test_ambient_and_explicit_identity(self, emitted):
         from failproofai_sdk.integrations.crewai import self_report_tool

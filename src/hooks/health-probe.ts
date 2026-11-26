@@ -9,7 +9,16 @@
  */
 export const HEALTH_PROBE_SOURCE = "failproofai-health-probe";
 
+/**
+ * The events a probe is sent as: the shell-hook probe's `SessionStart`, and the
+ * native policy-evaluation probe's Hermes `on_session_start`
+ * (`probeDaemonPolicyEvaluation`), which also carries this source so it writes
+ * no activity row either (it used to leave a phantom `hermes` SessionStart on
+ * machines with no Hermes).
+ */
+const HEALTH_PROBE_EVENTS: ReadonlySet<string> = new Set(["SessionStart", "on_session_start"]);
+
 /** Whether a parsed hook payload is the daemon health probe. */
 export function isHealthProbe(eventType: string, parsed: Record<string, unknown>): boolean {
-  return eventType === "SessionStart" && parsed.source === HEALTH_PROBE_SOURCE && parsed.session_id === undefined;
+  return HEALTH_PROBE_EVENTS.has(eventType) && parsed.source === HEALTH_PROBE_SOURCE && parsed.session_id === undefined;
 }

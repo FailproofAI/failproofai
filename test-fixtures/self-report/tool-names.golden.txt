@@ -9,3 +9,4 @@ mcp_failproofai_report
 mcp__failproofai_report
 mcp:failproofai:report
 mcp:failproofai/report
+failproofai-report

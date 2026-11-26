@@ -837,7 +837,9 @@ export class EventNamespace {
    * an adapter or a `toolCall()` scope recorded — so a report made inside a
    * framework's tool loop lands on the agent whose loop called it; the
    * enclosing scope; and last `"unattributed"`, with one warning. Unlike every
-   * other event method a missing session never throws.
+   * other event method a missing session never throws. With no `toolCallId`
+   * given, the report takes the id of the open report-tool `tool_use` it was
+   * matched to (with an explicit `sessionId`, the newest one open there).
    */
   selfReport(category: string, detail?: string | null, options: SelfReportOptions = {}): void {
     const { sessionId, agentId, toolCallId, ...fields } = options;
@@ -849,7 +851,7 @@ export class EventNamespace {
     }
     this.validateFields(fields);
     const callId = typeof toolCallId === "string" && toolCallId !== "" ? toolCallId : undefined;
-    const [sid, aid] = this.reportIdentity(sessionId, agentId, callId);
+    const [sid, aid, matchedCallId] = this.reportIdentity(sessionId, agentId, callId);
     this.writer.submit(
       selfReportEvent({
         timestamp: this.fmtTs(this.now()),
@@ -858,7 +860,7 @@ export class EventNamespace {
         category: typeof category === "string" ? category : category === undefined || category === null ? "" : String(category),
         detail: clipDetail(typeof detail === "string" ? detail : detail === undefined || detail === null ? "" : String(detail)),
         source: "sdk",
-        toolCallId: callId,
+        toolCallId: callId ?? matchedCallId,
         extraFields: fields,
       }),
     );
@@ -870,16 +872,23 @@ export class EventNamespace {
     sessionId: string | null | undefined,
     agentId: string | null | undefined,
     toolCallId: string | undefined,
-  ): [string, string] {
-    if (sessionId !== undefined && sessionId !== null) return resolveIdentity(sessionId, agentId);
+  ): [string, string, string | undefined] {
+    if (sessionId !== undefined && sessionId !== null) {
+      // An explicit session (a tool that resolved it itself) still takes the
+      // id of the report-tool call open in that session, when it has none.
+      const open = toolCallId === undefined ? this.openToolFor(undefined, sessionId) : undefined;
+      return [...resolveIdentity(sessionId, agentId), open?.id];
+    }
     const ambient = context.sessionId();
     const leaf = this.openToolFor(toolCallId, ambient);
     if (leaf !== undefined) {
       const aid = agentId ?? leaf.agentId;
       validateIdentity("agentId", aid);
-      return [leaf.sessionId, aid];
+      // The matched call's own id, so a tool that cannot see the model's call
+      // id (LlamaIndex) still joins the `tool_use` the adapter recorded.
+      return [leaf.sessionId, aid, leaf.id];
     }
-    if (ambient !== null) return resolveIdentity(null, agentId);
+    if (ambient !== null) return [...resolveIdentity(null, agentId), undefined];
     if (!this.warnedUnattributed) {
       this.warnedUnattributed = true;
       logger.warn(
@@ -890,7 +899,7 @@ export class EventNamespace {
     }
     const aid = agentId ?? context.agentId();
     validateIdentity("agentId", aid);
-    return [UNATTRIBUTED_SESSION, aid];
+    return [UNATTRIBUTED_SESSION, aid, undefined];
   }
 
   /**

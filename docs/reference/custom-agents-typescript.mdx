@@ -411,7 +411,7 @@ createReactAgent({ llm, tools: [selfReportTool<StructuredToolInterface>(), ...to
 `@failproofai/sdk/mastra` and `@failproofai/sdk/llamaindex` export the same `selfReportTool()`. With a provider SDK directly:
 
 ```ts
-const tools = [failproofai.openaiTool(), ...yours];   // or failproofai.anthropicTool()
+const tools = [failproofai.openaiTool(), ...yours];   // or openaiResponsesTool(), anthropicTool()
 const answer = failproofai.handleToolCall(call.name, call.arguments, { toolCallId: call.id });
 if (answer !== null) toolResults.push({ id: call.id, content: answer });   // "Recorded."
 ```

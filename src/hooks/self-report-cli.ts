@@ -30,6 +30,7 @@ import {
 import { INTEGRATION_TYPES } from "./types";
 import { daemonSocketPresent, isDaemonConfigured } from "./daemon-client";
 import {
+  SELF_REPORT_CURSOR_APPROVAL_HINT,
   probeSelfReportHttp,
   selfReportCommandRunnable,
   selfReportRegistrationStatus,
@@ -141,8 +142,9 @@ function selfReportRegistrationLines(rows: readonly SelfReportRegistration[], he
         state = `stdio  ${r.endpoint ?? "?"} ${ok ? "(runnable)" : "(NOT runnable)"}`;
       } else state = r.hooked ? "not registered" : "registered, no hooks";
       if (r.registered && !r.hooked) state += ", no hooks";
-      return `  ${r.agent.padEnd(12)} ${state}`;
-    }),
+      const line = `  ${r.agent.padEnd(12)} ${state}`;
+      return r.agent === "cursor" && r.registered ? [line, `  ${"".padEnd(12)} ${SELF_REPORT_CURSOR_APPROVAL_HINT}`] : [line];
+    }).flat(),
   ];
 }
 

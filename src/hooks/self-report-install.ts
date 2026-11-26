@@ -22,16 +22,30 @@
  * |-------------|------------------------------------------------------|----------------------------|----------------------------------------------|-------------------------------------|----------------------|
  * | claude      | `$CLAUDE_CONFIG_DIR/.claude.json`, else `~/.claude.json` | `mcpServers`           | `{type:"http", url}`                         | `{type:"stdio", command, args}`     | yes, PreToolUse `mcp__failproofai__report` |
  * | codex       | `$CODEX_HOME/config.toml` (TOML)                     | `[mcp_servers.failproofai]`| `url = "…"`                                  | `command`, `args`                   | yes, PreToolUse `mcp__failproofai__report` |
- * | copilot     | `$COPILOT_HOME/mcp-config.json`, else `~/.copilot/`  | `mcpServers`               | `{type:"http", url, tools:["*"]}`            | `{type:"local", command, args, tools:["*"]}` | not documented |
- * | cursor      | `~/.cursor/mcp.json` (editor and cursor-agent)       | `mcpServers`               | `{url}`                                      | `{type:"stdio", command, args}`     | yes, `beforeMCPExecution` (tool_name `report` + mcp_server_name) and preToolUse `MCP:report` |
+ * | copilot     | `$COPILOT_HOME/mcp-config.json`, else `~/.copilot/`  | `mcpServers`               | `{type:"http", url, tools:["*"]}`            | `{type:"local", command, args, tools:["*"]}` | not documented; likely `failproofai-report` (exempt, with `failproofai/report`) |
+ * | cursor      | `~/.cursor/mcp.json` (editor and cursor-agent)       | `mcpServers`               | `{url}`                                      | `{type:"stdio", command, args}`     | `beforeMCPExecution` (tool_name `report` + mcp_server_name; not installed) and preToolUse `MCP:report` with no server, so the server records |
  * | opencode    | `~/.config/opencode/opencode.json` (as the hooks)    | v1 `mcp.<n>`; v2 `mcp.servers.<n>` | `{type:"remote", url, enabled:true}` (v2: no `enabled`) | `{type:"local", command:[…]}` | yes, plugin `tool.execute.before` `failproofai_report` |
- * | pi          | `$PI_CODING_AGENT_DIR/mcp.json`, else `~/.pi/agent/` | `mcpServers`               | `{url}`                                      | `{command, args}`                   | yes per docs, `tool_call` `mcp__failproofai__report` |
+ * | pi          | `$PI_CODING_AGENT_DIR/mcp.json`, else `~/.pi/agent/` | `mcpServers`               | `{url, exposure:"direct"}`                   | `{command, args, exposure:"direct"}` | yes per docs, `tool_call` `mcp__failproofai__report` |
  * | hermes      | every profile's `config.yaml` (YAML, HERMES_HOME)    | `mcp_servers`              | `{url}`                                      | `{command, args}`                   | yes per source, `pre_tool_call` `mcp_failproofai_report` |
  * | openclaw    | every profile's `openclaw.json`                      | `mcp.servers`              | `{url, transport:"streamable-http"}`         | `{command, args}`                   | likely (source only), `before_tool_call` `failproofai__report` |
  * | factory     | `~/.factory/mcp.json`                                | `mcpServers`               | `{type:"http", url}`                         | `{type:"stdio", command, args}`     | yes, `mcp__failproofai__report` (regex sees `failproofai___report`) |
  * | devin       | `~/.config/devin/mcp_config.json`                    | `mcpServers`               | `{url, transport:"http"}`                    | `{command, args}`                   | yes, `mcp__failproofai__report` |
  * | antigravity | `~/.gemini/config/mcp_config.json`                   | `mcpServers`               | `{serverUrl}`                                | `{command, args}`                   | not documented; eager tools `mcp_failproofai_report`, lazy (default) via `call_mcp_tool` |
  * | goose       | `$GOOSE_PATH_ROOT/config/config.yaml`, else `~/.config/goose/config.yaml` (YAML) | `extensions` | `{type:"streamable_http", name, enabled, uri, …}` | `{type:"stdio", name, enabled, cmd, args, …}` | not documented; would be `failproofai__report` |
+ *
+ * Cursor approval (cursor-agent 2026.11): servers from a *project*
+ * `.cursor/mcp.json` load only once approved; approvals live per project root
+ * in `~/.cursor/projects/<root>/mcp-approvals.json`, keyed by a hash of the
+ * root and the entry. `~/.cursor/mcp.json` is user scope and needs none, except
+ * when cursor-agent runs with the home directory as its project, where it is
+ * also the project file. That key changes with every project and transport, so
+ * failproofai writes no approval; sync and status point at
+ * `cursor-agent mcp enable failproofai` instead.
+ *
+ * Deferred tools: Pi's entry sets `exposure: "direct"` (its default `codemode`
+ * shows the model only the server's name). Hermes (`tools.tool_search`) and
+ * OpenClaw (`tools.toolSearch`) defer MCP tools with a global switch only;
+ * neither has a per-server "always load" option, so their entries set none.
  *
  * Every agent supports Streamable HTTP, so the transport choice is purely
  * "is a daemon live here". Every path is the user-scope one: MCP servers are a per
@@ -297,7 +311,9 @@ export const SELF_REPORT_MCP_TARGETS: Record<IntegrationType, McpTarget> = {
     agent: "pi", format: "json", http: true,
     paths: () => [resolve(process.env.PI_CODING_AGENT_DIR?.trim() || resolve(homedir(), ".pi", "agent"), "mcp.json")],
     container: () => ["mcpServers"],
-    entry: (t) => plainEntry(t),
+    // Pi's default exposure, `codemode`, puts only the server's name in the
+    // prompt; `direct` declares `report` and its description like a built-in.
+    entry: (t) => ({ ...plainEntry(t), exposure: "direct" }),
   },
   hermes: {
     agent: "hermes", format: "yaml", http: true,
@@ -734,6 +750,10 @@ function errText(err: unknown): string {
   return err instanceof Error ? err.message : String(err);
 }
 
+/** What to do when cursor-agent has not loaded the server yet. */
+export const SELF_REPORT_CURSOR_APPROVAL_HINT =
+  "cursor-agent: if `cursor-agent mcp list` shows failproofai as needing approval, run `cursor-agent mcp enable failproofai`";
+
 /** One line per change, conflict or error; nothing for an agent left as it was. */
 export function selfReportSyncLines(results: readonly SelfReportMcpResult[]): string[] {
   const out: string[] = [];
@@ -741,6 +761,7 @@ export function selfReportSyncLines(results: readonly SelfReportMcpResult[]): st
     const name = displayName(r.agent);
     if (r.action === "added" || r.action === "updated") {
       out.push(`✓ Self Reports MCP server ${r.action === "added" ? "added to" : "updated in"} ${name} (${r.transport}): ${r.path}`);
+      if (r.agent === "cursor") out.push(`  ${SELF_REPORT_CURSOR_APPROVAL_HINT}`);
     } else if (r.action === "removed") {
       out.push(`✓ Self Reports MCP server removed from ${name}: ${r.path}`);
     } else if (r.status === "conflict" || r.status === "error") {

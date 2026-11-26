@@ -92,7 +92,8 @@ _MAX_GUIDANCE = 2000
 #: `failproofai` as each agent prefixes it: Claude Code, Codex, Pi, Factory and
 #: Devin `mcp__failproofai__report`, Factory's matcher form
 #: `failproofai___report`, Hermes and Antigravity `mcp_failproofai_report`,
-#: OpenClaw and Goose `failproofai__report`, plus other server-qualified forms.
+#: OpenClaw and Goose `failproofai__report`, Copilot CLI (likely, unverified)
+#: `failproofai-report` / `failproofai/report`, plus other server-qualified forms.
 #: The CLI and the TypeScript SDK test the same list against the repository's
 #: test-fixtures/self-report/tool-names.golden.txt.
 TOOL_SPELLINGS: tuple[str, ...] = (
@@ -107,6 +108,7 @@ TOOL_SPELLINGS: tuple[str, ...] = (
     "mcp__failproofai_report",
     "mcp:failproofai:report",
     "mcp:failproofai/report",
+    "failproofai-report",
 )
 _TOOL_NAMES = frozenset(TOOL_SPELLINGS)
 

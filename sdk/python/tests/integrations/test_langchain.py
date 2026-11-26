@@ -2413,6 +2413,33 @@ def test_self_report_tool_ambient_scope_without_instrumentation(tmp_path):
     assert (report["session_id"], report["agent_id"]) == ("lc-ambient", "main")
 
 
+def test_self_report_tool_takes_the_tool_call_id_without_instrumentation(tmp_path):
+    # ToolNode invokes the tool with the model's ToolCall; the id comes from it.
+    with failproofai_sdk.session("lc-plain"):
+        _report_graph(adapter.self_report_tool()).invoke(empty_state())
+    (report,) = only(read_events(tmp_path), "self_report")
+    assert (report["session_id"], report["tool_call_id"]) == ("lc-plain", "call_report")
+
+
+def test_self_report_tool_takes_the_tool_call_id_on_the_async_path_without_instrumentation(tmp_path):
+    import asyncio
+
+    with failproofai_sdk.session("lc-plain-async"):
+        asyncio.run(_report_graph(adapter.self_report_tool()).ainvoke(empty_state()))
+    (report,) = only(read_events(tmp_path), "self_report")
+    assert report["tool_call_id"] == "call_report"
+
+
+def test_self_report_tool_invoked_with_a_tool_call_dict_records_its_id(tmp_path):
+    tool_ = adapter.self_report_tool(session_id="lc-direct")
+    tool_.invoke({"name": "failproofai_report", "args": {"category": "looping", "detail": "d"},
+                  "id": "call_direct", "type": "tool_call"})
+    tool_.invoke({"category": "looping", "detail": "plain args"})
+    first, second = only(read_events(tmp_path), "self_report")
+    assert first["tool_call_id"] == "call_direct"
+    assert "tool_call_id" not in second
+
+
 def test_self_report_tool_explicit_identity_wins(tmp_path, instrumented):
     _report_graph(adapter.self_report_tool(session_id="lc-s", agent_id="lc-a")).invoke(empty_state())
     (report,) = only(read_events(tmp_path), "self_report")

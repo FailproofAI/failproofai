@@ -186,7 +186,20 @@ describe("event.selfReport and selfReport()", () => {
       agent("reporter", () => failproofai.event.toolUse({ toolName: "failproofai_report", toolCallId: "own-id" })),
     );
     failproofai.selfReport("looping", "d");
-    expect((await reports())[0]).toMatchObject({ session_id: "s2", agent_id: "reporter" });
+    expect((await reports())[0]).toMatchObject({ session_id: "s2", agent_id: "reporter", tool_call_id: "own-id" });
+  });
+
+  it("keeps the caller's call id over the matched tool call's", async () => {
+    await session({ sessionId: "s3" }, () =>
+      agent("reporter", () => failproofai.event.toolUse({ toolName: "failproofai_report", toolCallId: "adapter-id" })),
+    );
+    failproofai.selfReport("looping", "d", { toolCallId: "model-id" });
+    expect((await reports())[0]).toMatchObject({ session_id: "s3", tool_call_id: "model-id" });
+  });
+
+  it("records no call id when no open tool call matches", async () => {
+    await session({ sessionId: "s4" }, () => failproofai.selfReport("looping", "d"));
+    expect((await reports())[0]!.tool_call_id).toBeUndefined();
   });
 
   it("inside a scope, only looks at that scope's open tool calls", async () => {
@@ -306,6 +319,16 @@ describe("the raw tool helpers", () => {
     });
   });
 
+  it("shapes the OpenAI Responses API entry flat, like Python's openai_responses_tool()", () => {
+    expect(failproofai.openaiResponsesTool()).toEqual({
+      type: "function",
+      name: "failproofai_report",
+      description: DEFAULT_DESCRIPTION,
+      parameters: DEFAULT_SCHEMA,
+    });
+    expect(edge.openaiResponsesTool()).toEqual(failproofai.openaiResponsesTool());
+  });
+
   it.each([
     ["failproofai_report", true],
     ["mcp__failproofai__report", true],
@@ -400,10 +423,21 @@ describe("the framework tools", () => {
         fields: unknown;
       }>({ module: { tool }, sessionId: "fixed", agentId: "lc" });
       expect(built.fields).toEqual({ name: "failproofai_report", description: DEFAULT_DESCRIPTION, schema: DEFAULT_SCHEMA });
-      expect(await built.func({ category: "looping", detail: "d" }, { runId: "run-1" }, { toolCall: { id: "call_9" } })).toBe(
-        "Recorded.",
-      );
+      // `tool()` calls `func(input, config)`: the call is on the 2nd argument.
+      expect(await built.func({ category: "looping", detail: "d" }, { toolCall: { id: "call_9" } })).toBe("Recorded.");
       expect((await reports())[0]).toMatchObject({ session_id: "fixed", agent_id: "lc", tool_call_id: "call_9" });
+    });
+
+    it("reads the call id from the 3rd argument for DynamicStructuredTool, never a run id", async () => {
+      class DynamicStructuredTool {
+        constructor(readonly fields: { func: (...args: unknown[]) => Promise<string> }) {}
+      }
+      const built = langchainTool<DynamicStructuredTool>({ module: { DynamicStructuredTool }, sessionId: "fixed" });
+      await built.fields.func({ category: "looping", detail: "d" }, { runId: "run-1" }, { toolCall: { id: "call_3" } });
+      await built.fields.func({ category: "looping", detail: "d" }, { runId: "run-2" });
+      const recorded = await reports();
+      expect(recorded[0]).toMatchObject({ tool_call_id: "call_3" });
+      expect(recorded[1]!.tool_call_id).toBeUndefined();
     });
 
     it("falls back to DynamicStructuredTool", () => {
@@ -467,7 +501,8 @@ describe("the framework tools", () => {
           expect(await built.call({ category: "looping", detail: "d" })).toBe("Recorded.");
         }),
       );
-      expect((await reports())[0]).toMatchObject({ session_id: "s1", agent_id: "li" });
+      // LlamaIndex hands the tool no call id: it takes the open call's.
+      expect((await reports())[0]).toMatchObject({ session_id: "s1", agent_id: "li", tool_call_id: "li-1" });
     });
 
     it("uses FunctionTool.from when handed one", () => {

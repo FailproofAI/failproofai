@@ -147,6 +147,25 @@ describe("transport choice", () => {
     expect(entryIn("goose")).toMatchObject({ type: "stdio", cmd: CLI, args: ["mcp", "--agent", "goose"], enabled: true });
   });
 
+  it("exposes Pi's entry directly, on both transports, and moves an old entry to it", async () => {
+    await syncSelfReportMcp(enabledOpts({ agents: ["pi"] }, false));
+    expect(entryIn("pi")).toEqual({ command: CLI, args: ["mcp", "--agent", "pi"], exposure: "direct" });
+    // An entry written before `exposure` was set is ours and gets updated.
+    put(pathOf("pi"), JSON.stringify({ mcpServers: { failproofai: { url: "http://127.0.0.1:4319/mcp?agent=pi" } } }));
+    const r = await syncSelfReportMcp(enabledOpts({ agents: ["pi"] }, true));
+    expect(r[0]).toMatchObject({ action: "updated", transport: "http" });
+    expect(entryIn("pi")).toEqual({ url: "http://127.0.0.1:4319/mcp?agent=pi", exposure: "direct" });
+  });
+
+  it("tells the user how cursor-agent approves the server when Cursor's entry is written", async () => {
+    const { selfReportSyncLines } = await import("../../src/hooks/self-report-install");
+    const lines = selfReportSyncLines(await syncSelfReportMcp(enabledOpts({ agents: ["cursor", "claude"] })));
+    expect(lines.filter((l) => l.includes("cursor-agent mcp enable failproofai"))).toHaveLength(1);
+    expect(lines.findIndex((l) => l.includes("cursor-agent mcp enable"))).toBe(
+      lines.findIndex((l) => l.includes("Cursor")) + 1,
+    );
+  });
+
   it("switches an existing entry between transports in place", async () => {
     await syncSelfReportMcp(enabledOpts({ agents: ["codex"] }, false));
     const r = await syncSelfReportMcp(enabledOpts({ agents: ["codex"] }, true));

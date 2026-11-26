@@ -55,15 +55,19 @@ failproofai registers one MCP server, named `failproofai`, in each agent's user-
 
 The transport is chosen when the entries are written, from a live check: the daemon must answer on its socket and its MCP endpoint must answer. When the daemon starts, it re-runs `failproofai self-report sync`, so agents move to HTTP. If the daemon stops, `failproofai self-report status` finds agents pointing at an endpoint that does not answer and moves them back to stdio. A running agent keeps the server it loaded at startup.
 
-Both transports send the model short server instructions in the MCP handshake: when to report, the category names, and your guidance. Some agents, Claude Code among them, load MCP tools only on demand. They add a server's instructions to the system prompt, though, so the model knows the tool exists.
+Both transports send the model short server instructions in the MCP handshake: when to report, the category names, and your guidance. Some agents, Claude Code among them, load MCP tools only on demand. They add a server's instructions to the system prompt, though, so the model knows the tool exists. Copilot CLI passes a server's instructions to the model only for servers on its allowlist (or with `--allow-all-mcp-server-instructions`), so on Copilot the model may see only the tool's own description.
 
-Where an agent's hooks see MCP tool calls, the hook records the report. Where they do not, failproofai's MCP server records it and attributes it to that agent's newest session in the same working directory.
+Pi shows the model only a server's name by default. failproofai's Pi entry sets `"exposure": "direct"`, so `report` and its description reach the model like a built-in tool. Hermes and OpenClaw defer MCP tools behind their tool search (`tools.tool_search` / `tools.toolSearch`). Neither has a per-server setting to load one server directly, so failproofai leaves that setting alone, and the model sees `report` in the deferred tool listing.
+
+Where an agent's hooks see MCP tool calls and the server they belong to, the hook records the report. Where they do not, failproofai's MCP server records it. It attributes the report to that agent's newest session seen by the hooks in the last 6 hours: in the server's working directory if there is one, else in a directory above or below it, else anywhere on the machine. The agent the report is filed under comes from that session's own hook events.
+
+Over HTTP, the server does not know the agent's working directory: the MCP entry is per user, not per project, so its URL carries only `?agent=`. So the report goes to that agent's newest session on the machine. If two sessions of one such agent run at the same time, in different projects, a report can land on the other session. Over stdio, the working directory narrows the match first.
 
 | Agent | Where the server is registered | Recorded by |
 | --- | --- | --- |
 | Claude Code | `~/.claude.json` | Hook |
 | Codex | `~/.codex/config.toml` | Hook |
-| Cursor | `~/.cursor/mcp.json` | Hook, through Cursor's MCP hook (`beforeMCPExecution`). failproofai does not install that hook yet, so reports from Cursor are not recorded yet |
+| Cursor | `~/.cursor/mcp.json` | MCP server. Cursor's tool hook names the call `MCP:report`, without the server, so it cannot tell our `report` from another server's |
 | Copilot CLI | `~/.copilot/mcp-config.json` | MCP server |
 | OpenCode | `~/.config/opencode/opencode.json` | MCP server |
 | Pi | `~/.pi/agent/mcp.json` | MCP server |
@@ -74,11 +78,25 @@ Where an agent's hooks see MCP tool calls, the hook records the report. Where th
 | Antigravity | `~/.gemini/config/mcp_config.json` | MCP server |
 | Goose | `~/.config/goose/config.yaml` | MCP server |
 
+If `cursor-agent mcp list` shows `failproofai` as "not loaded (needs approval)", run `cursor-agent mcp enable failproofai`. cursor-agent asks for approval of servers in a project's `.cursor/mcp.json`, so this happens, for example, when it runs with your home directory as the project. The approval is per project and per entry, so failproofai does not write it for you. The sync and `status` output say so for Cursor.
+
+On Antigravity, an MCP call can come through its `call_mcp_tool` wrapper. The hook lets that call through ahead of the policies only when the wrapper names server `failproofai` and tool `report`. A wrapped call to any other server goes through the policies as usual.
+
 `failproofai self-report status` shows whether the daemon's endpoint answers (`not running (agents use stdio)` when no daemon is set up here) and, per agent, whether the server is registered, over which transport, and whether that endpoint answers (HTTP) or the command can run (stdio). If an MCP server named `failproofai` that failproofai did not write is already there, such as the [Cloud MCP gateway](/reference/mcp) added under that name, it is left alone and reported as a conflict.
 
 ## Containers
 
 In a container, run `failproofaid` in the foreground as the container's main process, with the agent started beside it. Reports, like every other hook event, reach Failproof AI Cloud only through the daemon: without it, the agent still gets the tool over stdio, but reports stay on disk in the container.
+
+A daemon you start by hand has no service unit, so it has none of the commands the unit would give it:
+
+- **The startup sync** runs the CLI named by `FAILPROOFAI_CLI_CMD`. Without it, the daemon looks for `failproofai` on `PATH`, then in npm's global bin (`$NPM_CONFIG_PREFIX/bin`, `~/.npm-global/bin`, `/usr/local/bin`) and `~/.bun/bin`. After an `npm install -g failproofai`, agents therefore move to HTTP when the daemon starts. If the CLI is somewhere else, set `FAILPROOFAI_CLI_CMD` to the command that runs it, or run `failproofai self-report sync` once the daemon is up.
+- **Hermes and OpenClaw** need the daemon's policy worker. Without `FAILPROOFAI_WORKER_CMD`, the daemon looks for `dist/worker.mjs` relative to its working directory, and `policies --install --cli hermes` (or `openclaw`) refuses. Set it to the worker in the installed package:
+
+  ```bash
+  export FAILPROOFAI_WORKER_CMD="node $(npm root -g)/failproofai/dist/worker.mjs"
+  failproofaid &
+  ```
 
 ## Your own agents
 

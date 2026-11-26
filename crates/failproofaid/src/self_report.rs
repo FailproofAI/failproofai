@@ -9,7 +9,7 @@
 //! must not keep the tool registered in every agent).
 
 use std::io;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Stdio};
 use std::sync::Mutex;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -274,12 +274,69 @@ pub fn spawn_sync() {
     }
 }
 
+/// The command that runs the CLI for `self-report sync`: the service unit's
+/// `FAILPROOFAI_CLI_CMD` (the same one the audit lane runs), else a
+/// `failproofai` found on `PATH` or in the npm/bun global bin directories. A
+/// daemon started by hand in a container has no unit and so no
+/// `FAILPROOFAI_CLI_CMD`, while the CLI an `npm install -g` put there is right
+/// beside it.
+fn sync_cli_command() -> Option<String> {
+    crate::audit_lane::cli_command().or_else(|| {
+        let home = std::env::var_os("HOME").map(PathBuf::from);
+        let dirs = global_bin_dirs(
+            std::env::var_os("NPM_CONFIG_PREFIX")
+                .or_else(|| std::env::var_os("npm_config_prefix"))
+                .map(PathBuf::from),
+            home.as_deref(),
+        );
+        find_cli(std::env::var_os("PATH").as_deref(), &dirs).map(|path| shell_quote(&path))
+    })
+}
+
+/// npm's (and bun's) global bin directories, beyond `PATH`: `$NPM_CONFIG_PREFIX/bin`,
+/// `~/.npm-global/bin`, `/usr/local/bin` (npm's default prefix in the Node
+/// images), `~/.bun/bin`.
+fn global_bin_dirs(npm_prefix: Option<PathBuf>, home: Option<&Path>) -> Vec<PathBuf> {
+    let mut dirs = Vec::new();
+    if let Some(prefix) = npm_prefix.filter(|p| !p.as_os_str().is_empty()) {
+        dirs.push(prefix.join("bin"));
+    }
+    if let Some(home) = home {
+        dirs.push(home.join(".npm-global").join("bin"));
+    }
+    dirs.push(PathBuf::from("/usr/local/bin"));
+    if let Some(home) = home {
+        dirs.push(home.join(".bun").join("bin"));
+    }
+    dirs
+}
+
+/// The first executable `failproofai` in `PATH`, then in `extra`.
+fn find_cli(path_var: Option<&std::ffi::OsStr>, extra: &[PathBuf]) -> Option<PathBuf> {
+    use std::os::unix::fs::PermissionsExt;
+    let on_path = path_var.map(|p| std::env::split_paths(p).collect::<Vec<_>>());
+    on_path
+        .unwrap_or_default()
+        .into_iter()
+        .chain(extra.iter().cloned())
+        .filter(|dir| dir.is_absolute())
+        .map(|dir| dir.join("failproofai"))
+        .find(|candidate| {
+            std::fs::metadata(candidate)
+                .is_ok_and(|m| m.is_file() && m.permissions().mode() & 0o111 != 0)
+        })
+}
+
+/// `path` as one `sh` word.
+fn shell_quote(path: &Path) -> String {
+    format!("'{}'", path.display().to_string().replace('\'', "'\\''"))
+}
+
 fn run_sync_once() {
-    // The CLI the service unit names, the same way the audit lane runs it.
-    let Some(cli) = crate::audit_lane::cli_command() else {
+    let Some(cli) = sync_cli_command() else {
         tracing::warn!(
-            "this service unit carries no FAILPROOFAI_CLI_CMD, so Self Reports agent \
-             configs were not synced — run `failproofai self-report sync`"
+            "no FAILPROOFAI_CLI_CMD and no `failproofai` on PATH or in the npm global bin, \
+             so Self Reports agent configs were not synced — run `failproofai self-report sync`"
         );
         return;
     };
@@ -623,6 +680,47 @@ mod tests {
         assert!(problem.contains(&format!("uid {me}")), "{problem}");
         assert!(problem.contains(&format!("uid {other}")), "{problem}");
         let _ = std::fs::remove_dir_all(&home);
+    }
+
+    #[test]
+    fn the_cli_is_found_on_path_then_in_the_global_bins() {
+        use std::os::unix::fs::PermissionsExt;
+        let root = temp_path("find-cli").parent().unwrap().to_path_buf();
+        let (a, b, global) = (root.join("a"), root.join("b"), root.join("g/bin"));
+        for d in [&a, &b, &global] {
+            std::fs::create_dir_all(d).unwrap();
+        }
+        let make = |dir: &Path, mode: u32| {
+            let f = dir.join("failproofai");
+            std::fs::write(&f, "#!/bin/sh\n").unwrap();
+            std::fs::set_permissions(&f, std::fs::Permissions::from_mode(mode)).unwrap();
+            f
+        };
+        // Not executable in `a`: skipped. Executable in `b`: found.
+        make(&a, 0o644);
+        let in_b = make(&b, 0o755);
+        let path = std::env::join_paths([&a, &b]).unwrap();
+        assert_eq!(find_cli(Some(path.as_os_str()), &[]), Some(in_b));
+        // Nothing on PATH: the global bin.
+        let in_global = make(&global, 0o755);
+        let empty = std::env::join_paths([&a]).unwrap();
+        assert_eq!(
+            find_cli(Some(empty.as_os_str()), std::slice::from_ref(&global)),
+            Some(in_global)
+        );
+        assert_eq!(find_cli(None, std::slice::from_ref(&a)), None);
+        // A relative PATH entry is never used.
+        assert_eq!(find_cli(Some(std::ffi::OsStr::new("relative")), &[]), None);
+
+        let dirs = global_bin_dirs(Some(root.join("g")), Some(Path::new("/home/u")));
+        assert_eq!(dirs[0], global);
+        assert!(dirs.contains(&PathBuf::from("/home/u/.npm-global/bin")));
+        assert!(dirs.contains(&PathBuf::from("/usr/local/bin")));
+        assert_eq!(
+            shell_quote(Path::new("/x/it's/failproofai")),
+            "'/x/it'\\''s/failproofai'"
+        );
+        let _ = std::fs::remove_dir_all(&root);
     }
 
     #[test]

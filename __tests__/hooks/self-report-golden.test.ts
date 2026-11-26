@@ -102,7 +102,7 @@ describe("Self Reports golden files (CLI)", () => {
     const block = rs.match(/pub const SERVER_RECORDS: &\[&str\] = &\[([\s\S]*?)\];/);
     expect(block, "SERVER_RECORDS in self_report.rs").not.toBeNull();
     expect([...block![1].matchAll(/"([^"]+)"/g)].map((m) => m[1])).toEqual([...SELF_REPORT_SERVER_RECORDS]);
-    for (const hooked of ["claude", "codex", "cursor"]) expect(SELF_REPORT_SERVER_RECORDS).not.toContain(hooked);
+    for (const hooked of ["claude", "codex"]) expect(SELF_REPORT_SERVER_RECORDS).not.toContain(hooked);
   });
 
   describe("the stdio server's fallback event", () => {

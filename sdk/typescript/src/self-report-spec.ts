@@ -130,6 +130,18 @@ export function toOpenAITool(spec: SelfReportSpec): OpenAITool {
   };
 }
 
+/** The OpenAI Responses API `tools[]` entry: the flat function shape. */
+export interface OpenAIResponsesTool {
+  type: "function";
+  name: string;
+  description: string;
+  parameters: JsonSchemaObject;
+}
+
+export function toOpenAIResponsesTool(spec: SelfReportSpec): OpenAIResponsesTool {
+  return { type: "function", name: spec.name, description: spec.description, parameters: spec.inputSchema };
+}
+
 /** The Anthropic Messages `tools[]` entry. */
 export interface AnthropicTool {
   name: string;
@@ -146,7 +158,8 @@ export function toAnthropicTool(spec: SelfReportSpec): AnthropicTool {
  * `failproofai_report` (the SDKs, OpenCode), `mcp__failproofai__report`
  * (Claude Code, Codex, Pi, Factory, Devin), `failproofai___report` (Factory's
  * matcher form), `mcp_failproofai_report` (Hermes, Antigravity),
- * `failproofai__report` (OpenClaw, Goose), and other server-qualified forms.
+ * `failproofai__report` (OpenClaw, Goose), `failproofai-report` (Copilot CLI,
+ * likely), and other server-qualified forms.
  *
  * Mirrors `isSelfReportToolName` in the CLI's `src/hooks/self-report-names.ts`;
  * this package cannot import that, so both are tested against the same golden
@@ -164,6 +177,7 @@ export const SELF_REPORT_TOOL_SPELLINGS: ReadonlyArray<string> = Object.freeze([
   "mcp__failproofai_report",
   "mcp:failproofai:report",
   "mcp:failproofai/report",
+  "failproofai-report",
 ]);
 
 const SPELLINGS = new Set(SELF_REPORT_TOOL_SPELLINGS);

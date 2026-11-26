@@ -21,6 +21,7 @@
 
 ### Docs
 
+- The keys and settings docs explain personal and organization keys, the rule that no organization key can manage people, keys or settings, the **keys may live for** limit with its 15-day expiry reminder, extending a working key without changing its secret and renewing an expired one, and that the allowed sign-ins list also governs AI tool connections, the Slack app and personal keys (FailproofAI/agenteye#1882, #1064)
 - The Cloud policy docs say what a deployment runs: a policy's JavaScript runs unsandboxed, as the agent's user, on every machine it targets, checked against a digest from the same server and not yet signed by its publisher, so `policies:write` amounts to running code on the organization's machines (#1059)
 
 ## 1.0.17 — 2026-11-24

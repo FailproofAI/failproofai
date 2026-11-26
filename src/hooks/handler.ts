@@ -746,9 +746,11 @@ export async function evaluateHookEvent(
       rawHookEventName: eventType,
       cli,
     };
-    const runtimeAgent = readRuntimeAgentIdentity(
-      cli, opts?.agentSettingsPath ?? runtimeAgentSettingsPath(cli, session.cwd),
-    );
+    const agentSettingsPath = opts?.agentSettingsPath ?? runtimeAgentSettingsPath(cli, session.cwd);
+    // The always-on guard protects this file too: when CLAUDE_CONFIG_DIR or
+    // CODEX_HOME moved it, no directory name the guard knows describes it.
+    if (agentSettingsPath) session.agentSettingsPath = agentSettingsPath;
+    const runtimeAgent = readRuntimeAgentIdentity(cli, agentSettingsPath);
 
     let config: HooksConfig;
     let customHooksList: CustomHook[] = [];

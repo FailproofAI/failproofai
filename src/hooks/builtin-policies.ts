@@ -1,8 +1,8 @@
 /**
  * Built-in security policies for Claude Code hooks.
  */
-import { resolve, join } from "node:path";
-import { lstatSync, readlinkSync, statSync } from "node:fs";
+import { resolve, join, posix } from "node:path";
+import { lstatSync, readdirSync, readlinkSync, statSync } from "node:fs";
 import { readFile, writeFile } from "node:fs/promises";
 import { execSync, execFileSync } from "node:child_process";
 import { homedir } from "node:os";
@@ -16,6 +16,16 @@ import { POLICY_CATALOG } from "./policy-catalog";
 import { allow, deny, instruct } from "./policy-helpers";
 import { normalizePolicyName, registerPolicy } from "./policy-registry";
 import { hookLogWarn } from "./hook-logger";
+import {
+  agentCliSwitchesHooksOff,
+  agentSettingsGlobCandidates,
+  agentSettingsGlobDecoys,
+  agentSettingsShellCwd,
+  agentSettingsShellMatcher,
+  agentSettingsWriteTarget,
+  physicalAgentPath,
+  programNamesAgentSettings,
+} from "./agent-settings-guard";
 
 /**
  * Whether `resolved` lives under an agent CLI's home directory
@@ -64,7 +74,9 @@ function isAgentInternalPath(resolved: string): boolean {
  *                   and the customization-root hook config
  *                   `~/.gemini/config/hooks.json`.
  * These must NEVER be edited by the agent itself — that would let it disable
- * its own protections.
+ * its own protections. `block-read-outside-cwd` refuses READS of this list;
+ * writes are refused by `block-failproofai-commands`, against the wider list
+ * in agent-settings-guard.ts that covers all eleven integrations.
  */
 function isAgentSettingsFile(resolved: string): boolean {
   if (/[\\/]\.claude[\\/]settings(?:\.[^/\\]+)?\.json$/.test(resolved)) return true;
@@ -446,6 +458,49 @@ function stripShellQuoting(command: string): string {
   );
   return ansiDecoded.replace(/\\(.)/g, "$1").replace(/['"]/g, "");
 }
+
+/**
+ * `stripShellQuoting`, for the text a command's variables are read from. The
+ * quotes come off the same way, but a `$`, a backtick or a backslash the shell
+ * would NOT expand — inside single quotes or `$'…'`, or behind a backslash —
+ * stays escaped, so `B='$A'` is `B=\$A` here where the plain strip makes it
+ * `B=$A`, a reference the command never makes. One pass, linear.
+ */
+function stripShellQuotingKeepingLiterals(command: string): string {
+  const text = command.replace(/\\\r?\n/g, "");
+  // Quote characters never reach the output, as in the plain strip.
+  const literal = (body: string): string => body.replace(/['"]/g, "").replace(/[\\$`]/g, "\\$&");
+  let out = "";
+  let inDouble = false;
+  for (let i = 0; i < text.length; i++) {
+    const ch = text[i];
+    if (ch === "\\" && i + 1 < text.length) {
+      const next = text[++i];
+      if (next === "\\" || next === "$" || next === "`") out += `\\${next}`;
+      else if (next !== "'" && next !== '"') out += next;
+    } else if (ch === '"') {
+      inDouble = !inDouble;
+    } else if (inDouble) {
+      if (ch !== "'") out += ch;
+    } else if (ch === "'") {
+      const close = text.indexOf("'", i + 1);
+      // Unclosed: the quote is dropped and the rest read as written.
+      if (close === -1) continue;
+      out += literal(text.slice(i + 1, close));
+      i = close;
+    } else if (ch === "$" && text[i + 1] === "'") {
+      let close = i + 2;
+      while (close < text.length && text[close] !== "'") close += text[close] === "\\" ? 2 : 1;
+      if (close >= text.length) {
+        out += ch;
+        continue;
+      }
+      out += literal(decodeAnsiC(text.slice(i + 2, close)));
+      i = close;
+    } else out += ch;
+  }
+  return out;
+}
 const PS_WEB_PIPE_RE = /(?:Invoke-WebRequest|iwr|Invoke-RestMethod|irm)\s+.*\|\s*(?:Invoke-Expression|iex)/i;
 
 // blockForcePush
@@ -653,6 +708,8 @@ const STATE_READ_COMMANDS = new Set([
   // Contents
   "cat", "bat", "less", "more", "head", "tail", "nl", "strings", "xxd", "od",
   "jq", "yq", "diff", "cmp", "wc", "sort", "uniq", "column", "awk", "cut",
+  // Filters with no output file of their own: `cat … | tr a-z A-Z` reads.
+  "tr", "tac", "rev", "fold", "fmt", "expand", "unexpand", "paste", "comm", "join",
   // Listing and metadata
   "ls", "dir", "tree", "stat", "file", "du", "df", "readlink", "realpath",
   "basename", "dirname", "pwd", "test", "find",
@@ -738,6 +795,11 @@ const OUTPUT_FLAG_COMMANDS: Record<string, readonly string[]> = {
   sort: ["-o", "--output"],
   tree: ["-o", "--output"],
   curl: ["-o", "--output", "--output-dir", "-D", "--dump-header", "--trace", "--trace-ascii"],
+  // `git log --output=<file>` writes whatever `--format` says into it; `-o` is
+  // only an output for `archive` and `format-patch`, which the git branch checks.
+  git: ["--output", "--output-directory"],
+  // `gh release download -O <file>`, `gh run download -D <dir>`.
+  gh: ["-O", "--output", "-D", "--dir"],
 };
 
 /**
@@ -772,10 +834,130 @@ const SAFE_EXEC_COMMANDS = new Set([
  * `git` is otherwise treated as carrying a path as PROSE — `git commit -m
  * "document ~/.failproofai layout"` must not deny — but `git clean -xdff
  * .failproofai` deletes the directory as thoroughly as `rm -rf` does.
+ *
+ * The second row moves or rewrites files too: `git mv .claude/settings.json x`
+ * takes an agent's hooks away, `git -C ~/.claude pull` or `merge` or `switch`
+ * replaces them with whatever another branch holds, `git apply` writes whatever
+ * its patch says, and `git bundle create <file>` writes the file it is given.
+ * These count only when an OPERAND names a protected path, the repository
+ * (`-C`) is one, or the shell stands in one — never a message: `git merge
+ * feature -m "notes about ~/.failproofai"` writes nothing there.
  */
 const GIT_DESTRUCTIVE_SUBCOMMANDS = new Set([
   "clean", "rm", "restore", "checkout", "reset", "stash",
+  "mv", "pull", "apply", "merge", "switch", "rebase", "am", "cherry-pick", "revert", "bundle",
 ]);
+
+/**
+ * The options whose value is a message (or a parent number), per destructive
+ * subcommand. Per subcommand because `-m` means something else elsewhere:
+ * `--merge` to `checkout`, `switch`, `restore` and `rebase`, `--message-id`
+ * to `am` — skipping its "value" there would skip the path.
+ */
+const GIT_MESSAGE_OPTIONS: Readonly<Record<string, ReadonlySet<string>>> = {
+  merge: new Set(["-m", "--message", "-F", "--file"]),
+  stash: new Set(["-m", "--message"]),
+  revert: new Set(["-m", "--mainline"]),
+  "cherry-pick": new Set(["-m", "--mainline"]),
+};
+
+/**
+ * Whether one of a git command's OPERANDS names the target: messages and
+ * config values skipped, `-C`'s repository kept. Once quotes are gone (the
+ * unescaped pass) a message is no longer one word, so it runs to the next
+ * option instead.
+ */
+function gitOperandsNameTarget(
+  gitWords: string[],
+  subcommand: string,
+  names: (text: string) => boolean,
+  quoted: boolean,
+): boolean {
+  const messageOptions = GIT_MESSAGE_OPTIONS[subcommand] ?? new Set<string>();
+  for (let i = 1; i < gitWords.length; i++) {
+    const word = gitWords[i];
+    if (word === "-c" || word === "--config-env") {
+      i++;
+      continue;
+    }
+    if (messageOptions.has(word)) {
+      i++;
+      if (!quoted) while (i + 1 < gitWords.length && !gitWords[i + 1].startsWith("-")) i++;
+      continue;
+    }
+    if (messageOptions.size > 0 && (/^--(?:message|file|mainline)=/.test(word) || /^-m./.test(word))) continue;
+    if (names(word)) return true;
+  }
+  return false;
+}
+
+/**
+ * The directories a git command runs in: every `-C <dir>` before the
+ * subcommand applies in turn, from where the shell may stand, so `git -C
+ * .claude log --output=settings.json` writes `.claude/settings.json`. Where
+ * the shell stands is unknown, the chain stays relative, which the shapes
+ * still read. A `-C` after the subcommand is that subcommand's own option.
+ */
+function gitRepositoryDirs(
+  gitWords: string[],
+  cwds: ReadonlyArray<string | undefined>,
+  /** The texts a word built by expansions may become, or null; `-C "$D"` is each of them. */
+  valuesOf: (word: string) => string[] | null = () => null,
+): string[] {
+  const chain: string[] = [];
+  const at = gitWords.findIndex((word) => commandBasename(word) === "git");
+  for (let i = at + 1; at !== -1 && i < gitWords.length; i++) {
+    const word = gitWords[i];
+    if (GIT_FLAGS_WITH_OPERANDS.has(word)) {
+      if (word === "-C" && i + 1 < gitWords.length) chain.push(gitWords[i + 1]);
+      i++;
+      continue;
+    }
+    if (!word.startsWith("-")) break;
+  }
+  if (chain.length === 0) return [];
+  // Each `-C` as every text it may be, a few chains at most.
+  let chains: string[][] = [[]];
+  for (const step of chain) {
+    const forms = /[$`]/.test(step) ? valuesOf(step) ?? [step] : [step];
+    chains = chains.flatMap((walked) => forms.map((form) => [...walked, form])).slice(0, 16);
+  }
+  const dirs = new Set<string>();
+  for (const steps of chains) for (const cwd of cwds) {
+    // As text, and as chdir walks it: `-C link/..` with `link -> ~/.claude/x`
+    // is ~/.claude to git, whatever the text says.
+    for (const physical of [false, true]) {
+      let dir: string | undefined = cwd;
+      let relativeChain = "";
+      for (const step of steps) {
+        const literal = !/[$`]/.test(step);
+        const walked = physical && literal ? physicalAgentPath(step, dir) : null;
+        const next = walked ?? cdDestination(dir, step);
+        if (next !== undefined) {
+          dir = next;
+          relativeChain = "";
+        } else if (dir === undefined && isRelativeShellWord(step) && literal) {
+          relativeChain = posix.join(relativeChain, step);
+        } else {
+          dir = undefined;
+          relativeChain = "";
+        }
+      }
+      if (dir !== undefined) dirs.add(dir);
+      else if (relativeChain) dirs.add(relativeChain);
+    }
+  }
+  return [...dirs];
+}
+
+/**
+ * `git -c` settings that make git run a command: an alias beginning `!`, a
+ * pager, an editor, an ssh command, a filter or diff driver, a credential
+ * helper. `git -c alias.x='!rm -rf ~/.claude' x` is a deleter wearing a mention
+ * command's name.
+ */
+const GIT_CONFIG_RUNS_CODE_RE =
+  /^['"]?(?:alias\.[^=]+=\s*['"]?!|core\.(?:pager|editor|sshcommand|fsmonitor|hookspath|askpass)=|(?:diff|merge|filter)\.[^=]*\.(?:command|textconv|driver|clean|smudge|process)=|credential\.[^=]*helper=|sequence\.editor=)/i;
 
 /**
  * `git`'s own options that swallow the token after them.
@@ -909,7 +1091,8 @@ const GLOB_DECOYS = [
 ];
 
 /**
- * True when this token is a glob that could expand onto failproofai's state.
+ * True when this token is a glob that could expand onto the target — failproofai's
+ * state, or an agent's settings files (see `ProtectedPathTarget`).
  *
  * The floor used to be a literal `fail` in the token, and that is exactly what
  * a glob is for: `rm -rf ~/.f*ailproofai` spells the same directory without the
@@ -925,15 +1108,15 @@ const GLOB_DECOYS = [
  * allowed because they sweep the decoys too; `rm -rf /tmp/test-failures*` stays
  * allowed because it reaches no candidate at all.
  */
-function globCouldNameState(raw: string): boolean {
+function globCouldNameTarget(raw: string, target: ProtectedPathTarget): boolean {
   // Both readings of a trailing `)`: part of the pattern, and the close of a
   // subshell that wrapped it. Trying both is safe in the way widening always is
   // here — the decoy test still has to pass.
   const stripped = raw.replace(/^[()]+|[()]+$/g, "");
-  return globWordCouldNameState(raw) || (stripped !== raw && globWordCouldNameState(stripped));
+  return globWordCouldNameTarget(raw, target) || (stripped !== raw && globWordCouldNameTarget(stripped, target));
 }
 
-function globWordCouldNameState(token: string): boolean {
+function globWordCouldNameTarget(token: string, target: ProtectedPathTarget): boolean {
   if (!GLOB_METACHAR_RE.test(token)) return false;
   // Braces FIRST, because that is the order the shell works in: brace expansion
   // rewrites the word into several words, and only then is each one matched
@@ -942,7 +1125,7 @@ function globWordCouldNameState(token: string): boolean {
   // shell turns into `~/.fa*ilproofai` and then into `~/.failproofai` — read as
   // naming nothing at all.
   for (const word of expandBraces(token)) {
-    if (wordNamesState(word)) return true;
+    if (wordNamesTarget(word, target)) return true;
   }
   return false;
 }
@@ -1064,8 +1247,8 @@ function firstBraceGroup(word: string): { start: number; end: number; alternativ
  * `~/.{failproofai,other}` carries no `.failproofai` as written, and the word it
  * expands to needs no glob compilation to be recognised.
  */
-function wordNamesState(word: string): boolean {
-  if (FAILPROOFAI_STATE_PATH_RE.test(word)) return true;
+function wordNamesTarget(word: string, target: ProtectedPathTarget): boolean {
+  if (target.namesLiteral(word)) return true;
   // Every path PREFIX, not just the whole word. The candidates are the state
   // directory itself, so `~/.f*ailproofai/policies-config.json` — a glob in a
   // segment that is not the last one — compiled to a pattern that could never
@@ -1073,7 +1256,7 @@ function wordNamesState(word: string): boolean {
   // the state is naming the state.
   const segments = word.split("/");
   for (let end = 1; end <= segments.length; end++) {
-    if (globPrefixNamesState(segments.slice(0, end).join("/"))) return true;
+    if (globPrefixNamesTarget(segments.slice(0, end).join("/"), target)) return true;
   }
   return false;
 }
@@ -1218,20 +1401,109 @@ function bracketExpressionAt(token: string, start: number): { source: string; en
  * One `/`-delimited prefix of a brace-expanded word, compiled and tried against
  * the candidates. Braces are already gone by here; an unmatched one is literal.
  */
-function globPrefixNamesState(token: string): boolean {
+/** One atom of a glob with no extended-glob groups. */
+type GlobAtom = { kind: "char"; ch: string } | { kind: "one" } | { kind: "star" } | { kind: "class"; test: RegExp };
+
+/**
+ * A glob of literals, `?`, `*` and bracket expressions as atoms, or null when
+ * it holds an extended-glob group (left to the regex path). Runs of `*`
+ * collapse into one, as the shell reads them without globstar.
+ */
+function globAtoms(token: string): GlobAtom[] | null {
+  const atoms: GlobAtom[] = [];
+  for (let i = 0; i < token.length; i++) {
+    if (extglobAt(token, i)) return null;
+    const ch = token[i];
+    if (ch === "*") {
+      if (atoms[atoms.length - 1]?.kind !== "star") atoms.push({ kind: "star" });
+    } else if (ch === "?") atoms.push({ kind: "one" });
+    else if (ch === "[") {
+      const bracket = bracketExpressionAt(token, i);
+      if (!bracket) {
+        atoms.push({ kind: "char", ch: "[" });
+        continue;
+      }
+      atoms.push({ kind: "class", test: new RegExp(`^${bracket.source}$`) });
+      i = bracket.end;
+    } else atoms.push({ kind: "char", ch });
+  }
+  return atoms;
+}
+
+/**
+ * Whether one path segment matches a segment's atoms, with no backtracking
+ * beyond the last `*`: the classic greedy wildcard walk, O(atoms × length).
+ * A regex built from many `*` backtracked through every way of splitting a
+ * candidate between them — a 226-character word ran for over a minute.
+ */
+function globSegmentMatches(atoms: GlobAtom[], text: string): boolean {
+  let a = 0;
+  let t = 0;
+  let starAtom = -1;
+  let starText = 0;
+  while (t < text.length) {
+    const atom = atoms[a];
+    if (atom && atom.kind === "star") {
+      starAtom = a++;
+      starText = t;
+      continue;
+    }
+    if (
+      atom &&
+      (atom.kind === "one" || (atom.kind === "char" && atom.ch === text[t]) || (atom.kind === "class" && atom.test.test(text[t])))
+    ) {
+      a++;
+      t++;
+      continue;
+    }
+    if (starAtom === -1) return false;
+    a = starAtom + 1;
+    t = ++starText;
+  }
+  while (atoms[a]?.kind === "star") a++;
+  return a === atoms.length;
+}
+
+/**
+ * A matcher for a glob word against whole paths: segment by segment, since no
+ * `*`, `?` or bracket expression matches `/`. Null when the word holds an
+ * extended-glob group.
+ */
+function globMatcher(token: string): ((path: string) => boolean) | null {
+  // Case-insensitively, on both sides: macOS resolves a path's literal parts
+  // whatever their case, so `rm ~/.CLAUDE/settings.js*` reaches the settings.
+  const segments = token.toLowerCase().split("/").map((segment) => globAtoms(segment));
+  if (segments.some((atoms) => atoms === null)) return null;
+  return (path: string): boolean => {
+    const parts = path.toLowerCase().split("/");
+    return parts.length === segments.length && parts.every((part, i) => globSegmentMatches(segments[i]!, part));
+  };
+}
+
+function globPrefixNamesTarget(token: string, target: ProtectedPathTarget): boolean {
   if (!GLOB_METACHAR_RE.test(token)) return false;
-  const pattern = "^" + compileGlobPattern(token);
+  const matcher = globMatcher(token);
+  if (matcher) {
+    if (!target.globCandidates.some(matcher)) return false;
+    return !target.globDecoys.some(matcher);
+  }
+  // Extended-glob groups go through a regex, with runs of `*` collapsed first.
+  const pattern = "^" + compileGlobPattern(token.replace(/\*{2,}/g, "*"));
   let re: RegExp;
   try {
-    // Case-insensitive, like FAILPROOFAI_STATE_PATH_RE: on a default macOS
-    // volume `NODE_MODULES/fail*` reaches the real `node_modules/failproofai`,
-    // because the literal parent is resolved by the filesystem.
     re = new RegExp(pattern + "$", "i");
   } catch {
     return false;
   }
-  if (!STATE_GLOB_CANDIDATES.some((candidate) => re.test(candidate))) return false;
-  return !GLOB_DECOYS.some((decoy) => re.test(decoy));
+  // V8 compiles a pattern on its first use, so one too large to compile throws
+  // here, not at `new RegExp`. A pattern that large is a literal far longer
+  // than any path it could be tried against.
+  try {
+    if (!target.globCandidates.some((candidate) => re.test(candidate))) return false;
+    return !target.globDecoys.some((decoy) => re.test(decoy));
+  } catch {
+    return false;
+  }
 }
 
 /**
@@ -1248,6 +1520,12 @@ function globPrefixNamesState(token: string): boolean {
 function substitutionBodies(command: string): string[] {
   const bodies: string[] = [];
   for (let i = 0; i < command.length; i++) {
+    // A backslash makes the next character literal in every quoting context:
+    // `\`` and `\$(` never start a substitution.
+    if (command[i] === "\\") {
+      i++;
+      continue;
+    }
     if (command[i] === "`") {
       const close = command.indexOf("`", i + 1);
       if (close === -1) break;
@@ -1255,7 +1533,9 @@ function substitutionBodies(command: string): string[] {
       i = close;
       continue;
     }
-    if (command[i] !== "$" || command[i + 1] !== "(") continue;
+    // `$(…)`, and the process substitutions `>(…)` and `<(…)`, which run their
+    // body as a command just the same: `echo x > >(tee <path>)`.
+    if (!((command[i] === "$" || command[i] === ">" || command[i] === "<") && command[i + 1] === "(")) continue;
     let depth = 1;
     let j = i + 2;
     for (; j < command.length && depth > 0; j++) {
@@ -1269,7 +1549,7 @@ function substitutionBodies(command: string): string[] {
 }
 
 /** An output redirect and the token it targets: `>f`, `> f`, `2>f`, `>>f`, `>|f`. */
-const REDIRECT_TARGET_RE = /\d*>{1,2}\|?\s*("[^"]*"|'[^']*'|[^\s;&|<>]+)/g;
+const REDIRECT_TARGET_RE = /\d*>{1,2}\|?\s*("[^"]*"|'[^']*'|(?:\\.|[^\s;&|<>\\])+)/g;
 
 /**
  * Strip the punctuation a shell consumes, so `(cd` reads as `cd`.
@@ -1295,7 +1575,7 @@ function bareToken(token: string): string {
  * arrived here decapitated — an unterminated group that expands to nothing and
  * compiles to a pattern matching nothing. A closing character that really did
  * belong to a shell group leaves a word still carrying the literal path, which
- * the literal check reads, and `globCouldNameState` tries the stripped form too.
+ * the literal check reads, and `globCouldNameTarget` tries the stripped form too.
  */
 function unquotedToken(token: string): string {
   return token.replace(/^['"]+|['"]+$/g, "");
@@ -1308,16 +1588,63 @@ function commandBasename(token: string): string {
 }
 
 /**
+ * `text` cut where the shell cuts words: at blanks outside quotes, a backslash
+ * keeping the character after it. Quotes and backslashes stay in the words, so
+ * `cp /tmp/x "my cfg.json"` has the destination `"my cfg.json"`, not `cfg.json"`.
+ */
+function shellSplit(text: string): string[] {
+  const words: string[] = [];
+  let current = "";
+  let quote: "'" | '"' | "ansi" | null = null;
+  for (let i = 0; i < text.length; i++) {
+    const ch = text[i];
+    if (quote !== null) {
+      current += ch;
+      if (ch === "\\" && quote !== "'" && i + 1 < text.length) current += text[++i];
+      else if (ch === (quote === "ansi" ? "'" : quote)) quote = null;
+      continue;
+    }
+    if (ch === "\\" && i + 1 < text.length) {
+      current += ch + text[++i];
+      continue;
+    }
+    if (ch === "'" || ch === '"') {
+      quote = ch === "'" && text[i - 1] === "$" ? "ansi" : ch;
+      current += ch;
+      continue;
+    }
+    if (/\s/.test(ch)) {
+      if (current) words.push(current);
+      current = "";
+      continue;
+    }
+    current += ch;
+  }
+  if (current) words.push(current);
+  return words;
+}
+
+/**
  * Walk off everything a shell resolves before it settles on the command word,
  * and return the tokens from the command word on. Mirrors the walk in
  * `classifySelfInvocation` — the same prefixes hide a deleter that hid the
  * binary, and `xargs -0 rm -f` is the one that matters most here.
  */
 function commandWords(simpleCommand: string): string[] {
-  const tokens = simpleCommand.trim().split(/\s+/).map(bareToken).filter(Boolean);
+  const tokens = shellSplit(simpleCommand.trim()).map(bareToken).filter(Boolean);
   let i = 0;
   while (i < tokens.length) {
     const token = tokens[i];
+    // A quoted word in the command's place — a shell's `-c` program — is a
+    // command line of its own: `bash -c 'cat x'` runs `cat`. An assignment
+    // with a quoted value (`env "A=b c" cp …`) is still one assignment.
+    if (/\s/.test(token) && !ENV_ASSIGNMENT_RE.test(token)) {
+      const inner = shellSplit(token).map(bareToken).filter(Boolean);
+      if (inner.length > 1) {
+        tokens.splice(i, 1, ...inner);
+        continue;
+      }
+    }
     // A redirect operator and, when it stands alone, the token it targets —
     // `> file` must not leave `file` sitting where the command word goes.
     if (/^\d*(?:>{1,2}\|?|<{1,3})/.test(token)) {
@@ -1333,16 +1660,58 @@ function commandWords(simpleCommand: string): string[] {
     if (!skippable) break;
     i++;
   }
-  return tokens.slice(i);
+  // From the command word on, a redirect is no argument either: `cp /dev/null
+  // ~/.claude/settings.json 2>/dev/null` copies onto the settings file, and a
+  // copy's destination is its LAST word. The redirect is judged on its own,
+  // by REDIRECT_TARGET_RE; `<(…)` and `>(…)` are arguments and stay.
+  const words: string[] = [];
+  for (let k = i; k < tokens.length; k++) {
+    if (k > i && /^\d*(?:>{1,2}\|?|<{1,3})(?!\()/.test(tokens[k])) {
+      if (/^\d*(?:>{1,2}\|?|<{1,3})$/.test(tokens[k])) k++;
+      continue;
+    }
+    words.push(tokens[k]);
+  }
+  return words;
+}
+
+/** A redirect with its target as the shell reads it: quoted, escaped or glued, spaces and all. */
+const REDIRECT_WITH_TARGET_RE = /(^|\s)\d*(?:>{1,2}\|?|<{1,3})(?!\()\s*(?:"(?:[^"\\]|\\.)*"|'[^']*'|\\.|[^\s"'\\])+/g;
+
+/**
+ * A simple command with its redirects blanked, so what is left is its
+ * arguments: `cp /dev/null ~/.claude/settings.json 2> '/tmp/build log'` has
+ * two, not a third called `log'`. Found in the splittable view, where a `>`
+ * inside a quoted argument is already blank, and blanked at the same offsets
+ * in the readable one. A redirect's target is judged on its own.
+ */
+function blankRedirects(readableSimple: string, splitSimple: string): string {
+  let out = "";
+  let pos = 0;
+  for (const match of splitSimple.matchAll(REDIRECT_WITH_TARGET_RE)) {
+    const start = match.index + match[1].length;
+    const end = match.index + match[0].length;
+    out += readableSimple.slice(pos, start) + " ".repeat(end - start);
+    pos = end;
+  }
+  return pos === 0 ? readableSimple : out + readableSimple.slice(pos);
 }
 
 /**
  * True when this one simple command would destroy whatever it is pointed at.
  *
- * Reached only for a command that already names failproofai's state, so the
+ * Reached only for a command that already names the protected target, so the
  * question is narrow: is this a read, or is it everything else.
  */
-function simpleCommandDestroys(words: string[], namesState: (text: string) => boolean): boolean {
+function simpleCommandDestroys(
+  words: string[],
+  namesState: (text: string) => boolean,
+  target: ProtectedPathTarget,
+  rawSimple: string,
+  cwdInTarget = false,
+  cwds: ReadonlyArray<string | undefined> = [undefined],
+  valuesOfWord: (word: string) => string[] | null = () => null,
+): boolean {
   if (words.length === 0) return false;
   const head = commandBasename(words[0]);
   const args = words.slice(1);
@@ -1368,22 +1737,56 @@ function simpleCommandDestroys(words: string[], namesState: (text: string) => bo
   // which needs no flag at all: `sed 's/a/b/w <state>' /etc/hosts` writes the
   // state without `-i` anywhere on the line.
   if (head === "sed") {
-    if (args.some((a) => a.startsWith("-i") || a.startsWith("--in-place"))) return true;
-    // The filename may ride in the same token (`'s/a/b/w<path>'`) or in the
-    // next one, because a quoted script containing a space is two tokens by the
-    // time it gets here. `s/a/b/w` and a bare `w` both end in a `w` that
-    // follows a delimiter, which is what separates them from a word like `raw`.
-    return args.some(
-      (a, i) => /(?:^|[;}/\s])w$/.test(a) && namesState(args[i + 1] ?? ""),
-    ) || args.some((a) => /(?:^|[;}/\s])w\s*\S*\.failproofai/.test(a));
+    // In place, alone or bundled: `-i`, `-i.bak`, `-Ei`, `-ni`, `--in-place`.
+    if (args.some((a) => /^-(?!-)[A-Za-z]*i/.test(a) || a.startsWith("--in-place"))) return true;
+    // Only the SCRIPT is read for `e`, `w` and `W`. Reading every word made a
+    // file operand under `/workspaces/…` or `/Users/Wei/…` look like a `w`
+    // command. A script read from a file (`-f`) cannot be checked at all.
+    const scripts = sedScripts(rawSimple);
+    if (scripts === null) return true;
+    for (const script of scripts) {
+      // `e` runs a shell command, as a command (`1e cp …`) or as the flag on
+      // `s` (`s/x/y/e`), so a sed that reads nothing can still write anything.
+      if (SED_RUNS_COMMAND_RE.test(script)) return true;
+      // `w`/`W` write the rest of the line's text as a file name, glued on
+      // (`s/a/b/w<path>`) or after a space; an address can stand in front.
+      for (const [, file] of script.matchAll(SED_WRITE_FILE_RE)) {
+        if (namesState(file.trim())) return true;
+      }
+    }
+    return false;
+  }
+
+  // `yq -i` rewrites the file it reads, and reads JSON as readily as YAML.
+  if (head === "yq") {
+    if (args.some((a) => /^-[A-Za-z]*i/.test(a) || /^--in-?place/.test(a))) return true;
   }
 
   // `awk` can run a shell (`system("rm -rf …")`) or pipe into one, so its
   // program has to be read for those two, not just for the `>` the redirect
   // scan already catches.
   if (head === "awk" || head === "gawk" || head === "mawk") {
-    return args.some((a) => /system\s*\(|\|\s*["']|\|&/.test(a));
+    // gawk's `inplace` extension rewrites every input file, loaded by flag
+    // (`-i inplace`, `--include=inplace`) or from the program (`@include`).
+    const inplace = args.some(
+      (a, i) =>
+        ((a === "-i" || a === "--include" || a === "@include") && /^inplace/.test(args[i + 1] ?? "")) ||
+        /^(?:-iinplace|--include=inplace)/.test(a),
+    );
+    if (inplace || args.some((a) => /system\s*\(|\|\s*["']|\|&/.test(a))) return true;
+    // `print > ARGV[1]` writes a file the program names only at run time, so
+    // the redirect scan finds nothing to read. A program that prints AND holds
+    // a `>` is treated as writing; a comparison beside a print is the cost.
+    // String literals come out first, so a `}` or a `>` inside one neither ends
+    // the statement nor counts as a redirect; a comparison BEFORE the print
+    // (`$2 > 1 {print $1}`) is not one either.
+    return quoteAwareWords(rawSimple).some((w) =>
+      /\bprintf?\b[^;}\n]*>/.test(w.replace(/"(?:[^"\\]|\\.)*"/g, '""')),
+    );
   }
+
+  // `rg --pre <cmd>` runs a command over every file it searches.
+  if ((head === "rg" || head === "ripgrep") && args.some((a) => a === "--pre" || a.startsWith("--pre="))) return true;
 
   // Copying the state OUT is a backup. Copying anything ONTO it — classically
   // `/dev/null` — empties it without naming a delete verb. The destination is
@@ -1394,12 +1797,50 @@ function simpleCommandDestroys(words: string[], namesState: (text: string) => bo
     // being the SOURCE — the shape that makes every other copy a backup — is
     // what makes this one a move.
     if (args.includes("--remove-source-files") && args.some((a) => namesState(a))) return true;
-    const targetAt = args.findIndex((a) => a === "-t" || a === "--target-directory");
-    if (targetAt !== -1 && namesState(args[targetAt + 1] ?? "")) return true;
-    if (args.some((a) => a.startsWith("--target-directory=") && namesState(a))) return true;
+    // `cp -l` and `cp -s` make a hard or symbolic link instead of a copy, so
+    // the protected file as SOURCE gets a second name that any later write
+    // reaches it through: `cp -l ~/.claude/settings.json /tmp/x; echo … > /tmp/x`.
+    const links = args.some((a) => /^-(?!-)[A-Za-z]*[ls]/.test(a) || a === "--link" || a === "--symbolic-link");
+    if (head === "cp" && links && args.some((a) => !a.startsWith("-") && namesState(a))) return true;
+    // `--parents` keeps each source's own path under the directory:
+    // `cp --parents .claude/settings.json ~` writes ~/.claude/settings.json.
+    const parents = head === "cp" && args.some((a) => a.length >= 4 && "--parents".startsWith(a));
+    const landing = (dir: string, source: string): string => {
+      const plain = stripShellQuoting(source);
+      if (parents) return `${dir}/${plain.replace(/^(?:\.\/)+/, "").replace(/^\/+/, "")}`;
+      const name = plain.replace(/\/+$/, "").split("/").pop() ?? "";
+      const contents = name === "" || name === "." || name === ".." || (head === "rsync" && plain.endsWith("/"));
+      return contents ? dir : `${dir}/${name}`;
+    };
+    const target = copyTargetDirectory(head, args);
+    if (target) {
+      // Every other operand is a source, and lands in the directory under its
+      // own name: `cp -t ~/.claude /tmp/settings.json` writes the settings,
+      // `cp -t ~/.claude /tmp/notes.md` and `cp -t /tmp/bak ~/.claude/settings.json` do not.
+      const sources = args.filter((a, i) => !a.startsWith("-") && !target.values.has(i)).flatMap((source) => valuesOfWord(source) ?? [source]);
+      return (valuesOfWord(target.dir) ?? [target.dir]).some((dir) => {
+        const plainDir = stripShellQuoting(dir).replace(/\/+$/, "");
+        return sources.some((source) => namesState(landing(plainDir, source)));
+      });
+    }
     const operands = args.filter((a) => !a.startsWith("-"));
     const destination = operands[operands.length - 1];
-    return destination !== undefined && namesState(destination);
+    if (destination === undefined) return false;
+    // Into a directory that exists, each source lands under its own name:
+    // `cp README.md ~/.claude` writes ~/.claude/README.md and nothing else. Not
+    // with `-T`, which makes the directory the file; and a source's contents
+    // (`dir/.`, rsync's `dir/`) land in the directory itself.
+    const sources = operands.slice(0, -1).flatMap((source) => valuesOfWord(source) ?? [source]);
+    const noTarget = args.some((a) => a === "--no-target-directory" || /^-(?!-)[A-Za-z]*T/.test(a));
+    // A destination that is just `$D` reads as the directories D is given.
+    const dirs = valuesOfWord(destination) ?? [destination];
+    if (!noTarget && sources.length > 0 && dirs.every((dir) => cwds.some((cwd) => existingDirectory(dir, cwd)))) {
+      return dirs.some((dir) => {
+        const plainDir = stripShellQuoting(dir).replace(/\/+$/, "");
+        return sources.some((source) => namesState(landing(plainDir, source)));
+      });
+    }
+    return namesState(destination);
   }
 
   // `tee` writes every operand it is given and reads none of them.
@@ -1416,7 +1857,43 @@ function simpleCommandDestroys(words: string[], namesState: (text: string) => bo
   // `git` normally carries the path as prose in a message or a body.
   if (head === "git") {
     const subcommand = gitSubcommand(args);
-    return subcommand !== undefined && GIT_DESTRUCTIVE_SUBCOMMANDS.has(subcommand);
+    const gitWords = quoteAwareCommandWords(rawSimple).words;
+    // A relative output path lands in the repository `-C` names, joined as
+    // written so a `..` after a link there is walked the way the kernel does.
+    const repositories = gitRepositoryDirs(gitWords, cwds, valuesOfWord);
+    const namesInRepository = (text: string): boolean =>
+      namesState(text) || (isRelativeShellWord(text) && repositories.some((repository) => namesState(`${repository}/${text}`)));
+    // Output files, whatever the subcommand: `git log --output=<file>` writes
+    // what `--format` says into it, and `-o` is the archive's or the patches'.
+    if (writesViaOutputFlag("git", args, namesInRepository)) return true;
+    if ((subcommand === "archive" || subcommand === "format-patch") && writesViaOutputFlag("git", args, namesInRepository, ["-o"])) {
+      return true;
+    }
+    // Config that runs a command, judged by what it runs: `alias.x='!rm …'`
+    // is a deleter, `core.pager=cat` is not.
+    if (gitWords.some((w, i) => (gitWords[i - 1] === "-c" || gitWords[i - 1] === "--config-env") && GIT_CONFIG_RUNS_CODE_RE.test(w) && namesState(w))) {
+      return true;
+    }
+    // Subcommands that run a command of their own, with nothing to say what it touches.
+    if (subcommand === "rebase" && args.some((a) => a === "-x" || a === "--exec" || a.startsWith("--exec=") || /^-(?!-)[A-Za-z]*x/.test(a))) {
+      return true;
+    }
+    if ((subcommand === "submodule" && args.includes("foreach")) || (subcommand === "bisect" && args.includes("run"))) return true;
+    if (subcommand === "filter-branch" || subcommand === "filter-repo") return true;
+    if ((subcommand === "difftool" || subcommand === "mergetool") && args.some((a) => a === "-x" || a === "--extcmd" || a.startsWith("--extcmd="))) {
+      return true;
+    }
+    // `git config` writes `.git/config`; only `-f <file>` writes elsewhere.
+    if (subcommand === "config") {
+      return gitWords.some((w, i) => ((gitWords[i - 1] === "-f" || gitWords[i - 1] === "--file") && namesInRepository(w)) ||
+        (w.startsWith("--file=") && namesInRepository(w.slice("--file=".length))));
+    }
+    // `restore --staged` alone touches the index, never the file on disk.
+    const staged = args.some((a) => a === "--staged" || /^-(?!-)[A-Za-z]*S/.test(a));
+    const worktree = args.some((a) => a === "--worktree" || /^-(?!-)[A-Za-z]*W/.test(a));
+    if (subcommand === "restore" && staged && !worktree) return false;
+    if (subcommand === undefined || !GIT_DESTRUCTIVE_SUBCOMMANDS.has(subcommand)) return false;
+    return cwdInTarget || gitOperandsNameTarget(gitWords, subcommand, namesInRepository, /['"]/.test(rawSimple));
   }
 
   // A reader whose destination arrives as an option rather than as an operand.
@@ -1425,6 +1902,7 @@ function simpleCommandDestroys(words: string[], namesState: (text: string) => bo
   if (writesViaOutputFlag(head, args, namesState)) return true;
 
   if (STATE_READ_COMMANDS.has(head) || STATE_MENTION_COMMANDS.has(head)) return false;
+  if (target.harmlessCommands?.has(head)) return false;
   return true;
 }
 
@@ -1434,23 +1912,1806 @@ function simpleCommandDestroys(words: string[], namesState: (text: string) => bo
  * `sort -o`, `tree -o` and `curl -o` all take their destination as an option,
  * so nothing about the head or the operand order says they are writing — and
  * all three heads were on a list that said they only read. Short options bundle
- * (`curl -sfo <file>`), so the trailing letter is what decides.
+ * (`curl -sfo <file>`), so the trailing letter is what decides — and a short
+ * option can carry its value glued on (`sort -o<file>`, `curl -so<file>`).
  */
-function writesViaOutputFlag(head: string, args: string[], namesState: (text: string) => boolean): boolean {
-  const flags = OUTPUT_FLAG_COMMANDS[head];
+function writesViaOutputFlag(
+  head: string,
+  args: string[],
+  namesState: (text: string) => boolean,
+  flags: readonly string[] | undefined = OUTPUT_FLAG_COMMANDS[head],
+): boolean {
   if (!flags) return false;
+  const shortLetters = flags.filter((f) => /^-[A-Za-z]$/.test(f)).map((f) => f[1]);
   for (let i = 0; i < args.length; i++) {
     const arg = args[i];
     const long = flags.find((f) => f.startsWith("--") && arg.startsWith(`${f}=`));
-    if (long && namesState(arg)) return true;
-    const bundled = /^-[A-Za-z]*[oD]$/.test(arg) && flags.includes(`-${arg[arg.length - 1]}`);
+    if (long && namesState(arg.slice(long.length + 1))) return true;
+    const bundled = /^-[A-Za-z]+$/.test(arg) && shortLetters.includes(arg[arg.length - 1]);
     if ((flags.includes(arg) || bundled) && namesState(args[i + 1] ?? "")) return true;
+    if (/^-[A-Za-z]/.test(arg)) {
+      for (const letter of shortLetters) {
+        const glued = arg.indexOf(letter, 1);
+        if (glued > 0 && /^[A-Za-z]*$/.test(arg.slice(1, glued)) && glued < arg.length - 1) {
+          if (namesState(arg.slice(glued + 1))) return true;
+        }
+      }
+    }
   }
   return false;
 }
 
 /**
- * True when `command` would delete, move or overwrite failproofai's own state.
+ * What the shell walk below protects, so one walk serves two targets.
+ *
+ * It was written for failproofai's own state. An agent's settings and hook
+ * files need exactly the same reading of a command — which end of a copy the
+ * path sits on, whether `sed` has `-i`, where a variable or a `cd` carries the
+ * path — so the walk takes its target as a parameter instead of existing twice.
+ */
+interface ProtectedPathTarget {
+  /** Whether a word, a value or a whole pipeline names the target as written. */
+  namesLiteral(text: string): boolean;
+  /**
+   * Whether a program handed to an interpreter names the target. Defaults to
+   * `namesLiteral`; the settings target also reads directory names as string
+   * literals, which is how programs build those paths.
+   */
+  namesProgram?(program: string): boolean;
+  /** Paths a glob has to be able to reach to count as aimed at the target. */
+  globCandidates: readonly string[];
+  /** Ordinary paths a glob aimed at the target must miss. */
+  globDecoys: readonly string[];
+  /** Heads that cannot write or remove the target, beyond the shared read and mention lists. */
+  harmlessCommands?: ReadonlySet<string>;
+  /**
+   * Where the shell starts, when it is known. A relative word is resolved
+   * against it — and against wherever a `cd` moves it — so
+   * `cd ~/.claude && cp /tmp/x settings.json` names the file it writes.
+   */
+  cwd?: string;
+  /**
+   * Text every one of the target's paths contains somewhere. A relative word
+   * is resolved only when it, or the directory the shell stands in, could be
+   * one; the rest of a long command is not worth a path resolution per word.
+   */
+  hint?: RegExp;
+  /**
+   * Whether a word leads to the target through a symlink (relative to `cwd`
+   * when relative). Asked of every word, ahead of `hint`, which reads only text.
+   */
+  namesThroughLinks?(word: string, cwd: string | undefined): boolean;
+}
+
+/** failproofai's own state. Names, not copies, so widening any of them widens the walk. */
+const FAILPROOFAI_STATE_TARGET: ProtectedPathTarget = {
+  namesLiteral: (text) => FAILPROOFAI_STATE_PATH_RE.test(text),
+  globCandidates: STATE_GLOB_CANDIDATES,
+  globDecoys: GLOB_DECOYS,
+  hint: /failproof/i,
+};
+
+/**
+ * `mkdir` and `touch` create, and neither can overwrite or remove a settings
+ * file — while an agent making `.claude/commands/` is ordinary work.
+ */
+const AGENT_SETTINGS_HARMLESS_COMMANDS: ReadonlySet<string> = new Set(["mkdir", "touch"]);
+
+/**
+ * Agents' settings and hook files (agent-settings-guard.ts), for a shell that
+ * starts in `cwd`. `extraPaths` are settings files known for this session that
+ * no shape describes (a config directory moved by `CLAUDE_CONFIG_DIR`).
+ */
+function agentSettingsShellTarget(cwd: string | undefined, extraPaths: readonly string[]): ProtectedPathTarget {
+  const matcher = agentSettingsShellMatcher(extraPaths, cwd);
+  return {
+    namesLiteral: matcher.names,
+    namesProgram: (program) => matcher.names(program) || programNamesAgentSettings(program),
+    // A glob reaches a link's target too: `cp x /tmp/actual/prim*.json`.
+    globCandidates: [...agentSettingsGlobCandidates(cwd, extraPaths), ...matcher.linkedFiles],
+    globDecoys: agentSettingsGlobDecoys(cwd, GLOB_DECOYS),
+    harmlessCommands: AGENT_SETTINGS_HARMLESS_COMMANDS,
+    cwd,
+    hint: matcher.hint,
+    namesThroughLinks: matcher.throughLinks,
+  };
+}
+
+/** Interpreters that take a program inline or on stdin. Never readers. */
+const INLINE_INTERPRETERS = "python[0-9.]*|pypy[0-9.]*|node|nodejs|bun|deno|perl|ruby|php|lua|osascript|pwsh|powershell";
+const INLINE_INTERPRETER_RE = new RegExp(`^(?:${INLINE_INTERPRETERS})$`);
+
+/**
+ * A program handed to an interpreter on its command line: `python3 -c "…"`,
+ * `node -e '…'`, `perl -pe '…'`, `deno eval "…"`, glued (`-c"…"`) or not.
+ *
+ * The program is not shell, but the walk splits it like shell — on every `;` —
+ * so `python3 -c "import json; p='<path>'; json.dump(d, open(p,'w'))"` left the
+ * path in a piece that reads as a bare assignment with no command in front of
+ * it, and the interpreter's own piece named nothing. So the whole program is
+ * judged as one: an interpreter is never on the read list, and naming the
+ * target anywhere in its program is enough.
+ *
+ * Bounded on purpose: at most six words between the interpreter and its flag,
+ * all on one line (a backslash-newline is joined first). An unbounded gap
+ * re-scanned the rest of the input for every interpreter-shaped word.
+ */
+const INLINE_PROGRAM_RE = new RegExp(
+  String.raw`(?:^|[\s;&|(\x60])(?:[^\s;&|()\x60]*/)?(?:${INLINE_INTERPRETERS})(?:[ \t]+[^\s;&|]+){0,6}?[ \t]+(?:-[A-Za-z]*[ceErp]|--eval=?|--print=?|--command=?|-Command|eval)[ \t]*("(?:[^"\\]|\\.)*"|'[^']*'|\$'(?:[^'\\]|\\.)*')`,
+  "g",
+);
+
+/** Heads that run their quoted arguments, or a heredoc, as shell. */
+const SHELL_HEADS: ReadonlySet<string> = new Set([
+  "sh", "bash", "zsh", "dash", "ksh", "ash", "fish", "eval", "source", ".", "su",
+  "ssh", "docker", "podman", "kubectl", "watch",
+]);
+
+/** Shells and interpreters that read a program from stdin when given no script: `| sh`, `| node`. */
+const STDIN_PROGRAM_HEADS: ReadonlySet<string> = new Set([
+  "sh", "bash", "zsh", "dash", "ksh", "ash", "fish", "node", "bun", "deno",
+]);
+
+/** Words a shell walks past before the command that receives the arguments. */
+const MASK_TRANSPARENT_WORDS: ReadonlySet<string> = new Set([
+  "sudo", "doas", "env", "nohup", "time", "timeout", "nice", "stdbuf", "setsid", "command", "builtin",
+  "exec", "xargs", "then", "do", "else", "elif", "if", "while", "until", "!",
+]);
+
+/** Characters that steer the walk and mean nothing to the shell inside a quoted argument. */
+const MASKABLE_IN_QUOTES = "\n\r;&|<>()";
+
+/** Marks a word in the lexer's decoded words that holds an expansion. */
+const UNKNOWN_IN_WORD = "\u0000";
+
+/** What a quoted message holds and a quoted word does not. */
+const NOT_IN_A_QUOTED_WORD = ` \t\v\f${MASKABLE_IN_QUOTES}`;
+
+/** One command context: the top level, a `$(…)`, a backtick or a `( … )` subshell. */
+interface LexCommandFrame {
+  kind: "cmd";
+  /** What closes it: `)` for `$(` and `(`, a backtick for a backtick, nothing for the top level. */
+  closer: ")" | "`" | null;
+  /** Opened by `$(` or a backtick: its output is spliced into the command around it. */
+  substitution: boolean;
+  /** The current simple command's head, once its first real word is read. */
+  head: string | null;
+  /** The current simple command's words so far (the first few). */
+  words: string[];
+  word: string;
+  /**
+   * The same words with their quotes undone — `'/tmp/example.md'` is
+   * `/tmp/example.md`, `"-"` is `-` — for the heredoc analysis only. A word
+   * holding an expansion carries UNKNOWN_IN_WORD and reads as unknown.
+   */
+  decodedWords: string[];
+  decoded: string;
+}
+
+interface LexQuoteFrame {
+  kind: "sq" | "dq" | "ansi";
+  /** Blank separators inside: the command receiving this argument is not a shell. */
+  mask: boolean;
+  /** An expansion inside (`$X`, `$(…)`, a backtick): its text is not known. */
+  expands?: boolean;
+  /** Where the quoted text starts. */
+  start: number;
+  /**
+   * Nothing inside so far that a message has and a word does not: no blank,
+   * separator, escape or expansion. Such a quote is a quoted WORD, and
+   * `commandsOnly` gives it back when it closes — `codex features disable
+   * "hooks"` is that command whether or not `hooks` is quoted.
+   */
+  plain: boolean;
+}
+
+interface LexArithFrame {
+  kind: "arith";
+  depth: number;
+}
+
+/** `${…}`: part of one word, whatever spaces, `#`, `;` or `)` it holds. */
+interface LexParamFrame {
+  kind: "param";
+  depth: number;
+}
+
+type LexFrame = LexCommandFrame | LexQuoteFrame | LexArithFrame | LexParamFrame;
+
+/** A simple command as it ended: its head and its first words. */
+interface LexEndedCommand {
+  head: string | null;
+  words: string[];
+}
+
+interface PendingHeredoc {
+  delimiter: string;
+  literal: boolean;
+  /** `<<-`: leading tabs come off each body line before it is compared. */
+  stripTabs: boolean;
+  /** Index, in the line's ended commands, of the command the operator belongs to. */
+  commandIndex: number;
+  /** Inside a `$(…)`/backtick: the command the substitution is an argument of; undefined at the top level. */
+  outer: LexEndedCommand | null | undefined;
+}
+
+/** What one pass over a command learns. Every string has the command's length. */
+interface ShellLex {
+  /** Comments and STORED heredoc bodies blanked; everything else as written. */
+  readable: string;
+  /** `readable`, with separators, redirects and parentheses inside quoted arguments blanked too. */
+  splittable: string;
+  /** The command with only LITERAL stored heredoc bodies blanked: where substitutions are looked for. */
+  substitutionSource: string;
+  /** `splittable` with ALL text inside a non-shell command's quoted arguments blanked: the commands alone. */
+  commandsOnly: string;
+  /** Bodies of heredocs that an interpreter reads as its program. */
+  programBodies: string[];
+}
+
+function isShellHead(head: string | null | undefined): boolean {
+  return head !== null && head !== undefined && SHELL_HEADS.has(head);
+}
+
+function isInterpreterHead(head: string | null | undefined): boolean {
+  return head !== null && head !== undefined && INLINE_INTERPRETER_RE.test(head);
+}
+
+/** `cat`, `cat -` or `cat /dev/stdin`: copies its stdin and nothing else. */
+function catReadsOnlyStdin(command: LexEndedCommand): boolean {
+  return command.head === "cat" && command.words.slice(1).every((word) => word === "-" || word === "/dev/stdin");
+}
+
+/** `-F -`, `-F-`, `--file=/dev/stdin` and the like: a message read from stdin. */
+function readsMessageFromStdin(words: string[], options: readonly string[]): boolean {
+  const stdin = (value: string | undefined): boolean => value === "-" || value === "/dev/stdin";
+  return words.some((word, i) => {
+    if (options.includes(word)) return stdin(words[i + 1]);
+    return options.some((option) => (option.startsWith("--") ? word === `${option}=-` || word === `${option}=/dev/stdin` : stdin(word.slice(option.length)) && word.startsWith(option)));
+  });
+}
+
+/** `git commit|tag|notes … -F -`: the heredoc is the commit message. */
+function gitTakesMessageFromStdin(command: LexEndedCommand): boolean {
+  if (command.head !== "git") return false;
+  const sub = command.words.slice(1).find((word) => !word.startsWith("-"));
+  return (sub === "commit" || sub === "tag" || sub === "notes") && readsMessageFromStdin(command.words, ["-F", "--file"]);
+}
+
+/** `gh … --body-file -`: the heredoc is the body of an issue, a PR or a release. */
+function ghTakesBodyFromStdin(command: LexEndedCommand): boolean {
+  return command.head === "gh" && readsMessageFromStdin(command.words, ["--body-file", "-F"]);
+}
+
+/** Commands whose `$(cat <<'EOF' …)` argument is a message they store, never run. */
+function outerStoresMessage(outer: LexEndedCommand | null | undefined): boolean {
+  // Not `echo` or `printf`: their output is the body itself, and
+  // `echo "$(cat <<'EOF' …)" > x.sh && sh x.sh` runs it.
+  if (!outer || outer.head === null) return false;
+  const sub = outer.words.slice(1).find((word) => !word.startsWith("-"));
+  if (outer.head === "git") return sub === "commit" || sub === "tag" || sub === "notes" || sub === "merge";
+  if (outer.head === "gh" || outer.head === "glab") return sub !== "alias" && sub !== "extension";
+  return false;
+}
+
+/** A pipe into a shell or interpreter, or an eval/source, anywhere after `at`. */
+const RUNS_TEXT_LATER_RE =
+  /\|\s*(?:[^\s;&|()`<>]*\/)?(?:sh|bash|zsh|dash|ksh|ash|fish|python[0-9.]*|pypy[0-9.]*|node|nodejs|bun|deno|perl|ruby|php|lua|pwsh|powershell)(?=[\s;&|)]|$)|(?:^|[\s;&|(`])(?:eval|source)(?=\s)/;
+
+/** The file a `cat > F` or `tee F` heredoc writes, or null. */
+function heredocWritesFile(command: LexEndedCommand): string | null {
+  const words = command.words;
+  if (command.head === "cat") {
+    for (let i = 1; i < words.length; i++) {
+      const m = /^>{1,2}(.*)$/.exec(words[i]);
+      if (m) return m[1] || words[i + 1] || null;
+    }
+    return null;
+  }
+  if (command.head === "tee") return words.slice(1).find((word) => !word.startsWith("-")) ?? null;
+  return null;
+}
+
+/**
+ * Whether a heredoc's body is text being STORED rather than read by anything
+ * that acts on it — the only bodies the walk may skip.
+ *
+ * An allowlist, because the other direction failed: `git apply <<EOF`,
+ * `xargs rm <<EOF`, `while read f; … done <<EOF` and `cat > x.sh <<EOF; bash
+ * x.sh` all use their body, and skipping "everything but a shell" hid every one
+ * of them. What is left is the message shapes agents write — a `$(cat <<'EOF'
+ * …)` handed to `git commit -m`, `gh` or `echo`, a message `git commit -F -` or
+ * `gh … --body-file -` reads from stdin (directly or through `cat |`) — and a
+ * file written by `cat > F` or `tee F` that nothing in the same command runs.
+ * Anything that later pipes into a shell, `eval`s or `source`s keeps its body.
+ */
+function heredocIsStoredText(
+  doc: PendingHeredoc,
+  own: LexEndedCommand,
+  /** How many commands follow `own` on its line, and the first of them. */
+  downstream: { count: number; next: LexEndedCommand | undefined },
+  later: { runsText: boolean; names: { has(name: string): boolean } },
+  substitutionBody: boolean,
+): boolean {
+  if (later.runsText) return false;
+  if (downstream.count === 0) {
+    if (catReadsOnlyStdin(own)) {
+      // Inside a substitution whose text the outer command stores; or a body
+      // being judged on its own (depth 1), whose outer command was judged with it.
+      if (doc.outer !== undefined ? outerStoresMessage(doc.outer) : substitutionBody) return true;
+    }
+    if (gitTakesMessageFromStdin(own) || ghTakesBodyFromStdin(own)) return true;
+    const file = doc.outer === undefined ? heredocWritesFile(own) : null;
+    if (file) {
+      const name = file.slice(file.lastIndexOf("/") + 1);
+      return name.length > 0 && !later.names.has(name);
+    }
+    return false;
+  }
+  return (
+    downstream.count === 1 &&
+    downstream.next !== undefined &&
+    catReadsOnlyStdin(own) &&
+    (gitTakesMessageFromStdin(downstream.next) || ghTakesBodyFromStdin(downstream.next))
+  );
+}
+
+/**
+ * A heredoc delimiter word, read the way the shell reads it: quotes and
+ * backslashes come off, and any of them makes the body literal. `<<E\OF` is
+ * `EOF`, and so is `<<"EOF"`; `<<"EOF"x` is `EOFx`.
+ */
+function readHeredocDelimiter(
+  text: string,
+  from: number,
+): { delimiter: string; literal: boolean; stripTabs: boolean; end: number } | null {
+  let j = from;
+  const stripTabs = text[j] === "-";
+  if (stripTabs) j++;
+  while (text[j] === " " || text[j] === "\t") j++;
+  let delimiter = "";
+  let literal = false;
+  while (j < text.length) {
+    const c = text[j];
+    if (c === "'") {
+      literal = true;
+      const close = text.indexOf("'", j + 1);
+      const end = close === -1 ? text.length : close;
+      delimiter += text.slice(j + 1, end);
+      j = end + 1;
+      continue;
+    }
+    if (c === '"') {
+      literal = true;
+      let k = j + 1;
+      for (; k < text.length && text[k] !== '"'; k++) {
+        if (text[k] === "\\" && k + 1 < text.length) k++;
+        delimiter += text[k];
+      }
+      j = k + 1;
+      continue;
+    }
+    if (c === "\\") {
+      literal = true;
+      if (j + 1 < text.length) delimiter += text[j + 1];
+      j += 2;
+      continue;
+    }
+    if (/\s/.test(c) || ";&|<>()".includes(c)) break;
+    delimiter += c;
+    j++;
+  }
+  // `<<''` and `<<""` are heredocs too, ended by the first empty line.
+  return delimiter || literal ? { delimiter, literal, stripTabs, end: j } : null;
+}
+
+/**
+ * One linear pass over a command, as a shell would read it: quotes, `$'…'`,
+ * `${…}`, `$(…)` and backticks (also inside double quotes), `$((…))`,
+ * `( … )` subshells, comments, and heredocs with their bodies.
+ *
+ * The regexes this replaced read `<<word` inside a quoted string, a comment, a
+ * here-string or `$((1<<n))` as a heredoc and skipped the commands after it;
+ * read an apostrophe inside a comment as a quote and joined the next line to
+ * the comment's command; and rescanned the line for every quote, which made a
+ * long `printf` quadratic. `substitutionBody` is set when the text is the body
+ * of a `$(…)` judged on its own, whose outer command was judged with it.
+ */
+function lexShell(text: string, substitutionBody = false): ShellLex {
+  const n = text.length;
+  // Which outputs blank each position: one byte per character rather than four
+  // arrays of one-character strings, which made each pass allocate dozens of
+  // bytes per character of the command.
+  const READABLE = 1;
+  const SPLITTABLE = 2;
+  const SUBSTITUTION = 4;
+  const COMMANDS = 8;
+  const blanks = new Uint8Array(n);
+  const blankAt = (k: number, outputs: number): void => {
+    if (k < n) blanks[k] |= outputs;
+  };
+  const programBodies: string[] = [];
+  const newCommand = (closer: ")" | "`" | null, substitution: boolean): LexCommandFrame => ({
+    kind: "cmd", closer, substitution, head: null, words: [], word: "", decodedWords: [], decoded: "",
+  });
+  const stack: LexFrame[] = [newCommand(null, false)];
+  const pending: PendingHeredoc[] = [];
+  // Commands ended since the first pending heredoc on this line, in order: a
+  // heredoc's own command, then the ones its output is piped to. One list per
+  // line, so many operators on one line stay linear.
+  const lineCommands: LexEndedCommand[] = [];
+
+  const commandFrame = (): LexCommandFrame => {
+    for (let k = stack.length - 1; k >= 0; k--) {
+      const frame = stack[k];
+      if (frame.kind === "cmd") return frame;
+    }
+    return stack[0] as LexCommandFrame;
+  };
+  const outerCommand = (): LexEndedCommand | null | undefined => {
+    // The substitution frame closest to the top, then the command below it.
+    for (let k = stack.length - 1; k >= 0; k--) {
+      const frame = stack[k];
+      if (frame.kind !== "cmd") continue;
+      if (!frame.substitution) return undefined;
+      for (let j = k - 1; j >= 0; j--) {
+        const below = stack[j];
+        if (below.kind === "cmd") return { head: below.head ?? (below.word ? commandBasename(below.word) : null), words: knownWords(below.decodedWords) };
+      }
+      return null;
+    }
+    return undefined;
+  };
+  const endWord = (frame: LexCommandFrame): void => {
+    if (!frame.word) return;
+    if (frame.words.length < 32) {
+      frame.words.push(frame.word);
+      frame.decodedWords.push(frame.decoded);
+    }
+    frame.decoded = "";
+    if (frame.head === null) {
+      const base = commandBasename(frame.word);
+      const skipped =
+        ENV_ASSIGNMENT_RE.test(frame.word) || frame.word.startsWith("-") || RUNNER_OPERAND_RE.test(frame.word) ||
+        MASK_TRANSPARENT_WORDS.has(base);
+      if (!skipped) frame.head = base;
+    }
+    frame.word = "";
+  };
+  const endCommand = (frame: LexCommandFrame): void => {
+    endWord(frame);
+    if (pending.length > 0) lineCommands.push({ head: frame.head, words: knownWords(frame.decodedWords) });
+    frame.head = null;
+    frame.words = [];
+    frame.decodedWords = [];
+  };
+  const quoteMask = (frame: LexCommandFrame): boolean => frame.head !== null && !isShellHead(frame.head);
+  // A word whose text an expansion decides is not known: empty, as before.
+  const knownWords = (words: readonly string[]): string[] => words.map((w) => (w.includes(UNKNOWN_IN_WORD) ? "" : w));
+  // A closing quote hands its text, quotes undone, to the word it is part of.
+  const decodeQuote = (frame: LexQuoteFrame, end: number): void => {
+    const owner = stack[stack.length - 2];
+    if (owner?.kind !== "cmd") return;
+    const raw = text.slice(frame.start, end);
+    if (frame.expands) owner.decoded += UNKNOWN_IN_WORD;
+    else if (frame.kind === "sq") owner.decoded += raw;
+    else if (frame.kind === "ansi") owner.decoded += decodeAnsiC(raw);
+    else owner.decoded += raw.replace(/\\([\\"$`])/g, "$1").replace(/\\\n/g, "");
+  };
+  const closeQuote = (frame: LexQuoteFrame, end: number): void => {
+    if (!frame.mask || !frame.plain) return;
+    for (let k = frame.start; k < end; k++) blanks[k] &= ~COMMANDS;
+  };
+  const blankStored = (start: number, end: number, literal: boolean): void => {
+    for (let k = start; k < end; k++) {
+      if (text[k] === "\n") continue;
+      blankAt(k, READABLE | SPLITTABLE | COMMANDS | (literal ? SUBSTITUTION : 0));
+    }
+  };
+  // Whether anything from `pos` on pipes into a shell or `eval`s, and whether
+  // a file name appears from `pos` on. `pos` only grows, and each answer comes
+  // from a scan that never goes back over text: the next match of
+  // RUNS_TEXT_LATER_RE, and the last place each name appears. `pos` follows a
+  // newline, which stands in for the start of the text the regex once saw.
+  let nextRunsText = -2;
+  let lastNamed: Map<string, number> | undefined;
+  // Later words an expansion builds (`bash /tmp/exam$X`), as patterns over the
+  // names they could make; past the cap, every name counts as used.
+  let wildNames: Array<{ at: number; atoms: GlobAtom[] }> = [];
+  let wildOverflowAt = -1;
+  const runsTextFrom = (pos: number): boolean => {
+    if (nextRunsText === -1) return false;
+    if (nextRunsText >= pos - 1) return true;
+    const scan = new RegExp(RUNS_TEXT_LATER_RE.source, "g");
+    scan.lastIndex = Math.max(0, pos - 1);
+    nextRunsText = scan.exec(text)?.index ?? -1;
+    return nextRunsText !== -1;
+  };
+  const namedFrom = (name: string, pos: number): boolean => {
+    if (lastNamed === undefined) {
+      lastNamed = new Map();
+      // Words as the shell hands them over, quotes undone: `bash
+      // /tmp/exam'ple.md'` runs /tmp/example.md.
+      // A word built by an expansion, a glob or braces names whatever it can
+      // expand to: `bash /tmp/exa*`, `bash /tmp/{example,x}.md`, `bash
+      // /tmp/exam$X`. Each is a glob over names (an expansion is a `*`),
+      // matched by the same no-backtracking walk as every other glob here.
+      for (const { word, at } of decodedWordsAt(text)) {
+        const forms = word.includes("{") ? expandBraces(word) : [word];
+        if (forms.length > 64) {
+          wildOverflowAt = Math.max(wildOverflowAt, at);
+          continue;
+        }
+        for (const form of forms) {
+          const base = form.slice(form.lastIndexOf("/") + 1);
+          if (!EXPANSION_IN_WORD_RE.test(base) && !GLOB_METACHAR_RE.test(base)) {
+            lastNamed.set(base, at);
+            continue;
+          }
+          const atoms = globAtoms(base.replace(EXPANSIONS_IN_NAME_RE, "*"));
+          if (atoms !== null && wildNames.length < 256) wildNames.push({ at, atoms });
+          else wildOverflowAt = Math.max(wildOverflowAt, at);
+        }
+      }
+    }
+    if ((lastNamed.get(name) ?? -1) >= pos || wildOverflowAt >= pos) return true;
+    return wildNames.some((wild) => wild.at >= pos && globSegmentMatches(wild.atoms, name));
+  };
+  /** Read every pending heredoc's body, starting at `at`; return where lexing resumes. */
+  const consumeBodies = (at: number): number => {
+    let pos = at;
+    const spans: Array<{ doc: PendingHeredoc; start: number; end: number }> = [];
+    for (const doc of pending.splice(0)) {
+      let bodyEnd = n;
+      let next = n;
+      for (let line = pos; line <= n; ) {
+        const end = text.indexOf("\n", line);
+        const content = text.slice(line, end === -1 ? n : end);
+        // The line must BE the delimiter: `EOF ` and `  EOF` are body text.
+        if ((doc.stripTabs ? content.replace(/^\t+/, "") : content) === doc.delimiter) {
+          bodyEnd = line;
+          next = end === -1 ? n : end + 1;
+          break;
+        }
+        if (end === -1) break;
+        line = end + 1;
+      }
+      spans.push({ doc, start: pos, end: bodyEnd });
+      pos = next;
+    }
+    // What runs after the bodies, once for every heredoc on the line (a check
+    // per heredoc made thousands of operators on one line quadratic), and
+    // looked up rather than read: reading the rest of the text again for each
+    // line of heredocs made a script of them quadratic.
+    const later = { runsText: runsTextFrom(pos), names: { has: (name: string) => namedFrom(name, pos) } };
+    // Whether an interpreter runs at or after each command of the line, read
+    // once from the end. Copying and scanning the rest of the line for every
+    // heredoc made a line of thousands of them quadratic.
+    const interpreterFrom = new Array<boolean>(lineCommands.length + 1).fill(false);
+    for (let k = lineCommands.length - 1; k >= 0; k--) {
+      interpreterFrom[k] = interpreterFrom[k + 1] || isInterpreterHead(lineCommands[k].head);
+    }
+    for (const { doc, start, end } of spans) {
+      const own = lineCommands[doc.commandIndex] ?? { head: null, words: [] };
+      const downstream = { count: Math.max(0, lineCommands.length - doc.commandIndex - 1), next: lineCommands[doc.commandIndex + 1] };
+      if (heredocIsStoredText(doc, own, downstream, later, substitutionBody)) blankStored(start, end, doc.literal);
+      else if (isInterpreterHead(own.head) || interpreterFrom[doc.commandIndex + 1] === true) {
+        programBodies.push(text.slice(start, end));
+      }
+    }
+    lineCommands.length = 0;
+    return pos;
+  };
+
+  let i = 0;
+  while (i < n) {
+    const ch = text[i];
+    const frame = stack[stack.length - 1];
+    if (frame.kind === "sq") {
+      if (ch === "'") {
+        closeQuote(frame, i);
+        decodeQuote(frame, i);
+        stack.pop();
+      } else if (frame.mask) {
+        if (MASKABLE_IN_QUOTES.includes(ch)) blankAt(i, SPLITTABLE);
+        if (ch !== "\n") blankAt(i, COMMANDS);
+        if (frame.plain && NOT_IN_A_QUOTED_WORD.includes(ch)) frame.plain = false;
+      }
+      i++;
+      continue;
+    }
+    if (frame.kind === "ansi") {
+      if (ch === "\\") {
+        frame.plain = false;
+        if (frame.mask) {
+          blankAt(i, COMMANDS);
+          if (i + 1 < n && text[i + 1] !== "\n") blankAt(i + 1, COMMANDS);
+        }
+        i += 2;
+        continue;
+      }
+      if (ch === "'") {
+        closeQuote(frame, i);
+        decodeQuote(frame, i);
+        stack.pop();
+      } else if (frame.mask) {
+        if (MASKABLE_IN_QUOTES.includes(ch)) blankAt(i, SPLITTABLE);
+        if (ch !== "\n") blankAt(i, COMMANDS);
+        if (frame.plain && NOT_IN_A_QUOTED_WORD.includes(ch)) frame.plain = false;
+      }
+      i++;
+      continue;
+    }
+    if (frame.kind === "arith") {
+      if (ch === "(") frame.depth++;
+      else if (ch === ")") {
+        if (frame.depth === 0 && text[i + 1] === ")") {
+          blankAt(i, SPLITTABLE);
+          blankAt(i + 1, SPLITTABLE);
+          stack.pop();
+          i += 2;
+          continue;
+        }
+        frame.depth = Math.max(0, frame.depth - 1);
+      }
+      i++;
+      continue;
+    }
+    if (frame.kind === "param") {
+      // Nothing inside `${…}` separates, redirects, opens a subshell or starts
+      // a comment: `${X:- #}; rm …` runs the `rm`.
+      if (ch === "\\") {
+        i += 2;
+        continue;
+      }
+      if (ch === "'" || ch === '"') {
+        stack.push({ kind: ch === "'" ? "sq" : "dq", mask: true, start: i + 1, plain: true });
+        i++;
+        continue;
+      }
+      if (ch === "$" && text[i + 1] === "(") {
+        stack.push(newCommand(")", true));
+        blankAt(i + 1, SPLITTABLE);
+        i += 2;
+        continue;
+      }
+      if (ch === "{") frame.depth++;
+      else if (ch === "}") {
+        if (frame.depth === 0) {
+          stack.pop();
+          i++;
+          continue;
+        }
+        frame.depth--;
+      } else if (MASKABLE_IN_QUOTES.includes(ch)) blankAt(i, SPLITTABLE);
+      i++;
+      continue;
+    }
+    if (frame.kind === "dq") {
+      if (ch === "\\") {
+        frame.plain = false;
+        if (frame.mask) {
+          blankAt(i, COMMANDS);
+          if (i + 1 < n && text[i + 1] !== "\n") blankAt(i + 1, COMMANDS);
+        }
+        i += 2;
+        continue;
+      }
+      if (ch === '"') {
+        closeQuote(frame, i);
+        decodeQuote(frame, i);
+        stack.pop();
+        i++;
+        continue;
+      }
+      if (ch === "`" || (ch === "$" && (text[i + 1] === "(" || text[i + 1] === "{"))) frame.plain = false;
+      if (ch === "`" || (ch === "$" && /[A-Za-z_({0-9@*#?$!-]/.test(text[i + 1] ?? ""))) frame.expands = true;
+      // The parentheses of `$(…)` and `$((…))` open no subshell: blanked where
+      // the walk counts subshells, so a `cd "$(dirname …)"` keeps its reach.
+      if (ch === "$" && text[i + 1] === "(" && text[i + 2] === "(") {
+        stack.push({ kind: "arith", depth: 0 });
+        blankAt(i + 1, SPLITTABLE);
+        blankAt(i + 2, SPLITTABLE);
+        i += 3;
+        continue;
+      }
+      if (ch === "$" && text[i + 1] === "(") {
+        stack.push(newCommand(")", true));
+        blankAt(i + 1, SPLITTABLE);
+        i += 2;
+        continue;
+      }
+      if (ch === "$" && text[i + 1] === "{") {
+        stack.push({ kind: "param", depth: 0 });
+        i += 2;
+        continue;
+      }
+      if (ch === "`") {
+        stack.push(newCommand("`", true));
+        i++;
+        continue;
+      }
+      if (frame.mask) {
+        if (MASKABLE_IN_QUOTES.includes(ch)) blankAt(i, SPLITTABLE);
+        if (ch !== "\n") blankAt(i, COMMANDS);
+        if (frame.plain && NOT_IN_A_QUOTED_WORD.includes(ch)) frame.plain = false;
+      }
+      i++;
+      continue;
+    }
+
+    // A command context.
+    const command = frame as LexCommandFrame;
+    if (ch === "\\") {
+      // A backslash-newline joins lines; any other escaped character is literal.
+      if (text[i + 1] !== "\n") {
+        command.word += text[i + 1] ?? "";
+        command.decoded += text[i + 1] ?? "";
+      }
+      i += 2;
+      continue;
+    }
+    if (ch === "`" && command.closer === "`") {
+      endCommand(command);
+      stack.pop();
+      commandFrame().word += "q";
+      commandFrame().decoded += UNKNOWN_IN_WORD;
+      i++;
+      continue;
+    }
+    if (ch === "'" || ch === '"' || (ch === "$" && text[i + 1] === "'")) {
+      stack.push({
+        kind: ch === "'" ? "sq" : ch === '"' ? "dq" : "ansi",
+        mask: quoteMask(command),
+        start: i + (ch === "$" ? 2 : 1),
+        plain: true,
+      });
+      command.word += "q";
+      i += ch === "$" ? 2 : 1;
+      continue;
+    }
+    if (ch === "$" && text[i + 1] === "(" && text[i + 2] === "(") {
+      stack.push({ kind: "arith", depth: 0 });
+      blankAt(i + 1, SPLITTABLE);
+      blankAt(i + 2, SPLITTABLE);
+      command.word += "q";
+      command.decoded += UNKNOWN_IN_WORD;
+      i += 3;
+      continue;
+    }
+    if (ch === "$" && text[i + 1] === "(") {
+      stack.push(newCommand(")", true));
+      blankAt(i + 1, SPLITTABLE);
+      command.word += "q";
+      command.decoded += UNKNOWN_IN_WORD;
+      i += 2;
+      continue;
+    }
+    if (ch === "$" && text[i + 1] === "{") {
+      stack.push({ kind: "param", depth: 0 });
+      command.word += "q";
+      command.decoded += UNKNOWN_IN_WORD;
+      i += 2;
+      continue;
+    }
+    if (ch === "`") {
+      stack.push(newCommand("`", true));
+      command.word += "q";
+      command.decoded += UNKNOWN_IN_WORD;
+      i++;
+      continue;
+    }
+    if (ch === "#" && command.word === "") {
+      // A comment runs to the end of the line, and nothing in it is shell.
+      let j = i;
+      for (; j < n && text[j] !== "\n"; j++) {
+        blankAt(j, READABLE | SPLITTABLE | COMMANDS);
+      }
+      i = j;
+      continue;
+    }
+    if (ch === "(") {
+      endWord(command);
+      stack.push(newCommand(")", false));
+      i++;
+      continue;
+    }
+    if (ch === ")") {
+      if (command.closer === ")") {
+        endCommand(command);
+        stack.pop();
+        if (command.substitution) {
+          blankAt(i, SPLITTABLE);
+          commandFrame().word += "q";
+        }
+      }
+      i++;
+      continue;
+    }
+    if (ch === "<" && text[i + 1] === "<" && text[i + 2] !== "<" && text[i - 1] !== "<") {
+      const op = readHeredocDelimiter(text, i + 2);
+      if (op) {
+        endWord(command);
+        pending.push({
+          delimiter: op.delimiter,
+          literal: op.literal,
+          stripTabs: op.stripTabs,
+          commandIndex: lineCommands.length,
+          outer: outerCommand(),
+        });
+        i = op.end;
+        continue;
+      }
+    }
+    if (ch === "\n") {
+      endCommand(command);
+      i = pending.length > 0 ? consumeBodies(i + 1) : i + 1;
+      continue;
+    }
+    if (ch === ";" || ch === "&" || ch === "|") {
+      endCommand(command);
+      i++;
+      continue;
+    }
+    if (ch === " " || ch === "\t" || ch === "\r") {
+      endWord(command);
+      i++;
+      continue;
+    }
+    command.word += ch;
+    command.decoded += ch;
+    i++;
+  }
+  if (pending.length > 0) {
+    endCommand(commandFrame());
+    consumeBodies(n);
+  }
+  // Each output is the text with its blanked positions turned into spaces, or
+  // the text itself when nothing in it was blanked.
+  const render = (output: number): string => {
+    let out = "";
+    let from = 0;
+    let blanked = false;
+    for (let k = 0; k < n; ) {
+      if ((blanks[k] & output) === 0) {
+        k++;
+        continue;
+      }
+      let end = k;
+      while (end < n && (blanks[end] & output) !== 0) end++;
+      out += text.slice(from, k) + " ".repeat(end - k);
+      from = end;
+      k = end;
+      blanked = true;
+    }
+    return blanked ? out + text.slice(from) : text;
+  };
+  return {
+    readable: render(READABLE),
+    splittable: render(SPLITTABLE),
+    substitutionSource: render(SUBSTITUTION),
+    commandsOnly: render(COMMANDS),
+    programBodies,
+  };
+}
+
+/**
+ * Index past the end of a `$(…)`, `${…}` or backtick that starts at `i`,
+ * quotes inside it included: what the shell keeps inside one word.
+ */
+function endOfExpansion(text: string, i: number): number {
+  if (text[i] === "`") {
+    for (let j = i + 1; j < text.length; j++) {
+      if (text[j] === "\\") j++;
+      else if (text[j] === "`") return j + 1;
+    }
+    return text.length;
+  }
+  const open = text[i + 1];
+  const close = open === "(" ? ")" : "}";
+  let depth = 0;
+  for (let j = i + 1; j < text.length; j++) {
+    const c = text[j];
+    if (c === "\\") {
+      j++;
+      continue;
+    }
+    if (c === "'") {
+      const end = text.indexOf("'", j + 1);
+      if (end === -1) return text.length;
+      j = end;
+      continue;
+    }
+    if (c === open) depth++;
+    else if (c === close) {
+      depth--;
+      if (depth === 0) return j + 1;
+    }
+  }
+  return text.length;
+}
+
+/**
+ * A simple command's words the way the shell will split them: whitespace
+ * outside quotes and expansions separates, and quotes and backslash escapes
+ * come off. `$(…)`, `${…}` and backticks stay whole, as written, so
+ * `cd $(echo ~/.claude)` has one operand.
+ */
+function quoteAwareWords(text: string): string[] {
+  const words: string[] = [];
+  let current = "";
+  let inWord = false;
+  for (let i = 0; i < text.length; i++) {
+    const ch = text[i];
+    if (ch === "'") {
+      const close = text.indexOf("'", i + 1);
+      const end = close === -1 ? text.length : close;
+      current += text.slice(i + 1, end);
+      inWord = true;
+      i = end;
+      continue;
+    }
+    if (ch === "$" && text[i + 1] === "'") {
+      let j = i + 2;
+      let body = "";
+      for (; j < text.length && text[j] !== "'"; j++) {
+        if (text[j] === "\\" && j + 1 < text.length) {
+          body += text[j] + text[j + 1];
+          j++;
+        } else body += text[j];
+      }
+      current += decodeAnsiC(body);
+      inWord = true;
+      i = j;
+      continue;
+    }
+    if ((ch === "$" && (text[i + 1] === "(" || text[i + 1] === "{")) || ch === "`") {
+      const end = endOfExpansion(text, i);
+      current += text.slice(i, end);
+      inWord = true;
+      i = end - 1;
+      continue;
+    }
+    if (ch === '"') {
+      let j = i + 1;
+      for (; j < text.length && text[j] !== '"'; j++) {
+        if (text[j] === "$" && (text[j + 1] === "(" || text[j + 1] === "{")) {
+          const end = endOfExpansion(text, j);
+          current += text.slice(j, end);
+          j = end - 1;
+        } else if (text[j] === "\\" && j + 1 < text.length && '"\\$`\n'.includes(text[j + 1])) {
+          current += text[j + 1];
+          j++;
+        } else current += text[j];
+      }
+      inWord = true;
+      i = j;
+      continue;
+    }
+    if (ch === "\\" && i + 1 < text.length) {
+      current += text[i + 1];
+      inWord = true;
+      i++;
+      continue;
+    }
+    if (/\s/.test(ch)) {
+      if (inWord) words.push(current);
+      current = "";
+      inWord = false;
+      continue;
+    }
+    current += ch;
+    inWord = true;
+  }
+  if (inWord) words.push(current);
+  return words;
+}
+
+/**
+ * The words of a simple command from its head on, the prefixes a shell walks
+ * past dropped. `viaXargs`: an `xargs` stood among those prefixes.
+ * `readsStdinProgram`: the command is a bare shell or interpreter, which runs
+ * whatever is piped into it (`echo '…' | sh`).
+ */
+function quoteAwareCommandWords(simple: string): { words: string[]; viaXargs: boolean; readsStdinProgram: boolean } {
+  const all = quoteAwareWords(simple);
+  let viaXargs = false;
+  let shell = false;
+  let i = 0;
+  for (; i < all.length; i++) {
+    const word = all[i];
+    const base = commandBasename(word);
+    if (base === "xargs") viaXargs = true;
+    if (STDIN_PROGRAM_HEADS.has(base)) shell = true;
+    const skippable =
+      ENV_ASSIGNMENT_RE.test(word) || word.startsWith("-") || RUNNER_OPERAND_RE.test(word) ||
+      SHELL_KEYWORD_PREFIXES.has(word) || COMMAND_PREFIX_TOKENS.has(base);
+    if (!skippable) break;
+  }
+  const words = all.slice(i);
+  return { words, viaXargs, readsStdinProgram: shell && words.length === 0 };
+}
+
+/** `e`: sed runs a shell command, as a command (`1e cp …`) or as the flag on `s` (`s/x/y/e`). */
+const SED_RUNS_COMMAND_RE = /(?:^|[;{}\s/0-9$,!])[ \t]*[gpIiMm0-9]*e[gpIiMm0-9]*(?=$|[\s;}])/;
+
+/** `w` and `W`: sed writes the rest of the line's text as a file name, glued on or after a space. */
+const SED_WRITE_FILE_RE = /(?:^|[;{}\s/0-9$,!])[ \t]*[gpIiMm0-9]*[wW][ \t]*([^\n]+)/g;
+
+/**
+ * The script texts a `sed` command runs: each `-e`/`--expression` value, or the
+ * first operand when there is none. Null when a script comes from a file
+ * (`-f`), which cannot be read from here. Options that take a value
+ * (`-l <n>`, `--line-length <n>`) take it, so the value is never the script.
+ */
+function sedScripts(rawSimple: string): string[] | null {
+  const words = quoteAwareWords(rawSimple);
+  const at = words.findIndex((w) => commandBasename(w) === "sed");
+  if (at === -1) return [];
+  const scripts: string[] = [];
+  let explicit = false;
+  for (let i = at + 1; i < words.length; i++) {
+    const a = words[i];
+    if (a === "-e" || a === "--expression") {
+      scripts.push(words[++i] ?? "");
+      explicit = true;
+      continue;
+    }
+    if (a.startsWith("--expression=")) {
+      scripts.push(a.slice("--expression=".length));
+      explicit = true;
+      continue;
+    }
+    if (a === "--file" || a.startsWith("--file=") || /^-(?!-)[A-Za-z]*f/.test(a)) return null;
+    if (a === "-l" || a === "--line-length") {
+      i++;
+      continue;
+    }
+    if (/^-(?!-)[A-Za-z]*e$/.test(a)) {
+      scripts.push(words[++i] ?? "");
+      explicit = true;
+      continue;
+    }
+    if (/^-(?!-)[A-Za-z]*e./.test(a)) {
+      scripts.push(a.slice(a.indexOf("e") + 1));
+      explicit = true;
+      continue;
+    }
+    if (a.startsWith("-")) continue;
+    if (!explicit && scripts.length === 0) scripts.push(a);
+  }
+  return scripts;
+}
+
+/**
+ * `text` with each expansion — `$VAR`, `${…}`, `$(…)`, backticks — turned into
+ * `*`, a pattern that reaches at least every word the shell could produce:
+ * `~/.claude/settings$X.json`, `~/.clau${X}de/settings.json`,
+ * `settings$( true ).json` and `~/.fa${X:-ilproofai}` all reach their file, and
+ * are tried against it like any other glob. Spliced before the text is cut into
+ * words, so an expansion holding a space stays in its word; an expansion
+ * standing alone becomes a bare `*`, which the decoys keep from naming
+ * anything.
+ *
+ * One pass with a bracket stack, so nesting and length cost nothing extra: a
+ * regex bounded to keep unclosed `${` linear also let an expansion longer than
+ * its bound through unspliced. An unclosed one stays as written.
+ */
+function spliceWordExpansions(text: string, commandSubstitutionsOnly = false): string {
+  const spans: Array<[number, number]> = [];
+  const stack: Array<{ close: string; start: number; expansion: boolean }> = [];
+  // How many of those are expansions: asking the stack each time made literal
+  // parentheses followed by `$NAME`s quadratic.
+  let openExpansions = 0;
+  const outermost = (): boolean => openExpansions === 0;
+  let backtick = -1;
+  for (let i = 0; i < text.length; i++) {
+    const ch = text[i];
+    if (ch === "\\") {
+      i++;
+      continue;
+    }
+    if (ch === "`") {
+      if (backtick === -1) backtick = i;
+      else {
+        if (outermost()) spans.push([backtick, i + 1]);
+        backtick = -1;
+      }
+      continue;
+    }
+    if (backtick !== -1) continue;
+    if (ch === "$" && (text[i + 1] === "{" || text[i + 1] === "(")) {
+      const brace = text[i + 1] === "{";
+      const expansion = !(brace && commandSubstitutionsOnly);
+      stack.push({ close: brace ? "}" : ")", start: i, expansion });
+      if (expansion) openExpansions++;
+      i++;
+      continue;
+    }
+    if (ch === "$" && !commandSubstitutionsOnly && /[A-Za-z_]/.test(text[i + 1] ?? "")) {
+      let j = i + 1;
+      while (j < text.length && /[A-Za-z0-9_]/.test(text[j])) j++;
+      if (outermost()) spans.push([i, j]);
+      i = j - 1;
+      continue;
+    }
+    if (ch === "{" || ch === "(") {
+      stack.push({ close: ch === "{" ? "}" : ")", start: i, expansion: false });
+      continue;
+    }
+    if ((ch === "}" || ch === ")") && stack.length > 0 && stack[stack.length - 1].close === ch) {
+      const open = stack.pop()!;
+      if (open.expansion) openExpansions--;
+      if (open.expansion && outermost()) spans.push([open.start, i + 1]);
+    }
+  }
+  if (spans.length === 0) return text;
+  spans.sort((a, b) => a[0] - b[0]);
+  let out = "";
+  let pos = 0;
+  for (const [start, end] of spans) {
+    if (start < pos) continue;
+    out += text.slice(pos, start) + "*";
+    pos = end;
+  }
+  return out + text.slice(pos);
+}
+
+/** `$(…)` and backticks, which the shell splices into the word around them. */
+
+/** A word the shell resolves against the current directory. */
+function isRelativeShellWord(word: string): boolean {
+  return word.length > 0 && !/^[-/~$]/.test(word) && !word.includes("://") && !GLOB_METACHAR_RE.test(word);
+}
+
+/**
+ * Where `cd <operand>` leaves a shell that stood in `from`, or undefined when
+ * that cannot be known from the text (`cd -`, `cd $DIR`, `cd "$(dirname …)"`).
+ */
+function cdDestination(from: string | undefined, operand: string | undefined): string | undefined {
+  if (operand === undefined || operand === "~" || operand === "$HOME" || operand === "${HOME}") return homedir();
+  const home = /^(?:~|\$HOME|\$\{HOME\})\/(.*)$/.exec(operand);
+  if (home) return resolve(homedir(), home[1]);
+  if (operand === "-" || operand.includes("$") || operand.includes("`")) return undefined;
+  if (operand.startsWith("/")) return resolve(operand);
+  return from === undefined ? undefined : resolve(from, operand);
+}
+
+/**
+ * Whether a git command reaches the target through the directories its `-C`
+ * options move it to — which no word of its text names: `git -C external -C
+ * link/.. log --output=settings.json` writes ~/.claude/settings.json with
+ * `external/link -> ~/.claude/x`. Asked before the walk's own gate, which
+ * reads only the text.
+ */
+function gitReachesTarget(
+  gitWords: string[],
+  cwds: ReadonlyArray<string | undefined>,
+  names: (text: string) => boolean,
+  valuesOf: (word: string) => string[] | null = () => null,
+): boolean {
+  const repositories = gitRepositoryDirs(gitWords, cwds, valuesOf);
+  if (repositories.length === 0) return false;
+  if (repositories.some((repository) => names(repository))) return true;
+  return gitWords.some((word) => {
+    // `--output=<path>`, a value glued to a short option (`-o<path>`), or the word itself.
+    const value = word.includes("=") ? word.slice(word.indexOf("=") + 1) : /^-[A-Za-z]./.test(word) && !word.startsWith("--") ? word.slice(2) : word;
+    return isRelativeShellWord(value) && repositories.some((repository) => names(`${repository}/${value}`));
+  });
+}
+
+/** Short options of `cp` and `install` that take a value; `t` is the target directory. */
+const COPY_VALUE_OPTIONS: Readonly<Record<string, string>> = { cp: "St", install: "gmoSt" };
+
+/**
+ * The target directory a `cp` or `install` names, however it is spelled — `-t
+ * DIR`, `-tDIR`, `-vt DIR`, `-vtDIR`, `--target-directory=DIR` or any prefix
+ * of it — with the indexes of option values, which are no operands. Not
+ * `rsync`, whose `-t` is `--times`.
+ */
+function copyTargetDirectory(head: string, args: readonly string[]): { dir: string; values: Set<number> } | null {
+  const valued = COPY_VALUE_OPTIONS[head];
+  if (!valued) return null;
+  let dir: string | null = null;
+  const values = new Set<number>();
+  for (let i = 0; i < args.length; i++) {
+    const arg = args[i];
+    if (arg === "--") break;
+    if (arg.startsWith("--")) {
+      const eq = arg.indexOf("=");
+      const name = arg.slice(2, eq === -1 ? undefined : eq);
+      if (name.length >= 1 && "target-directory".startsWith(name)) {
+        if (eq !== -1) dir = arg.slice(eq + 1);
+        else if (i + 1 < args.length) {
+          dir = args[i + 1];
+          values.add(++i);
+        }
+      }
+      continue;
+    }
+    if (!arg.startsWith("-") || arg.length < 2) continue;
+    for (let k = 1; k < arg.length; k++) {
+      if (!valued.includes(arg[k])) continue;
+      const rest = arg.slice(k + 1);
+      let value: string | undefined = rest;
+      if (rest.length === 0) {
+        value = args[i + 1];
+        if (value !== undefined) values.add(++i);
+      }
+      if (arg[k] === "t" && value !== undefined) dir = value;
+      break;
+    }
+  }
+  return dir === null ? null : { dir, values };
+}
+
+/** Whether a copy's destination word names a directory that exists now, seen from `cwd`. */
+function existingDirectory(word: string, cwd: string | undefined): boolean {
+  const plain = stripShellQuoting(word);
+  if (/[$`*?[]/.test(plain)) return false;
+  const path = cdDestination(cwd, plain);
+  return path !== undefined && isDirectoryNow(path);
+}
+
+/** Whether `path` is a directory now, so a `cd` into it succeeds. */
+function isDirectoryNow(path: string): boolean {
+  try {
+    return statSync(path, { throwIfNoEntry: false })?.isDirectory() === true;
+  } catch {
+    return false;
+  }
+}
+
+/** `text` cut at every match of `separator`, as `[start, end)` ranges. */
+function cutRanges(text: string, separator: RegExp): Array<[number, number]> {
+  const global = new RegExp(separator.source, separator.flags.includes("g") ? separator.flags : `${separator.flags}g`);
+  const ranges: Array<[number, number]> = [];
+  let start = 0;
+  for (const match of text.matchAll(global)) {
+    ranges.push([start, match.index]);
+    start = match.index + match[0].length;
+  }
+  ranges.push([start, text.length]);
+  return ranges;
+}
+
+/** True when `command` would delete, move or overwrite failproofai's own state. */
+function destroysFailproofaiState(command: string): boolean {
+  return destroysProtectedPath(command, FAILPROOFAI_STATE_TARGET);
+}
+
+/**
+ * One command's disk-glob work: each directory read once, and bounds on the
+ * entries read, the entries matched and the paths checked across all of its
+ * globs. Only a command built to stall the guard reaches them, and one that
+ * does reads as reaching the target: a limit never stands for "no match".
+ */
+interface DiskGlobBudget {
+  listings: Map<string, Array<{ name: string; dir: boolean }> | null>;
+  /** Directory entries read from disk. */
+  entries: number;
+  /** Entries matched against a pattern, cached listings included. */
+  steps: number;
+  /** Expanded paths handed to the caller's check. */
+  checks: number;
+}
+
+/** The shell options that change what a glob matches, as far as the command turns them on. */
+interface GlobOptions {
+  /** `*` and `?` match a leading dot (`shopt -s dotglob`, or GLOBIGNORE set). */
+  dotglob: boolean;
+  /** `**` matches any depth of directories (`shopt -s globstar`). */
+  globstar: boolean;
+  /** Matching ignores case (`shopt -s nocaseglob`). */
+  nocaseglob: boolean;
+}
+
+/**
+ * The glob options a command may turn on, in bash's spelling or zsh's.
+ *
+ * - dotglob: bash `shopt -s dotglob` or `GLOBIGNORE=`; zsh `setopt globdots`
+ *   (any case, underscores ignored) or a `(D)` glob qualifier.
+ * - globstar: bash `shopt -s globstar`; zsh `setopt globstarshort`; and any
+ *   `**` or `***` path segment, which zsh recurses into by default.
+ * - nocaseglob: bash `shopt -s nocaseglob`; zsh `setopt nocaseglob`,
+ *   `unsetopt caseglob`, or the `(#i)` pattern flag.
+ */
+/** A zsh pattern flag group: `(#i)`, `(#l)`, `(#a2)`. */
+const ZSH_GLOB_FLAG_RE = /\(#[A-Za-z0-9]*\)/;
+
+function globOptionsOf(command: string): GlobOptions {
+  // zsh option names: case and underscores do not count (`GLOB_DOTS`).
+  const names = command.toLowerCase().replace(/_/g, "");
+  return {
+    dotglob: /\b(?:dotglob|globdots)\b|globignore=/.test(names) || /\*\([^()|\s]*D[^()|\s]*\)/.test(command),
+    globstar: /\bglobstar(?:short)?\b/.test(names) || /(?:^|[\s/"'=(])\*{2,3}(?=\/|$|[\s"';&|)])/.test(command),
+    nocaseglob:
+      /\bnocaseglob\b/.test(names) ||
+      /\bunsetopt\b[^;&|\n]*\bcaseglob\b/.test(names) ||
+      /\(#[a-z]*i[a-z]*\)/i.test(command),
+  };
+}
+
+/** A glob segment with each extended-glob group replaced by `*`, which matches at least what the group does. */
+function withExtglobsAsStars(segment: string): string {
+  let out = "";
+  for (let i = 0; i < segment.length; i++) {
+    const group = extglobAt(segment, i);
+    if (group) {
+      out += "*";
+      i = group.end;
+    } else {
+      out += segment[i];
+    }
+  }
+  return out;
+}
+
+/**
+ * Whether a glob word, expanded on disk as the shell expands it, reaches a
+ * path `reaches` accepts: braces first, then each segment with glob
+ * characters matched against the entries of its directory — a leading dot
+ * only by a pattern that starts with one unless dotglob is on, `**` at any
+ * depth under globstar — relative to `cwd` when relative. Paths are joined as
+ * written, never normalised, so a `..` after a link is walked the way the
+ * kernel walks it. Every path a glob expands to is checked, however many,
+ * within the command's budget; "exhausted" past it, which the caller reads as
+ * reaching the target.
+ */
+function globOnDiskReaches(
+  word: string,
+  cwd: string | undefined,
+  budget: DiskGlobBudget,
+  options: GlobOptions,
+  reaches: (path: string) => boolean,
+): boolean | "exhausted" {
+  const join = (base: string, name: string): string => (base.endsWith("/") ? base + name : `${base}/${name}`);
+  const list = (base: string): Array<{ name: string; dir: boolean }> | null | "exhausted" => {
+    let entries = budget.listings.get(base);
+    if (entries === undefined) {
+      try {
+        entries = readdirSync(base, { withFileTypes: true }).map((entry) => ({ name: entry.name, dir: entry.isDirectory() }));
+      } catch {
+        entries = null;
+      }
+      budget.listings.set(base, entries);
+      budget.entries -= entries?.length ?? 0;
+      if (budget.entries < 0) return "exhausted";
+    }
+    if (entries === null) return null;
+    budget.steps -= entries.length;
+    return budget.steps < 0 ? "exhausted" : entries;
+  };
+  for (const expanded of expandBraces(word)) {
+    let path = expanded === "~" || expanded.startsWith("~/") ? homedir() + expanded.slice(1) : expanded;
+    if (!path.startsWith("/")) {
+      if (cwd === undefined) continue;
+      path = `${cwd}/${path}`;
+    }
+    const segments = path.split("/").filter(Boolean);
+    const pending: Array<[string, number]> = [["/", 0]];
+    while (pending.length > 0) {
+      const [base, k] = pending.pop()!;
+      if (k === segments.length) {
+        if (--budget.checks < 0) return "exhausted";
+        if (reaches(base)) return true;
+        continue;
+      }
+      // zsh pattern flags (`(#i)settings.json`) make a segment a pattern even
+      // with no glob character left; the flag itself matches nothing.
+      const flagged = ZSH_GLOB_FLAG_RE.test(segments[k]);
+      const segment = flagged ? segments[k].replace(new RegExp(ZSH_GLOB_FLAG_RE.source, "g"), "") : segments[k];
+      if (!flagged && !GLOB_METACHAR_RE.test(segment)) {
+        pending.push([join(base, segment), k + 1]);
+        continue;
+      }
+      // zsh's `***/` recurses too, following links.
+      if ((segment === "**" || segment === "***") && options.globstar) {
+        // Zero directories here, or one more and `**` again below it.
+        pending.push([base, k + 1]);
+        const entries = list(base);
+        if (entries === "exhausted") return "exhausted";
+        for (const entry of entries ?? []) {
+          if (entry.dir && (options.dotglob || !entry.name.startsWith("."))) pending.push([join(base, entry.name), k]);
+        }
+        continue;
+      }
+      // An extended glob matches no more than a `*` in its place would: that
+      // superset is what is checked.
+      const pattern = options.nocaseglob ? segment.toLowerCase() : segment;
+      const atoms = globAtoms(pattern) ?? globAtoms(withExtglobsAsStars(pattern));
+      if (!atoms) return "exhausted";
+      const entries = list(base);
+      if (entries === "exhausted") return "exhausted";
+      for (const entry of entries ?? []) {
+        if (entry.name.startsWith(".") && !segment.startsWith(".") && !options.dotglob) continue;
+        if (globSegmentMatches(atoms, options.nocaseglob ? entry.name.toLowerCase() : entry.name)) pending.push([join(base, entry.name), k + 1]);
+      }
+    }
+  }
+  return false;
+}
+
+/**
+ * An assignment's value as the variable resolver reads it: its quotes off,
+ * and a single-quoted one with its `$`, backticks and backslashes escaped,
+ * because the shell expands nothing inside single quotes: `B='$A'` holds the
+ * text `$A`.
+ */
+function assignedValueText(raw: string): string {
+  const single = /^'([\s\S]*)'$/.exec(raw);
+  if (single) return single[1].replace(/[\\$`]/g, "\\$&");
+  return raw.replace(/^"([\s\S]*)"$/, "$1");
+}
+
+/** A shell word with one pair of outer quotes taken off, expansions left in. */
+function withoutOuterQuotes(word: string): string {
+  return word.replace(/^(["'])([\s\S]*)\1$/, "$2");
+}
+
+/**
+ * What `printf FORMAT ARGS…` prints, for the conversions a path is made with:
+ * each `%…` takes the next argument, `%%` is a percent sign, escapes decode,
+ * and the format repeats while arguments remain.
+ */
+function printfOutput(format: string, args: readonly string[]): string {
+  const decoded = decodeAnsiC(format);
+  let k = 0;
+  const pass = (): string => decoded.replace(/%(%|[-+ #0]*[0-9]*(?:\.[0-9]+)?[A-Za-z])/g, (_, spec: string) => (spec === "%" ? "%" : (args[k++] ?? "")));
+  let out = pass();
+  for (let round = 0; round < 64 && k > 0 && k < args.length; round++) out += pass();
+  return out;
+}
+
+/**
+ * What a command substitution prints, for the few commands whose output the
+ * text alone decides: `echo`, `printf`, `basename`, `dirname`, `cat <<< word`,
+ * and `readlink`/`realpath`, whose output is the path a link resolves to —
+ * here the link's own name, which the walk resolves itself. Null for anything
+ * else, which the walk reads as unknown.
+ */
+function simpleSubstitutionOutput(body: string): string | null {
+  const words = quoteAwareWords(body.trim()).map(withoutOuterQuotes);
+  const head = commandBasename(words[0] ?? "");
+  const args = words.slice(1);
+  if (head === "echo") {
+    let k = 0;
+    let escapes = false;
+    for (; k < args.length && /^-[neE]+$/.test(args[k]); k++) escapes ||= args[k].includes("e");
+    const text = args.slice(k).join(" ");
+    return escapes ? decodeAnsiC(text) : text;
+  }
+  if (head === "printf") return args.length > 0 && !args[0].startsWith("-") ? printfOutput(args[0], args.slice(1)) : null;
+  const operands = args.filter((a) => !a.startsWith("-"));
+  if (head === "basename" && operands.length >= 1) {
+    const name = operands[0].replace(/\/+$/, "").split("/").pop() ?? "";
+    const suffix = operands[1];
+    return suffix && name.endsWith(suffix) && name !== suffix ? name.slice(0, name.length - suffix.length) : name;
+  }
+  if (head === "dirname" && operands.length >= 1) {
+    const trimmed = operands[0].replace(/\/+$/, "");
+    const at = trimmed.lastIndexOf("/");
+    return at === -1 ? "." : at === 0 ? "/" : trimmed.slice(0, at);
+  }
+  if ((head === "readlink" || head === "realpath") && operands.length >= 1) return operands[operands.length - 1];
+  if (head === "cat" && args[0] === "<<<" && args.length === 2) return args[1];
+  return null;
+}
+
+/** What a variable may hold, for `shellWordExpansionForms`: its values, null when unknown, or "complex". */
+type ShellVariableLookup = (name: string) => string[] | "complex" | null;
+
+/** Thrown inside `shellWordExpansionForms` when a word's texts cannot be followed within the limits. */
+class ShellWordTooComplex extends Error {}
+
+/** How many texts one word may stand for before it reads as built to evade. */
+const SHELL_WORD_FORMS_LIMIT = 64;
+
+/**
+ * The texts a shell word may become once its expansions run, as far as the
+ * command's own text says: `$NAME`, `${NAME}`, an array element, and the
+ * operators a destination is built with — a default (`${A:-cfg.json}`, `-`,
+ * `=`, `:=`), an alternate (`:+`, `+`), a prefix or suffix removed (`#`, `##`,
+ * `%`, `%%`), a replacement (`/`, `//`, `/#`, `/%`), a case change (`^^`, `,,`,
+ * `@U`, `@L`), a substring with literal bounds, a length, an indirection
+ * (`${!R}`), quoting and `$'…'`.
+ *
+ * Only what the text gives is a text: a variable `lookup` cannot know (one the
+ * environment sets), a command substitution, a positional parameter add
+ * nothing, so a word made only of those has no texts at all. "complex" is a
+ * KNOWN value put through an operator this does not follow, or texts past the
+ * limits — what only a crafted command builds. Pattern matching runs on the
+ * no-backtracking glob walk, under `budget`, which every word of one command
+ * shares.
+ */
+function shellWordExpansionForms(
+  word: string,
+  lookup: ShellVariableLookup,
+  budget: { steps: number },
+  /** No text longer: past it the word was built to grow. The walk passes its command's length. */
+  maxLength = Math.max(4096, word.length),
+): string[] | "complex" {
+  const product = (left: readonly string[], right: readonly string[]): string[] => {
+    if (left.length * right.length > SHELL_WORD_FORMS_LIMIT) throw new ShellWordTooComplex();
+    const out: string[] = [];
+    for (const l of left) {
+      for (const r of right) {
+        if (l.length + r.length > maxLength) throw new ShellWordTooComplex();
+        out.push(l + r);
+      }
+    }
+    return out;
+  };
+  const union = (lists: ReadonlyArray<readonly string[]>): string[] => {
+    const out = [...new Set(lists.flat())];
+    if (out.length > SHELL_WORD_FORMS_LIMIT) throw new ShellWordTooComplex();
+    return out;
+  };
+  const valuesOf = (name: string): string[] => {
+    const values = lookup(name);
+    if (values === "complex") throw new ShellWordTooComplex();
+    return values ?? [];
+  };
+  // Where the `}` closing a `${` whose body starts at `from` is, past nested
+  // expansions, quotes and escapes; -1 when it is never closed.
+  const closeBrace = (s: string, from: number): number => {
+    let depth = 1;
+    for (let i = from; i < s.length; i++) {
+      const ch = s[i];
+      if (ch === "\\") i++;
+      else if (ch === "'") {
+        const close = s.indexOf("'", i + 1);
+        if (close === -1) return -1;
+        i = close;
+      } else if (ch === "$" && s[i + 1] === "{") {
+        depth++;
+        i++;
+      } else if (ch === "}" && --depth === 0) return i;
+    }
+    return -1;
+  };
+  // A pattern as glob atoms, or the literal it also reads as when quoted.
+  const glob = (pattern: string): GlobAtom[] => {
+    const atoms = globAtoms(pattern);
+    if (!atoms || atoms.length > 256) throw new ShellWordTooComplex();
+    return atoms;
+  };
+  const matches = (atoms: GlobAtom[], text: string): boolean => {
+    budget.steps -= (atoms.length + 1) * (text.length + 1);
+    if (budget.steps < 0) throw new ShellWordTooComplex();
+    return globSegmentMatches(atoms, text);
+  };
+  // `${v#p}`, `${v##p}`, `${v%p}`, `${v%%p}`: the shortest or longest match removed.
+  const removeAffix = (value: string, pattern: string, fromEnd: boolean, longest: boolean): string[] => {
+    // A quoted pattern is literal: `${v%"*"}` removes a star.
+    let literal = value;
+    if (fromEnd && value.endsWith(pattern)) literal = value.slice(0, value.length - pattern.length);
+    else if (!fromEnd && value.startsWith(pattern)) literal = value.slice(pattern.length);
+    if (!/[*?[]/.test(pattern)) return [literal];
+    const atoms = glob(pattern);
+    const star: GlobAtom = { kind: "star" };
+    // When no prefix (suffix) matches at all, one walk says so.
+    if (!matches(fromEnd ? [star, ...atoms] : [...atoms, star], value)) return [value, literal];
+    // A pattern with no `*` matches one length only, so there is one cut to try.
+    const fixed = atoms.every((atom) => atom.kind !== "star") ? atoms.length : -1;
+    const cuts =
+      fixed === -1
+        ? Array.from({ length: value.length + 1 }, (_, i) => i)
+        : fixed <= value.length
+          ? [fromEnd ? value.length - fixed : fixed]
+          : [];
+    const order = fromEnd === longest ? cuts : cuts.reverse();
+    let globbed = value;
+    for (const cut of order) {
+      const piece = fromEnd ? value.slice(cut) : value.slice(0, cut);
+      if (matches(atoms, piece)) {
+        globbed = fromEnd ? value.slice(0, cut) : value.slice(cut);
+        break;
+      }
+    }
+    return [globbed, literal];
+  };
+  // `${v/p/r}`, `//` every match, `/#` at the start, `/%` at the end: the longest match at each place.
+  const replaceMatches = (value: string, pattern: string, replacement: string, mode: "first" | "all" | "prefix" | "suffix"): string[] => {
+    // An empty pattern changes nothing, except where it is anchored.
+    if (pattern === "") return [mode === "prefix" ? replacement + value : mode === "suffix" ? value + replacement : value];
+    // A quoted pattern is literal; one with no glob characters is only that.
+    let literal = value;
+    if (mode === "all") {
+      if (value.split(pattern).length * (replacement.length + 1) > maxLength + value.length) throw new ShellWordTooComplex();
+      literal = value.split(pattern).join(replacement);
+    }
+    else if (mode === "prefix") literal = value.startsWith(pattern) ? replacement + value.slice(pattern.length) : value;
+    else if (mode === "suffix") literal = value.endsWith(pattern) ? value.slice(0, value.length - pattern.length) + replacement : value;
+    else if (value.includes(pattern)) {
+      const at = value.indexOf(pattern);
+      literal = value.slice(0, at) + replacement + value.slice(at + pattern.length);
+    }
+    if (!/[*?[]/.test(pattern)) return [literal];
+    const atoms = glob(pattern);
+    const star: GlobAtom = { kind: "star" };
+    // No match anywhere: one walk, not one per place. And at each place, one
+    // walk first to ask whether any match starts there.
+    if (!matches([star, ...atoms, star], value)) return [value, literal];
+    const startsHere = [...atoms, star];
+    const fixed = atoms.every((atom) => atom.kind !== "star") ? atoms.length : -1;
+    let out = "";
+    let replaced = false;
+    for (let i = 0; i <= value.length; ) {
+      let end = -1;
+      if ((mode === "all" || !replaced) && (mode !== "prefix" || i === 0) && (fixed !== -1 || matches(startsHere, value.slice(i)))) {
+        // The longest match starting here; one length only without a `*`.
+        const longest = fixed === -1 ? value.length : Math.min(value.length, i + fixed);
+        const shortest = fixed === -1 ? i + 1 : i + fixed;
+        for (let e = longest; e >= shortest && e > i; e--) {
+          if ((mode !== "suffix" || e === value.length) && matches(atoms, value.slice(i, e))) {
+            end = e;
+            break;
+          }
+          if (mode === "suffix") break;
+        }
+      }
+      if (end !== -1) {
+        out += replacement;
+        if (out.length > maxLength) throw new ShellWordTooComplex();
+        replaced = true;
+        i = end;
+        continue;
+      }
+      if (i < value.length) out += value[i];
+      i++;
+    }
+    return [out, literal];
+  };
+  const changeCase = (value: string, op: string): string => {
+    if (op === "^^" || op === "U") return value.toUpperCase();
+    if (op === ",," || op === "L") return value.toLowerCase();
+    if (op === "^" || op === "u") return value.charAt(0).toUpperCase() + value.slice(1);
+    if (op === ",") return value.charAt(0).toLowerCase() + value.slice(1);
+    const toggle = (c: string): string => (c === c.toUpperCase() ? c.toLowerCase() : c.toUpperCase());
+    return op === "~" ? toggle(value.charAt(0)) + value.slice(1) : [...value].map(toggle).join("");
+  };
+  const substring = (value: string, offset: number, length: number | undefined): string => {
+    const start = offset < 0 ? Math.max(0, value.length + offset) : Math.min(offset, value.length);
+    if (length === undefined) return value.slice(start);
+    const end = length < 0 ? value.length + length : start + length;
+    return end < start ? "" : value.slice(start, end);
+  };
+  // The first `/` of a replacement that is not escaped or inside an expansion.
+  const separatorAt = (s: string): number => {
+    for (let i = 0; i < s.length; i++) {
+      if (s[i] === "\\") i++;
+      else if (s[i] === "$" && s[i + 1] === "{") {
+        const close = closeBrace(s, i + 2);
+        if (close === -1) return -1;
+        i = close;
+      } else if (s[i] === "/") return i;
+    }
+    return -1;
+  };
+  const braced = (body: string, depth: number): string[] => {
+    let m = /^#([A-Za-z_][A-Za-z0-9_]*)(?:\[[^\]]*\])?$/.exec(body);
+    if (m) return union([valuesOf(m[1]).map((value) => String(value.length))]);
+    if (body.startsWith("#")) return [];
+    m = /^!([A-Za-z_][A-Za-z0-9_]*)$/.exec(body);
+    if (m) return union(valuesOf(m[1]).map((name) => (/^[A-Za-z_][A-Za-z0-9_]*$/.test(name) ? valuesOf(name) : [])));
+    if (body.startsWith("!")) return [];
+    m = /^(?:([A-Za-z_][A-Za-z0-9_]*)|[0-9]+|[@*?$!-])(?:\[[^\]]*\])?/.exec(body);
+    if (!m) return [];
+    const values = m[1] === undefined ? [] : valuesOf(m[1]);
+    const rest = body.slice(m[0].length);
+    if (rest === "") return values;
+    const alternate = /^:?([-=+?])/.exec(rest);
+    if (alternate) {
+      const word = expand(rest.slice(alternate[0].length), depth + 1);
+      if (alternate[1] === "+") return union([[""], word]);
+      return alternate[1] === "?" ? values : union([values, word]);
+    }
+    // Every operator below changes a value; with none known there is nothing to change.
+    if (values.length === 0) return [];
+    const affix = /^(##?|%%?)/.exec(rest);
+    if (affix) {
+      const fromEnd = affix[1][0] === "%";
+      const patterns = expand(rest.slice(affix[1].length), depth + 1);
+      // A pattern the text does not give may remove any suffix (or prefix):
+      // every cut of a short value is a candidate.
+      if (patterns.length === 0) {
+        return union(values.map((value) => Array.from({ length: value.length + 1 }, (_, k) => (fromEnd ? value.slice(0, k) : value.slice(k)))));
+      }
+      return union(values.flatMap((value) => patterns.map((p) => removeAffix(value, p, fromEnd, affix[1].length === 2))));
+    }
+    if (rest.startsWith("/")) {
+      const mode = rest[1] === "/" ? "all" : rest[1] === "#" ? "prefix" : rest[1] === "%" ? "suffix" : "first";
+      const spec = rest.slice(mode === "first" ? 1 : 2);
+      const at = separatorAt(spec);
+      const patterns = expand(at === -1 ? spec : spec.slice(0, at), depth + 1);
+      const replacements = expand(at === -1 ? "" : spec.slice(at + 1), depth + 1);
+      if (patterns.length === 0 || replacements.length === 0) throw new ShellWordTooComplex();
+      return union(values.flatMap((value) => patterns.flatMap((p) => replacements.map((r) => replaceMatches(value, p, r, mode)))));
+    }
+    const caseChange = /^(\^\^|\^|,,|,|~~|~)$/.exec(rest) ?? /^@([ULu])$/.exec(rest);
+    if (caseChange) return union([values.map((value) => changeCase(value, caseChange[1]))]);
+    if (rest === "@E") return union([values.map((value) => decodeAnsiC(value))]);
+    if (rest === "@Q" || rest === "@a" || rest === "@A" || rest === "@K" || rest === "@k") return [];
+    const sub = /^:[ \t]*(-?[0-9]+)(?::[ \t]*(-?[0-9]+))?$/.exec(rest);
+    if (sub) {
+      const cut = values.map((value) => substring(value, Number(sub[1]), sub[2] === undefined ? undefined : Number(sub[2])));
+      // On `[@]` or `[*]` it slices the array: its elements stay whole.
+      return /\[[@*]\]$/.test(m[0]) ? union([values, cut]) : union([cut]);
+    }
+    // An operator on a known value that this does not follow: offsets that are
+    // arithmetic, a case change limited to a pattern, a prompt expansion.
+    throw new ShellWordTooComplex();
+  };
+  const expand = (s: string, depth: number): string[] => {
+    if (depth > 8) throw new ShellWordTooComplex();
+    let forms: string[] = [""];
+    let literal = "";
+    let inDouble = false;
+    const take = (next: readonly string[]): void => {
+      forms = product(product(forms, [literal]), next);
+      literal = "";
+    };
+    for (let i = 0; i < s.length; i++) {
+      const ch = s[i];
+      if (ch === "\\") {
+        if (i + 1 < s.length) {
+          const next = s[++i];
+          if (inDouble && !/[$`"\\\n]/.test(next)) literal += "\\";
+          if (next !== "\n") literal += next;
+        }
+      } else if (ch === "'" && !inDouble) {
+        const close = s.indexOf("'", i + 1);
+        const stop = close === -1 ? s.length : close;
+        literal += s.slice(i + 1, stop);
+        i = stop;
+      } else if (ch === '"') {
+        inDouble = !inDouble;
+      } else if (ch === "`") {
+        return [];
+      } else if (ch === "$" && s[i + 1] === "'" && !inDouble) {
+        let j = i + 2;
+        let body = "";
+        for (; j < s.length && s[j] !== "'"; j++) {
+          if (s[j] === "\\" && j + 1 < s.length) body += s[j++];
+          body += s[j];
+        }
+        literal += decodeAnsiC(body);
+        i = j;
+      } else if (ch === "$" && s[i + 1] === "(") {
+        return [];
+      } else if (ch === "$" && s[i + 1] === "{") {
+        // Unclosed, it runs to the end: the walk's command words come with
+        // their outer braces stripped (`"${A:-x}"` arrives as `${A:-x`), and
+        // a word really left open is a syntax error that writes nothing.
+        const close = closeBrace(s, i + 2);
+        const end = close === -1 ? s.length : close;
+        take(braced(s.slice(i + 2, end), depth));
+        i = end;
+      } else if (ch === "$" && /[A-Za-z_]/.test(s[i + 1] ?? "")) {
+        let j = i + 1;
+        while (j < s.length && /[A-Za-z0-9_]/.test(s[j])) j++;
+        take(valuesOf(s.slice(i + 1, j)));
+        i = j - 1;
+      } else if (ch === "$" && /[0-9@*#?!$-]/.test(s[i + 1] ?? "")) {
+        return [];
+      } else {
+        literal += ch;
+      }
+    }
+    return product(forms, [literal]);
+  };
+  try {
+    return expand(word, 0);
+  } catch (error) {
+    if (error instanceof ShellWordTooComplex) return "complex";
+    throw error;
+  }
+}
+
+/**
+ * True when `command` would delete, move or overwrite the target — written for
+ * failproofai's own state, which is what the examples below are about.
  *
  * Deleting the state IS disabling enforcement, and it never names the binary:
  * `rm ~/.failproofai/policies/packs/installed.json` switches off every pack
@@ -1466,13 +3727,24 @@ function writesViaOutputFlag(head: string, args: string[], namesState: (text: st
  * - `D=~/.failproofai; rm -rf $D` — the path is a value, and the destroying
  *   command names only `$D`
  *
- * So the walk is stateful: it remembers which variables hold the path and
- * whether the shell has been moved INTO the directory, and carries both
- * forward. What it does NOT do is treat every later command as suspect —
+ * So the walk is stateful: it remembers which variables hold the path, whether
+ * the shell has been moved INTO the directory, and — where it can tell — which
+ * directory the shell stands in, so a relative destination
+ * (`cd ~/.failproofai && cp /dev/null policies-config.json`) is read as the path
+ * it is. What it does NOT do is treat every later command as suspect —
  * `cat ~/.failproofai/config.json && rm /tmp/scratch` has to stay allowed, and
  * does, because nothing in the second command reaches the state.
  */
-function destroysFailproofaiState(command: string, depth = 0): boolean {
+function destroysProtectedPath(
+  command: string,
+  target: ProtectedPathTarget,
+  depth = 0,
+  /** The text `command` was shell-unescaped from, when it is such a text (the unescaped pass). */
+  unescapedFrom?: string,
+): boolean {
+  const lexed = lexShell(command, depth > 0);
+  const unescapedPass = unescapedFrom !== undefined;
+
   // A substitution runs its body as a command of its own, so it is judged as
   // one — `echo $(rm -rf ~/.failproofai)` otherwise presents `echo` as the head
   // and walks straight through. Bounded, because a body can contain another.
@@ -1480,11 +3752,18 @@ function destroysFailproofaiState(command: string, depth = 0): boolean {
   // deeper than the limit is trivial to write (`echo $(echo $(… rm …))`), and
   // every level of it presents `echo` as the head. The budget is what bounds
   // the work instead, because siblings multiply where depth does not.
-  if (depth === 0) {
-    const bodies = substitutionBodies(command);
+  //
+  // Not on a text whose quotes and backslashes are already gone
+  // (`unescapedPass`): there an escaped backtick in a commit message reads as a
+  // substitution. Each body is judged raw AND unescaped here instead, so a
+  // quote-broken path inside one (`$(rm ~/.claude/"settings.json")`) is caught.
+  if (depth === 0 && !unescapedPass) {
+    const bodies = substitutionBodies(lexed.substitutionSource);
     for (let i = 0; i < bodies.length && i < 64; i++) {
-      if (destroysFailproofaiState(bodies[i], 1)) return true;
-      bodies.push(...substitutionBodies(bodies[i]));
+      if (destroysProtectedPath(bodies[i], target, 1)) return true;
+      const unescapedBody = stripShellQuoting(bodies[i]);
+      if (unescapedBody !== bodies[i] && destroysProtectedPath(unescapedBody, target, 1, bodies[i])) return true;
+      bodies.push(...substitutionBodies(lexShell(bodies[i], true).substitutionSource));
     }
   }
 
@@ -1495,50 +3774,410 @@ function destroysFailproofaiState(command: string, depth = 0): boolean {
   // counts too. Repeating to a fixpoint costs four lines and makes the result
   // independent of the order the assignments appear in, rather than resting on
   // a shell evaluating them top to bottom.
-  const assignments = [
-    ...command.matchAll(/(?:^|[\s;&|(])(?:export\s+)?([A-Za-z_][A-Za-z0-9_]*)=("[^"]*"|'[^']*'|[^\s;&|)]+)/g),
-  ].map(([, name, value]) => [name, value.replace(/^["']|["']$/g, "")] as const);
+  //
+  // A text whose quotes are already gone reads `B='$A'` as `B=$A`, a reference
+  // the command never makes. So the unescaped pass reads its variables from
+  // the same text unescaped with what the shell would not expand kept escaped.
+  // It still reads them: a value that starts with a quoted piece
+  // (`D="$HOME"/.claude/settings.json`, `A='cfg'.json`) is whole only there.
+  const assignmentText =
+    unescapedFrom === undefined ? lexed.readable : lexShell(stripShellQuotingKeepingLiterals(unescapedFrom), depth > 0).readable;
+  const assignments: Array<readonly [string, string]> = [
+    ...assignmentText.matchAll(/(?:^|[\s;&|(])(?:export\s+)?([A-Za-z_][A-Za-z0-9_]*)=("[^"]*"|'[^']*'|[^\s;&|)(][^\s;&|)]*)/g),
+  ].map(([, name, value]) => [name, assignedValueText(value)] as const);
+  // `A+=x` appends to A, the way `A=${A}x` does; `A=(x y)` and `A+=(z)` give
+  // an array whose every element may be the one a reference reads.
+  for (const [, name, value] of assignmentText.matchAll(/(?:^|[\s;&|(])([A-Za-z_][A-Za-z0-9_]*)\+=("[^"]*"|'[^']*'|[^\s;&|)(][^\s;&|)]*)/g)) {
+    assignments.push([name, `\${${name}}${assignedValueText(value)}`]);
+  }
+  for (const [, name, elements] of assignmentText.matchAll(/(?:^|[\s;&|(])([A-Za-z_][A-Za-z0-9_]*)\+?=\(([^()]*)\)/g)) {
+    for (const element of quoteAwareWords(elements).slice(0, 64)) assignments.push([name, assignedValueText(element)]);
+  }
+  // And the other ways a line gives a variable a value it writes out: a
+  // substitution whose output the text decides (`A=$(echo cfg.json)`), a
+  // `for`/`select` list, `read … <<< word`, `printf -v NAME FORMAT ARGS`, and
+  // a nameref (`declare -n R=A` reads A).
+  for (const [, name, body, ticked] of assignmentText.matchAll(/(?:^|[\s;&|(])([A-Za-z_][A-Za-z0-9_]*)=["']?(?:\$\(([^()]*)\)|`([^`]*)`)/g)) {
+    const output = simpleSubstitutionOutput(body ?? ticked ?? "");
+    if (output !== null) assignments.push([name, output]);
+  }
+  for (const [, name, list] of assignmentText.matchAll(/(?:^|[\s;&|(])(?:for|select)\s+([A-Za-z_][A-Za-z0-9_]*)\s+in\s+([^;\n]*?)\s*[;\n]\s*do(?=[\s;]|$)/g)) {
+    for (const word of quoteAwareWords(list).slice(0, 64)) assignments.push([name, assignedValueText(word)]);
+  }
+  for (const [, options, here] of assignmentText.matchAll(/(?:^|[\s;&|(])read((?:[ \t]+[^\s;&|<>]+)*?)[ \t]*<<<[ \t]*("[^"]*"|'[^']*'|[^\s;&|)]+)/g)) {
+    const value = withoutOuterQuotes(here);
+    const tokens = options.trim().split(/\s+/).filter(Boolean);
+    const names: string[] = [];
+    for (let k = 0; k < tokens.length; k++) {
+      if (/^-[adinNptu]$/.test(tokens[k])) {
+        if (tokens[k] === "-a" && tokens[k + 1]) names.push(tokens[k + 1]);
+        k++;
+      } else if (!tokens[k].startsWith("-")) names.push(tokens[k]);
+    }
+    for (const name of names.length > 0 ? names : ["REPLY"]) {
+      if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(name)) continue;
+      assignments.push([name, value]);
+      for (const field of value.split(/\s+/).filter(Boolean).slice(0, 32)) assignments.push([name, field]);
+    }
+  }
+  for (const [, name, rest] of assignmentText.matchAll(/(?:^|[\s;&|(])printf[ \t]+-v[ \t]*([A-Za-z_][A-Za-z0-9_]*)[ \t]+([^;&|\n]*)/g)) {
+    const [format = "", ...args] = quoteAwareWords(rest).map(withoutOuterQuotes);
+    assignments.push([name, printfOutput(format, args)]);
+  }
+  for (const [, flags, rest] of assignmentText.matchAll(/(?:^|[\s;&|(])(?:declare|local|typeset)((?:[ \t]+-[A-Za-z]+)+)[ \t]+([^;&|\n]*)/g)) {
+    if (!flags.includes("n")) continue;
+    for (const [, name, ref] of rest.matchAll(/([A-Za-z_][A-Za-z0-9_]*)=([A-Za-z_][A-Za-z0-9_]*)/g)) assignments.push([name, `\${${ref}}`]);
+  }
   const stateVars = new Set<string>();
+  const assignedValues = new Map<string, string[]>();
+  // A variable given more values than are kept is not known: the value that
+  // matters may be one that was dropped.
+  const overflowed = new Set<string>();
+  for (const [name, value] of assignments) {
+    const list = assignedValues.get(name) ?? [];
+    if (list.length < 64) list.push(value);
+    else overflowed.add(name);
+    assignedValues.set(name, list);
+  }
+  // A variable's values with the variables inside them resolved too
+  // (`A=cfg.json; D=$A`), each variable once, however long the chain. A
+  // variable named in its own value is its earlier value, the shell's append
+  // (`F=ho; F=${F}oks` is `hooks`; `PATH=$PATH:/x` extends an environment
+  // value, which is unknown). Any assignment on the line may or may not have
+  // run where the variable is used, so a value that cannot be known (a command
+  // substitution) adds nothing but takes no known value away:
+  // `A=cfg.json; A=$(true); cp x "$A"` may still write cfg.json. COMPLEX is
+  // what only a crafted command builds — a cycle between variables, more
+  // values than are kept, too many combinations, a value grown longer than
+  // any path — and counts as naming the target; UNKNOWN (null: no known value
+  // at all) does not, like any environment variable. Both limits are checked
+  // before each value is made, never after a list is built: twenty-four
+  // appends double the values twenty-four times.
+  const MAX_VALUES = 64;
+  const MAX_VALUE_LENGTH = 4096;
+  const COMPLEX = "complex" as const;
+  type Resolved = string[] | typeof COMPLEX | null;
+  const resolved = new Map<string, Resolved>();
+  const resolving = new Set<string>();
+  // One value with its expansions resolved the way the shell expands an
+  // assignment's value — references and parameter operators alike
+  // (`B=${A%.bak}`, `B=${A:-cfg.json}`) — `self` binding the variable's own
+  // name to its earlier value. Substitutions whose output the text decides
+  // were read as values of their own (simpleSubstitutionOutput).
+  const valueBudget = { steps: 4_000_000 };
+  const expandValue = (value: string, name: string, self: string | undefined): Resolved => {
+    if (/`|\$\(/.test(value)) return null;
+    const forms = shellWordExpansionForms(
+      value,
+      (ref) => (ref === name ? (self === undefined ? null : [self]) : resolveVariable(ref)),
+      valueBudget,
+      Math.max(MAX_VALUE_LENGTH, value.length),
+    );
+    if (forms === "complex") return COMPLEX;
+    return forms.length === 0 ? null : forms;
+  };
+  const resolveVariable = (name: string): Resolved => {
+    if (resolved.has(name)) return resolved.get(name)!;
+    if (resolving.has(name) || resolving.size > 512) return COMPLEX;
+    const raw = assignedValues.get(name);
+    if (!raw || raw.length === 0) return null;
+    if (overflowed.has(name)) return COMPLEX;
+    resolving.add(name);
+    const out = knownValues(name, raw);
+    resolving.delete(name);
+    resolved.set(name, out);
+    return out;
+  };
+  // The plain assignments' values, then each append applied to every value
+  // before it; COMPLEX the moment a value past the limit would be made.
+  const knownValues = (name: string, raw: readonly string[]): Resolved => {
+    // Its own name anywhere in a value, an operator's operand included (`A=${A%.bak}`).
+    const selfReference = new RegExp(`\\$(?:\\{[!#]?${name}(?![A-Za-z0-9_])|${name}(?![A-Za-z0-9_]))`);
+    const namesSelf = (value: string): boolean => selfReference.test(value);
+    const values = new Set<string>();
+    const keep = (forms: Resolved): boolean => {
+      if (forms === null) return true;
+      if (forms === COMPLEX) return false;
+      for (const form of forms) {
+        values.add(form);
+        if (values.size > MAX_VALUES) return false;
+      }
+      return true;
+    };
+    // A value naming the variable itself is also what it gives while the
+    // variable is unset: `A=${A:-cfg.json}` is cfg.json, while `PATH=$PATH:/x`
+    // and `F=${F}oks` give nothing there.
+    for (const value of raw) {
+      if (!keep(expandValue(value, name, undefined))) return COMPLEX;
+    }
+    for (const value of raw) {
+      if (!namesSelf(value)) continue;
+      for (const previous of [...values]) {
+        if (!keep(expandValue(value, name, previous))) return COMPLEX;
+      }
+    }
+    return values.size === 0 ? null : [...values];
+  };
+  const resolvedValues = (name: string): string[] | null => {
+    const values = resolveVariable(name);
+    return values === COMPLEX ? null : values;
+  };
+  // The texts a word built by expansions may become (shellWordExpansionForms),
+  // each word once, under one budget for the whole command.
+  const wordForms = new Map<string, string[] | typeof COMPLEX>();
+  const expansionBudget = { steps: 4_000_000 };
+  const formsOfWord = (word: string): string[] | typeof COMPLEX => {
+    let forms = wordForms.get(word);
+    if (forms === undefined) {
+      const found = shellWordExpansionForms(word, resolveVariable, expansionBudget, Math.max(4096, command.length));
+      forms = found === "complex" ? COMPLEX : found;
+      wordForms.set(word, forms);
+    }
+    return forms;
+  };
+  // A word with expansions in it whose texts the command gives: those texts
+  // (`$D`, `"${D:-out}/x"`); null for anything else.
+  const valuesOfWord = (word: string): string[] | null => {
+    if (!word.includes("$")) return null;
+    const forms = formsOfWord(word);
+    return forms === COMPLEX || forms.length === 0 ? null : forms;
+  };
   for (let pass = 0; pass < assignments.length + 1; pass++) {
     const before = stateVars.size;
     for (const [name, value] of assignments) {
       const holdsState =
-        FAILPROOFAI_STATE_PATH_RE.test(value) ||
-        [...value.matchAll(VAR_REFERENCE_RE)].some(([, ref]) => stateVars.has(ref));
+        target.namesLiteral(value) ||
+        [...value.matchAll(VAR_REFERENCE_RE)].some(([, ref]) => stateVars.has(ref)) ||
+        // A value that reaches the target where the session stands — through
+        // a link (`D=cfg.json`, `D=link/..`), or relative to it.
+        (target.namesThroughLinks?.(value, target.cwd) ?? false) ||
+        (target.cwd !== undefined && isRelativeShellWord(value) && target.namesLiteral(resolve(target.cwd, value)));
       if (holdsState) stateVars.add(name);
     }
     if (stateVars.size === before) break;
   }
 
+  // Where the shell may stand, as far as the text says: one directory, or a
+  // few when a `cd` may not have happened. Its directory may not exist, so it
+  // fails unless an earlier command makes it — `cd /nowhere; cp x settings.json`
+  // copies into the directory the shell already stood in — and the last
+  // command of a pipeline runs in the shell under zsh and not under bash. A
+  // relative word is judged against each of them; undefined is a place the
+  // text cannot name. `oldCwds` is OLDPWD for `cd -`, unknown until a `cd`
+  // sets it. `pushd` keeps where it left for `popd`, on a stack shared by
+  // reference, so a subshell can hand the parent's back.
+  let walkCwds: ReadonlyArray<string | undefined> = [target.cwd];
+  let oldCwds: ReadonlyArray<string | undefined> = [undefined];
+  type DirStack = { dirs: ReadonlyArray<string | undefined>; below: DirStack } | null;
+  let dirStack: DirStack = null;
+
+  // A word's glob verdict, once per walk: a command can repeat a word
+  // thousands of times (every `$NAME` is spliced to `*`), and each test runs
+  // it against every candidate and decoy.
+  const globVerdicts = new Map<string, boolean>();
+  const globNames = (word: string): boolean => {
+    let verdict = globVerdicts.get(word);
+    if (verdict === undefined) {
+      verdict = globCouldNameTarget(word, target);
+      globVerdicts.set(word, verdict);
+    }
+    return verdict;
+  };
+
+  // Whether one text a word may become reaches the target, judged as a word
+  // the shell hands over: by name, as a glob, through a link, relative to
+  // where the shell stands.
+  // A glob reaches what it expands to on disk: in a directory holding
+  // `cfg.json -> ~/.claude/settings.json`, `*.json` writes the settings.
+  const diskGlobs = new Map<string, boolean>();
+  const diskGlobBudget: DiskGlobBudget = { listings: new Map(), entries: 262_144, steps: 1_048_576, checks: 32_768 };
+  // The options anywhere in the command that change what a glob matches:
+  // turned on in it, a glob after them may match more. The shell may be bash
+  // or zsh (Claude Code runs the user's, and zsh is macOS's default), so both
+  // spellings count. zsh ignores case and underscores in option names
+  // (`setopt GLOB_DOTS`), and its `**/` recurses with no option at all —
+  // where bash without globstar reads `**` as `*`, which matches less.
+  const globOptions = globOptionsOf(command);
+  // Each path a glob expands to, through links: `physical/../x` with
+  // `physical -> ~/.claude/subdir` is ~/.claude/x. By name too once the
+  // command turns a glob option on: what tells a sweep (`rm -rf ~/.*`, which
+  // stays allowed) from a pattern aimed at the target is the decoy test, and
+  // that reads a pattern under the default rules the command has just changed
+  // (`shopt -s dotglob; tee ~/*/settings.json`).
+  const globOptionsOn = globOptions.dotglob || globOptions.globstar || globOptions.nocaseglob;
+  const expandedReaches = (path: string): boolean =>
+    (globOptionsOn && (target.namesLiteral(path) || target.namesLiteral(posix.normalize(path)))) ||
+    target.namesThroughLinks!(path, undefined);
+  const globReachesThroughLinks = (glob: string): boolean => {
+    if (!target.namesThroughLinks) return false;
+    return walkCwds.some((cwd) => {
+      const key = `${cwd ?? ""}\0${glob}`;
+      let hit = diskGlobs.get(key);
+      if (hit === undefined) {
+        // Past the budget the command was built to stall the guard.
+        hit = globOnDiskReaches(glob, cwd, diskGlobBudget, globOptions, expandedReaches) !== false;
+        diskGlobs.set(key, hit);
+      }
+      return hit;
+    });
+  };
+  const formNamesTarget = (form: string): boolean => {
+    if (target.namesLiteral(form)) return true;
+    if ((GLOB_METACHAR_RE.test(form) || ZSH_GLOB_FLAG_RE.test(form)) && (globNames(form) || globReachesThroughLinks(form))) return true;
+    for (const cwd of walkCwds) {
+      if (target.namesThroughLinks?.(form, cwd)) return true;
+      if (cwd === undefined) continue;
+      if (isRelativeShellWord(form) && target.namesLiteral(resolve(cwd, form))) return true;
+      if (GLOB_METACHAR_RE.test(form) && !/^[-/~$]/.test(form) && globNames(resolve(cwd, form))) return true;
+    }
+    return false;
+  };
+
   const namesState = (text: string): boolean => {
-    if (FAILPROOFAI_STATE_PATH_RE.test(text)) return true;
+    if (target.namesLiteral(text)) return true;
+    // A word built by expansions, as each text the command says it may become:
+    // after `cd sub`, `"${A:-cfg.json}"` may be sub/cfg.json, and with
+    // `A=cfg.json.bak`, `"${A%.bak}"` is.
+    if (text.includes("$")) {
+      for (const word of quoteAwareWords(text)) {
+        if (!word.includes("$")) continue;
+        const forms = formsOfWord(word);
+        if (forms === COMPLEX) return true;
+        if (forms.some((form) => form !== word && formNamesTarget(form))) return true;
+      }
+    }
+    // A glob the shell expands — its glob characters outside quotes — as the
+    // paths it expands to.
+    if (target.namesThroughLinks && (GLOB_METACHAR_RE.test(text) || ZSH_GLOB_FLAG_RE.test(text))) {
+      for (const word of quoteAwareWords(text)) {
+        const unquoted = word.replace(/'[^']*'|"(?:[^"\\]|\\.)*"/g, "");
+        if (/[$`]/.test(word) || !(GLOB_METACHAR_RE.test(unquoted) || ZSH_GLOB_FLAG_RE.test(unquoted))) continue;
+        if (globReachesThroughLinks(stripShellQuoting(word))) return true;
+      }
+    }
     for (const [, name] of text.matchAll(VAR_REFERENCE_RE)) {
       if (stateVars.has(name)) return true;
+      // Its value judged from where the shell stands where it is used:
+      // `cd sub; D=cfg.json; cp x "$D"` writes through sub/cfg.json.
+      if (resolveVariable(name) === COMPLEX) return true;
+      const values = resolvedValues(name);
+      if (
+        values &&
+        values.some(
+          (value) =>
+            walkCwds.some(
+              (cwd) =>
+                (target.namesThroughLinks?.(value, cwd) ?? false) ||
+                (cwd !== undefined && isRelativeShellWord(value) && target.namesLiteral(resolve(cwd, value))),
+            ),
+        )
+      ) {
+        return true;
+      }
     }
     // Per token, not over the whole text: a glob compiled from a whole command
     // line matches nothing, and it is the individual operand — `~/.failproof*`
-    // — that would expand onto the state.
-    return text.split(/\s+/).some((token) => globCouldNameState(unquotedToken(token)));
+    // — that would expand onto the state. Expansions are spliced first, so one
+    // holding a space (`settings$( true ).json`) stays inside its word.
+    const spliced = spliceWordExpansions(text);
+    // A quoted or escaped name with a space in it is ONE word to the shell:
+    // `> "my cfg.json"` writes through a link of that name.
+    if (target.namesThroughLinks && /["'\\]/.test(text)) {
+      for (const word of quoteAwareWords(text)) {
+        if (/\s/.test(word) && walkCwds.some((cwd) => target.namesThroughLinks!(word, cwd))) return true;
+      }
+    }
+    // And a word handed over whole with its quotes already off: an operand,
+    // `my cfg.json`.
+    const whole = text.trim();
+    if (target.namesThroughLinks && /\s/.test(whole) && !/["'\\]/.test(whole) && whole.length <= 4096) {
+      if (walkCwds.some((cwd) => target.namesThroughLinks!(whole, cwd))) return true;
+    }
+    const here = walkCwds.filter((cwd): cwd is string => cwd !== undefined);
+    return spliced.split(/\s+/).some((token) => {
+      const word = unquotedToken(token);
+      if (globNames(word)) return true;
+      if (walkCwds.some((cwd) => target.namesThroughLinks?.(word, cwd))) return true;
+      // A relative word lands where the shell stands: `settings.json` after
+      // `cd ~/.claude`, `opencode` after `cd ~/.config`. Only words that could
+      // be one of the target's names, or `.`/`..` steps, are resolved: the
+      // rest cannot land on it, and resolving every word of a long line cost
+      // more than the whole walk.
+      for (const cwd of here) {
+        const cwdHinted = target.hint === undefined || target.hint.test(cwd);
+        for (const form of word.includes("=") ? [word, word.slice(word.indexOf("=") + 1)] : [word]) {
+          if (!isRelativeShellWord(form)) continue;
+          if (!cwdHinted && !target.hint!.test(form) && !/^\.{1,2}(?:\/\.{1,2})*\/?$/.test(form)) continue;
+          if (target.namesLiteral(resolve(cwd, form))) return true;
+        }
+        if (GLOB_METACHAR_RE.test(word) && !/^[-/~$]/.test(word) && globNames(resolve(cwd, word))) return true;
+      }
+      return false;
+    });
   };
 
+  // Programs handed to an interpreter, judged whole (see INLINE_PROGRAM_RE).
+  // Found where the interpreter really is a command: through the comment and
+  // stored-text masks (`readable`), and only where its name is still there in
+  // `commandsOnly`, which also blanks what a command that is not a shell takes
+  // as a quoted argument — the example in `git commit -m 'Refuse python3 -c
+  // "…"'`. Line continuations become blanks of the same width, so an offset in
+  // one view is the same place in the other.
+  const namesProgram = (program: string): boolean => (target.namesProgram ?? target.namesLiteral)(program) || namesState(program);
+  const programText = lexed.readable.replace(/\\\r?\n/g, (joined) => " ".repeat(joined.length));
+  for (const match of programText.matchAll(INLINE_PROGRAM_RE)) {
+    const at = match.index + (/^[\s;&|(\x60]/.test(match[0]) ? 1 : 0);
+    if (lexed.commandsOnly[at] !== programText[at]) continue;
+    if (namesProgram(match[1])) return true;
+  }
+  for (const body of lexed.programBodies) {
+    if (namesProgram(body)) return true;
+  }
+
   let cwdInState = false;
-  // How deep in `( … )` the walk is, and how deep it was when the `cd` fired.
-  // A `cd` inside a subshell moves the subshell only, so the window closes when
-  // the parenthesis does: `(cd ~/.failproofai && cat x); rm -rf node_modules`
-  // was denying a cleanup in an entirely unrelated directory.
+  // Whether the walk has lost track of where the shell stands because it may
+  // stand in too many places: a relative destination may then be anywhere,
+  // the target included, until a `cd` lands it somewhere known again.
+  let cwdLost = false;
+  // How deep in `( … )` the walk is. A `cd`, `pushd` or `popd` inside a
+  // subshell moves the subshell only, so where the shell stood — its
+  // directory, its `pushd` stack, and whether that was inside the target —
+  // comes back when the parenthesis closes: `(cd ~/.failproofai && cat x); rm
+  // -rf node_modules` was denying a cleanup in an entirely unrelated
+  // directory, and `(cd /tmp; pushd /tmp); popd` handed the parent a stack
+  // entry it never had.
   let parenDepth = 0;
-  let cdParenDepth: number | null = null;
+  const cwdScopes: Array<{
+    depth: number;
+    cwds: ReadonlyArray<string | undefined>;
+    olds: ReadonlyArray<string | undefined>;
+    inState: boolean;
+    lost: boolean;
+    dirs: DirStack;
+  }> = [];
   // A loop header hands its word list to the body, and the body is a separate
   // pipeline that names nothing. Without this, `for f in ~/.failproofai/*; do
   // rm -rf $f; done` is a header that only expands and a body that only deletes
   // something called `$f`.
   let loopCarriesState = false;
-  for (const pipeline of command.split(PIPELINE_SEPARATORS)) {
+  // A destination after a `cd` into the target names it, even relative — and
+  // when the walk has lost track of where the shell stands, every relative
+  // destination counts: `cd $D && cp x policies-config.json`.
+  const namesHere = (text: string): boolean =>
+    namesState(text) || ((cwdInState || cwdLost) && walkCwds.includes(undefined) && isRelativeShellWord(bareToken(text)));
+  // The walk SPLITS the splittable text and READS the readable one: both keep
+  // every offset, so each piece of one is the same piece of the other. Comments
+  // and stored heredoc bodies are blank in both; separators inside a quoted
+  // argument are blank only in the first, so a sed or awk program still
+  // arrives with the separators and redirects it really has.
+  const { readable, splittable } = lexed;
+  for (const [pipelineStart, pipelineEnd] of cutRanges(splittable, PIPELINE_SEPARATORS)) {
+    const pipeline = readable.slice(pipelineStart, pipelineEnd);
+    const splitPipeline = splittable.slice(pipelineStart, pipelineEnd);
     if (!pipeline.trim()) continue;
-    const simpleCommands = pipeline.split("|");
-    const reachesState = namesState(pipeline) || cwdInState || loopCarriesState;
-    if (reachesState && LOOP_HEADER_RE.test(pipeline)) loopCarriesState = true;
-    if (/(?:^|\s)done(?:\s|$)/.test(pipeline)) loopCarriesState = false;
+    const reachesState = namesState(pipeline) || cwdInState || cwdLost || loopCarriesState;
+    if (reachesState && LOOP_HEADER_RE.test(splitPipeline)) loopCarriesState = true;
+    if (/(?:^|\s)done(?:\s|$)/.test(splitPipeline)) loopCarriesState = false;
 
     // A redirect is a write with no command in front of it — `> path` empties a
     // file on its own. Only a redirect whose TARGET is the state counts: the
@@ -1547,36 +4186,152 @@ function destroysFailproofaiState(command: string, depth = 0): boolean {
     // `cat ~/.failproofai/config.json > /tmp/backup.json` both denied, which is
     // exactly the diagnosis this guard must not block.
     if (reachesState) {
-      for (const [, target] of pipeline.matchAll(REDIRECT_TARGET_RE)) {
-        if (namesState(target.replace(/^["']|["']$/g, ""))) return true;
+      for (const [, redirected] of splitPipeline.matchAll(REDIRECT_TARGET_RE)) {
+        if (namesHere(redirected.replace(/^["']|["']$/g, ""))) return true;
       }
     }
 
-    for (const simple of simpleCommands) {
-      parenDepth += (simple.match(/\(/g) ?? []).length;
-      const words = commandWords(simple);
+    const simples = cutRanges(splitPipeline, /\|/);
+    for (const [simpleIndex, [simpleStart, simpleEnd]] of simples.entries()) {
+      const simple = pipeline.slice(simpleStart, simpleEnd);
+      const splitSimple = splitPipeline.slice(simpleStart, simpleEnd);
+      parenDepth += (splitSimple.match(/\(/g) ?? []).length;
+      // A command substitution is one word however many spaces it holds:
+      // `cp x ~/.claude/settings$( true ).json` has three operands, not five.
+      const words = commandWords(spliceWordExpansions(blankRedirects(simple, splitSimple), true));
       const head = words.length > 0 ? commandBasename(words[0]) : "";
       // Track the shell's position before judging: a `cd` INTO the state makes
       // every later relative path a state path, and a `cd` back out ends that.
-      if (head === "cd" || head === "pushd") {
-        const operand = words.slice(1).find((w) => !w.startsWith("-"));
-        cwdInState = operand !== undefined && namesState(operand);
-        cdParenDepth = cwdInState ? parenDepth : null;
-      } else if (head === "popd") {
-        // `popd` returns to wherever the shell was before `pushd`, which ends
-        // the window as surely as a `cd` out does. Without it every command for
-        // the rest of the line was judged as if it stood in the state directory.
-        cwdInState = false;
-        cdParenDepth = null;
-      } else if (reachesState && words.length > 0 && simpleCommandDestroys(words, namesState)) {
+      if (head === "cd" || head === "pushd" || head === "popd") {
+        // Every command of a pipeline runs in a subshell, so one before a `|`
+        // moves nothing: `cd ~/.claude | cat; cp x settings.json` copies into
+        // the directory the shell already stood in. zsh runs the LAST command
+        // in the shell itself and bash does not, so after that one the shell
+        // may stand in either place.
+        if (simpleIndex === simples.length - 1) {
+          if (parenDepth > 0) cwdScopes.push({ depth: parenDepth, cwds: walkCwds, olds: oldCwds, inState: cwdInState, lost: cwdLost, dirs: dirStack });
+          const before = walkCwds;
+          let after: ReadonlyArray<string | undefined> = before;
+          let mayFail = false;
+          const stackWords = head === "cd" ? [] : quoteAwareCommandWords(simple).words.slice(1);
+          // `-n` changes the stack and leaves the shell where it is; `+N`/`-N`
+          // rotate the stack, so any entry of it may end up where the shell stands.
+          const stackOnly = stackWords.includes("-n");
+          const rotation = stackWords.some((w) => /^[+-]\d+$/.test(w));
+          const stackDirs = (): Array<string | undefined> => {
+            const dirs: Array<string | undefined> = [];
+            for (let entry = dirStack; entry !== null; entry = entry.below) dirs.push(...entry.dirs);
+            return dirs;
+          };
+          if (head === "popd" && stackOnly) {
+            if (dirStack !== null) dirStack = dirStack.below;
+          } else if (rotation) {
+            // The stack's order after a rotation is not followed: every entry
+            // may now hold any of the directories, so every later `popd` may
+            // land on any of them.
+            const all = [...new Set([...before, ...stackDirs()])];
+            let depth = 0;
+            for (let entry = dirStack; entry !== null; entry = entry.below) depth++;
+            dirStack = null;
+            for (let k = 0; k < depth; k++) dirStack = { dirs: all, below: dirStack };
+            if (!stackOnly) after = all;
+          } else if (head === "popd") {
+            // `popd` returns to wherever the shell was before `pushd`, which
+            // ends the window as surely as a `cd` out does. Without it every
+            // command for the rest of the line was judged as if it stood in
+            // the state directory. On an empty stack it fails and the shell
+            // stays where it is.
+            if (dirStack !== null) {
+              cwdInState = false;
+              after = dirStack.dirs;
+              dirStack = dirStack.below;
+            }
+          } else if (head === "pushd" && !stackWords.some((w) => !w.startsWith("-") && !/^[+-]\d+$/.test(w))) {
+            // A bare `pushd` swaps the shell's directory with the top of the stack.
+            if (dirStack !== null) {
+              after = dirStack.dirs;
+              dirStack = { dirs: before, below: dirStack.below };
+            }
+          } else {
+            const operands = quoteAwareCommandWords(simple).words.slice(1);
+            // Quote-aware, so `cd "$(dirname ~/.claude/settings.json)"` is one
+            // operand. A bare `-` is OLDPWD.
+            const operand = operands.find((w) => w === "-" || !w.startsWith("-"));
+            // `cd -P` follows links before `..`, the way the kernel walks:
+            // with `link -> ~/.claude/x`, `cd -P link/..` lands in ~/.claude.
+            const physical = head === "cd" && operands.some((w) => /^-[A-Za-z@]*P/.test(w));
+            if (operand === "-") {
+              after = oldCwds;
+              // An OLDPWD from before this command could be anywhere, the target included.
+              cwdInState = oldCwds.includes(undefined) || oldCwds.some((dir) => dir !== undefined && namesState(dir));
+            } else {
+              cwdInState = operand !== undefined && namesState(operand);
+              // An operand built by expansions moves the shell to each place
+              // its texts name (`D=sub; cd "$D"`), or somewhere unknown.
+              const operandForms = operand !== undefined && /[$`]/.test(operand) ? valuesOfWord(operand) : null;
+              const places: Array<string | undefined> = operandForms ?? [operand];
+              after = [
+                ...new Set([
+                  ...before.flatMap((cwd) =>
+                    places.map((place) =>
+                      physical && place !== undefined && !/[$`]/.test(place)
+                        ? physicalAgentPath(place, cwd) ?? cdDestination(cwd, place)
+                        : cdDestination(cwd, place),
+                    ),
+                  ),
+                  ...(operandForms ? [undefined] : []),
+                ]),
+              ];
+              mayFail = after.some((dir) => dir === undefined || !isDirectoryNow(dir));
+            }
+            if (head === "pushd") {
+              if (stackOnly) {
+                // `pushd -n DIR` files DIR under the top and stays put.
+                dirStack = { dirs: after, below: dirStack };
+                after = before;
+                mayFail = false;
+              } else {
+                dirStack = { dirs: before, below: dirStack };
+              }
+            }
+          }
+          // A `cd` that fails leaves OLDPWD alone too: after `cd /missing`,
+          // `cd -` may still return to where an earlier `cd` left.
+          oldCwds = mayFail ? [...new Set([...before, ...oldCwds])] : after === before ? oldCwds : before;
+          walkCwds = [...new Set(mayFail || simples.length > 1 ? [...after, ...before] : after)];
+          // Past a few places the walk stops naming them, and a relative
+          // destination may then be in any of them, the target included: from
+          // there on every one counts, until a `cd` lands somewhere known.
+          if (walkCwds.length > 16) {
+            cwdLost = true;
+            walkCwds = [undefined];
+          } else if (walkCwds.every((dir) => dir !== undefined)) {
+            cwdLost = false;
+          }
+        }
+      } else if (reachesState && simpleIndex > 0 && quoteAwareCommandWords(simple).readsStdinProgram) {
+        // A bare shell or interpreter after a pipe runs the text piped into it:
+        // `echo 'rm -rf ~/.claude' | sh`. Whatever names the target upstream is
+        // its program.
+        return true;
+      } else if ((reachesState || (head === "git" && gitReachesTarget(quoteAwareCommandWords(simple).words, walkCwds, namesHere, valuesOfWord))) && words.length > 0) {
+        // `xargs` hands the paths on its stdin to the command after it, so a
+        // copy or a `tee` fed by `echo <path> |` names its destination nowhere
+        // in its own words. Judged like `find -exec`: only a reader is safe.
+        // Read from the command's own words, not its quoted arguments.
+        if (quoteAwareCommandWords(simple).viaXargs && !SAFE_EXEC_COMMANDS.has(head)) return true;
         // Judged BEFORE the closing parenthesis is counted: a `rm -rf ./*)`
         // still runs inside the subshell it closes.
-        return true;
+        if (simpleCommandDestroys(words, namesHere, target, simple, cwdInState || cwdLost, walkCwds, valuesOfWord)) return true;
       }
-      parenDepth -= (simple.match(/\)/g) ?? []).length;
-      if (cdParenDepth !== null && parenDepth < cdParenDepth) {
-        cwdInState = false;
-        cdParenDepth = null;
+      parenDepth -= (splitSimple.match(/\)/g) ?? []).length;
+      while (cwdScopes.length > 0 && parenDepth < cwdScopes[cwdScopes.length - 1].depth) {
+        const scope = cwdScopes.pop()!;
+        walkCwds = scope.cwds;
+        oldCwds = scope.olds;
+        cwdInState = scope.inState;
+        cwdLost = scope.lost;
+        dirStack = scope.dirs;
       }
     }
   }
@@ -2644,7 +5399,8 @@ function blockFailproofaiCommands(ctx: PolicyContext): PolicyResult {
   // completely as `rm -rf` does — and the machine still reads as fresh, so
   // fail-closed never fires. Reading is not offered by these tools' write half,
   // so naming the state at all is the whole test.
-  if (ctx.toolName === "Write" || ctx.toolName === "Edit" || ctx.toolName === "NotebookEdit") {
+  const rawPatch = ctx.toolName === "apply_patch";
+  if (ctx.toolName === "Write" || ctx.toolName === "Edit" || ctx.toolName === "MultiEdit" || ctx.toolName === "NotebookEdit" || rawPatch) {
     const path = getFilePath(ctx) || ((ctx.toolInput?.notebook_path as string) ?? "");
     // The path as given AND the file it lands on. The bin entry a user-scope
     // hook runs is usually a symlink into the package, so writing through it
@@ -2662,6 +5418,21 @@ function blockFailproofaiCommands(ctx: PolicyContext): PolicyResult {
           "If a policy is blocking legitimate work, say so and let the operator decide.",
       );
     }
+    // The agent CLI's own settings and hook files are how it calls failproofai
+    // at all. `"disableAllHooks": true` in any Claude Code settings layer, or a
+    // hooks file with our entries taken out, switches off every policy — this
+    // one included — and Claude Code's file watcher applies it before the next
+    // tool call. Checked after symlinks, and through apply_patch's patch text.
+    // A patch tool that arrives by its own name (OpenClaw's) is read whole:
+    // every string it carries, whatever the key, as a patch.
+    const writeInput = rawPatch ? { ...ctx.toolInput, patch: Object.values(ctx.toolInput ?? {}) } : ctx.toolInput;
+    const settingsFile = agentSettingsWriteTarget(writeInput, ctx.session?.cwd, sessionAgentSettingsPaths(ctx));
+    if (settingsFile) {
+      return deny(
+        `${settingsFile} is an agent settings or hook file, and editing it could switch failproofai's hooks off. ` +
+          "If this change is needed, say so and let the user make it.",
+      );
+    }
     return allow();
   }
   if (ctx.toolName !== "Bash") return allow();
@@ -2670,7 +5441,7 @@ function blockFailproofaiCommands(ctx: PolicyContext): PolicyResult {
   // backslashes before running the binary, so `fail\proofai config --pause`
   // reaches the pause CLI even though the literal name is broken.
   const unescaped = stripShellQuoting(cmd);
-  const kind = classifySelfInvocation(cmd) ?? classifySelfInvocation(unescaped);
+  const kind = classifySelfInvocation(cmd) ?? classifySelfInvocation(unescaped) ?? classifyTextPipedIntoShell(cmd);
 
   if (kind === "pause") {
     return deny(
@@ -2696,7 +5467,246 @@ function blockFailproofaiCommands(ctx: PolicyContext): PolicyResult {
         "If a policy is blocking legitimate work, say so and let the operator decide.",
     );
   }
+  // An agent CLI's own command can turn its hooks off with no settings path in
+  // it at all: `codex features disable hooks` rewrites config.toml. Read from
+  // the commands alone, so a commit message that quotes one is still a message.
+  const lexed = lexShell(cmd);
+  // Text piped into a shell is a command too: `echo 'codex features disable hooks' | sh`.
+  const pipesIntoShell = /\|\s*(?:[^\s;&|()`<>]*\/)?(?:sh|bash|zsh|dash|ksh|ash|fish)(?=[\s;&|)]|$)/.test(lexed.commandsOnly);
+  const cliText = pipesIntoShell ? cmd : lexed.commandsOnly;
+  if (
+    agentCliSwitchesHooksOff(cliText) ||
+    agentCliSwitchesHooksOff(stripShellQuoting(cliText)) ||
+    agentCliSwitchesHooksOff(agentCliArgvLines(lexed)) ||
+    agentCliHooksOffByArgv(lexed)
+  ) {
+    return deny(
+      "Turning an agent's hooks off would switch failproofai's enforcement off. " +
+        "If this change is needed, say so and let the user make it.",
+    );
+  }
+  // The same walk, aimed at the agents' settings and hook files: `jq
+  // '.disableAllHooks=true' ~/.claude/settings.json > t && mv t
+  // ~/.claude/settings.json` switches the hooks off without naming failproofai.
+  // The unescaped pass is built from the MASKED command, so quoted arguments
+  // stay one argument after their quotes come off.
+  const settingsTarget = agentSettingsShellTarget(
+    agentSettingsShellCwd(ctx.toolInput, ctx.session?.cwd),
+    sessionAgentSettingsPaths(ctx),
+  );
+  const maskedUnescaped = stripShellQuoting(lexed.splittable);
+  if (destroysProtectedPath(cmd, settingsTarget) || destroysProtectedPath(maskedUnescaped, settingsTarget, 0, lexed.splittable)) {
+    return deny(
+      "Writing, moving or deleting an agent's settings or hook files could switch failproofai's hooks off. " +
+        "If this change is needed, say so and let the user make it.",
+    );
+  }
   return allow();
+}
+
+/** A word whose text an expansion decides: `$F`, `${F:-x}`, `$(…)`, a backtick. */
+const EXPANSION_IN_WORD_RE = /\$[A-Za-z_{(0-9@*#?!$-]|`/;
+
+/**
+ * The agent CLIs' hooks-off commands, read word by word from each command's
+ * argv: `codex features disable hooks`, `pi remove <failproofai>`, `hermes |
+ * openclaw plugins disable|remove <failproofai>`. A word an expansion decides
+ * could be any word, so it stands for whichever word the shape needs there —
+ * `codex $(echo features) disable "$F"` is refused whatever F holds — unless
+ * it is exactly `$NAME` for a variable every assignment of which comes
+ * earlier on the line with a plain value: then it is each of those values.
+ * A head an expansion decides is not followed; every command could be it.
+ */
+function agentCliHooksOffByArgv(lexed: ShellLex): boolean {
+  const assignments = new Map<string, Array<{ at: number; value: string }>>();
+  for (const match of lexed.readable.matchAll(/(?:^|[\s;&|(])(?:export\s+)?([A-Za-z_][A-Za-z0-9_]*)=("[^"]*"|'[^']*'|[^\s;&|)]*)/g)) {
+    const list = assignments.get(match[1]) ?? [];
+    list.push({ at: match.index, value: match[2].replace(/^["']|["']$/g, "") });
+    assignments.set(match[1], list);
+  }
+  // A variable appended to (`F=ho; F+=oks`) holds what no single assignment says.
+  const appended = new Set([...lexed.readable.matchAll(/(?:^|[\s;&|(])([A-Za-z_][A-Za-z0-9_]*)\+=/g)].map((m) => m[1]));
+  // A word's possible texts, or null for any word at all.
+  const optionsOf = (word: string, at: number): string[] | null => {
+    if (!EXPANSION_IN_WORD_RE.test(word)) return [word];
+    const ref = /^\$(?:\{([A-Za-z_][A-Za-z0-9_]*)\}|([A-Za-z_][A-Za-z0-9_]*))$/.exec(word);
+    if (ref && appended.has(ref[1] ?? ref[2])) return null;
+    const list = ref ? assignments.get(ref[1] ?? ref[2]) : undefined;
+    if (!list || list.length > 64 || list.some((a) => a.at > at || EXPANSION_IN_WORD_RE.test(a.value))) return null;
+    return list.map((a) => a.value);
+  };
+  const can = (options: string[] | null, test: (word: string) => boolean): boolean => options === null || options.some(test);
+  for (const [start, end] of cutRanges(lexed.splittable, PIPELINE_SEPARATORS)) {
+    const splitPipeline = lexed.splittable.slice(start, end);
+    for (const [simpleStart, simpleEnd] of cutRanges(splitPipeline, /\|/)) {
+      const at = start + simpleStart;
+      const words = quoteAwareWords(lexed.readable.slice(at, start + simpleEnd)).map((word) => optionsOf(word, at));
+      // The head: past assignments, wrappers, runners and their flags.
+      let h = 0;
+      while (h < words.length) {
+        const options = words[h];
+        if (options === null) break;
+        const word = options[0] ?? "";
+        if (ENV_ASSIGNMENT_RE.test(word) || word.startsWith("-") || RUNNER_OPERAND_RE.test(word) || COMMAND_PREFIX_TOKENS.has(commandBasename(word))) {
+          h++;
+          continue;
+        }
+        break;
+      }
+      const head = words[h];
+      if (!head) continue;
+      const heads = new Set(head.map((word) => commandBasename(word).toLowerCase()));
+      const rest = words.slice(h + 1).filter((options) => options === null || !options.every((w) => w.startsWith("-")));
+      const seq = (tests: Array<(word: string) => boolean>): boolean => {
+        // Each test met by a later word than the one before it.
+        let k = 0;
+        for (const test of tests) {
+          while (k < rest.length && !can(rest[k], test)) k++;
+          if (k >= rest.length) return false;
+          k++;
+        }
+        return true;
+      };
+      if (heads.has("codex") && seq([(w) => /^features?$/i.test(w), (w) => /^disable$/i.test(w), (w) => /(?:^|[^A-Za-z0-9_])(?:codex_)?hooks(?![A-Za-z0-9_])/i.test(w)])) {
+        return true;
+      }
+      if (heads.has("pi") && seq([(w) => /^(?:remove|uninstall|rm)$/i.test(w), (w) => /failproofai|pi-extension/i.test(w)])) return true;
+      if (
+        (heads.has("hermes") || heads.has("openclaw")) &&
+        seq([(w) => /^plugins?$/i.test(w), (w) => /^(?:disable|remove|uninstall|rm|delete)$/i.test(w), (w) => /failproofai/i.test(w)])
+      ) {
+        return true;
+      }
+    }
+  }
+  return false;
+}
+
+/**
+ * The words of `text` as the shell splits and unquotes them — at blanks and at
+ * `;&|<>()=` outside quotes — each with where it starts. An expansion stays
+ * in its word as written, for the caller to treat as unknown.
+ */
+function decodedWordsAt(text: string): Array<{ word: string; at: number }> {
+  const out: Array<{ word: string; at: number }> = [];
+  let word = "";
+  let at = -1;
+  const end = (): void => {
+    if (at !== -1) out.push({ word, at });
+    word = "";
+    at = -1;
+  };
+  for (let i = 0; i < text.length; i++) {
+    const ch = text[i];
+    if (/[\s;&|<>()=]/.test(ch)) {
+      end();
+      continue;
+    }
+    if (at === -1) at = i;
+    if (ch === "\\" && i + 1 < text.length) {
+      word += text[++i];
+    } else if (ch === "'" && text[i - 1] === "$") {
+      const close = text.indexOf("'", i + 1);
+      const stop = close === -1 ? text.length : close;
+      word = word.slice(0, -1) + decodeAnsiC(text.slice(i + 1, stop));
+      i = stop;
+    } else if (ch === "'") {
+      const close = text.indexOf("'", i + 1);
+      const stop = close === -1 ? text.length : close;
+      word += text.slice(i + 1, stop);
+      i = stop;
+    } else if (ch === '"') {
+      let j = i + 1;
+      for (; j < text.length && text[j] !== '"'; j++) {
+        if (text[j] === "\\" && j + 1 < text.length) j++;
+        word += text[j];
+      }
+      i = j;
+    } else {
+      word += ch;
+    }
+  }
+  end();
+  return out;
+}
+
+/** The expansions inside a name, each read as a `*`: `exam$X`, `a${X}b`, `$(f)`, a backtick. */
+const EXPANSIONS_IN_NAME_RE = /\$\{[^}]*\}?|\$\([^)]*\)?|\$[A-Za-z_][A-Za-z0-9_]*|\$.?|`[^`]*`?/g;
+
+/** A word an agent CLI's hooks-off command is made of. */
+const HOOKS_OFF_WORD_RE = /(?:^|[^A-Za-z0-9_-])(?:codex|features?|disable|(?:codex_)?hooks|pi|remove|uninstall|rm|delete|failproofai|pi-extension|hermes|openclaw|plugins?)(?![A-Za-z0-9_-])/i;
+
+/**
+ * Each command of a line as its argv reads, one per line, for the agent-CLI
+ * checks: quotes and `$'…'` escapes undone (`codex features disable
+ * $'\x68ooks'`), `$NAME` and `${NAME}` replaced by a value the line assigns
+ * (`F=hooks; codex features disable "$F"`), and an argument holding a blank —
+ * a message — replaced by `_`, so its words never read as a command.
+ */
+function agentCliArgvLines(lexed: ShellLex): string {
+  // Every value a variable is given anywhere on the line, not the last one:
+  // `F=hooks; codex features disable "$F"; F=web_search` runs with `hooks`.
+  const values = new Map<string, string[]>();
+  for (const [, name, value] of lexed.readable.matchAll(/(?:^|[\s;&|(])(?:export\s+)?([A-Za-z_][A-Za-z0-9_]*)=("[^"]*"|'[^']*'|[^\s;&|)]*)/g)) {
+    const known = values.get(name) ?? [];
+    if (known.length < 64) known.push(value.replace(/^["']|["']$/g, ""));
+    values.set(name, known);
+  }
+  // `F+=oks` appends to every value F had, or is the whole value of an unset F.
+  for (const [, name, value] of lexed.readable.matchAll(/(?:^|[\s;&|(])([A-Za-z_][A-Za-z0-9_]*)\+=("[^"]*"|'[^']*'|[^\s;&|)]*)/g)) {
+    const tail = value.replace(/^["']|["']$/g, "");
+    const known = values.get(name) ?? [];
+    values.set(name, [...new Set([...known, ...known.map((v) => v + tail), tail])].slice(0, 64));
+  }
+  // Of the values a reference may take, the one that would turn hooks off if
+  // any would: what the check needs to know is whether some run does.
+  const pick = (options: readonly string[]): string => options.find((o) => HOOKS_OFF_WORD_RE.test(o)) ?? options[0] ?? "";
+  // `${NAME:-word}`, `${NAME=word}`, `${NAME:+word}`…: a variable this line
+  // does not set may be unset, so its default word is what the command gets
+  // (`${UNSET:-ho}oks` is `hooks`); a set one gives its value.
+  const expand = (text: string): string =>
+    text
+      .replace(/\$\{([A-Za-z_][A-Za-z0-9_]*):?([-=+?])([^{}]*)\}/g, (_whole, name: string, op: string, word: string) => {
+        const known = values.get(name) ?? [];
+        return op === "+" ? pick([word, ""]) : pick([...known.filter(Boolean), word]);
+      })
+      .replace(/\$\{([A-Za-z_][A-Za-z0-9_]*)\}|\$([A-Za-z_][A-Za-z0-9_]*)/g, (whole, braced?: string, bare?: string) =>
+        pick([...(values.get(braced ?? bare ?? "") ?? []), whole]),
+      );
+  const lines: string[] = [];
+  for (const [start, end] of cutRanges(lexed.splittable, PIPELINE_SEPARATORS)) {
+    const splitPipeline = lexed.splittable.slice(start, end);
+    for (const [simpleStart, simpleEnd] of cutRanges(splitPipeline, /\|/)) {
+      const simple = lexed.readable.slice(start + simpleStart, start + simpleEnd);
+      lines.push(quoteAwareWords(expand(simple)).map((word) => (/\s/.test(word) ? "_" : word)).join(" "));
+    }
+  }
+  return lines.join("\n");
+}
+
+/**
+ * The failproofai CLI inside text piped into a shell, which runs it:
+ * `echo 'failproofai config --pause' | sh`. Each quoted string is read as the
+ * command it becomes there.
+ */
+function classifyTextPipedIntoShell(cmd: string): SelfInvocation | null {
+  if (!/\|\s*(?:[^\s;&|()`<>]*\/)?(?:sh|bash|zsh|dash|ksh|ash|fish)(?=[\s;&|)]|$)/.test(cmd)) return null;
+  for (const [, single, double] of cmd.matchAll(/'([^']*)'|"((?:[^"\\]|\\.)*)"/g)) {
+    const piped = single ?? double ?? "";
+    const kind = classifySelfInvocation(piped) ?? classifySelfInvocation(stripShellQuoting(piped));
+    if (kind) return kind;
+  }
+  return null;
+}
+
+/**
+ * The settings file this session's hook was loaded from, when the hook process
+ * could tell (handler.ts reads it from the agent's own environment, so a
+ * `CLAUDE_CONFIG_DIR` or `CODEX_HOME` that moved it is followed).
+ */
+function sessionAgentSettingsPaths(ctx: PolicyContext): string[] {
+  const path = ctx.session?.agentSettingsPath;
+  return typeof path === "string" && path.length > 0 ? [path] : [];
 }
 
 // Shared CLI-blocker: deny any command whose argv begins with the matched CLI,

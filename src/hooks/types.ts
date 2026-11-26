@@ -1105,6 +1105,13 @@ export interface SessionMetadata {
   rawHookEventName?: string;
   /** Which agent CLI fired this hook (claude | codex | copilot | cursor | opencode | pi | hermes | openclaw | factory | devin | antigravity | goose). Set by handler.ts from --cli. */
   cli?: IntegrationType;
+  /**
+   * The settings file this hook was installed in, as the hook process resolved
+   * it from the agent's own environment (`CLAUDE_CONFIG_DIR`, `CODEX_HOME`,
+   * `HERMES_HOME`, …). Absent when it could not tell. The always-on guard
+   * protects it even where it sits outside every directory the guard knows.
+   */
+  agentSettingsPath?: string;
 }
 
 export interface ClaudeSettings {

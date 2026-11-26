@@ -1628,6 +1628,115 @@ describe("block-failproofai-commands — review round seven", () => {
     expect(await bashDecision(`f=report.txt; out=\${f%.txt}.md; cp a "$out"`, p7)).toBe("allow");
   });
 
+  // hermes round 11.
+  it("walks a glob's `..` after a link the way the kernel does", async () => {
+    // p7/physical-link -> <home7>/.claude/x
+    expect(await bash(`printf '{}' | tee physical-link/../settings*.json >/dev/null`, p7)).toBe(true);
+    expect(await bash(`cp /tmp/x physical-link/../set*.json`, p7)).toBe(true);
+  });
+
+  it("follows the glob options a command turns on", async () => {
+    mkdirSync(join(p7, "dotonly16", ".private"), { recursive: true });
+    symlinkSync(settings(), join(p7, "dotonly16", ".private", "cfg16.json"));
+    mkdirSync(join(p7, "deep16", "a", "b"), { recursive: true });
+    symlinkSync(settings(), join(p7, "deep16", "a", "b", "cfg16.json"));
+    mkdirSync(join(p7, "case16"), { recursive: true });
+    symlinkSync(settings(), join(p7, "case16", "cfg16.json"));
+    expect(await bash(`shopt -s dotglob; printf '{}' | tee dotonly16/*/cfg16.json >/dev/null`, p7)).toBe(true);
+    expect(await bash(`shopt -s globstar; printf '{}' | tee deep16/**/*.json >/dev/null`, p7)).toBe(true);
+    expect(await bash(`shopt -s nocaseglob; cd case16; printf x | tee CFG16*.JSON`, p7)).toBe(true);
+    // Without dotglob neither bash nor zsh reaches into `.private`. `**` with
+    // no option is denied: zsh, macOS's default shell, recurses there anyway.
+    expect(await bashDecision(`printf '{}' | tee dotonly16/*/cfg16.json >/dev/null`, p7)).toBe("allow");
+    expect(await bash(`printf '{}' | tee deep16/**/*.json >/dev/null`, p7)).toBe(true);
+  });
+
+  it("resolves a git -C operand a variable gives", async () => {
+    mkdirSync(join(p7, "repo17", "sub"), { recursive: true });
+    mkdirSync(join(p7, "repo17", ".git"), { recursive: true });
+    symlinkSync(settings(), join(p7, "repo17", "sub", "cfg17.json"));
+    expect(await bash(`cd repo17; D=sub; git -C "$D" log --format='format:{}' --output=cfg17.json`, p7)).toBe(true);
+    expect(await bashDecision(`cd repo17; D=src; git -C "$D" log --output=log.txt`, p7)).toBe("allow");
+  });
+
+  it("reads a self-default assignment as its default while the variable is unset", async () => {
+    mkdirSync(join(p7, "sub18"), { recursive: true });
+    symlinkSync(settings(), join(p7, "sub18", "cfg18.json"));
+    expect(await bash(`cd sub18; A=\${A:-cfg18.json}; cp /tmp/evil.json "$A"`, p7)).toBe(true);
+    expect(await bash(`cd sub18; A=\${A-cfg18.json}; cp /tmp/evil.json "$A"`, p7)).toBe(true);
+    expect(await bashDecision(`A=\${A:-out}; cp a "$A/x"`, p7)).toBe("allow");
+  });
+
+  it("counts every relative destination once the shell may stand in too many places", async () => {
+    mkdirSync(join(p7, "sub19"), { recursive: true });
+    symlinkSync(settings(), join(p7, "sub19", "cfg19.json"));
+    expect(await bashDecision(`cd n1; cd n2; cd n3; cd n4; cd n5; cd sub19; cp /tmp/evil.json cfg19.json`, p7)).toBe("deny");
+    expect(await bashDecision(`mkdir -p out && cd out && cmake .. && make`, p7)).toBe("allow");
+  });
+
+  it("keeps a single-quoted assigned value literal", async () => {
+    mkdirSync(join(p7, "sub20"), { recursive: true });
+    symlinkSync(settings(), join(p7, "sub20", "cfg20.json"));
+    expect(await bashDecision(`cd sub20; A=cfg20.json; B='$A'; cp ../disable.json "$B"`, p7)).toBe("allow");
+    expect(await bash(`cd sub20; A=cfg20.json; B="$A"; cp ../disable.json "$B"`, p7)).toBe(true);
+  });
+
+  // Found checking the round-11 fixes. Reading no variables at all from the
+  // unescaped text kept `B='$A'` literal, and left a value that starts with a
+  // quoted piece read only as far as that piece.
+  it("reads an assigned value that starts with a quoted piece in full", async () => {
+    mkdirSync(join(p7, "sub21"), { recursive: true });
+    symlinkSync(settings(), join(p7, "sub21", "cfg21.json"));
+    expect(await bash(`D="$HOME"/.claude/settings.json; cp /tmp/evil.json "$D"`, p7)).toBe(true);
+    expect(await bash(`cd sub21; A='cfg21'.json; cp /tmp/evil.json "$A"`, p7)).toBe(true);
+    expect(await bash(`cd sub21; A="cfg21".json; cp /tmp/evil.json $A`, p7)).toBe(true);
+    expect(await bash(`cd sub21; A="cfg21"'.json'; cp /tmp/evil.json $A`, p7)).toBe(true);
+    expect(await bash(`cd sub21; A=cfg21.json; B='x'$A; cp ../disable.json "\${B#x}"`, p7)).toBe(true);
+    // A value continued on the next line is one value.
+    expect(await bash(`D=~/.cla\\\nude/settings.json; cp /tmp/evil.json $D`, p7)).toBe(true);
+  });
+
+  it("keeps a dollar the shell would not expand literal, however it is quoted", async () => {
+    mkdirSync(join(p7, "sub22"), { recursive: true });
+    symlinkSync(settings(), join(p7, "sub22", "cfg22.json"));
+    expect(await bashDecision(`cd sub22; A=cfg22.json; B=\\$A; cp ../disable.json "$B"`, p7)).toBe("allow");
+    expect(await bashDecision(`cd sub22; A=cfg22.json; B="\\$A"; cp ../disable.json "$B"`, p7)).toBe("allow");
+    expect(await bashDecision(`cd sub22; A=cfg22.json; B=$'$A'; cp ../disable.json "$B"`, p7)).toBe("allow");
+    expect(await bashDecision(`cd sub22; A=cfg22.json; B='\${A}'; C=$B; cp ../disable.json "$C"`, p7)).toBe("allow");
+    // The reference the command does make is still followed.
+    expect(await bash(`cd sub22; A=cfg22.json; B=$A; cp ../disable.json "$B"`, p7)).toBe(true);
+  });
+
+  // Found end to end on macOS, whose default shell is zsh: Claude Code runs
+  // the agent's command there, and zsh needs no option for `**/` to recurse.
+  it("reads a glob the way zsh expands it too", async () => {
+    mkdirSync(join(p7, "deep23", "a", "b"), { recursive: true });
+    symlinkSync(settings(), join(p7, "deep23", "a", "b", "cfg23.json"));
+    mkdirSync(join(p7, "dot23", ".private"), { recursive: true });
+    symlinkSync(settings(), join(p7, "dot23", ".private", "cfg23.json"));
+    mkdirSync(join(p7, "case23"), { recursive: true });
+    symlinkSync(settings(), join(p7, "case23", "cfg23.json"));
+    expect(await bash(`printf '{}' | tee deep23/**/*.json >/dev/null`, p7)).toBe(true);
+    expect(await bash(`printf '{}' | tee deep23/***/cfg23.json >/dev/null`, p7)).toBe(true);
+    expect(await bash(`setopt globdots; printf '{}' | tee dot23/*/cfg23.json >/dev/null`, p7)).toBe(true);
+    expect(await bash(`setopt GLOB_DOTS; printf '{}' | tee dot23/*/cfg23.json >/dev/null`, p7)).toBe(true);
+    expect(await bash(`printf '{}' | tee dot23/*(D)/cfg23.json >/dev/null`, p7)).toBe(true);
+    expect(await bash(`unsetopt CASE_GLOB; cd case23; printf x | tee CFG23*.JSON`, p7)).toBe(true);
+    // Hidden directories still need an option, and ordinary recursive work stays allowed.
+    expect(await bashDecision(`printf '{}' | tee dot23/*/cfg23.json >/dev/null`, p7)).toBe("allow");
+    expect(await bashDecision(`rm -f src/**/*.orig`, p7)).toBe("allow");
+    expect(await bashDecision(`rm -rf **/__pycache__`, p7)).toBe("allow");
+  });
+
+  it("checks what a glob expands to by name only once the command changes how globs match", async () => {
+    // <home7>/.claude/settings.json is on disk, and under dotglob `*` reaches `.claude`.
+    expect(await bash(`shopt -s dotglob; printf x | tee ~/*/settings.json`, p7)).toBe(true);
+    expect(await bash(`shopt -s dotglob; rm -rf ~/*`, p7)).toBe(true);
+    // Under the default rules a pattern that also takes ordinary directories is a sweep.
+    expect(await bashDecision(`rm -rf ~/.*`, p7)).toBe("allow");
+    expect(await bashDecision(`rm -rf ~/.!(config)`, p7)).toBe("allow");
+  });
+
   it("reads OpenClaw's apply_patch, which arrives by its own name", async () => {
     const patch = (file: string) => `*** Begin Patch\n*** Update File: ${file}\n@@\n-x\n+y\n*** End Patch\n`;
     const run = async (toolInput: Record<string, unknown>) =>

@@ -68,7 +68,9 @@ export const CODEX_EVENT_MAP: Record<CodexHookEventType, HookEventType> = {
  * Local Codex sessions also expose `write_stdin` (sends input to a running
  * shell — same risk class as Bash). Map the two non-canonical names so
  * builtin policies fire; everything else (MCP `mcp__*`, future tools)
- * passes through.
+ * passes through. `write_stdin`'s text arrives in `chars`, not `command`:
+ * typed-shell-input.ts moves it there (as it does Copilot `write_bash`'s
+ * `input`) and refuses text it cannot read as whole command lines.
  */
 export const CODEX_TOOL_MAP: Record<string, string> = {
   apply_patch: "Edit",

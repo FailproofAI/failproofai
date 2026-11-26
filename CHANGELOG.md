@@ -21,6 +21,7 @@
 
 ### Docs
 
+- The MCP server docs say a client that can't show the approval prompt can't make changes (its writes are refused), and that an insight's fix context reaches your own agent marked as data, not instructions (FailproofAI/agenteye#1968, #PRNUM)
 - The Cloud policy docs say what a deployment runs: a policy's JavaScript runs unsandboxed, as the agent's user, on every machine it targets, checked against a digest from the same server and not yet signed by its publisher, so `policies:write` amounts to running code on the organization's machines (#1059)
 
 ## 1.0.17 — 2026-11-24

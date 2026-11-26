@@ -15,7 +15,7 @@ API keys belong to an organization and carry explicit permissions. Use separate 
     3. Under **where is it used?**, name the repository, pipeline or machine that will hold the key, so whoever renews or revokes it later knows what depends on it.
     4. Choose when it **expires**: 30 days, 90 days, 1 year or never. If your organization sets a maximum key lifetime, the longer choices are not offered.
     5. Select **create key** and copy its one-time secret immediately.
-    6. Open the key later to edit its permissions or where it is used, regenerate the secret, renew it, or revoke it.
+    6. Open the key later to edit its permissions or where it is used, regenerate the secret, extend or renew it, or revoke it.
 
     Choose the narrowest purpose, or the narrowest individual grants, the workload needs. A key never has more access than the person who made it.
 
@@ -70,7 +70,10 @@ By default keys never expire. An organization can set **keys may live for** unde
 - setting the limit, or lowering it, brings the expiry of every working key that would outlive it forward. The setting shows how many keys move, and to which date, before it saves;
 - raising or removing the limit does not change existing keys.
 
-Fifteen days before a key expires, the member who created it (if they are still in the organization) and the members who can create keys get one email. The **api keys** page also lists keys that stop working within 15 days. An expired key stays on the page: open it and choose **renew** to get a new secret and a new expiry.
+Fifteen days before a key expires, the member who created it (if they are still in the organization) and the members who can create keys get one email. The **api keys** page also lists keys that stop working within 15 days.
+
+- **Before it expires**, open the key and choose **extend** to give it a later expiry. The secret stays the same, so nothing that uses the key needs to change.
+- **After it expires**, the key stays on the page: open it and choose **renew** to get a new secret and a new expiry, then update whatever uses it.
 
 ## Permission catalog
 

@@ -1,0 +1,58 @@
+{
+  "aliases": {
+    "category": ["type", "kind"],
+    "detail": ["summary", "sentence", "message", "description", "reason", "text", "details"]
+  },
+  "cases": [
+    {
+      "args": {"category": "looping", "detail": "Same test fails after three fixes."},
+      "category": "looping",
+      "detail": "Same test fails after three fixes."
+    },
+    {
+      "args": {"category": "missing_context", "summary": "No access to the staging database."},
+      "category": "missing_context",
+      "detail": "No access to the staging database."
+    },
+    {
+      "args": {"category": "task_failure", "sentence": "The build never finishes."},
+      "category": "task_failure",
+      "detail": "The build never finishes."
+    },
+    {
+      "args": {"category": "looping", "detail": "", "sentence": "", "message": "Going in circles."},
+      "category": "looping",
+      "detail": "Going in circles."
+    },
+    {
+      "args": {"category": "looping", "detail": "Kept.", "summary": "Ignored."},
+      "category": "looping",
+      "detail": "Kept."
+    },
+    {
+      "args": {"type": "invalid_tool_or_credential", "details": "The API key is rejected."},
+      "category": "invalid_tool_or_credential",
+      "detail": "The API key is rejected."
+    },
+    {
+      "args": {"category": "", "kind": "cannot_do_request", "reason": "No deploy permission."},
+      "category": "cannot_do_request",
+      "detail": "No deploy permission."
+    },
+    {
+      "args": {"category": "looping", "type": "ignored", "text": "Later in the list.", "description": "Earlier in the list."},
+      "category": "looping",
+      "detail": "Earlier in the list."
+    },
+    {
+      "args": {"category": "looping", "unknown": "Not an alias.", "priority": "high"},
+      "category": "looping",
+      "detail": ""
+    },
+    {
+      "args": {},
+      "category": "",
+      "detail": ""
+    }
+  ]
+}

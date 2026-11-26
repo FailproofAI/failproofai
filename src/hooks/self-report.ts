@@ -174,8 +174,9 @@ function selfReportInstructions(
   const names = categories.map((c) => c.name).join(", ");
   const body =
     `FailproofAI records when an agent is stuck. If you get stuck (${names}), call this server's ` +
-    "`report` tool once with the matching category and one factual sentence. It does not unblock you: " +
-    "continue, or tell the user what is blocking you. There is no need to mention the report to the user.";
+    "`report` tool once with two arguments: `category` (one of those names) and `detail` (one factual " +
+    "sentence). It does not unblock you: continue, or tell the user what is blocking you. There is no " +
+    "need to mention the report to the user.";
   return guidance ? `${body}\n\n${guidance}` : body;
 }
 
@@ -186,7 +187,8 @@ export const SELF_REPORT_RESULT_TEXT = "Recorded.";
 
 /**
  * A call's arguments as they are recorded: an unknown category is kept as-is
- * (never rejected), a missing or empty detail is `""`, detail is cut to 2000
+ * (never rejected), a missing or empty argument falls back to its first
+ * non-empty alias (`SELF_REPORT_ARG_ALIASES`), else `""`; unknown keys are ignored; detail is cut to 2000
  * characters. A category is cut to the same bound so a hostile argument cannot
  * grow every activity row without limit.
  *
@@ -199,7 +201,7 @@ export function selfReportArgs(input: unknown): { category: string; detail: stri
   if (typeof args === "string") args = selfReportParseJson(args);
   if (args && typeof args === "object" && !Array.isArray(args)) {
     const rec = args as Record<string, unknown>;
-    if (rec.category === undefined && rec.detail === undefined) {
+    if (!SELF_REPORT_ARG_KEYS.some((key) => rec[key] !== undefined)) {
       for (const key of ["arguments", "args", "input", "params"]) {
         let inner = rec[key];
         if (typeof inner === "string") inner = selfReportParseJson(inner);
@@ -211,14 +213,40 @@ export function selfReportArgs(input: unknown): { category: string; detail: stri
     }
   }
   const rec = args && typeof args === "object" && !Array.isArray(args) ? (args as Record<string, unknown>) : {};
-  const cat = rec.category;
-  const det = rec.detail;
-  const category = cat === undefined || cat === null ? "" : typeof cat === "string" ? cat : JSON.stringify(cat);
-  const detail = det === undefined || det === null ? "" : typeof det === "string" ? det : JSON.stringify(det);
+  const category = selfReportArg(rec, "category", SELF_REPORT_ARG_ALIASES.category);
+  const detail = selfReportArg(rec, "detail", SELF_REPORT_ARG_ALIASES.detail);
   return {
     category: category.slice(0, SELF_REPORT_DETAIL_MAX),
     detail: detail.slice(0, SELF_REPORT_DETAIL_MAX),
   };
+}
+
+/**
+ * Other names a model uses for an argument when it calls the tool without
+ * loading its schema (seen live: `summary` and `sentence` for `detail`). The
+ * first non-empty one is used when the real argument is missing or empty.
+ * Identical in the daemon (crates/fpai-collect/src/self_report.rs) and both
+ * SDKs; test-fixtures/self-report/arg-aliases.json holds the list for all of them.
+ */
+export const SELF_REPORT_ARG_ALIASES = {
+  category: ["type", "kind"],
+  detail: ["summary", "sentence", "message", "description", "reason", "text", "details"],
+} as const;
+
+const SELF_REPORT_ARG_KEYS: readonly string[] = [
+  "category",
+  "detail",
+  ...SELF_REPORT_ARG_ALIASES.category,
+  ...SELF_REPORT_ARG_ALIASES.detail,
+];
+
+function selfReportArg(rec: Record<string, unknown>, key: string, aliases: readonly string[]): string {
+  for (const name of [key, ...aliases]) {
+    const value = rec[name];
+    const text = value === undefined || value === null ? "" : typeof value === "string" ? value : JSON.stringify(value);
+    if (text) return text;
+  }
+  return "";
 }
 
 function selfReportParseJson(text: string): unknown {

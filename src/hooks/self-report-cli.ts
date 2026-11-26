@@ -28,6 +28,7 @@ import {
   type SelfReportCategory,
 } from "./self-report";
 import { INTEGRATION_TYPES } from "./types";
+import { daemonSocketPresent, isDaemonConfigured } from "./daemon-client";
 import {
   probeSelfReportHttp,
   selfReportCommandRunnable,
@@ -52,6 +53,8 @@ export interface SelfReportCliDeps {
   registrations?: () => SelfReportRegistration[];
   /** Sync override (tests). */
   sync?: () => Promise<import("./self-report-install").SelfReportMcpResult[]>;
+  /** Override (tests): is a daemon configured here, or its socket file present? */
+  daemonExpected?: () => boolean;
   /** Skip the agent sync after enable/disable (tests). */
   skipSync?: boolean;
   cwd?: string;
@@ -188,9 +191,22 @@ async function selfReportStatus(deps: SelfReportCliDeps): Promise<SelfReportCliR
     const probe = deps.probeEndpoint ?? ((_url: string, port: number) => probeSelfReportHttp(port));
     health.set(settings.mcp.port, await probe(settings.mcp.url, settings.mcp.port));
   }
-  lines.push(`Daemon MCP: ${settings.mcp.url} (${health.get(settings.mcp.port) ? "answering" : "not answering"})`);
+  lines.push(selfReportDaemonLine(settings.mcp.url, health.get(settings.mcp.port) === true, deps));
   lines.push(...selfReportRegistrationLines(rows, health));
   return { exitCode: 0, lines };
+}
+
+/**
+ * The daemon's MCP endpoint, for `status`. "not answering" reads as a fault, so
+ * it is shown only where a daemon is expected: one is configured (setup ran) or
+ * its socket file is there. With neither, there is no daemon and agents use
+ * stdio, which is a normal setup.
+ */
+function selfReportDaemonLine(url: string, answering: boolean, deps: SelfReportCliDeps): string {
+  if (answering) return `Daemon MCP: ${url} (answering)`;
+  const expected = deps.daemonExpected ?? (() => isDaemonConfigured() || daemonSocketPresent());
+  if (expected()) return `Daemon MCP: ${url} (not answering)`;
+  return "Daemon MCP: not running (agents use stdio)";
 }
 
 /** Update every hooked agent's MCP entry to match the settings just written. */

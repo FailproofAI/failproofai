@@ -6,9 +6,11 @@ import { describe, expect, it } from "vitest";
 import * as schema from "../src/schema.js";
 import {
   DEFAULT_SELF_REPORT_CATEGORIES,
+  SELF_REPORT_ARG_ALIASES,
   SELF_REPORT_TOOL_SPELLINGS,
   describeSelfReport,
   isSelfReportTool,
+  normalizeSelfReportArgs,
   selfReportInputSchema,
 } from "../src/self-report-spec.js";
 
@@ -28,6 +30,19 @@ describe("Self Reports golden files (TypeScript SDK)", () => {
     expect(
       describeSelfReport(DEFAULT_SELF_REPORT_CATEGORIES, "Report a missing repository as missing_context."),
     ).toBe(golden("description-guidance.golden.txt"));
+  });
+
+  it("reads argument aliases from the shared list", () => {
+    const fixture = JSON.parse(golden("arg-aliases.json")) as {
+      aliases: { category: string[]; detail: string[] };
+      cases: { args: Record<string, unknown>; category: string; detail: string }[];
+    };
+    expect(SELF_REPORT_ARG_ALIASES).toEqual(fixture.aliases);
+    for (const c of fixture.cases) {
+      const want = { category: c.category, detail: c.detail };
+      expect(normalizeSelfReportArgs(c.args), JSON.stringify(c.args)).toEqual(want);
+      expect(normalizeSelfReportArgs(JSON.stringify(c.args)), JSON.stringify(c.args)).toEqual(want);
+    }
   });
 
   it("builds the input schema byte for byte", () => {

@@ -334,6 +334,13 @@ describe("the raw tool helpers", () => {
     });
   });
 
+  it("keeps the detail a model sent under an alias (summary), ignoring unknown keys", async () => {
+    await session({ sessionId: "s1" }, () =>
+      failproofai.handleToolCall("failproofai_report", { type: "looping", summary: "Same fix three times.", extra: 1 }),
+    );
+    expect((await reports())[0]).toMatchObject({ category: "looping", detail: "Same fix three times." });
+  });
+
   it("returns null for any other tool, recording nothing", async () => {
     expect(failproofai.handleToolCall("get_weather", { city: "Paris" })).toBeNull();
     expect(await reports()).toEqual([]);

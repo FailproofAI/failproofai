@@ -386,6 +386,22 @@ def test_handle_tool_call_tolerates_bad_arguments(recorded, arguments, expected)
     assert (recorded[0]["category"], recorded[0]["detail"]) == expected
 
 
+def test_handle_tool_call_keeps_an_aliased_detail(recorded):
+    out = fp.handle_tool_call(
+        "failproofai_report", '{"kind": "looping", "sentence": "same fix again", "extra": 1}', session_id="s"
+    )
+    assert out == "Recorded."
+    assert (recorded[0]["category"], recorded[0]["detail"]) == ("looping", "same fix again")
+
+
+def test_framework_calls_keep_a_detail_passed_through_raw(recorded):
+    out = _self_report.record_framework_call(
+        "looping", "", session_id="s", extra_args={"summary": "retrying the same edit", "other": 1}
+    )
+    assert out == "Recorded."
+    assert (recorded[0]["category"], recorded[0]["detail"]) == ("looping", "retrying the same edit")
+
+
 def test_handle_tool_call_with_nothing_bound_records_unattributed(recorded):
     assert fp.handle_tool_call("failproofai_report", {"category": "looping", "detail": "x"}) == "Recorded."
     assert recorded[0]["session_id"] == "unattributed"

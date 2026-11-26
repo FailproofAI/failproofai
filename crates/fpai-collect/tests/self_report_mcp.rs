@@ -407,6 +407,23 @@ async fn a_server_recorded_agent_gets_its_report_written() {
     assert_eq!(goose["session_id"], "unattributed");
     assert_eq!(goose["category"], "made_up");
 
+    // A model that guessed the argument names: the detail is kept, extras ignored.
+    let (_, reply) = server
+        .rpc(
+            "?agent=pi",
+            json!({"jsonrpc":"2.0","id":2,"method":"tools/call","params":{
+                "name":"report","arguments":{"category":"looping","sentence":"same edit again","extra":1}}}),
+        )
+        .await;
+    assert_eq!(reply.unwrap()["result"]["content"][0]["text"], "Recorded.");
+    let events = event_files(&home);
+    let pi = events
+        .iter()
+        .find(|e| e["integration"] == "pi")
+        .expect("recorded");
+    assert_eq!(pi["category"], "looping");
+    assert_eq!(pi["detail"], "same edit again");
+
     server.stop().await;
     fs::remove_dir_all(&home).ok();
 }

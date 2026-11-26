@@ -311,12 +311,32 @@ def _coerce_text(value: Any) -> str:
     return value if isinstance(value, str) else str(value)
 
 
+# Other names a model uses for an argument when it calls the tool without
+# loading its schema (seen live: `summary` and `sentence` for `detail`). The
+# first non-empty one is used when the real argument is missing or empty;
+# unknown keys are ignored. The same list as the CLI and the daemon:
+# test-fixtures/self-report/arg-aliases.json.
+ARG_ALIASES: dict[str, tuple[str, ...]] = {
+    "category": ("type", "kind"),
+    "detail": ("summary", "sentence", "message", "description", "reason", "text", "details"),
+}
+
+
+def _first_text(arguments: dict, key: str) -> str:
+    for name in (key, *ARG_ALIASES[key]):
+        text = _coerce_text(arguments.get(name))
+        if text:
+            return text
+    return ""
+
+
 def parse_arguments(arguments: Any) -> tuple[str, str]:
     """`(category, detail)` from a model's tool-call arguments. Never raises.
 
     Accepts a dict or a JSON string (OpenAI sends a string, Anthropic a dict).
     A string that is not a JSON object is kept whole as the detail, so a model
-    that fumbled the arguments still leaves a readable report.
+    that fumbled the arguments still leaves a readable report. A missing or
+    empty argument falls back to its first non-empty alias (`ARG_ALIASES`).
     """
     if isinstance(arguments, (str, bytes, bytearray)):
         text = arguments.decode("utf-8", "replace") if not isinstance(arguments, str) else arguments
@@ -331,7 +351,7 @@ def parse_arguments(arguments: Any) -> tuple[str, str]:
         arguments = {}
     if not isinstance(arguments, dict):
         return "", _coerce_text(arguments)[:SELF_REPORT_DETAIL_LIMIT]
-    return _coerce_text(arguments.get("category")), _coerce_text(arguments.get("detail"))
+    return _first_text(arguments, "category"), _first_text(arguments, "detail")
 
 
 _warned_unbound = False
@@ -406,6 +426,7 @@ def record_framework_call(
     agent_id: str | None = None,
     tool_call_id: Any = None,
     fields: dict | None = None,
+    extra_args: dict | None = None,
 ) -> str:
     """Record one framework tool call and return `"Recorded."`. Never raises.
 
@@ -427,7 +448,11 @@ def record_framework_call(
         out["agent_id"] = agent_id
     if tool_call_id:
         out["tool_call_id"] = str(tool_call_id)
-    return record_tool_call({"category": category, "detail": detail}, **out)
+    # `extra_args`: any other arguments the framework passed through raw, so
+    # an aliased detail (`summary`, `sentence`, ...) is not lost.
+    arguments = {k: v for k, v in (extra_args or {}).items() if isinstance(k, str)}
+    arguments.update(category=category, detail=detail)
+    return record_tool_call(arguments, **out)
 
 
 def framework_signature(names: list[str]):

@@ -81,3 +81,13 @@ def test_event_field_order():
     )
     assert list(SelfReportEvent(**base).to_dict()) == spec["order"]
     assert list(SelfReportEvent(**base, tool_call_id="call_1").to_dict()) == spec["order"] + spec["optional"]
+
+
+def test_argument_aliases_match_the_shared_list():
+    fixture = json.loads(golden("arg-aliases.json"))
+    assert {k: list(v) for k, v in _self_report.ARG_ALIASES.items()} == fixture["aliases"]
+    assert fixture["cases"]
+    for case in fixture["cases"]:
+        want = (case["category"], case["detail"])
+        assert _self_report.parse_arguments(case["args"]) == want, case["args"]
+        assert _self_report.parse_arguments(json.dumps(case["args"])) == want, case["args"]

@@ -308,6 +308,16 @@ describe("failproofai mcp (stdio, spawned)", () => {
     expect(Number.isNaN(Date.parse(event.timestamp))).toBe(false);
   }, 30_000);
 
+  it("records the detail a model sent under an alias (sentence) instead of an empty one", async () => {
+    writeEffectiveSelfReport({ enabled: true });
+    const aliased = { ...CALL, params: { name: "report", arguments: { category: "looping", sentence: "retrying the same fix", extra: 1 } } };
+    const { replies } = await runMcp(["--agent", "hermes"], [INIT, aliased], home);
+    expect(replies[1]).toMatchObject({ result: { content: [{ type: "text", text: "Recorded." }] } });
+    const dir = join(home, "custom-agents", "events");
+    const event = JSON.parse(readFileSync(join(dir, readdirSync(dir)[0]), "utf8"));
+    expect(event).toMatchObject({ category: "looping", detail: "retrying the same fix" });
+  }, 30_000);
+
   it("falls back to session \"unattributed\" when no live session matches", async () => {
     writeEffectiveSelfReport({ enabled: true });
     await runMcp(["--agent", "hermes"], [INIT, CALL], home);
@@ -342,7 +352,7 @@ describe("failproofai self-report enable | disable | status", () => {
     expect(text).toContain("Self Reports: on");
     expect(text).toContain("this machine");
     expect(text).toContain("looping, cannot_do_request");
-    expect(text).toContain("http://127.0.0.1:4319/mcp");
+    expect(text).toContain("Daemon MCP: not running (agents use stdio)");
   });
 
   it("enable --categories-file replaces the defaults; a bad file is refused and writes nothing", async () => {
@@ -411,6 +421,44 @@ describe("failproofai self-report enable | disable | status", () => {
     expect(text).toMatch(/codex +http +http:\/\/127\.0\.0\.1:4999\/mcp\?agent=codex \(NOT answering\)/);
     expect(text).toMatch(new RegExp(`cursor +stdio +${runnable} \\(runnable\\)`));
     expect(text).toMatch(/factory +stdio +.*\(NOT runnable\)/);
+  });
+
+  it("status says the daemon is not running, not \"not answering\", when there is no daemon", async () => {
+    writeEffectiveSelfReport({ enabled: true });
+    const status = (expected: boolean) =>
+      runSelfReportCommand(["status"], {
+        skipSync: true,
+        probeEndpoint: async () => false,
+        daemonExpected: () => expected,
+        registrations: () => [row({ agent: "claude", transport: "stdio", endpoint: "/usr/bin/failproofai" })],
+      });
+    const none = (await status(false)).lines.join("\n");
+    expect(none).toContain("Daemon MCP: not running (agents use stdio)");
+    expect(none).not.toContain("not answering");
+    const down = (await status(true)).lines.join("\n");
+    expect(down).toContain("Daemon MCP: http://127.0.0.1:4319/mcp (not answering)");
+    expect(down).not.toContain("not running");
+  });
+
+  it("status expects a daemon when setup configured one or its socket file is there", async () => {
+    writeEffectiveSelfReport({ enabled: true });
+    const status = async () =>
+      (await runSelfReportCommand(["status"], {
+        skipSync: true,
+        probeEndpoint: async () => false,
+        registrations: () => [],
+      })).lines.join("\n");
+    const sock = join(home, "fake-daemon.sock");
+    const prev = process.env.FAILPROOFAI_DAEMON_SOCKET;
+    process.env.FAILPROOFAI_DAEMON_SOCKET = sock;
+    try {
+      expect(await status()).toContain("Daemon MCP: not running (agents use stdio)");
+      writeFileSync(sock, "");
+      expect(await status()).toContain("(not answering)");
+    } finally {
+      if (prev === undefined) delete process.env.FAILPROOFAI_DAEMON_SOCKET;
+      else process.env.FAILPROOFAI_DAEMON_SOCKET = prev;
+    }
   });
 
   it("status re-syncs agents left on an HTTP endpoint that is not answering", async () => {

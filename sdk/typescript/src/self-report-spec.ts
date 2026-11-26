@@ -186,7 +186,8 @@ export function isSelfReportTool(name: unknown, server?: unknown): boolean {
  * The call's arguments as the event records them.
  *
  * Never rejects: a model that names an unknown category is still recorded
- * under that name, a missing `detail` is recorded as `""`, and arguments that
+ * under that name, a missing or empty argument falls back to its first
+ * non-empty alias (`SELF_REPORT_ARG_ALIASES`) else `""`, and arguments that
  * arrive as the JSON string a provider sent (OpenAI's `function.arguments`)
  * are parsed first. Anything unreadable becomes the empty strings — the call
  * itself always answers `Recorded.`.
@@ -201,7 +202,30 @@ export function normalizeSelfReportArgs(args: unknown): { category: string; deta
     }
   }
   const record = typeof value === "object" && value !== null ? (value as Record<string, unknown>) : {};
-  return { category: asText(record.category), detail: clipDetail(asText(record.detail)) };
+  return {
+    category: firstText(record, "category", SELF_REPORT_ARG_ALIASES.category),
+    detail: clipDetail(firstText(record, "detail", SELF_REPORT_ARG_ALIASES.detail)),
+  };
+}
+
+/**
+ * Other names a model uses for an argument when it calls the tool without
+ * loading its schema (seen live: `summary` and `sentence` for `detail`). The
+ * first non-empty one is used when the real argument is missing or empty;
+ * unknown keys are ignored. The same list as the CLI and the daemon:
+ * test-fixtures/self-report/arg-aliases.json.
+ */
+export const SELF_REPORT_ARG_ALIASES = Object.freeze({
+  category: Object.freeze(["type", "kind"]),
+  detail: Object.freeze(["summary", "sentence", "message", "description", "reason", "text", "details"]),
+});
+
+function firstText(record: Record<string, unknown>, key: string, aliases: readonly string[]): string {
+  for (const name of [key, ...aliases]) {
+    const text = asText(record[name]);
+    if (text) return text;
+  }
+  return "";
 }
 
 function asText(value: unknown): string {

@@ -1025,10 +1025,11 @@ def self_report_tool(
     spec = _self_report.self_report_spec(categories=categories, guidance=guidance)
     extra = framework_fields(NAME, DIST)
 
-    def failproofai_report(ctx: Any, category: Any = "", detail: Any = "", **_: Any) -> str:
+    def failproofai_report(ctx: Any, category: Any = "", detail: Any = "", **raw: Any) -> str:
         return _self_report.record_framework_call(
             category, detail, session_id=session_id, agent_id=agent_id,
             tool_call_id=getattr(ctx, "tool_call_id", None), fields=extra,
+            extra_args=raw,
         )
 
     return Tool.from_schema(

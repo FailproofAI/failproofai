@@ -47,7 +47,7 @@ An organization's own list replaces these entirely. Names are lowercase letters,
 | `repeated_tool_failure` | A command or tool failed on several distinct attempts and is blocking you. A single error is not enough. |
 | `task_failure` | You genuinely tried and could not complete the task. Not for refusals or policy blocks. |
 
-A report with a category that is not on the list is still recorded under the name the agent gave. The detail is cut to 2,000 characters.
+A report with a category that is not on the list is still recorded under the name the agent gave. The detail is cut to 2,000 characters. An agent that calls the tool without loading its schema sometimes guesses the argument names, so when `detail` is missing or empty the first non-empty of `summary`, `sentence`, `message`, `description`, `reason`, `text` and `details` is recorded instead, and when `category` is, `type` or `kind`. Other unknown arguments are ignored; a call is never rejected.
 
 ## Agent support
 
@@ -74,7 +74,7 @@ Where an agent's hooks see MCP tool calls, the hook records the report. Where th
 | Antigravity | `~/.gemini/config/mcp_config.json` | MCP server |
 | Goose | `~/.config/goose/config.yaml` | MCP server |
 
-`failproofai self-report status` shows, per agent, whether the server is registered, over which transport, and whether that endpoint answers (HTTP) or the command can run (stdio). If an MCP server named `failproofai` that failproofai did not write is already there, such as the [Cloud MCP gateway](/reference/mcp) added under that name, it is left alone and reported as a conflict.
+`failproofai self-report status` shows whether the daemon's endpoint answers (`not running (agents use stdio)` when no daemon is set up here) and, per agent, whether the server is registered, over which transport, and whether that endpoint answers (HTTP) or the command can run (stdio). If an MCP server named `failproofai` that failproofai did not write is already there, such as the [Cloud MCP gateway](/reference/mcp) added under that name, it is left alone and reported as a conflict.
 
 ## Containers
 

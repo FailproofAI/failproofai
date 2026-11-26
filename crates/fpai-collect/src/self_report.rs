@@ -323,9 +323,9 @@ pub fn instructions(categories: &[Category], guidance: Option<&str>) -> String {
     let names: Vec<&str> = categories.iter().map(|c| c.name.as_str()).collect();
     let mut text = format!(
         "FailproofAI records when an agent is stuck. If you get stuck ({}), call this server's \
-         `report` tool once with the matching category and one factual sentence. It does not \
-         unblock you: continue, or tell the user what is blocking you. There is no need to \
-         mention the report to the user.",
+         `report` tool once with two arguments: `category` (one of those names) and `detail` \
+         (one factual sentence). It does not unblock you: continue, or tell the user what is \
+         blocking you. There is no need to mention the report to the user.",
         names.join(", ")
     );
     if let Some(g) = guidance.filter(|g| !g.is_empty()) {
@@ -700,8 +700,25 @@ impl Server {
 
 // ── Recording ────────────────────────────────────────────────────────────────
 
-/// A call's arguments, as recorded: an unknown category is kept as-is, a
-/// missing one or a missing detail becomes "".
+/// Other names a model uses for `category` when it calls the tool without
+/// loading its schema. Identical in the CLI (`SELF_REPORT_ARG_ALIASES`) and
+/// both SDKs; test-fixtures/self-report/arg-aliases.json holds the list.
+pub const CATEGORY_ALIASES: &[&str] = &["type", "kind"];
+
+/// Other names for `detail` (seen live: `summary` and `sentence`).
+pub const DETAIL_ALIASES: &[&str] = &[
+    "summary",
+    "sentence",
+    "message",
+    "description",
+    "reason",
+    "text",
+    "details",
+];
+
+/// A call's arguments, as recorded: an unknown category is kept as-is; a
+/// missing or empty argument falls back to its first non-empty alias, else "";
+/// unknown keys are ignored.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Report {
     pub category: String,
@@ -710,15 +727,17 @@ pub struct Report {
 
 impl Report {
     pub fn from_args(args: &Value) -> Self {
-        let text = |key: &str| {
-            args.get(key)
-                .and_then(Value::as_str)
+        let text = |key: &str, aliases: &[&str]| {
+            std::iter::once(key)
+                .chain(aliases.iter().copied())
+                .filter_map(|k| args.get(k).and_then(Value::as_str))
+                .find(|v| !v.is_empty())
                 .unwrap_or_default()
                 .to_string()
         };
         Report {
-            category: text("category"),
-            detail: truncate_chars(&text("detail"), MAX_DETAIL_CHARS),
+            category: text("category", CATEGORY_ALIASES),
+            detail: truncate_chars(&text("detail", DETAIL_ALIASES), MAX_DETAIL_CHARS),
         }
     }
 }
@@ -1290,6 +1309,26 @@ mod tests {
             golden("instructions-guidance.golden.txt")
         );
         assert!(golden("instructions.golden.txt").chars().count() < 600);
+    }
+
+    #[test]
+    fn golden_arg_aliases() {
+        let fixture: Value = serde_json::from_str(&golden("arg-aliases.json")).unwrap();
+        assert_eq!(fixture["aliases"]["category"], json!(CATEGORY_ALIASES));
+        assert_eq!(fixture["aliases"]["detail"], json!(DETAIL_ALIASES));
+        let cases = fixture["cases"].as_array().unwrap();
+        assert!(!cases.is_empty());
+        for case in cases {
+            assert_eq!(
+                Report::from_args(&case["args"]),
+                Report {
+                    category: case["category"].as_str().unwrap().to_string(),
+                    detail: case["detail"].as_str().unwrap().to_string(),
+                },
+                "{}",
+                case["args"]
+            );
+        }
     }
 
     #[test]

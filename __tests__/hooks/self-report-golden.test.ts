@@ -13,8 +13,10 @@ import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import {
+  SELF_REPORT_ARG_ALIASES,
   SELF_REPORT_DEFAULT_CATEGORIES,
   SELF_REPORT_SERVER_RECORDS,
+  selfReportArgs,
   describeSelfReportTool,
   isSelfReportCursorCall,
   isSelfReportToolName,
@@ -42,6 +44,21 @@ describe("Self Reports golden files (CLI)", () => {
       selfReportInstructions(SELF_REPORT_DEFAULT_CATEGORIES, "Report a missing repository as missing_context."),
     ).toBe(golden("instructions-guidance.golden.txt"));
     expect(golden("instructions.golden.txt").length).toBeLessThan(600);
+  });
+
+  it("reads argument aliases from the shared list, for raw and hook-wrapped arguments", () => {
+    const fixture = JSON.parse(golden("arg-aliases.json")) as {
+      aliases: { category: string[]; detail: string[] };
+      cases: { args: Record<string, unknown>; category: string; detail: string }[];
+    };
+    expect(SELF_REPORT_ARG_ALIASES).toEqual(fixture.aliases);
+    for (const c of fixture.cases) {
+      const want = { category: c.category, detail: c.detail };
+      expect(selfReportArgs(c.args), JSON.stringify(c.args)).toEqual(want);
+      expect(selfReportArgs(JSON.stringify(c.args)), JSON.stringify(c.args)).toEqual(want);
+      expect(selfReportArgs({ arguments: c.args }), JSON.stringify(c.args)).toEqual(want);
+      expect(selfReportArgs({ args: JSON.stringify(c.args) }), JSON.stringify(c.args)).toEqual(want);
+    }
   });
 
   it("builds the input schema byte for byte", () => {

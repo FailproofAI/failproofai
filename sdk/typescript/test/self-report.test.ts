@@ -1,4 +1,4 @@
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -20,7 +20,7 @@ import { setLogger } from "../src/logger.js";
 import { runtime } from "../src/runtime.js";
 import * as schema from "../src/schema.js";
 import { agent, session, toolCall } from "../src/scopes.js";
-import { DEFAULT_SELF_REPORT_CATEGORIES } from "../src/self-report-spec.js";
+import { DEFAULT_SELF_REPORT_CATEGORIES, clipDetail } from "../src/self-report-spec.js";
 import { flushed, useSpool } from "./helpers.js";
 import type { Spool } from "./helpers.js";
 
@@ -51,6 +51,15 @@ afterEach(async () => {
   resetNotice();
   vi.restoreAllMocks();
 });
+
+/** openai's Responses `FunctionTool` (openai 7.x), copied: this package does not depend on openai. */
+interface OpenAIFunctionTool {
+  name: string;
+  parameters: { [key: string]: unknown } | null;
+  strict: boolean | null;
+  type: "function";
+  description?: string | null;
+}
 
 const reports = async () => (await flushed(spool)).filter((e) => e.type === "self_report");
 const writeSettings = (value: unknown) =>
@@ -151,7 +160,25 @@ describe("event.selfReport and selfReport()", () => {
     const [unknown, long, surrogate] = await reports();
     expect(unknown).toMatchObject({ category: "not_a_category", detail: "" });
     expect((long!.detail as string).length).toBe(2000);
-    expect(surrogate!.detail).toBe("y".repeat(1999));
+    // 2000 code points, as the daemon and the Python SDK count: the emoji is the 2000th.
+    expect(surrogate!.detail).toBe(`${"y".repeat(1999)}😀`);
+  });
+
+  it("cuts detail as the shared truncation cases say, and replaces a lone surrogate", async () => {
+    const fixture = JSON.parse(readFileSync(join(__dirname, "..", "..", "..", "test-fixtures", "self-report", "truncation.golden.json"), "utf8")) as {
+      max: number;
+      cases: { pad_char: string; pad: number; tail: string; expected_tail: string }[];
+    };
+    await session({ sessionId: "trunc" }, () => {
+      for (const c of fixture.cases) failproofai.selfReport("looping", c.pad_char.repeat(c.pad) + c.tail);
+      failproofai.selfReport("lo\ud83dping", "x\ud83d");
+    });
+    const recorded = await reports();
+    fixture.cases.forEach((c, i) => {
+      expect(recorded[i]!.detail, JSON.stringify(c.tail)).toBe(c.pad_char.repeat(c.pad) + c.expected_tail);
+      expect(clipDetail(c.pad_char.repeat(c.pad) + c.tail)).toBe(c.pad_char.repeat(c.pad) + c.expected_tail);
+    });
+    expect(recorded.at(-1)).toMatchObject({ category: "lo\ufffdping", detail: "x\ufffd" });
   });
 
   it("takes an explicit session, agent, tool call id and custom fields", async () => {
@@ -238,6 +265,47 @@ describe("event.selfReport and selfReport()", () => {
       ["no id", UNATTRIBUTED_SESSION],
       ["dup id", UNATTRIBUTED_SESSION],
       ["unique id", "run-a"],
+    ]);
+  });
+
+  it("an id open in several sessions never falls back to the tool name; an id open nowhere does", async () => {
+    const ns = new EventNamespace(runtime.writer);
+    quietLogger();
+    await session({ sessionId: "s-1" }, () => ns.toolUse({ toolName: "search", toolCallId: "dup" }));
+    await session({ sessionId: "s-2" }, () => ns.toolUse({ toolName: "search", toolCallId: "dup" }));
+    await session({ sessionId: "s-3" }, () =>
+      agent("reporter", () => ns.toolUse({ toolName: "failproofai_report", toolCallId: "r-3" })),
+    );
+    ns.selfReport("looping", "ambiguous id", { toolCallId: "dup" });
+    ns.selfReport("looping", "unknown id", { toolCallId: "model-id" });
+    const recorded = await reports();
+    expect(recorded.map((e) => [e.detail, e.session_id, e.tool_call_id])).toEqual([
+      ["ambiguous id", UNATTRIBUTED_SESSION, "dup"],
+      ["unknown id", "s-3", "model-id"],
+    ]);
+  });
+
+  it("with an explicit session, infers the call id only from the one open report call of that agent", async () => {
+    const ns = new EventNamespace(runtime.writer);
+    await session({ sessionId: "s" }, async () => {
+      await agent("planner", () => ns.toolUse({ toolName: "failproofai_report", toolCallId: "p-1" }));
+      await agent("worker", () => ns.toolUse({ toolName: "failproofai_report", toolCallId: "w-1" }));
+    });
+    ns.selfReport("looping", "planner", { sessionId: "s", agentId: "planner" });
+    ns.selfReport("looping", "worker", { sessionId: "s", agentId: "worker" });
+    ns.selfReport("looping", "nobody", { sessionId: "s", agentId: "other" });
+    await session({ sessionId: "s" }, () =>
+      agent("worker", () => ns.toolUse({ toolName: "failproofai_report", toolCallId: "w-2" })),
+    );
+    ns.selfReport("looping", "worker twice", { sessionId: "s", agentId: "worker" });
+    await agent("planner", () => ns.selfReport("looping", "ambient agent", { sessionId: "s" }));
+    const recorded = await reports();
+    expect(recorded.map((e) => [e.detail, e.agent_id, e.tool_call_id])).toEqual([
+      ["planner", "planner", "p-1"],
+      ["worker", "worker", "w-1"],
+      ["nobody", "other", undefined],
+      ["worker twice", "worker", undefined],
+      ["ambient agent", "planner", "p-1"],
     ]);
   });
 
@@ -353,8 +421,17 @@ describe("the raw tool helpers", () => {
       name: "failproofai_report",
       description: DEFAULT_DESCRIPTION,
       parameters: DEFAULT_SCHEMA,
+      strict: true,
     });
     expect(edge.openaiResponsesTool()).toEqual(failproofai.openaiResponsesTool());
+    // Strict mode holds for the schema: every property required, nothing else allowed.
+    const { parameters } = failproofai.openaiResponsesTool();
+    expect([...(parameters.required as string[])].sort()).toEqual(Object.keys(parameters.properties as object).sort());
+    expect(parameters.additionalProperties).toBe(false);
+    // Assignable to openai's own `FunctionTool` (openai/resources/responses), whose
+    // `strict` is required: checked by `npm run typecheck`, which covers test/.
+    const asOpenAI: OpenAIFunctionTool = failproofai.openaiResponsesTool();
+    expect(asOpenAI.strict).toBe(true);
   });
 
   it.each([
@@ -466,6 +543,21 @@ describe("the framework tools", () => {
       const recorded = await reports();
       expect(recorded[0]).toMatchObject({ tool_call_id: "call_3" });
       expect(recorded[1]!.tool_call_id).toBeUndefined();
+    });
+
+    it("reads the call id from configurable.tool_call_id in either argument, toolCall.id first", async () => {
+      class DynamicStructuredTool {
+        constructor(readonly fields: { func: (...args: unknown[]) => Promise<string> }) {}
+      }
+      const tool = vi.fn((func: unknown) => ({ func }));
+      const viaTool = langchainTool<{ func: (...args: unknown[]) => Promise<string> }>({ module: { tool }, sessionId: "fixed" });
+      const viaDst = langchainTool<DynamicStructuredTool>({ module: { DynamicStructuredTool }, sessionId: "fixed" });
+      const input = { category: "looping", detail: "d" };
+      await viaTool.func(input, { configurable: { tool_call_id: "cfg-2nd" } });
+      await viaDst.fields.func(input, { runId: "run-1" }, { configurable: { tool_call_id: "cfg-3rd" } });
+      await viaTool.func(input, { toolCall: { id: "tc" }, configurable: { tool_call_id: "cfg" } });
+      await viaDst.fields.func(input, { runId: "run-2", configurable: {} });
+      expect((await reports()).map((e) => e.tool_call_id)).toEqual(["cfg-2nd", "cfg-3rd", "tc", undefined]);
     });
 
     it("falls back to DynamicStructuredTool", () => {

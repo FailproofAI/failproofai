@@ -827,23 +827,9 @@ pub fn find_session(
     now_ms: i64,
 ) -> Option<(String, Option<String>)> {
     let dir = home.join("hook-activity");
-    // `current.jsonl` rotates to a page every 25 rows, so the newest session
-    // may be in the newest page when current was just rotated.
-    let mut files = vec![dir.join("current.jsonl")];
-    if let Ok(entries) = fs::read_dir(&dir) {
-        let mut pages: Vec<PathBuf> = entries
-            .filter_map(Result::ok)
-            .map(|e| e.path())
-            .filter(|p| {
-                p.file_name()
-                    .and_then(|n| n.to_str())
-                    .is_some_and(|n| n.starts_with("page-") && n.ends_with(".jsonl"))
-            })
-            .collect();
-        pages.sort();
-        files.extend(pages.into_iter().rev().take(2));
-    }
     let oldest = now_ms - SESSION_LOOKBACK.as_millis() as i64;
+    let mut files = vec![dir.join("current.jsonl")];
+    files.extend(pages_since(&dir, oldest));
     let mut best: Option<(u8, i64, String, Option<String>)> = None;
     // The distinct cwds seen, to tell one project from several.
     let mut cwds: Vec<Option<String>> = Vec::new();
@@ -883,6 +869,45 @@ pub fn find_session(
         Some((_, _, session, cwd)) => Some((session, cwd)),
         None => None,
     }
+}
+
+/// Slack on a page's rotation stamp, as `ROTATION_CLOCK_SLACK_MS` in the CLI's
+/// hook-activity store: a clock stepped back a little costs one more page read
+/// rather than a row missed.
+const ROTATION_CLOCK_SLACK_MS: i64 = 10 * 60 * 1000;
+
+/// Every archived activity page that can hold a row stamped at or after
+/// `oldest_ms`, newest first. `current.jsonl` rotates to
+/// `page-<rotatedAtMs>-<seq>.jsonl` every 25 rows, so another busy project's
+/// hooks can push a session's rows many pages back within the window; reading
+/// only the newest pages lost them (and could see one project where there
+/// were two). Every row in a page is at or before its rotation stamp, so the
+/// listing stops at the first page rotated before the window opened, as the
+/// CLI's `getHookActivityEntriesSince` does.
+fn pages_since(dir: &Path, oldest_ms: i64) -> Vec<PathBuf> {
+    let Ok(entries) = fs::read_dir(dir) else {
+        return Vec::new();
+    };
+    let mut pages: Vec<((i64, i64), PathBuf)> = entries
+        .filter_map(Result::ok)
+        .filter_map(|e| {
+            let name = e.file_name().into_string().ok()?;
+            let stem = name.strip_prefix("page-")?.strip_suffix(".jsonl")?;
+            let mut parts = stem.split('-');
+            let at = parts.next()?.parse::<i64>().ok()?;
+            let seq = parts
+                .next()
+                .and_then(|p| p.parse::<i64>().ok())
+                .unwrap_or(0);
+            Some(((at, seq), e.path()))
+        })
+        .collect();
+    pages.sort_by_key(|p| std::cmp::Reverse(p.0));
+    pages
+        .into_iter()
+        .take_while(|((at, _), _)| *at >= oldest_ms - ROTATION_CLOCK_SLACK_MS)
+        .map(|(_, path)| path)
+        .collect()
 }
 
 /// The last `max` bytes of a file, from the first whole line in them.
@@ -1258,8 +1283,9 @@ mod tests {
                    "sessionId": session, "cwd": cwd, "toolName": "x", "decision": "allow"})
             .to_string()
         };
+        // A page is named for when it rotated, after its last row was written.
         fs::write(
-            dir.join("page-1-0.jsonl"),
+            dir.join(format!("page-{}-0.jsonl", now - 900)),
             format!("{}\n", row(now - 1000, "openclaw", "s-page", "/w/a")),
         )
         .unwrap();
@@ -1419,6 +1445,58 @@ mod tests {
     }
 
     #[test]
+    fn reads_every_page_in_the_window_not_just_the_newest() {
+        let home = temp_home("busy-pages");
+        let dir = home.join("hook-activity");
+        fs::create_dir_all(&dir).unwrap();
+        let now = 1_800_000_000_000_i64;
+        let row = |at: i64, session: &str, cwd: &str| {
+            json!({"timestamp": at, "eventType": "PreToolUse", "integration": "copilot",
+                   "sessionId": session, "cwd": cwd, "toolName": "x", "decision": "allow"})
+            .to_string()
+        };
+        // Project A's one row, then four pages of project B (80 rows).
+        let mut t = now - 3_600_000;
+        fs::write(
+            dir.join(format!("page-{}-0.jsonl", t + 1)),
+            row(t, "sess-A", "/work/a") + "\n",
+        )
+        .unwrap();
+        for page in 1..=4 {
+            let mut lines = Vec::new();
+            for _ in 0..20 {
+                t += 1000;
+                lines.push(row(t, "sess-B", "/work/b"));
+            }
+            fs::write(
+                dir.join(format!("page-{}-{page}.jsonl", t + 1)),
+                lines.join("\n") + "\n",
+            )
+            .unwrap();
+        }
+        fs::write(
+            dir.join("current.jsonl"),
+            row(t + 1000, "sess-B", "/work/b") + "\n",
+        )
+        .unwrap();
+        assert_eq!(
+            find_session(&home, "copilot", Some("/work/a"), now),
+            Some(("sess-A".to_string(), Some("/work/a".to_string())))
+        );
+        // No cwd: A is still in the window, so there are two projects; never B.
+        assert_eq!(find_session(&home, "copilot", None, now), None);
+        // A page rotated before the window opened is not read at all.
+        let stale = now - 8 * 3_600_000;
+        fs::write(
+            dir.join(format!("page-{stale}-0.jsonl")),
+            row(now - 60_000, "misfiled", "/work/z") + "\n",
+        )
+        .unwrap();
+        // (Its row would be an exact match for /work/z if it were read.)
+        assert_eq!(find_session(&home, "copilot", Some("/work/z"), now), None);
+    }
+
+    #[test]
     fn no_cwd_is_attributed_only_within_one_project() {
         let home = temp_home("one-project");
         let dir = home.join("hook-activity");
@@ -1558,6 +1636,27 @@ mod tests {
             .filter(|l| !l.is_empty())
             .map(str::to_string)
             .collect()
+    }
+
+    #[test]
+    fn golden_truncation_counts_code_points() {
+        let fixture: Value = serde_json::from_str(&golden("truncation.golden.json")).unwrap();
+        let max = fixture["max"].as_u64().unwrap() as usize;
+        assert_eq!(max, MAX_DETAIL_CHARS);
+        for case in fixture["cases"].as_array().unwrap() {
+            let pad = case["pad_char"]
+                .as_str()
+                .unwrap()
+                .repeat(case["pad"].as_u64().unwrap() as usize);
+            let input = format!("{pad}{}", case["tail"].as_str().unwrap());
+            let want = format!("{pad}{}", case["expected_tail"].as_str().unwrap());
+            assert_eq!(truncate_chars(&input, max), want, "{case}");
+            assert_eq!(
+                Report::from_args(&json!({"category": "looping", "detail": input})).detail,
+                want,
+                "{case}"
+            );
+        }
     }
 
     #[test]

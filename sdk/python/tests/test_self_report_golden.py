@@ -91,3 +91,17 @@ def test_argument_aliases_match_the_shared_list():
         want = (case["category"], case["detail"])
         assert _self_report.parse_arguments(case["args"]) == want, case["args"]
         assert _self_report.parse_arguments(json.dumps(case["args"])) == want, case["args"]
+
+
+def test_truncation_counts_code_points_like_every_recorder():
+    from failproofai_sdk._events import SELF_REPORT_DETAIL_LIMIT, clip_report_text
+
+    fixture = json.loads(golden("truncation.golden.json"))
+    assert fixture["max"] == SELF_REPORT_DETAIL_LIMIT
+    assert fixture["cases"]
+    for case in fixture["cases"]:
+        pad = case["pad_char"] * case["pad"]
+        text, want = pad + case["tail"], pad + case["expected_tail"]
+        assert clip_report_text(text) == want, case
+        # Arguments that are not JSON are kept whole as the detail, cut the same way.
+        assert _self_report.parse_arguments(text) == ("", want), case

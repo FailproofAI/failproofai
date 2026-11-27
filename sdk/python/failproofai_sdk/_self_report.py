@@ -33,7 +33,7 @@ from pathlib import Path
 from typing import Any
 
 from failproofai_sdk import _runtime
-from failproofai_sdk._events import SELF_REPORT_DETAIL_LIMIT
+from failproofai_sdk._events import clip_report_text
 from failproofai_sdk._resolver import failproofai_home
 
 logger = logging.getLogger(__name__)
@@ -254,13 +254,18 @@ def openai_tool(**overrides: Any) -> dict[str, Any]:
 
 
 def openai_responses_tool(**overrides: Any) -> dict[str, Any]:
-    """The tool for the OpenAI Responses API `tools=[...]` (flat function shape)."""
+    """The tool for the OpenAI Responses API `tools=[...]` (flat function shape).
+
+    `strict: True`, as the TypeScript SDK's `openaiResponsesTool()`: the schema
+    already meets strict mode (every property required, no extra properties).
+    """
     spec = self_report_spec(**overrides)
     return {
         "type": "function",
         "name": spec["name"],
         "description": spec["description"],
         "parameters": spec["input_schema"],
+        "strict": True,
     }
 
 
@@ -348,11 +353,11 @@ def parse_arguments(arguments: Any) -> tuple[str, str]:
             try:
                 arguments = json.loads(text)
             except ValueError:
-                return "", text[:SELF_REPORT_DETAIL_LIMIT]
+                return "", clip_report_text(text)
     if arguments is None:
         arguments = {}
     if not isinstance(arguments, dict):
-        return "", _coerce_text(arguments)[:SELF_REPORT_DETAIL_LIMIT]
+        return "", clip_report_text(_coerce_text(arguments))
     return _first_text(arguments, "category"), _first_text(arguments, "detail")
 
 

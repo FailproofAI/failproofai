@@ -135,6 +135,12 @@ interface Leftovers {
    * kind of orphan this command clears.
    */
   selfReportMcpPaths: string[];
+  /**
+   * Agent config files that could not be inspected for that entry (unreadable
+   * or malformed). Not proof the entry is absent, so they are not "nothing to
+   * uninstall": the removal step tries them and reports any it cannot clean.
+   */
+  selfReportMcpErrors: Array<{ path: string; error: string }>;
 }
 
 function survey(cwd?: string): Leftovers {
@@ -176,18 +182,24 @@ function survey(cwd?: string): Leftovers {
     stagedBinaryDir: stagedBinaryDir && existsSync(stagedBinaryDir) ? stagedBinaryDir : null,
     daemonConfigured,
     homeExists: existsSync(failproofaiHome()),
-    selfReportMcpPaths: ownedSelfReportMcpPaths(),
+    ...selfReportMcpSurvey(),
   };
 }
 
-function ownedSelfReportMcpPaths(): string[] {
+function selfReportMcpSurvey(): Pick<Leftovers, "selfReportMcpPaths" | "selfReportMcpErrors"> {
   try {
-    return selfReportRegistrationStatus({ hooksInstalled: () => false })
-      .filter((r) => r.registered)
-      .map((r) => r.path);
-  } catch {
-    // Unreadable files are reported by the removal step itself.
-    return [];
+    const rows = selfReportRegistrationStatus({ hooksInstalled: () => false });
+    return {
+      selfReportMcpPaths: rows.filter((r) => r.registered).map((r) => r.path),
+      selfReportMcpErrors: rows
+        .filter((r) => r.error !== undefined)
+        .map((r) => ({ path: r.path || `${r.agent}'s MCP settings`, error: r.error! })),
+    };
+  } catch (err) {
+    return {
+      selfReportMcpPaths: [],
+      selfReportMcpErrors: [{ path: "agent MCP settings", error: err instanceof Error ? err.message : String(err) }],
+    };
   }
 }
 
@@ -201,6 +213,7 @@ export async function runUninstallCommand(opts: UninstallOptions = {}): Promise<
 
   const nothingToDo =
     found.clis.length === 0 && found.skillDirs.length === 0 && found.selfReportMcpPaths.length === 0 &&
+    found.selfReportMcpErrors.length === 0 &&
     !found.serviceInstalled && !found.stagedBinaryDir && !found.daemonConfigured &&
     !(opts.purge && found.homeExists);
   if (nothingToDo) {
@@ -230,6 +243,9 @@ export async function runUninstallCommand(opts: UninstallOptions = {}): Promise<
   if (found.selfReportMcpPaths.length > 0) {
     removals.push(`the Self Reports MCP server from ${many(found.selfReportMcpPaths.length, "agent config")}`);
   }
+  if (found.selfReportMcpErrors.length > 0 && found.selfReportMcpPaths.length === 0) {
+    removals.push(`any Self Reports MCP server from ${many(found.selfReportMcpErrors.length, "agent config")} that could not be read`);
+  }
   if (found.serviceInstalled) removals.push("the failproofaid service (needs sudo)");
   else if (found.stagedBinaryDir) removals.push(`the failproofaid binary in ${found.stagedBinaryDir} (needs sudo)`);
   if (purging) removals.push(home);
@@ -247,6 +263,9 @@ export async function runUninstallCommand(opts: UninstallOptions = {}): Promise<
       ...(found.codexSystemPath ? [`Codex's hooks are in ${found.codexSystemPath}, so removing them needs sudo.`] : []),
       "Also resets enabled policies, custom policy paths and policy parameters in policies-config.json.",
     );
+  }
+  for (const { path, error } of found.selfReportMcpErrors) {
+    details.push(`Could not read ${path} (${error}); failproofai's MCP entry may still be in it.`);
   }
   if (purging) details.push(`${home} holds your settings, credentials, audit history and the daemon binary.`);
   else if (found.homeExists) {

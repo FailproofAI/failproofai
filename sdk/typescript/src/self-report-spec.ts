@@ -130,16 +130,22 @@ export function toOpenAITool(spec: SelfReportSpec): OpenAITool {
   };
 }
 
-/** The OpenAI Responses API `tools[]` entry: the flat function shape. */
+/**
+ * The OpenAI Responses API `tools[]` entry: the flat function shape. `strict`
+ * is required by openai's own `FunctionTool` type, and the schema already
+ * meets strict mode (every property required, no additional properties), so
+ * the model's arguments are held to it.
+ */
 export interface OpenAIResponsesTool {
   type: "function";
   name: string;
   description: string;
   parameters: JsonSchemaObject;
+  strict: boolean;
 }
 
 export function toOpenAIResponsesTool(spec: SelfReportSpec): OpenAIResponsesTool {
-  return { type: "function", name: spec.name, description: spec.description, parameters: spec.inputSchema };
+  return { type: "function", name: spec.name, description: spec.description, parameters: spec.inputSchema, strict: true };
 }
 
 /** The Anthropic Messages `tools[]` entry. */
@@ -217,7 +223,7 @@ export function normalizeSelfReportArgs(args: unknown): { category: string; deta
   }
   const record = typeof value === "object" && value !== null ? (value as Record<string, unknown>) : {};
   return {
-    category: firstText(record, "category", SELF_REPORT_ARG_ALIASES.category),
+    category: clipReportText(firstText(record, "category", SELF_REPORT_ARG_ALIASES.category), Infinity),
     detail: clipDetail(firstText(record, "detail", SELF_REPORT_ARG_ALIASES.detail)),
   };
 }
@@ -253,13 +259,29 @@ function asText(value: unknown): string {
   }
 }
 
-/** `detail` cut to `SELF_REPORT_DETAIL_LIMIT`, never through a surrogate pair. */
+/**
+ * `text` with no lone surrogate (each becomes U+FFFD), cut to `max` Unicode
+ * code points (`Infinity`: not cut). Code points are what the daemon and the
+ * Python SDK count, so all of them keep the same prefix of a long detail; a
+ * lone surrogate would be written as an unpaired `\ud8xx` escape, which the
+ * collector rejects along with the report. The shared cases are in
+ * `test-fixtures/self-report/truncation.golden.json` in the repo.
+ */
+export function clipReportText(text: string, max: number = SELF_REPORT_DETAIL_LIMIT): string {
+  let out = "";
+  let n = 0;
+  for (const ch of text) {
+    if (n === max) break;
+    const code = ch.charCodeAt(0);
+    out += ch.length === 1 && code >= 0xd800 && code <= 0xdfff ? "\uFFFD" : ch;
+    n++;
+  }
+  return out;
+}
+
+/** `detail` cut to `SELF_REPORT_DETAIL_LIMIT` code points, never through a surrogate pair. */
 export function clipDetail(detail: string): string {
-  if (detail.length <= SELF_REPORT_DETAIL_LIMIT) return detail;
-  let cut = detail.slice(0, SELF_REPORT_DETAIL_LIMIT);
-  const last = cut.charCodeAt(cut.length - 1);
-  if (last >= 0xd800 && last <= 0xdbff) cut = cut.slice(0, -1);
-  return cut;
+  return clipReportText(detail);
 }
 
 /**

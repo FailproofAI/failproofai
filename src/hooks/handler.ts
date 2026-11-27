@@ -58,6 +58,7 @@ import { persistHookActivity } from "./hook-activity-store";
 import {
   isSelfReportCursorCall,
   isSelfReportToolName,
+  readEnabledSelfReport,
   selfReportAntigravityWrappedArgs,
   selfReportArgs,
   SELF_REPORT_MCP_TOOL_NAME,
@@ -672,6 +673,12 @@ async function captureJevIntent(
  * `SELF_REPORT_SERVER_RECORDS` has its report written by the MCP server
  * instead, so a hook that turns out to see the call there must not file it a
  * second time. A PostToolUse row is the call's completion, not a second report.
+ *
+ * Only while Self Reports is on, read from `self-report.json` on every call: a
+ * running agent keeps the MCP tools it loaded at startup, so taking our entry
+ * out of its config cannot stop it calling `report`, and this check is what
+ * makes `self-report disable` take effect at once. A missing, unreadable or
+ * disabled file records no report; the call is still allowed either way.
  */
 function recordSelfReportCall(
   canonicalEventType: string,
@@ -688,7 +695,7 @@ function recordSelfReportCall(
   // `self_report` event per row that has it, and a call that also raises a
   // PermissionRequest (or completes with a PostToolUse) is still one report.
   const isReportRow = canonicalEventType === "PreToolUse";
-  const hookRecords = !SELF_REPORT_SERVER_RECORDS.includes(cli);
+  const hookRecords = isReportRow && !SELF_REPORT_SERVER_RECORDS.includes(cli) && readEnabledSelfReport() !== null;
   try {
     persistHookActivity({
       timestamp: writtenAt,
@@ -707,7 +714,7 @@ function recordSelfReportCall(
       cwd: session.cwd,
       permissionMode: session.permissionMode,
       hookEventName: session.hookEventName,
-      ...(isReportRow && hookRecords ? { selfReport: { ...selfReportArgs(parsed.tool_input), source: "mcp" as const } } : {}),
+      ...(hookRecords ? { selfReport: { ...selfReportArgs(parsed.tool_input), source: "mcp" as const } } : {}),
     });
   } catch {
     hookLogWarn("activity persistence failed");

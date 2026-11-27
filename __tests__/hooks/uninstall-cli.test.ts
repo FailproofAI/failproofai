@@ -602,6 +602,53 @@ describe("hooks/uninstall-cli — Self Reports MCP server", () => {
     }
   });
 
+  it("an agent config that cannot be inspected is not \"nothing to uninstall\": the cleanup is tried and reported incomplete", async () => {
+    installedClis = [];
+    configured = false;
+    rmSync(servicePath, { force: true });
+    const mod = await import("../../src/hooks/self-report-install");
+    const broken = {
+      agent: "copilot", path: "/x/.copilot/mcp-config.json", hooked: false, registered: false,
+      transport: null, endpoint: null, conflict: false, error: "Unexpected token } in JSON",
+    } as const;
+    vi.mocked(mod.selfReportRegistrationStatus).mockReturnValue([broken]);
+    const { runUninstallCommand } = await import("../../src/hooks/uninstall-cli");
+    try {
+      const dry = await runUninstallCommand({ dryRun: true });
+      const plan = dry.lines.join("\n");
+      expect(plan).not.toContain("Nothing to uninstall");
+      expect(plan).toContain("could not be read");
+      expect(plan).toContain(broken.path);
+
+      vi.mocked(mod.removeSelfReportMcp).mockReturnValueOnce([
+        { agent: "copilot", path: broken.path, action: "skipped", transport: null, status: "error", detail: broken.error },
+      ]);
+      const res = await runUninstallCommand({ yes: true });
+      expect(res.exitCode).toBe(1);
+      expect(res.lines.join("\n")).toContain(`Could not remove the Self Reports MCP server from ${broken.path}`);
+    } finally {
+      vi.mocked(mod.selfReportRegistrationStatus).mockReturnValue([]);
+    }
+  });
+
+  it("with every agent config genuinely absent, there is still nothing to uninstall", async () => {
+    installedClis = [];
+    configured = false;
+    rmSync(servicePath, { force: true });
+    const mod = await import("../../src/hooks/self-report-install");
+    vi.mocked(mod.selfReportRegistrationStatus).mockReturnValue([
+      { agent: "copilot", path: "/x/.copilot/mcp-config.json", hooked: false, registered: false, transport: null, endpoint: null, conflict: false },
+    ]);
+    const { runUninstallCommand } = await import("../../src/hooks/uninstall-cli");
+    try {
+      const res = await runUninstallCommand({ yes: true });
+      expect(res.exitCode).toBe(0);
+      expect(res.lines.join("\n")).toContain("Nothing to uninstall");
+    } finally {
+      vi.mocked(mod.selfReportRegistrationStatus).mockReturnValue([]);
+    }
+  });
+
   it("removes failproofai's MCP server from every agent and says so", async () => {
     const mod = await import("../../src/hooks/self-report-install");
     vi.mocked(mod.removeSelfReportMcp).mockReturnValueOnce([

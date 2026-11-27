@@ -35,8 +35,9 @@ export {
   isSelfReportToolName,
   isSelfReportCursorCall,
   selfReportAntigravityWrappedArgs,
+  selfReportClip,
 } from "./self-report-names";
-import { SELF_REPORT_DETAIL_MAX, SELF_REPORT_DEFAULT_PORT } from "./self-report-names";
+import { SELF_REPORT_DEFAULT_PORT, selfReportClip } from "./self-report-names";
 
 // ── Categories (contract §2) ────────────────────────────────────────────────
 
@@ -190,7 +191,7 @@ export const SELF_REPORT_RESULT_TEXT = "Recorded.";
  * A call's arguments as they are recorded: an unknown category is kept as-is
  * (never rejected), a missing or empty argument falls back to its first
  * non-empty alias (`SELF_REPORT_ARG_ALIASES`), else `""`; unknown keys are ignored; detail is cut to 2000
- * characters. A category is cut to the same bound so a hostile argument cannot
+ * code points (`selfReportClip`). A category is cut to the same bound so a hostile argument cannot
  * grow every activity row without limit.
  *
  * Accepts the arguments object itself, or a hook's `tool_input` that wraps it
@@ -217,8 +218,8 @@ export function selfReportArgs(input: unknown): { category: string; detail: stri
   const category = selfReportArg(rec, "category", SELF_REPORT_ARG_ALIASES.category);
   const detail = selfReportArg(rec, "detail", SELF_REPORT_ARG_ALIASES.detail);
   return {
-    category: category.slice(0, SELF_REPORT_DETAIL_MAX),
-    detail: detail.slice(0, SELF_REPORT_DETAIL_MAX),
+    category: selfReportClip(category),
+    detail: selfReportClip(detail),
   };
 }
 

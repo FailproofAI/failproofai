@@ -209,8 +209,10 @@ describe("MCP fallback recording helpers", () => {
       ].join("\n") + "\n",
     );
     expect(selfReportFindSession("pi", "/p", now)).toBe("s2");
-    // No row in or around this cwd: the agent's newest session anywhere.
-    expect(selfReportFindSession("pi", "/nowhere", now)).toBe("wrong-cwd");
+    // No row in or around this cwd, and pi's rows are in two projects: a guess
+    // across projects is refused.
+    expect(selfReportFindSession("pi", "/nowhere", now)).toBeNull();
+    // ...but goose has one project in the window, so its newest session is it.
     expect(selfReportFindSession("goose", "/nowhere", now)).toBe("wrong-agent");
     expect(selfReportFindSession("hermes", "/p", now)).toBeNull();
     expect(selfReportFindSession("pi", "/p", now + 10 * 3600_000)).toBeNull();
@@ -239,6 +241,40 @@ describe("MCP fallback recording helpers", () => {
     expect(selfReportCwdAffinity("/a/b", "/a/b/")).toBe(2);
     expect(selfReportCwdAffinity("/a/b", "/a")).toBe(1);
     expect(selfReportCwdAffinity("/a/b", undefined)).toBe(0);
+  });
+
+  it("finds a project's session behind many pages of another project's hook activity", () => {
+    // Project A's session started, then 80 events in project B rotated A's row
+    // several pages back. The report from A's cwd still lands on A.
+    const now = 1_800_000_000_000;
+    const dir = join(home, "hook-activity");
+    mkdirSync(dir, { recursive: true });
+    const row = (o: Record<string, unknown>) =>
+      JSON.stringify({ eventType: "PreToolUse", decision: "allow", integration: "copilot", ...o });
+    let t = now - 3600_000;
+    writeFileSync(join(dir, `page-${t + 1}-0.jsonl`), row({ cwd: "/work/a", sessionId: "sess-A", timestamp: t }) + "\n");
+    for (let page = 1; page <= 4; page++) {
+      const lines: string[] = [];
+      for (let i = 0; i < 20; i++) lines.push(row({ cwd: "/work/b", sessionId: "sess-B", timestamp: (t += 1000) }));
+      writeFileSync(join(dir, `page-${t + 1}-${page}.jsonl`), lines.join("\n") + "\n");
+    }
+    writeFileSync(join(dir, "current.jsonl"), row({ cwd: "/work/b", sessionId: "sess-B", timestamp: (t += 1000) }) + "\n");
+    expect(selfReportFindSessionMatch("copilot", "/work/a", now)).toEqual({ sessionId: "sess-A", cwd: "/work/a" });
+    expect(selfReportFindSessionMatch("copilot", "/work/b", now)?.sessionId).toBe("sess-B");
+    // A third, unrelated cwd: two projects to choose from, so unattributed rather than B.
+    expect(selfReportFindSessionMatch("copilot", "/work/c", now)).toBeNull();
+  });
+
+  it("does not read pages rotated before the window opened", () => {
+    const now = 1_800_000_000_000;
+    const dir = join(home, "hook-activity");
+    mkdirSync(dir, { recursive: true });
+    const old = now - 8 * 3600_000;
+    writeFileSync(
+      join(dir, `page-${old}-0.jsonl`),
+      JSON.stringify({ eventType: "PreToolUse", integration: "pi", cwd: "/p", sessionId: "stale", timestamp: old - 1 }) + "\n",
+    );
+    expect(selfReportFindSessionMatch("pi", "/p", now)).toBeNull();
   });
 
   it("files a fallback report under the matched row's agent, not the server's cwd", async () => {
@@ -487,6 +523,7 @@ describe("failproofai self-report enable | disable | status", () => {
     const r = await runSelfReportCommand(["status"], {
       skipSync: true,
       probeEndpoint: async (_url, port) => port === 4319,
+      daemonLive: async (port) => port === 4319,
       registrations: () => [
         row({ agent: "claude", transport: "http", endpoint: "http://127.0.0.1:4319/mcp?agent=claude" }),
         row({ agent: "codex", transport: "http", endpoint: "http://127.0.0.1:4999/mcp?agent=codex" }),
@@ -568,9 +605,37 @@ describe("failproofai self-report enable | disable | status", () => {
     // Healthy, or skipSync: no write.
     synced = 0;
     rows = [row({ transport: "http", endpoint: "http://127.0.0.1:4319/mcp?agent=claude" })];
-    await runSelfReportCommand(["status"], { probeEndpoint: async () => true, registrations: () => rows, sync: async () => (synced++, []) });
+    await runSelfReportCommand(["status"], {
+      probeEndpoint: async () => true, daemonLive: async () => true, registrations: () => rows, sync: async () => (synced++, []),
+    });
     await runSelfReportCommand(["status"], { skipSync: true, probeEndpoint: async () => false, registrations: () => rows, sync: async () => (synced++, []) });
     expect(synced).toBe(0);
+  });
+
+  it("status re-syncs an agent whose HTTP endpoint answers as another home's daemon", async () => {
+    writeEffectiveSelfReport({ enabled: true });
+    let synced = 0;
+    const http = [row({ transport: "http", endpoint: "http://127.0.0.1:4319/mcp?agent=claude" })];
+    const seen = await runSelfReportCommand(["status"], {
+      skipSync: true,
+      probeEndpoint: async () => true,
+      daemonLive: async () => false,
+      registrations: () => http,
+    });
+    expect(seen.lines.join("\n")).toMatch(/claude +http +\S+ \(answering, but NOT this home's daemon\)/);
+    let rows = http;
+    const r = await runSelfReportCommand(["status"], {
+      probeEndpoint: async () => true,
+      daemonLive: async () => false,
+      registrations: () => rows,
+      sync: async () => {
+        synced++;
+        rows = [row({ transport: "stdio", endpoint: "/usr/bin/failproofai" })];
+        return [{ agent: "claude", path: "/x", action: "updated", transport: "stdio", status: "ok" }];
+      },
+    });
+    expect(synced).toBe(1);
+    expect(r.lines.join("\n")).toContain("Repaired:");
   });
 
   it("status moves a server-recorded agent off HTTP even while the endpoint answers", async () => {

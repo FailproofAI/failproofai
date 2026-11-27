@@ -1,0 +1,13 @@
+{
+  "comment": "How detail is cut to 2000 characters, counted in Unicode code points (never UTF-16 units, never through a surrogate pair). input = pad_char repeated pad times + tail; the recorded value = the same pad + expected_tail. Every implementation (CLI, daemon, both SDKs) is tested against these cases.",
+  "max": 2000,
+  "cases": [
+    {"pad_char": "a", "pad": 1999, "tail": "😀 and more text", "expected_tail": "😀"},
+    {"pad_char": "a", "pad": 1998, "tail": "😀😀😀", "expected_tail": "😀😀"},
+    {"pad_char": "a", "pad": 2000, "tail": "😀", "expected_tail": ""},
+    {"pad_char": "a", "pad": 1999, "tail": "éè", "expected_tail": "é"},
+    {"pad_char": "😀", "pad": 2000, "tail": "x", "expected_tail": ""},
+    {"pad_char": "😀", "pad": 1999, "tail": "中文", "expected_tail": "中"},
+    {"pad_char": "a", "pad": 0, "tail": "short 😀", "expected_tail": "short 😀"}
+  ]
+}

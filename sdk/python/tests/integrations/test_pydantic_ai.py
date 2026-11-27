@@ -689,6 +689,51 @@ def test_uninstrumenting_mid_run_closes_the_run_exactly_once(instrumented, emitt
     assert kinds.index("tool_result") < kinds.index("agent_end")
 
 
+def test_uninstrumenting_leaves_a_manually_attached_capabilitys_run_to_finish(instrumented, emitted):
+    """`uninstrument()` closes only the runs it instrumented.
+
+    A `FailproofAI()` the developer attached by hand keeps recording after
+    `uninstrument()`; its in-flight run must end on its own, once, with its
+    real outcome, and its tool call must still be recorded.
+    """
+
+    async def main():
+        waiting = []
+        release = asyncio.Event()
+        manual = Agent(
+            one_shot_tool_model("wait", {}, tool_call_id="call-manual"),
+            name="manual_agent",
+            capabilities=[FailproofAI()],
+        )
+        injected = Agent(
+            one_shot_tool_model("wait", {}, tool_call_id="call-injected"),
+            name="injected_agent",
+        )
+
+        async def wait() -> str:
+            waiting.append(1)
+            await release.wait()
+            return "finished"
+
+        manual.tool_plain(wait)
+        injected.tool_plain(wait)
+        tasks = [asyncio.create_task(manual.run("go")), asyncio.create_task(injected.run("go"))]
+        while len(waiting) < 2:
+            await asyncio.sleep(0.01)
+        failproofai_sdk.uninstrument("pydantic_ai")
+        release.set()
+        await asyncio.gather(*tasks)
+
+    asyncio.run(main())
+    rows = emitted()
+    ends = {r["agent_id"]: r["outcome"] for r in of_type(rows, "agent_end")}
+    assert len(of_type(rows, "agent_end")) == 2, types_of(rows)
+    assert ends == {"manual_agent": "success", "injected_agent": "cancelled"}
+    manual_rows = [r for r in rows if r.get("agent_id") == "manual_agent"]
+    assert types_of(manual_rows).count("tool_result") == 1
+    assert types_of(manual_rows)[-1] == "agent_end"
+
+
 # ---------------------------------------------------------------------------
 # What `tool_result.output` actually says
 # ---------------------------------------------------------------------------

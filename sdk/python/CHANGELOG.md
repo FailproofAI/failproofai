@@ -25,9 +25,14 @@ see `scripts/changelog-section.py`.
   `instrument("pydantic_ai", self_report=True)`. Categories and guidance come from
   `$FAILPROOFAI_HOME/self-report.json`, else six defaults. A report with no
   session bound matches an open tool call only within one session (never the
-  newest of several), and open calls are tracked per session. The CrewAI tool is
-  never cached and runs in the caller's context on CrewAI's async path. Still no
-  runtime dependencies.
+  newest of several), and open calls are tracked per session; a `tool_call_id`
+  open in several sessions is never resolved by the tool name instead, and with
+  an explicit session the call id is taken only from the one open report call of
+  that session and agent. `detail` is cut to 2000 code points with no lone
+  surrogate, as the daemon cuts it. `openai_responses_tool()` sets
+  `strict: True`. `uninstrument("pydantic_ai")` leaves runs of a hand-attached
+  `FailproofAI()` to finish. The CrewAI tool is never cached and runs in the
+  caller's context on CrewAI's async path. Still no runtime dependencies.
 
 ### Dependencies
 

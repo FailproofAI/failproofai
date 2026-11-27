@@ -6,7 +6,7 @@
  * call) shows the same setup really does deny, so an allow is not vacuous.
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -38,6 +38,7 @@ import { jevChecksInstalled } from "../../src/hooks/effective-reviewers";
 import { writePause } from "../../src/hooks/session-pause";
 import { _resetForTest } from "../../src/hooks/hook-activity-store";
 import { HEALTH_PROBE_SOURCE } from "../../src/hooks/health-probe";
+import { writeEffectiveSelfReport } from "../../src/hooks/self-report";
 
 const SESSION = "sr-session";
 let home: string;
@@ -66,6 +67,8 @@ beforeEach(() => {
   process.env.FAILPROOFAI_HOME = home;
   process.env.FAILPROOFAI_STATE_DIR = join(home, "state");
   _resetForTest(join(home, "hook-activity"));
+  // Self Reports on: the hook records a report only while the setting says so.
+  writeEffectiveSelfReport({ enabled: true });
   // A custom policy that denies everything, on every event.
   vi.mocked(loadAllCustomHooks).mockImplementation((async () => ({
     hooks: [
@@ -113,6 +116,48 @@ describe("Self Reports short-circuit", () => {
       toolCallId: "toolu_1",
       selfReport: { category: "invalid_tool_or_credential", detail: "tracker rejected its API key", source: "mcp" },
     });
+  });
+
+  describe("the current Self Reports setting", () => {
+    const settings = () => join(home, "self-report.json");
+
+    it.each([
+      ["missing", () => rmSync(settings(), { force: true })],
+      ["disabled", () => writeEffectiveSelfReport({ enabled: false })],
+      ["malformed", () => writeFileSync(settings(), "{ not json")],
+      ["of another version", () => writeFileSync(settings(), JSON.stringify({ version: 2, enabled: true }))],
+    ])("%s: still allows the call (Claude and Codex) but records no report", async (_name, setUp) => {
+      setUp();
+      for (const [event, cli] of [["PreToolUse", "claude"], ["pre_tool_use", "codex"]] as const) {
+        const out = await evaluateHookEvent(event, cli, report());
+        expect(out.evaluation?.decision).toBe("allow");
+        expect(loadAllCustomHooks).not.toHaveBeenCalled();
+      }
+      const all = rows();
+      expect(all).toHaveLength(2);
+      expect(all.every((r) => r.selfReport === undefined)).toBe(true);
+    });
+
+    it("disabling during a session stops the next call's report, and enabling brings it back", async () => {
+      await evaluateHookEvent("PreToolUse", "claude", report());
+      writeEffectiveSelfReport({ enabled: false });
+      expect((await evaluateHookEvent("PreToolUse", "claude", report())).evaluation?.decision).toBe("allow");
+      writeEffectiveSelfReport({ enabled: true });
+      await evaluateHookEvent("PreToolUse", "claude", report());
+      expect(rows().map((r) => r.selfReport !== undefined)).toEqual([true, false, true]);
+    });
+  });
+
+  it("cuts detail at 2000 code points, never through a surrogate pair", async () => {
+    const detail = `${"a".repeat(1999)}\u{1F600} and more text`;
+    await evaluateHookEvent("PreToolUse", "claude", payload("mcp__failproofai__report", { category: "looping", detail }));
+    const line = readFileSync(join(home, "hook-activity", "current.jsonl"), "utf8").trim().split("\n").pop()!;
+    // The row is valid UTF-8 JSON with no lone surrogate escape, which the
+    // Rust collector would reject along with every hook event on the row.
+    expect(line).not.toMatch(/\\ud[89a-f][0-9a-f]{2}/i);
+    const kept = (JSON.parse(line).selfReport as { detail: string }).detail;
+    expect(kept).toBe(`${"a".repeat(1999)}\u{1F600}`);
+    expect([...kept]).toHaveLength(2000);
   });
 
   it("allows it with fail-closed forced (daemon unreachable), while the control call is denied", async () => {

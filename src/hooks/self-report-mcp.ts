@@ -22,12 +22,13 @@
  *
  * Top-level names are prefixed for the same bundle reason as self-report.ts.
  */
-import { closeSync, fsyncSync, mkdirSync, openSync, readdirSync, readFileSync, renameSync, rmSync, statSync, writeSync, constants as fsConstants } from "node:fs";
+import { closeSync, fsyncSync, mkdirSync, openSync, renameSync, rmSync, writeSync, constants as fsConstants } from "node:fs";
 import { join } from "node:path";
 import { createInterface } from "node:readline";
 import type { Readable, Writable } from "node:stream";
 import { version as selfReportCliVersion } from "../../package.json";
-import { customAgentsEventsDir, hookActivityDir } from "./fp-home";
+import { customAgentsEventsDir } from "./fp-home";
+import { getHookActivityEntriesSince } from "./hook-activity-store";
 import {
   SELF_REPORT_RESULT_TEXT,
   SELF_REPORT_SERVER_NAME,
@@ -36,6 +37,7 @@ import {
   describeSelfReportTool,
   readEnabledSelfReport,
   selfReportArgs,
+  selfReportClip,
   selfReportInputSchema,
   selfReportInstructions,
 } from "./self-report";
@@ -107,81 +109,59 @@ export interface SelfReportSessionMatch {
  * The hook-activity session a report from `integration` belongs to, seen by
  * the hooks within the window (6 h), or null. Most specific first: the newest
  * session whose row has exactly this `cwd`; else the newest whose cwd is an
- * ancestor or descendant of it; else the newest session of that integration
- * anywhere. The stdio server's cwd is wherever the agent started it, which is
- * often not the project (Hermes runs it from its own directory), so an exact
- * match alone left those reports unattributed. Every server-recorded agent is
- * registered over stdio, so this server always has a cwd. The daemon's HTTP
- * fallback (crates/fpai-collect/src/self_report.rs `find_session`) ranks the
- * same way but, having no cwd from an HTTP entry, refuses a guess across
- * projects and records such a report as unattributed.
+ * ancestor or descendant of it. The stdio server's cwd is wherever the agent
+ * started it, which is often not the project (Hermes runs it from its own
+ * directory), so with no related row the agent's newest session is still
+ * taken, but only when every one of its rows in the window has the same cwd:
+ * with several projects to choose from that would be a guess, and the report
+ * is `unattributed` instead. The daemon's HTTP fallback
+ * (crates/fpai-collect/src/self_report.rs `find_session`) ranks the same way.
  *
- * Reads `current.jsonl` and, because it holds at most one page (25 rows) and
- * may have just rotated, the newest archived page too.
+ * Reads every activity page that can hold a row from the window
+ * (`getHookActivityEntriesSince`), not just the newest ones: `current.jsonl`
+ * rotates every 25 rows, so another busy project's hooks can push this
+ * project's rows several pages back within minutes.
  */
 export function selfReportFindSessionMatch(
   integration: string,
   cwd: string | undefined,
   now: number = Date.now(),
 ): SelfReportSessionMatch | null {
-  const dir = hookActivityDir();
-  const files: string[] = [join(dir, "current.jsonl")];
+  let entries: ReturnType<typeof getHookActivityEntriesSince>;
   try {
-    const pages = readdirSync(dir)
-      .filter((f) => f.startsWith("page-") && f.endsWith(".jsonl"))
-      .map((f) => ({ f, m: selfReportMtime(join(dir, f)) }))
-      .sort((a, b) => b.m - a.m);
-    if (pages[0]) files.push(join(dir, pages[0].f));
+    entries = getHookActivityEntriesSince(now - SELF_REPORT_SESSION_WINDOW_MS);
   } catch {
-    // No activity directory: nothing to attribute to.
+    return null; // No readable activity: nothing to attribute to.
   }
   let best: { rank: number; ts: number; id: string; cwd: string | undefined } | null = null;
-  for (const file of files) {
-    let text: string;
-    try {
-      text = readFileSync(file, "utf8");
-    } catch {
+  // The distinct cwds of this integration's rows, to tell one project from several.
+  const cwds = new Set<string>();
+  for (const row of entries as unknown as Array<Record<string, unknown>>) {
+    const ts = typeof row.timestamp === "number" ? row.timestamp : NaN;
+    if (
+      row.integration !== integration ||
+      typeof row.sessionId !== "string" ||
+      !row.sessionId ||
+      !Number.isFinite(ts) ||
+      now - ts > SELF_REPORT_SESSION_WINDOW_MS ||
+      ts - now > 60_000
+    ) {
       continue;
     }
-    for (const line of text.split("\n")) {
-      if (!line.trim()) continue;
-      let row: Record<string, unknown>;
-      try {
-        row = JSON.parse(line) as Record<string, unknown>;
-      } catch {
-        continue;
-      }
-      const ts = typeof row.timestamp === "number" ? row.timestamp : NaN;
-      if (
-        row.integration !== integration ||
-        typeof row.sessionId !== "string" ||
-        !row.sessionId ||
-        !Number.isFinite(ts) ||
-        now - ts > SELF_REPORT_SESSION_WINDOW_MS ||
-        ts - now > 60_000
-      ) {
-        continue;
-      }
-      const rank = cwd ? selfReportCwdAffinity(cwd, row.cwd) : 0;
-      if (!best || rank > best.rank || (rank === best.rank && ts > best.ts)) {
-        best = { rank, ts, id: row.sessionId, cwd: typeof row.cwd === "string" && row.cwd ? row.cwd : undefined };
-      }
+    const rowCwd = typeof row.cwd === "string" && row.cwd ? row.cwd : undefined;
+    cwds.add(rowCwd === undefined ? "" : rowCwd.replace(/\/+$/, "") || "/");
+    const rank = cwd ? selfReportCwdAffinity(cwd, row.cwd) : 0;
+    if (!best || rank > best.rank || (rank === best.rank && ts > best.ts)) {
+      best = { rank, ts, id: row.sessionId, cwd: rowCwd };
     }
   }
-  return best ? { sessionId: best.id, cwd: best.cwd } : null;
+  if (!best || (best.rank === 0 && cwds.size > 1)) return null;
+  return { sessionId: best.id, cwd: best.cwd };
 }
 
 /** The session id of `selfReportFindSessionMatch`, or null. */
 export function selfReportFindSession(integration: string, cwd: string, now: number = Date.now()): string | null {
   return selfReportFindSessionMatch(integration, cwd, now)?.sessionId ?? null;
-}
-
-function selfReportMtime(path: string): number {
-  try {
-    return statSync(path).mtimeMs;
-  } catch {
-    return 0;
-  }
 }
 
 /**
@@ -245,8 +225,8 @@ export async function writeSelfReportEvent(input: SelfReportEventInput): Promise
     // server elsewhere).
     agent_id: selfReportAgentId(input.integration, match?.cwd ?? input.cwd),
     type: "self_report",
-    category: input.category,
-    detail: input.detail,
+    category: selfReportClip(input.category),
+    detail: selfReportClip(input.detail),
     source: "mcp",
     // Wire order as the SDK writers build it: environment after the event's own fields.
     environment: await selfReportEnvironment(),

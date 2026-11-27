@@ -69,6 +69,22 @@ _U32_MAX = 2**32 - 1
 #: whichever path wrote it.
 SELF_REPORT_DETAIL_LIMIT = 2000
 
+
+def clip_report_text(text: str, limit: "int | None" = SELF_REPORT_DETAIL_LIMIT) -> str:
+    """`text` with no lone surrogate, cut to `limit` code points (`None`: not cut).
+
+    Code points are what the daemon (`truncate_chars`) and the CLI count, so
+    every recorder keeps the same prefix of a long detail. A surrogate pair
+    spelled as two code points is joined; a lone one becomes U+FFFD. Either
+    would otherwise reach the event file as an unpaired `\\ud8xx` escape, which
+    the Rust collector rejects, losing the report. The shared cases are in
+    test-fixtures/self-report/truncation.golden.json.
+    """
+    if any("\ud800" <= ch <= "\udfff" for ch in text):
+        text = text.encode("utf-16", "surrogatepass").decode("utf-16", "replace")
+    return text if limit is None else text[:limit]
+
+
 #: The session a `self_report` is filed under when nothing else identifies one —
 #: the same value the MCP server fallback uses.
 UNATTRIBUTED_SESSION = "unattributed"
@@ -358,12 +374,16 @@ class EventNamespace:
         """Where a `self_report` with no explicit `session_id` belongs, and its call id.
 
         Most specific first, within the ambient session when one is bound:
-        the open `tool_use` with this `tool_call_id`; then the newest open
-        `tool_use` of the report tool itself; then the enclosing scope; then
+        the open `tool_use` with this `tool_call_id`; then, only when no open
+        call has that id (or none was given), the newest open `tool_use` of
+        the report tool itself, since an adapter may have recorded its own id
+        rather than the model's; then the enclosing scope; then
         `"unattributed"` with one warning. With no ambient session, an open
         `tool_use` is used only when every candidate is in one session: the
-        newest of several sessions would be a guess. Never raises: a report is evidence,
-        and losing it to a missing scope is the worse outcome.
+        newest of several sessions would be a guess. An id open in several
+        sessions is such a guess too, and never falls back to the tool name.
+        Never raises: a report is evidence, and losing it to a missing scope is
+        the worse outcome.
 
         The third item is the `tool_call_id` to record: the caller's, else the
         matched `tool_use`'s own id, so a tool that cannot see the model's call
@@ -384,10 +404,11 @@ class EventNamespace:
                 return None
             return found[-1]
 
-        match = None
-        if tool_call_id is not None:
-            match = unambiguous([e for e in candidates if e[3] == tool_call_id])
-        if match is None:
+        by_id = [e for e in candidates if e[3] == tool_call_id] if tool_call_id is not None else []
+        if by_id:
+            # The id is known here: its call, or no guess at all.
+            match = unambiguous(by_id)
+        else:
             match = unambiguous([e for e in candidates if is_self_report_tool(e[2])])
         if match is not None:
             entry = match
@@ -411,18 +432,23 @@ class EventNamespace:
             )
         return UNATTRIBUTED_SESSION, agent_id, tool_call_id
 
-    def _open_report_call_id(self, session_id: str) -> "str | None":
-        """The id of the newest open report-tool `tool_use` in this session, or None."""
+    def _open_report_call_id(self, session_id: str, agent_id: str) -> "str | None":
+        """The id of the one open report-tool `tool_use` of this session and agent.
+
+        None when there is none, or several: two report calls open at once
+        (parallel tool calls) would make the id a guess between them.
+        """
         from failproofai_sdk._self_report import is_self_report_tool
 
         try:
             open_tools = list(self._open_tools.values())
         except RuntimeError:  # resized under us by another thread
             return None
-        return next(
-            (e[3] for e in reversed(open_tools) if e[0] == session_id and is_self_report_tool(e[2])),
-            None,
-        )
+        found = [
+            e[3] for e in open_tools
+            if e[0] == session_id and e[1] == agent_id and is_self_report_tool(e[2])
+        ]
+        return found[0] if len(found) == 1 else None
 
     def _validate_fields(self, fields: dict) -> None:
         bad = _RESERVED & fields.keys()
@@ -904,8 +930,8 @@ class EventNamespace:
         raises here, unlike the other event methods — the TypeError/ValueError
         checks on the arguments themselves still apply. With no `tool_call_id`
         given, the report takes the id of the open report-tool `tool_use` it
-        was matched to (or, with an explicit `session_id`, the newest one open
-        in that session).
+        was matched to (or, with an explicit `session_id`, of the one such call
+        open for that session and agent; none when several are open).
         """
         if "source" in fields:
             raise ValueError("source is set by the SDK (always \"sdk\") and cannot be passed by the caller")
@@ -924,8 +950,10 @@ class EventNamespace:
             session_id, agent_id, tool_call_id = self._report_identity(tool_call_id, agent_id)
         elif tool_call_id is None:
             # A framework tool that resolved its session from the adapter's run
-            # (LlamaIndex, CrewAI) but cannot see the model's call id.
-            tool_call_id = self._open_report_call_id(session_id)
+            # (LlamaIndex, CrewAI) but cannot see the model's call id. The agent
+            # is resolved first, so only that agent's open call is a candidate.
+            session_id, agent_id = _resolve_identity(session_id, agent_id)
+            tool_call_id = self._open_report_call_id(session_id, agent_id)
         session_id, agent_id = _resolve_identity(session_id, agent_id)
         ts = self._now()
         self._writer.submit(
@@ -933,8 +961,8 @@ class EventNamespace:
                 timestamp=self._fmt_ts(ts),
                 session_id=session_id,
                 agent_id=agent_id,
-                category=category,
-                detail=detail[:SELF_REPORT_DETAIL_LIMIT],
+                category=clip_report_text(category, None),
+                detail=clip_report_text(detail),
                 tool_call_id=tool_call_id,
                 extra_fields=fields,
             ).to_dict()

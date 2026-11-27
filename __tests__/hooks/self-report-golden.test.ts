@@ -17,6 +17,7 @@ import {
   SELF_REPORT_DEFAULT_CATEGORIES,
   SELF_REPORT_SERVER_RECORDS,
   selfReportArgs,
+  selfReportClip,
   describeSelfReportTool,
   isSelfReportCursorCall,
   isSelfReportToolName,
@@ -44,6 +45,24 @@ describe("Self Reports golden files (CLI)", () => {
       selfReportInstructions(SELF_REPORT_DEFAULT_CATEGORIES, "Report a missing repository as missing_context."),
     ).toBe(golden("instructions-guidance.golden.txt"));
     expect(golden("instructions.golden.txt").length).toBeLessThan(600);
+  });
+
+  it("cuts detail in code points, as the shared truncation cases say", () => {
+    const fixture = JSON.parse(golden("truncation.golden.json")) as {
+      max: number;
+      cases: { pad_char: string; pad: number; tail: string; expected_tail: string }[];
+    };
+    for (const c of fixture.cases) {
+      const input = c.pad_char.repeat(c.pad) + c.tail;
+      const want = c.pad_char.repeat(c.pad) + c.expected_tail;
+      const label = `${c.pad} x ${JSON.stringify(c.pad_char)} + ${JSON.stringify(c.tail)}`;
+      expect(selfReportClip(input, fixture.max), label).toBe(want);
+      expect(selfReportArgs({ category: "looping", detail: input }).detail, label).toBe(want);
+    }
+    // A lone surrogate (which no golden JSON can carry) becomes U+FFFD, never an unpaired escape.
+    expect(selfReportClip("a\ud83d")).toBe("a\ufffd");
+    expect(selfReportClip("\ude00b")).toBe("\ufffdb");
+    expect(JSON.stringify(selfReportArgs({ detail: "x\ud83d" }))).not.toMatch(/\\ud83d/);
   });
 
   it("reads argument aliases from the shared list, for raw and hook-wrapped arguments", () => {
@@ -130,6 +149,18 @@ describe("Self Reports golden files (CLI)", () => {
       });
       expect(Object.keys(event)).toEqual([...spec.order, ...spec.fallbackExtras]);
       expect(Object.keys(JSON.parse(readFileSync(path, "utf8").trim()))).toEqual([...spec.order, ...spec.fallbackExtras]);
+    });
+
+    it("writes a detail cut at a surrogate boundary as valid UTF-8, with no lone surrogate", async () => {
+      const { path, event } = await writeSelfReportEvent({
+        integration: "hermes",
+        category: "looping",
+        detail: `${"a".repeat(1999)}\u{1F600} tail \ud83d`,
+        cwd: home,
+        now: Date.parse("2026-11-25T10:00:00Z"),
+      });
+      expect(event.detail).toBe(`${"a".repeat(1999)}\u{1F600}`);
+      expect(readFileSync(path, "utf8")).not.toMatch(/\\ud[89a-f][0-9a-f]{2}/i);
     });
   });
 });

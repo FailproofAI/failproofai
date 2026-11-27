@@ -166,9 +166,13 @@ recipe — `references/typescript.md` → *The contract, in TypeScript* and *Shu
 
   Nothing bound and nothing passed raises `TypeError` naming the fix — never a
   silent emit, because ingest skips an event with no session and answers `200`.
-  The one exception is `self_report()`: a report is evidence, so with no
-  session it is recorded under `session_id="unattributed"` (one warning per
-  process) instead of raising. The other 15 methods raise.
+  The one exception is `self_report()`: a report is evidence, so it never
+  raises for a missing session. With none passed or bound, an unambiguous open
+  `tool_use` for the call (by its `tool_call_id`, else the one open report-tool
+  call) gives it its session, with no warning. Only when no explicit session,
+  no such open call and no enclosing scope identifies one is it recorded under
+  `session_id="unattributed"` (one warning per process). The other 15 methods
+  raise.
 
   Two more shapes raise, for the same reason:
 

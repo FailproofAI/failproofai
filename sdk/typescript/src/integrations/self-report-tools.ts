@@ -138,12 +138,21 @@ export function langchainSelfReportTool<T = unknown>(options: LangChainSelfRepor
   const identity = identityOf(options);
   // `tool()` calls `func(input, config)`, with the model's call at
   // `config.toolCall`; a `DynamicStructuredTool` calls `func(input, runManager,
-  // config)`. Read the id from whichever argument carries it. A run id is not
-  // the model's call id, so it is never used.
-  type WithToolCall = { toolCall?: { id?: unknown } } | undefined;
+  // config)`. Read the id from whichever argument carries it, at
+  // `toolCall.id` or, as a graph runner may pass it, `configurable.tool_call_id`.
+  // A run id is not the model's call id, so it is never used.
+  type WithToolCall = { toolCall?: { id?: unknown }; configurable?: { tool_call_id?: unknown } } | undefined;
   const func = (input: unknown, second?: WithToolCall, third?: WithToolCall) =>
     Promise.resolve(
-      recordToolCall(input, { ...identity, toolCallId: pickId(second?.toolCall?.id, third?.toolCall?.id) }),
+      recordToolCall(input, {
+        ...identity,
+        toolCallId: pickId(
+          second?.toolCall?.id,
+          third?.toolCall?.id,
+          second?.configurable?.tool_call_id,
+          third?.configurable?.tool_call_id,
+        ),
+      }),
     );
   const fields = { name: SELF_REPORT_TOOL_NAME, description: spec.description, schema: spec.inputSchema };
   if (typeof tools?.tool === "function") return tools.tool(func as never, fields as never) as T;

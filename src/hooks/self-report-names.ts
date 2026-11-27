@@ -25,6 +25,27 @@ export const SELF_REPORT_DETAIL_MAX = 2000;
 export const SELF_REPORT_DEFAULT_PORT = 4319;
 
 /**
+ * `text` cut to `max` Unicode code points, the unit the daemon
+ * (`truncate_chars`) and the Python SDK count in, so all of them keep the same
+ * prefix. Never cuts through a surrogate pair, and a lone surrogate already in
+ * the input becomes U+FFFD: either one would be written as an unpaired `\ud8xx`
+ * escape, which the Rust collector rejects together with the whole activity
+ * row (its hook event too). test-fixtures/self-report/truncation.golden.json
+ * holds the cases every implementation is tested against.
+ */
+export function selfReportClip(text: string, max: number = SELF_REPORT_DETAIL_MAX): string {
+  let out = "";
+  let n = 0;
+  for (const ch of text) {
+    if (n === max) break;
+    const code = ch.charCodeAt(0);
+    out += ch.length === 1 && code >= 0xd800 && code <= 0xdfff ? "\uFFFD" : ch;
+    n++;
+  }
+  return out;
+}
+
+/**
  * Every spelling of the report tool an agent's hook can deliver. Exact matches
  * only: a prefix or substring match would let any tool whose name merely
  * contains `failproofai` and `report` past every policy, and this name is the

@@ -21,7 +21,7 @@ import {
 import type { EventWriter } from "./writer.js";
 import { formatMicros, nowMicros } from "./clock.js";
 import { fatalSuffix, onProcessExit, type OpenItem } from "./exit.js";
-import { SELF_REPORT_DETAIL_LIMIT, clipDetail, isSelfReportTool } from "./self-report-spec.js";
+import { SELF_REPORT_DETAIL_LIMIT, clipDetail, clipReportText, isSelfReportTool } from "./self-report-spec.js";
 
 /**
  * `sessionId` and `agentId` are named options on every method, so a caller
@@ -839,7 +839,8 @@ export class EventNamespace {
    * enclosing scope; and last `"unattributed"`, with one warning. Unlike every
    * other event method a missing session never throws. With no `toolCallId`
    * given, the report takes the id of the open report-tool `tool_use` it was
-   * matched to (with an explicit `sessionId`, the newest one open there).
+   * matched to (with an explicit `sessionId`, of the one such call open for
+   * that session and agent; none when several are).
    */
   selfReport(category: string, detail?: string | null, options: SelfReportOptions = {}): void {
     const { sessionId, agentId, toolCallId, ...fields } = options;
@@ -857,7 +858,10 @@ export class EventNamespace {
         timestamp: this.fmtTs(this.now()),
         sessionId: sid,
         agentId: aid,
-        category: typeof category === "string" ? category : category === undefined || category === null ? "" : String(category),
+        category: clipReportText(
+          typeof category === "string" ? category : category === undefined || category === null ? "" : String(category),
+          Infinity,
+        ),
         detail: clipDetail(typeof detail === "string" ? detail : detail === undefined || detail === null ? "" : String(detail)),
         source: "sdk",
         toolCallId: callId ?? matchedCallId,
@@ -875,9 +879,15 @@ export class EventNamespace {
   ): [string, string, string | undefined] {
     if (sessionId !== undefined && sessionId !== null) {
       // An explicit session (a tool that resolved it itself) still takes the
-      // id of the report-tool call open in that session, when it has none.
-      const open = toolCallId === undefined ? this.openToolFor(undefined, sessionId) : undefined;
-      return [...resolveIdentity(sessionId, agentId), open?.id];
+      // id of the report-tool call open in that session for that agent, when
+      // it has none — but only of the one such call: with two open (parallel
+      // calls) the id would be a guess. The agent is resolved first.
+      const [sid, aid] = resolveIdentity(sessionId, agentId);
+      if (toolCallId !== undefined) return [sid, aid, undefined];
+      const open = [...this.openLeaves.values()].filter(
+        (leaf) => leaf.kind === "tool" && leaf.sessionId === sid && leaf.agentId === aid && isSelfReportTool(leaf.name),
+      );
+      return [sid, aid, open.length === 1 ? open[0]!.id : undefined];
     }
     const ambient = context.sessionId();
     const leaf = this.openToolFor(toolCallId, ambient);
@@ -904,24 +914,24 @@ export class EventNamespace {
 
   /**
    * The newest open tool call a report belongs to: the one with this id, else
-   * one named like the report tool (LlamaIndex gives a tool no id, and an
-   * adapter may have recorded its own id rather than the model's). Inside a
-   * scope only that scope's session is searched. With no scope, a match is
-   * used only when every candidate is in one session: picking the newest of
-   * several sessions (two concurrent LlamaIndex runs, each with a report call
-   * open) would be a guess, and the report goes the unattributed way instead.
+   * — only when no open call has that id, or none was given — one named like
+   * the report tool (LlamaIndex gives a tool no id, and an adapter may have
+   * recorded its own id rather than the model's). Inside a scope only that
+   * scope's session is searched. With no scope, a match is used only when
+   * every candidate is in one session: picking the newest of several sessions
+   * (two concurrent LlamaIndex runs, each with a report call open) would be a
+   * guess, and the report goes the unattributed way instead. An id open in
+   * several sessions is the same guess, and does not fall back to the name.
    */
   private openToolFor(toolCallId: string | undefined, preferSession: string | null): OpenLeaf | undefined {
-    const leaves = [...this.openLeaves.values()].filter((leaf) => leaf.kind === "tool").reverse();
-    const pick = (matches: (leaf: OpenLeaf) => boolean): OpenLeaf | undefined => {
-      const found = leaves.filter(matches);
-      if (preferSession !== null) return found.find((leaf) => leaf.sessionId === preferSession);
-      return new Set(found.map((leaf) => leaf.sessionId)).size === 1 ? found[0] : undefined;
-    };
-    return (
-      (toolCallId !== undefined ? pick((leaf) => leaf.id === toolCallId) : undefined) ??
-      pick((leaf) => isSelfReportTool(leaf.name))
-    );
+    const leaves = [...this.openLeaves.values()]
+      .filter((leaf) => leaf.kind === "tool" && (preferSession === null || leaf.sessionId === preferSession))
+      .reverse();
+    const pick = (found: OpenLeaf[]): OpenLeaf | undefined =>
+      new Set(found.map((leaf) => leaf.sessionId)).size === 1 ? found[0] : undefined;
+    const byId = toolCallId !== undefined ? leaves.filter((leaf) => leaf.id === toolCallId) : [];
+    if (byId.length > 0) return pick(byId);
+    return pick(leaves.filter((leaf) => isSelfReportTool(leaf.name)));
   }
 
   humanWait(opts: HumanWaitOptions): void {

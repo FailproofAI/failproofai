@@ -21,7 +21,13 @@ section is missing or empty is refused before anything is built.
   (`selfReportSettings()`), with the six defaults when it is missing or disabled.
   A report made inside a framework's tool loop joins the agent whose loop called
   it, and never throws for want of a session; with no scope it joins an open
-  call only when all candidates are in one session. The `/ai` tool carries both
+  call only when all candidates are in one session, and a `toolCallId` open in
+  several sessions is never resolved by the tool name instead; with an explicit
+  `sessionId` the call id is taken only from the one open report call of that
+  session and agent. `detail` is cut to 2000 code points (as the daemon and the
+  Python SDK count) with no lone surrogate. `openaiResponsesTool()` sets
+  `strict: true`, as openai's `FunctionTool` type requires. The `/langchain` tool
+  also reads the call id from `configurable.tool_call_id`. The `/ai` tool carries both
   schema keys for a `module` passed in, and the Edge `/langchain` tool builds a
   real LangChain tool with a `module` passed in (the tool needs
   `@langchain/core` 0.3.44 or later).

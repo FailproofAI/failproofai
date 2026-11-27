@@ -190,6 +190,55 @@ def test_with_nothing_bound_open_calls_in_two_sessions_are_not_guessed(recorded)
     ]
 
 
+def test_an_id_open_in_two_sessions_never_falls_back_to_the_tool_name(recorded):
+    ev = _runtime.event
+    # The id is open in two sessions (on another tool); a report call is open in a third.
+    ev.tool_use(session_id="s-1", agent_id="a-1", tool_name="search", tool_call_id="dup")
+    ev.tool_use(session_id="s-2", agent_id="a-2", tool_name="search", tool_call_id="dup")
+    ev.tool_use(session_id="s-3", agent_id="a-3", tool_name="failproofai_report", tool_call_id="r3")
+    fp.self_report("looping", "ambiguous id", tool_call_id="dup")
+    fp.self_report("looping", "unknown id", tool_call_id="model-id")  # no call has it: name fallback
+    fp.self_report("looping", "no id")
+    reports = [e for e in recorded if e["type"] == "self_report"]
+    assert [(r["detail"], r["session_id"], r.get("tool_call_id")) for r in reports] == [
+        ("ambiguous id", "unattributed", "dup"),
+        ("unknown id", "s-3", "model-id"),
+        ("no id", "s-3", "r3"),
+    ]
+
+
+def test_an_explicit_session_infers_the_call_id_only_from_one_call_of_its_agent(recorded):
+    ev = _runtime.event
+    ev.tool_use(session_id="s", agent_id="planner", tool_name="failproofai_report", tool_call_id="p-1")
+    ev.tool_use(session_id="s", agent_id="worker", tool_name="failproofai_report", tool_call_id="w-1")
+    fp.self_report("looping", "planner", session_id="s", agent_id="planner")
+    fp.self_report("looping", "worker", session_id="s", agent_id="worker")
+    fp.self_report("looping", "nobody", session_id="s", agent_id="other")
+    # A second open report call for the worker: two candidates, no guess.
+    ev.tool_use(session_id="s", agent_id="worker", tool_name="failproofai_report", tool_call_id="w-2")
+    fp.self_report("looping", "worker twice", session_id="s", agent_id="worker")
+    with fp.agent("planner"):
+        fp.self_report("looping", "ambient agent", session_id="s")
+    reports = [e for e in recorded if e["type"] == "self_report"]
+    assert [(r["detail"], r["agent_id"], r.get("tool_call_id")) for r in reports] == [
+        ("planner", "planner", "p-1"),
+        ("worker", "worker", "w-1"),
+        ("nobody", "other", None),
+        ("worker twice", "worker", None),
+        ("ambient agent", "planner", "p-1"),
+    ]
+
+
+def test_detail_cut_at_a_surrogate_boundary_has_no_lone_surrogate(recorded):
+    fp.self_report("looping", "a" * 1999 + "\U0001F600 and more", session_id="s")
+    fp.self_report("lo\ud83dping", "x\ud83d", session_id="s")
+    first, second = recorded
+    assert first["detail"] == "a" * 1999 + "\U0001F600"
+    assert (second["category"], second["detail"]) == ("lo\ufffdping", "x\ufffd")
+    # Encodable as strict UTF-8, which is what the collector reads.
+    json.dumps(second, ensure_ascii=False).encode("utf-8")
+
+
 def test_written_to_the_spool_by_the_real_writer(tmp_path):
     with fp.session("disk"):
         fp.self_report("looping", "on disk")
@@ -369,7 +418,12 @@ def test_openai_responses_tool_shape(home):
         "name": spec["name"],
         "description": spec["description"],
         "parameters": spec["input_schema"],
+        "strict": True,
     }
+    # Strict mode holds: every property required, nothing else allowed.
+    params = tool["parameters"]
+    assert set(params["required"]) == set(params["properties"])
+    assert params["additionalProperties"] is False
 
 
 def test_anthropic_tool_shape(home):

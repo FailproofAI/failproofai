@@ -94,10 +94,14 @@ fixes. That is deliberate: the alternative is dropping the event silently, and
 this SDK already asks you to debug enough invisible failures. `agent_id` never
 raises — it is a label, and it falls back to `"main"`.
 
-`self_report()` is the exception: with no session bound and none passed it
-records the report under `session_id="unattributed"` and logs one warning per
-process, because losing a report to a missing scope is worse than filing it
-unattributed. Every other event method raises as above.
+`self_report()` is the exception: it never raises for a missing session,
+because losing a report to a missing scope is worse than filing it
+unattributed. With no session bound and none passed, an unambiguous open
+`tool_use` for the call (matched by `tool_call_id`, else the one open
+report-tool call) supplies the session and agent, with no warning. Only when no
+explicit session, no such open call and no enclosing scope resolves the identity
+is the report recorded under `session_id="unattributed"`, with one warning per
+process. Every other event method raises as above.
 
 ## Don't use a module global
 

@@ -384,10 +384,15 @@ def _is_base_model(value: Any) -> bool:
 # ---------------------------------------------------------------------------
 
 class _RunState:
-    __slots__ = ("key", "scope", "spans", "closed", "reported_error")
+    __slots__ = ("key", "scope", "spans", "closed", "reported_error", "installed")
 
-    def __init__(self, key: Any) -> None:
+    def __init__(self, key: Any, installed: bool = False) -> None:
         self.key = key
+        # Whether the capability running it was injected by `instrument()`.
+        # `uninstrument()` tears down only those: a `FailproofAI()` the
+        # developer attached by hand records whether or not instrument() ran,
+        # and its runs finish on their own.
+        self.installed = installed
         self.scope: Any = None
         # Leaf spans this run has opened and not yet closed, newest last. This
         # exists because a leaf can outlive its own run — see `_close_spans`.
@@ -553,17 +558,22 @@ def _close_spans(state: _RunState, exc: "BaseException | None") -> None:
             )
 
 
-def _close_open_runs() -> None:
-    """Close every run this adapter still has open, newest first.
+def _close_open_runs() -> bool:
+    """Close every run the installed capability still has open, newest first.
 
     Teardown, not a hot path: `uninstall()` is the only caller. Each run's
     leaves close before its `agent_end`, and `_claim_run` makes the run's own
-    `wrap_run` frame a no-op when it eventually unwinds.
+    `wrap_run` frame a no-op when it eventually unwinds. A run of a manually
+    attached capability is left open to finish normally.
+
+    Returns whether any such manual run is still open.
     """
     with _runs_lock:
         states = list(_open_runs.values())
     for state in reversed(states):
-        _core.call_safely(_close_run, (state,), {}, f"{__name__}.uninstall")
+        if state.installed:
+            _core.call_safely(_close_run, (state,), {}, f"{__name__}.uninstall")
+    return any(not state.installed for state in states)
 
 
 def _close_run(state: _RunState) -> None:
@@ -686,7 +696,7 @@ class FailproofAI(AbstractCapability):
                 metadata=getattr(ctx, "metadata", None),
             ),
         )
-        state = _RunState(key)
+        state = _RunState(key, installed=bool(getattr(self, "_installed", False)))
         _register_run(state)
         try:
             scope = failproofai_sdk.session(identity.session_id, agent_id=identity.agent_id)
@@ -995,7 +1005,13 @@ class _Adapter:
         # `wrap_run` frame does not emit a second `agent_end` when it finally
         # unwinds. `close_open_agents()` stays as the backstop for a key that
         # reached the tracker without reaching `_open_runs`.
-        _close_open_runs()
+        #
+        # A manually attached `FailproofAI()` keeps recording after
+        # `uninstrument()`, and its runs share this tracker: while one is in
+        # flight the tracker is left as it is, so it can still emit its leaves
+        # and its own `agent_end`.
+        if _close_open_runs():
+            return
         _tracker.close_open_agents()
         _tracker.reset()
 

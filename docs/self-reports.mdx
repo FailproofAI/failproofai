@@ -28,7 +28,7 @@ A report never unblocks the agent and never changes a decision. Afterwards the a
     failproofai self-report test --agent claude
     ```
 
-    `enable` writes the `selfReport` block of `~/.failproofai/config.json` and `~/.failproofai/self-report.json`, then registers the MCP server in every agent with failproofai hooks. To replace the default categories, pass `--categories-file <file>`, a JSON list of `{name, description}`. To append instructions to the tool's description, pass `--guidance "<text>"`. `failproofai self-report disable` turns it off and removes the MCP entries, keeping your categories for next time.
+    `enable` writes the `selfReport` block of `~/.failproofai/config.json` and `~/.failproofai/self-report.json`, then registers the MCP server in every agent with failproofai hooks. To replace the default categories, pass `--categories-file <file>`, a JSON list of `{name, description}`. To append instructions to the tool's description, pass `--guidance "<text>"`. `failproofai self-report disable` turns it off and removes the MCP entries, keeping your categories for next time. An agent that is already running keeps the tool it loaded, but from then on its calls are allowed without being recorded.
 
     `test` sends one report end to end as the agent you name and shows where it landed.
   </Tab>
@@ -47,7 +47,7 @@ An organization's own list replaces these entirely. Names are lowercase letters,
 | `repeated_tool_failure` | A command or tool failed on several distinct attempts and is blocking you. A single error is not enough. |
 | `task_failure` | You genuinely tried and could not complete the task. Not for refusals or policy blocks. |
 
-A report with a category that is not on the list is still recorded under the name the agent gave. The detail is cut to 2,000 characters. An agent that calls the tool without loading its schema sometimes guesses the argument names, so when `detail` is missing or empty the first non-empty of `summary`, `sentence`, `message`, `description`, `reason`, `text` and `details` is recorded instead, and when `category` is, `type` or `kind`. Other unknown arguments are ignored; a call is never rejected.
+A report with a category that is not on the list is still recorded under the name the agent gave. The detail is cut to 2,000 characters (Unicode code points, so an emoji or other character outside the Basic Multilingual Plane counts once and is never split). An agent that calls the tool without loading its schema sometimes guesses the argument names, so when `detail` is missing or empty the first non-empty of `summary`, `sentence`, `message`, `description`, `reason`, `text` and `details` is recorded instead, and when `category` is, `type` or `kind`. Other unknown arguments are ignored; a call is never rejected.
 
 ## Agent support
 
@@ -59,7 +59,7 @@ Both transports send the model short server instructions in the MCP handshake: w
 
 Pi shows the model only a server's name by default. failproofai's Pi entry sets `"exposure": "direct"`, so `report` and its description reach the model like a built-in tool. Hermes and OpenClaw defer MCP tools behind their tool search (`tools.tool_search` / `tools.toolSearch`). Neither has a per-server setting to load one server directly, so failproofai leaves that setting alone, and the model sees `report` in the deferred tool listing.
 
-Where an agent's hooks see MCP tool calls and the server they belong to, the hook records the report. Where they do not, failproofai's MCP server records it. It attributes the report to that agent's newest session seen by the hooks in the last 6 hours: in the server's working directory if there is one, else in a directory above or below it, else anywhere on the machine. The agent the report is filed under comes from that session's own hook events.
+Where an agent's hooks see MCP tool calls and the server they belong to, the hook records the report. Where they do not, failproofai's MCP server records it. It attributes the report to that agent's newest session seen by the hooks in the last 6 hours: in the server's working directory if there is one, else in a directory above or below it. With neither, it takes the agent's newest session only when all of the agent's sessions in those 6 hours are in one directory, and files the report as `unattributed` otherwise, rather than guess between projects. The lookup reads every page of hook activity written in the 6 hours, however busy other agents or projects kept the hooks, so a session that is still in the window is found. The agent the report is filed under comes from that session's own hook events.
 
 These agents are registered over stdio for that reason: the MCP entry is per user, not per project, so an HTTP URL could carry only `?agent=`, and the server could not tell which project called. The daemon's HTTP server still answers an entry like that (one written by hand, or by an earlier version until the next sync), but it never guesses across projects: with no working directory, it files the report under that agent's newest session only when all of the agent's recent sessions are in one directory, and as `unattributed` otherwise. It records nothing while Self Reports is off.
 
@@ -67,7 +67,7 @@ These agents are registered over stdio for that reason: the MCP entry is per use
 | --- | --- | --- |
 | Claude Code | `~/.claude.json` | Hook |
 | Codex | `~/.codex/config.toml` | Hook |
-| Cursor | `~/.cursor/mcp.json` | MCP server. Cursor's tool hook names the call `MCP:report`, without the server, so it cannot tell our `report` from another server's |
+| Cursor | `~/.cursor/mcp.json` | MCP server. Cursor's tool hook names the call `MCP:report`, without the server, so it cannot tell our `report` from another server's, and the call goes through the policies like any other. When the daemon cannot be reached, it is denied with every other call |
 | Copilot CLI | `~/.copilot/mcp-config.json` | MCP server |
 | OpenCode | `~/.config/opencode/opencode.json` | MCP server |
 | Pi | `~/.pi/agent/mcp.json` | MCP server |
@@ -91,7 +91,7 @@ In a container, run `failproofaid` in the foreground as the container's main pro
 A daemon you start by hand has no service unit, so it has none of the commands the unit would give it:
 
 - **The startup sync** runs the CLI named by `FAILPROOFAI_CLI_CMD`. Without it, the daemon looks for `failproofai` on `PATH`, then in npm's global bin (`$NPM_CONFIG_PREFIX/bin`, `~/.npm-global/bin`, `/usr/local/bin`) and `~/.bun/bin`. After an `npm install -g failproofai`, agents therefore move to HTTP when the daemon starts. If the CLI is somewhere else, set `FAILPROOFAI_CLI_CMD` to the command that runs it, or run `failproofai self-report sync` once the daemon is up.
-- **Hermes and OpenClaw** need the daemon's policy worker. Without `FAILPROOFAI_WORKER_CMD`, the daemon looks for `dist/worker.mjs` relative to its working directory, and `policies --install --cli hermes` (or `openclaw`) refuses. Set it to the worker in the installed package:
+- **The policy worker** evaluates every hook the daemon receives, from every agent, Claude Code included. Without `FAILPROOFAI_WORKER_CMD`, the daemon looks for `dist/worker.mjs` relative to its working directory. If it is not there, every hook routed through the daemon fails closed: Claude Code's tool calls, for example, are denied. `policies --install --cli hermes` (or `openclaw`) refuses outright. Set it to the worker in the installed package:
 
   ```bash
   export FAILPROOFAI_WORKER_CMD="node $(npm root -g)/failproofai/dist/worker.mjs"

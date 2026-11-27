@@ -32,6 +32,7 @@ import { daemonSocketPresent, isDaemonConfigured } from "./daemon-client";
 import {
   SELF_REPORT_CURSOR_APPROVAL_HINT,
   probeSelfReportHttp,
+  selfReportDaemonLive,
   selfReportHttpAllowed,
   selfReportCommandRunnable,
   selfReportRegistrationStatus,
@@ -51,6 +52,8 @@ export interface SelfReportCliDeps {
   cliCommand?: string[];
   /** Health probe override (tests): does the HTTP endpoint on this port answer? */
   probeEndpoint?: (url: string, port: number) => Promise<boolean>;
+  /** Ownership override (tests): is the endpoint on this port this home's daemon? (`selfReportDaemonLive`) */
+  daemonLive?: (port: number) => Promise<boolean>;
   /** Registration rows override (tests). */
   registrations?: () => SelfReportRegistration[];
   /** Sync override (tests). */
@@ -124,8 +127,27 @@ async function selfReportHttpHealth(rows: readonly SelfReportRegistration[], dep
   return health;
 }
 
+/**
+ * For each answering port, whether it is THIS home's daemon that answers
+ * (`selfReportDaemonLive`): a name-only answer may be another user's or
+ * another FAILPROOFAI_HOME's daemon, which would record reports under its
+ * own home and credentials.
+ */
+async function selfReportHttpOwnership(health: ReadonlyMap<number, boolean>, deps: SelfReportCliDeps): Promise<Map<number, boolean>> {
+  const live = deps.daemonLive ?? selfReportDaemonLive;
+  const owned = new Map<number, boolean>();
+  await Promise.all(
+    [...health].filter(([, answering]) => answering).map(async ([port]) => owned.set(port, await live(port))),
+  );
+  return owned;
+}
+
 /** Per-agent registration state: transport, endpoint and whether it answers. */
-function selfReportRegistrationLines(rows: readonly SelfReportRegistration[], health: ReadonlyMap<number, boolean>): string[] {
+function selfReportRegistrationLines(
+  rows: readonly SelfReportRegistration[],
+  health: ReadonlyMap<number, boolean>,
+  owned: ReadonlyMap<number, boolean>,
+): string[] {
   const hooked = rows.filter((r) => r.hooked || r.registered || r.conflict || r.error);
   if (hooked.length === 0) return ["Agents:     none with failproofai hooks"];
   return [
@@ -137,7 +159,8 @@ function selfReportRegistrationLines(rows: readonly SelfReportRegistration[], he
       else if (r.registered && r.transport === "http") {
         const port = selfReportUrlPort(r.endpoint);
         const ok = port !== null && health.get(port) === true;
-        state = `http   ${r.endpoint ?? "?"} ${ok ? "(answering)" : "(NOT answering)"}`;
+        const mine = ok && owned.get(port!) === true;
+        state = `http   ${r.endpoint ?? "?"} ${mine ? "(answering)" : ok ? "(answering, but NOT this home's daemon)" : "(NOT answering)"}`;
       } else if (r.registered) {
         const ok = !!r.endpoint && selfReportCommandRunnable(r.endpoint);
         state = `stdio  ${r.endpoint ?? "?"} ${ok ? "(runnable)" : "(NOT runnable)"}`;
@@ -151,15 +174,19 @@ function selfReportRegistrationLines(rows: readonly SelfReportRegistration[], he
 
 /**
  * Whether a row is registered over HTTP where it should not be: an endpoint
- * that is not answering, or an agent whose reports the server records (those
- * belong on stdio, where the server knows the caller's cwd; an older version
- * registered them over HTTP).
+ * that is not answering, or that answers as some other home's daemon, or an
+ * agent whose reports the server records (those belong on stdio, where the
+ * server knows the caller's cwd; an older version registered them over HTTP).
  */
-function selfReportStranded(r: SelfReportRegistration, health: ReadonlyMap<number, boolean>): boolean {
+function selfReportStranded(
+  r: SelfReportRegistration,
+  health: ReadonlyMap<number, boolean>,
+  owned: ReadonlyMap<number, boolean>,
+): boolean {
   if (!r.registered || r.transport !== "http") return false;
   if (!selfReportHttpAllowed(r.agent)) return true;
   const port = selfReportUrlPort(r.endpoint);
-  return port === null || health.get(port) !== true;
+  return port === null || health.get(port) !== true || owned.get(port) !== true;
 }
 
 async function selfReportStatus(deps: SelfReportCliDeps): Promise<SelfReportCliResult> {
@@ -181,16 +208,20 @@ async function selfReportStatus(deps: SelfReportCliDeps): Promise<SelfReportCliR
   const readRows = deps.registrations ?? (() => selfReportRegistrationStatus());
   let rows = readRows();
   let health = await selfReportHttpHealth(rows, deps);
+  let owned = await selfReportHttpOwnership(health, deps);
   // An agent left on the daemon's HTTP endpoint after the daemon died would
-  // have no report tool. Move it (live check: stdio unless a daemon answers).
-  if (settings.enabled && !deps.skipSync && rows.some((r) => selfReportStranded(r, health))) {
+  // have no report tool, and one on a port another home's daemon holds would
+  // report into that home. Move it (live check: stdio unless this home's
+  // daemon serves the endpoint).
+  if (settings.enabled && !deps.skipSync && rows.some((r) => selfReportStranded(r, health, owned))) {
     try {
       const results = await (deps.sync ?? (() => syncSelfReportMcp({ quiet: true })))();
       if (selfReportSyncChanged(results)) {
-        lines.push("Repaired:   agents on an HTTP endpoint that is not answering, or that belong on stdio, were re-synced:");
+        lines.push("Repaired:   agents on an HTTP endpoint that is not this home's answering daemon, or that belong on stdio, were re-synced:");
         lines.push(...selfReportSyncLines(results).map((l) => `  ${l}`));
         rows = readRows();
         health = await selfReportHttpHealth(rows, deps);
+        owned = await selfReportHttpOwnership(health, deps);
       }
     } catch {
       lines.push("▲ Could not re-sync agents whose HTTP endpoint is not answering. Run `failproofai self-report sync`.");
@@ -201,7 +232,7 @@ async function selfReportStatus(deps: SelfReportCliDeps): Promise<SelfReportCliR
     health.set(settings.mcp.port, await probe(settings.mcp.url, settings.mcp.port));
   }
   lines.push(selfReportDaemonLine(settings.mcp.url, health.get(settings.mcp.port) === true, deps));
-  lines.push(...selfReportRegistrationLines(rows, health));
+  lines.push(...selfReportRegistrationLines(rows, health, owned));
   return { exitCode: 0, lines };
 }
 

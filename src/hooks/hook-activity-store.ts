@@ -25,6 +25,7 @@ import { join } from "node:path";
 import type { IntegrationType } from "./types";
 import { hookActivityDir } from "./fp-home";
 import { sanitizeJevActivity, type JevCheckRecord } from "./jev-activity";
+import { selfReportClip } from "./self-report-names";
 
 export const PAGE_SIZE = 25;
 
@@ -285,7 +286,7 @@ export function persistHookActivity(input: HookActivityEntry): void {
 
 /**
  * Keep `selfReport` only in its declared shape: two strings of at most 2000
- * characters and `source: "mcp"`. Like the Jev fields it is shipped off the
+ * code points (no lone surrogate) and `source: "mcp"`. Like the Jev fields it is shipped off the
  * machine by the collector, so it is checked at this one door.
  */
 function sanitizeSelfReportActivity(entry: HookActivityEntry): HookActivityEntry {
@@ -298,8 +299,8 @@ function sanitizeSelfReportActivity(entry: HookActivityEntry): HookActivityEntry
   }
   const rec = sr as Record<string, unknown>;
   out.selfReport = {
-    category: typeof rec.category === "string" ? rec.category.slice(0, 2000) : "",
-    detail: typeof rec.detail === "string" ? rec.detail.slice(0, 2000) : "",
+    category: typeof rec.category === "string" ? selfReportClip(rec.category) : "",
+    detail: typeof rec.detail === "string" ? selfReportClip(rec.detail) : "",
     source: "mcp",
   };
   return out;

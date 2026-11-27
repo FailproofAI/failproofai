@@ -1386,6 +1386,25 @@ describe("hooks/builtin-policies", () => {
       expect((await policy.fn(ctx)).decision).toBe("allow");
     });
 
+    it.each([
+      "command -v failproofai",
+      "command -V failproofai",
+      "command -pv failproofai",
+      "command -v failproofai fp agenteye",
+    ])("allows the lookup %s", async (command) => {
+      const ctx = makeCtx({ toolName: "Bash", toolInput: { command } });
+      expect((await policy.fn(ctx)).decision).toBe("allow");
+    });
+
+    it.each([
+      "command failproofai config --pause",
+      "command -p failproofai policies",
+      "command -v failproofai && failproofai policies",
+    ])("still blocks %s", async (command) => {
+      const ctx = makeCtx({ toolName: "Bash", toolInput: { command } });
+      expect((await policy.fn(ctx)).decision).toBe("deny");
+    });
+
     it("allows npm uninstall of other packages", async () => {
       const ctx = makeCtx({ toolName: "Bash", toolInput: { command: "npm uninstall -g some-other-package" } });
       expect((await policy.fn(ctx)).decision).toBe("allow");

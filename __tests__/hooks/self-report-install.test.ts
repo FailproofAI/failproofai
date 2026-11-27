@@ -443,12 +443,16 @@ describe("which agents", () => {
  */
 function fakeDaemon(path: string, answer = true, selfReport?: { instanceId: string; port: number }): Promise<NetServer> {
   const server = createNetServer((sock) => {
+    // The sync's one-way `selfReportLog` frames close their end straight away;
+    // answering one would write to a closed socket (EPIPE), so ignore the error.
+    sock.on("error", () => {});
     let buf = Buffer.alloc(0);
     sock.on("data", (chunk) => {
       buf = Buffer.concat([buf, chunk as Buffer]);
       if (buf.length < 4 || buf.length < 4 + buf.readUInt32BE(0)) return;
       if (!answer) return; // accepted, never answered
       const req = JSON.parse(buf.subarray(4, 4 + buf.readUInt32BE(0)).toString("utf8"));
+      if (req.type === "selfReportLog") return; // one-way: never answered
       const body = Buffer.from(JSON.stringify({ type: "pong", protocolVersion: req.protocolVersion, ...(selfReport ? { selfReport } : {}) }));
       const head = Buffer.alloc(4);
       head.writeUInt32BE(body.length, 0);

@@ -85,7 +85,7 @@ import { writeConfigFileAtomic } from "./safe-config-write";
 import { codexHome } from "./codex-system-hooks";
 import { claudeConfigDir, getIntegration, readYamlDoc, writeYamlDoc, UnreadableAgentConfigError } from "./integrations";
 import { daemonSelfReportServer } from "./daemon-client";
-import { readEffectiveSelfReport, selfReportPort, selfReportSettingsFile, SELF_REPORT_SERVER_NAME, SELF_REPORT_SERVER_RECORDS } from "./self-report";
+import { resolveSelfReport, selfReportPort, selfReportSettingsFile, SELF_REPORT_SERVER_NAME, SELF_REPORT_SERVER_RECORDS } from "./self-report";
 import { listHermesProfiles } from "../../lib/hermes-profiles";
 import { listOpenClawProfiles } from "../../lib/openclaw-profiles";
 import { INTEGRATION_TYPES, type IntegrationType } from "./types";
@@ -108,11 +108,13 @@ export interface SelfReportMcpSettings {
 
 /**
  * The bits of self-report.json this module needs, through the one settings
- * reader in ./self-report. Missing or unparsable file ⇒ disabled, on the port
- * a local writer would record.
+ * reader in ./self-report (`resolveSelfReport`). On by default: a missing file
+ * is enabled off Cloud and disabled on a Cloud-enrolled machine until the
+ * daemon writes it; an unparsable file is disabled. Disabled is reported on the
+ * port a local writer would record.
  */
 export function readSelfReportMcpSettings(path = selfReportSettingsPath()): SelfReportMcpSettings {
-  const s = readEffectiveSelfReport(path);
+  const s = resolveSelfReport(path);
   if (!s) return { enabled: false, port: selfReportPort() };
   return { enabled: s.enabled, port: s.mcp.port };
 }

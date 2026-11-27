@@ -8,31 +8,40 @@ Self Reports gives every agent one extra tool, `report`. An agent that is blocke
 
 A report never unblocks the agent and never changes a decision. Afterwards the agent works around the problem or tells the user what is blocking it. No policy can block or rewrite a report: failproofai's hook allows the call before any policy, session pause, or Jev review runs.
 
-## Turn it on
+## On by default
+
+Self Reports is on as soon as failproofai is installed. `failproofai policies --install` and `failproofai config` register the `failproofai` MCP server in every agent they install hooks for, and write `~/.failproofai/self-report.json` with the default categories so every reader sees the same settings.
 
 <Tabs>
   <Tab title="Failproof AI Cloud">
-    On a machine connected to Failproof AI Cloud, the setting comes from your organization.
+    On a machine connected to Failproof AI Cloud, the setting comes from your organization, and it is on unless someone turned it off.
 
     1. Go to **settings → self reports**.
-    2. Switch it on. Keep the default categories or write your own, and optionally add guidance for the agents.
+    2. Keep it on, or switch it off. Keep the default categories or write your own, and optionally add guidance for the agents.
 
-    Every connected machine picks the change up on its next policy poll. `failproofaid` writes `~/.failproofai/self-report.json` and adds the `failproofai` MCP server to every agent that has failproofai hooks, or removes it when you switch the feature off.
+    Every connected machine picks the change up on its next policy poll. `failproofaid` writes `~/.failproofai/self-report.json` from it and adds the `failproofai` MCP server to every agent that has failproofai hooks, or removes it when the switch is off. Until the first poll after connecting writes that file, the machine treats Self Reports as off.
 
     On a Cloud-managed machine, `failproofai self-report enable` and `disable` refuse and point you to the dashboard.
   </Tab>
   <Tab title="Local (open source)">
     ```bash
-    failproofai self-report enable
     failproofai self-report status
+    failproofai self-report disable
+    failproofai self-report enable
     failproofai self-report test --agent claude
     ```
 
-    `enable` writes the `selfReport` block of `~/.failproofai/config.json` and `~/.failproofai/self-report.json`, then registers the MCP server in every agent with failproofai hooks. To replace the default categories, pass `--categories-file <file>`, a JSON list of `{name, description}`. To append instructions to the tool's description, pass `--guidance "<text>"`. `failproofai self-report disable` turns it off and removes the MCP entries, keeping your categories for next time. An agent that is already running keeps the tool it loaded, but from then on its calls are allowed without being recorded.
+    With no settings file and no `selfReport` block in `~/.failproofai/config.json`, Self Reports is on with the default categories.
+
+    `failproofai self-report disable` turns it off. It writes `enabled: false` to the `selfReport` block of `~/.failproofai/config.json` and to `~/.failproofai/self-report.json`, and removes the MCP entries from every agent. Your categories are kept for next time. An agent that is already running keeps the tool it loaded, but from then on its calls are allowed and not recorded. An explicit `enabled: false` always wins: a later install leaves it off.
+
+    `failproofai self-report enable` turns it back on and registers the MCP server again. To replace the default categories, pass `--categories-file <file>`, a JSON list of `{name, description}`. To append instructions to the tool's description, pass `--guidance "<text>"`.
 
     `test` sends one report end to end as the agent you name and shows where it landed.
   </Tab>
 </Tabs>
+
+A settings file that cannot be parsed counts as off, so a broken file never starts recording. Run `failproofai self-report enable` or `disable` to write it again.
 
 ## Categories
 

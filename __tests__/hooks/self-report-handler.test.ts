@@ -122,7 +122,20 @@ describe("Self Reports short-circuit", () => {
     const settings = () => join(home, "self-report.json");
 
     it.each([
-      ["missing", () => rmSync(settings(), { force: true })],
+      [
+        "missing on a Cloud-enrolled machine",
+        () => {
+          rmSync(settings(), { force: true });
+          writeFileSync(join(home, "credentials.json"), JSON.stringify({ cloud: { url: "https://x", machine_id: "m", token: "t" } }));
+        },
+      ],
+      [
+        "missing with config.json selfReport.enabled false",
+        () => {
+          rmSync(settings(), { force: true });
+          writeFileSync(join(home, "config.json"), JSON.stringify({ selfReport: { enabled: false } }));
+        },
+      ],
       ["disabled", () => writeEffectiveSelfReport({ enabled: false })],
       ["malformed", () => writeFileSync(settings(), "{ not json")],
       ["of another version", () => writeFileSync(settings(), JSON.stringify({ version: 2, enabled: true }))],
@@ -136,6 +149,16 @@ describe("Self Reports short-circuit", () => {
       const all = rows();
       expect(all).toHaveLength(2);
       expect(all.every((r) => r.selfReport === undefined)).toBe(true);
+    });
+
+    it("missing off Cloud: on by default, the report is recorded with no settings file", async () => {
+      rmSync(settings(), { force: true });
+      for (const [event, cli] of [["PreToolUse", "claude"], ["pre_tool_use", "codex"]] as const) {
+        expect((await evaluateHookEvent(event, cli, report())).evaluation?.decision).toBe("allow");
+      }
+      const all = rows();
+      expect(all).toHaveLength(2);
+      expect(all.every((r) => (r.selfReport as { source?: string } | undefined)?.source === "mcp")).toBe(true);
     });
 
     it("disabling during a session stops the next call's report, and enabling brings it back", async () => {

@@ -482,10 +482,12 @@ report from your own code, `failproofai.selfReport(category, detail)`.
 `failproofai.selfReportSpec()` gives `{ name, description, inputSchema }` for any
 other tool format.
 
+- **On by default.** The tool works as soon as you add it: no setting has to be
+  turned on first, and adding it is the opt-in.
 - **Categories.** The tool's categories, and an optional paragraph of guidance,
   come from `~/.failproofai/self-report.json` (`$FAILPROOFAI_HOME` moves it), which
-  the daemon writes for a Cloud-managed machine and `failproofai self-report
-  enable` writes otherwise. A missing or disabled file means the six default
+  the daemon writes for a Cloud-managed machine and the failproofai CLI writes
+  otherwise. A missing or disabled file means the six default
   categories (`failproofai.DEFAULT_SELF_REPORT_CATEGORIES`).
   `failproofai.selfReportSettings()` returns what the file says.
 - **Where a report lands.** An explicit `sessionId`, else the open `tool_use` of

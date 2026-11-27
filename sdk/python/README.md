@@ -116,12 +116,12 @@ failproofai_sdk.self_report("invalid_tool_or_credential", "The search API reject
 - **Spec.** `failproofai_sdk.self_report_spec()` returns `{name: "failproofai_report",
   description, input_schema}`. The categories (the `category` enum) and any extra
   guidance come from `$FAILPROOFAI_HOME/self-report.json` — written by the daemon
-  from your org's Cloud setting, or by `failproofai self-report enable` — read each
+  from your org's Cloud setting, or by the failproofai CLI — read each
   time a spec is built. When that file is missing, unreadable or disabled, six
   defaults are used (`looping`, `cannot_do_request`, `invalid_tool_or_credential`,
-  `missing_context`, `repeated_tool_failure`, `task_failure`): adding the tool is
-  itself the opt-in. Pass `categories=[...]` (and `guidance=`) to any helper to
-  override.
+  `missing_context`, `repeated_tool_failure`, `task_failure`): the tool works by
+  default, and adding it is itself the opt-in. Pass `categories=[...]` (and
+  `guidance=`) to any helper to override.
 - **Event.** `{type: "self_report", category, detail, source: "sdk", tool_call_id?}`
   plus the usual `session_id` / `agent_id` / `timestamp` / `environment`. An
   unknown category is recorded as given; `detail` is cut to 2,000 characters.

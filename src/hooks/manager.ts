@@ -44,6 +44,7 @@ import { probeDaemonPolicyEvaluation } from "./daemon-service";
 import { NO_PRINTED_COMMAND_REASON, sudoPath } from "./system-command";
 import { keepAgentSelectionTrue } from "./agent-selection";
 import { removeSelfReportMcp, selfReportSyncLines, syncSelfReportMcp } from "./self-report-install";
+import { ensureSelfReportSettingsFile } from "./self-report";
 import { INDENT, colorsEnabled, optsFor, printBlock, screenKit, type ScreenKitOpts } from "./tui";
 
 const VALID_POLICY_NAMES = new Set(BUILTIN_POLICIES.map((p) => p.name));
@@ -1009,17 +1010,16 @@ async function installHooksImpl(
     } catch {}
   }
 
-  // Last, after everything above: the agents whose hooks were actually written.
-  // A call that returned early (only a third-party pack's policies were named)
-  // or threw wrote none and changes nothing.
-  if (syncAgentSelection) {
-    const note = keepAgentSelectionTrue("installed", writtenSettingsPaths.map((written) => written.cli));
-    if (note) console.log(note);
+  // Self Reports: on by default, so the agents that now have hooks get
+  // failproofai's MCP server unless it was turned off (and lose a stale one
+  // when it is). The settings file is written first when it is missing (off
+  // Cloud), so every reader agrees. Best-effort: a config it cannot change is
+  // reported, never a failed install.
+  try {
+    await ensureSelfReportSettingsFile();
+  } catch {
+    // the readers apply the same default without the file
   }
-
-  // Self Reports: the agents that now have hooks get failproofai's MCP server
-  // when the feature is on (and lose a stale one when it is off). Best-effort:
-  // a config it cannot change is reported, never a failed install.
   try {
     const results = await syncSelfReportMcp({
       quiet: true,
@@ -1029,6 +1029,14 @@ async function installHooksImpl(
     for (const line of selfReportSyncLines(results)) console.log(line);
   } catch {
     // never block the install
+  }
+
+  // Last, after everything above: the agents whose hooks were actually written.
+  // A call that returned early (only a third-party pack's policies were named)
+  // or threw wrote none and changes nothing.
+  if (syncAgentSelection) {
+    const note = keepAgentSelectionTrue("installed", writtenSettingsPaths.map((written) => written.cli));
+    if (note) console.log(note);
   }
 }
 
@@ -1140,17 +1148,6 @@ export async function removeHooks(policyNames?: string[], scope: HookScope | "al
     if (note) say(note);
   };
 
-  // Self Reports: an agent whose user-scope hooks go also loses failproofai's
-  // MCP server, whatever the setting says. Project/local removals leave it:
-  // the user-scope hooks that use it are still there.
-  if (scope === "user" || scope === "all") {
-    try {
-      for (const line of selfReportSyncLines(removeSelfReportMcp({ agents: selectedClis, quiet: true }))) say(line);
-    } catch {
-      // never block the removal
-    }
-  }
-
   // Remove failproofai hooks from each selected CLI's settings file(s)
   let totalRemoved = 0;
   let nothingToReport = false;
@@ -1235,6 +1232,17 @@ export async function removeHooks(policyNames?: string[], scope: HookScope | "al
         continue;
       }
       totalRemoved += removedHere;
+    }
+  }
+
+  // Self Reports, after the hooks: an agent whose user-scope hooks go also loses failproofai's
+  // MCP server, whatever the setting says. Project/local removals leave it:
+  // the user-scope hooks that use it are still there.
+  if (scope === "user" || scope === "all") {
+    try {
+      for (const line of selfReportSyncLines(removeSelfReportMcp({ agents: selectedClis, quiet: true }))) say(line);
+    } catch {
+      // never block the removal
     }
   }
 

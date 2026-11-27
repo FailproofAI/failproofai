@@ -16,7 +16,9 @@ import {
   inputSchema,
   isSelfReportToolName,
   readEffectiveSelfReport,
+  resolveSelfReport,
   selfReportArgs,
+  selfReportCloudEnrolled,
   selfReportCloudManaged,
   validateSelfReportCategories,
   validateSelfReportGuidance,
@@ -168,6 +170,49 @@ describe("self-report.json (contract §4)", () => {
   it("an enabled file with an unusable category list falls back to the defaults", () => {
     writeFileSync(join(home, "self-report.json"), JSON.stringify({ version: 1, enabled: true, source: "cloud", categories: [] }));
     expect(readEffectiveSelfReport()).toMatchObject({ enabled: true, source: "cloud", categories: DEFAULT_CATEGORIES });
+  });
+});
+
+describe("resolveSelfReport: on by default (contract §4)", () => {
+  const enrolled = () => true;
+  const oss = () => false;
+  it("a missing file is on with the defaults off Cloud, and off on Cloud", () => {
+    expect(resolveSelfReport(undefined, oss)).toMatchObject({ enabled: true, source: "local", categories: DEFAULT_CATEGORIES, guidance: null });
+    expect(resolveSelfReport(undefined, enrolled)).toBeNull();
+  });
+  it("an explicit local off in config.json wins over the default", () => {
+    writeFileSync(join(home, "config.json"), JSON.stringify({ selfReport: { enabled: false } }));
+    expect(resolveSelfReport(undefined, oss)).toBeNull();
+    writeFileSync(join(home, "config.json"), JSON.stringify({ selfReport: { categories: [] } }));
+    expect(resolveSelfReport(undefined, oss)?.enabled).toBe(true);
+  });
+  it("a present file decides, and a malformed one is off", () => {
+    writeEffectiveSelfReport({ enabled: false });
+    expect(resolveSelfReport(undefined, oss)?.enabled).toBe(false);
+    writeFileSync(join(home, "self-report.json"), "{not json");
+    expect(resolveSelfReport(undefined, oss)).toBeNull();
+    expect(resolveSelfReport(undefined, enrolled)).toBeNull();
+  });
+});
+
+describe("selfReportCloudEnrolled (sync, the daemon's Enrolment::resolve)", () => {
+  it("follows the env, the credential files and the oss veto", () => {
+    expect(selfReportCloudEnrolled()).toBe(false);
+    writeFileSync(join(home, "credentials.json"), JSON.stringify({ ingest: { key: "k" } }));
+    expect(selfReportCloudEnrolled()).toBe(false);
+    writeFileSync(join(home, "credentials.json"), JSON.stringify({ cloud: { url: "https://x", machine_id: "m", token: "t" } }));
+    expect(selfReportCloudEnrolled()).toBe(true);
+    writeFileSync(join(home, "credentials.json"), "{broken");
+    expect(selfReportCloudEnrolled()).toBe(true);
+    writeFileSync(join(home, "config.json"), JSON.stringify({ mode: { kind: "oss" } }));
+    expect(selfReportCloudEnrolled()).toBe(false);
+    process.env.FAILPROOFAI_CLOUD_URL = "https://example.invalid";
+    expect(selfReportCloudEnrolled()).toBe(true);
+    delete process.env.FAILPROOFAI_CLOUD_URL;
+    rmSync(join(home, "config.json"));
+    rmSync(join(home, "credentials.json"));
+    writeFileSync(join(home, "cloud.json"), JSON.stringify({ schemaVersion: 1 }));
+    expect(selfReportCloudEnrolled()).toBe(true);
   });
 });
 
@@ -362,6 +407,7 @@ const PING = { jsonrpc: "2.0", id: 4, method: "ping" };
 
 describe("failproofai mcp (stdio, spawned)", () => {
   it("answers initialize, ping, and an empty tools/list while disabled — with no daemon", async () => {
+    writeEffectiveSelfReport({ enabled: false });
     const { replies, code } = await runMcp([], [INIT, INITIALIZED, LIST, PING], home);
     expect(code).toBe(0);
     expect(replies.map((r) => r.id)).toEqual([1, 2, 4]);
@@ -383,6 +429,22 @@ describe("failproofai mcp (stdio, spawned)", () => {
     expect(tools[0].description).toBe(describeTool([{ name: "looping", description: "loops" }], "be terse"));
     expect(tools[0].inputSchema).toEqual(inputSchema([{ name: "looping", description: "loops" }]));
     expect(replies[2]).toEqual({ jsonrpc: "2.0", id: 3, result: { content: [{ type: "text", text: "Recorded." }] } });
+  }, 30_000);
+
+  it("with no settings file (not Cloud enrolled) lists the tool and records: on by default", async () => {
+    const { replies } = await runMcp(["--agent", "pi"], [INIT, LIST, CALL], home);
+    expect((replies[0].result as Record<string, unknown>).instructions).toBe(selfReportInstructions(DEFAULT_CATEGORIES));
+    const tools = (replies[1].result as { tools: Array<Record<string, unknown>> }).tools;
+    expect(tools.map((t) => t.name)).toEqual(["report"]);
+    expect(readdirSync(join(home, "custom-agents", "events"))).toHaveLength(1);
+  }, 30_000);
+
+  it("with no settings file on a Cloud-enrolled machine lists nothing and records nothing", async () => {
+    writeFileSync(join(home, "credentials.json"), JSON.stringify({ cloud: { url: "https://x", machine_id: "m", token: "t" } }));
+    const { replies } = await runMcp(["--agent", "pi"], [INIT, LIST, CALL], home);
+    expect((replies[0].result as Record<string, unknown>)).not.toHaveProperty("instructions");
+    expect(replies[1]).toEqual({ jsonrpc: "2.0", id: 2, result: { tools: [] } });
+    expect(() => readdirSync(join(home, "custom-agents", "events"))).toThrow();
   }, 30_000);
 
   it("writes no event for a hook-recorded agent (claude)", async () => {
@@ -661,16 +723,34 @@ describe("failproofai self-report enable | disable | status", () => {
     const changed = await runSelfReportCommand(["enable"], { probeEndpoint: async () => false, sync: async () => [{ agent: "claude", path: "/x", action: "added", transport: "http", status: "ok" }] });
     expect(changed.lines.join("\n")).toContain("Agents updated.");
     const off = await runSelfReportCommand(["disable"], { sync: async () => [] });
-    expect(off.lines).toEqual(["✓ Self Reports is off."]);
+    expect(off.lines).toEqual([
+      "✓ Self Reports is off. Agents lose the report tool and nothing is recorded.",
+      "  Turn it back on with `failproofai self-report enable`.",
+    ]);
   });
 
-  it("status with no settings file says it is off", async () => {
+  it("status with no settings file says it is on by default, and how to turn it off", async () => {
     const r = await runSelfReportCommand(["status"], deps);
     expect(r.exitCode).toBe(0);
-    expect(r.lines[0]).toContain("off");
+    expect(r.lines[0]).toBe("Self Reports: on");
+    expect(r.lines.join("\n")).toContain("the default (no settings file yet)");
+    expect(r.lines.join("\n")).toContain("`failproofai self-report disable`");
+  });
+
+  it("status with no settings file on a Cloud-enrolled machine says it is off until Cloud sends it", async () => {
+    process.env.FAILPROOFAI_CLOUD_URL = "https://example.invalid";
+    const r = await runSelfReportCommand(["status"], deps);
+    expect(r.lines[0]).toContain("off (waiting for FailproofAI Cloud");
+  });
+
+  it("status with a malformed settings file says it is off", async () => {
+    writeFileSync(join(home, "self-report.json"), "{not json");
+    const r = await runSelfReportCommand(["status"], deps);
+    expect(r.lines[0]).toBe("Self Reports: off (the settings file cannot be read)");
   });
 
   it("test refuses while disabled and rejects an unknown agent", async () => {
+    writeEffectiveSelfReport({ enabled: false });
     expect((await runSelfReportCommand(["test", "--agent", "claude"], deps)).exitCode).toBe(1);
     writeEffectiveSelfReport({ enabled: true });
     const r = await runSelfReportCommand(["test", "--agent", "nope"], deps);

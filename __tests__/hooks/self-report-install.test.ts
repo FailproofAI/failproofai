@@ -24,7 +24,13 @@ import {
 } from "../../src/hooks/self-report-install";
 import { mergeTomlManagedBlock } from "../../src/hooks/toml-managed-block";
 import { INTEGRATION_TYPES, type IntegrationType } from "../../src/hooks/types";
-import { SELF_REPORT_SERVER_RECORDS } from "../../src/hooks/self-report";
+import {
+  SELF_REPORT_SERVER_RECORDS,
+  ensureSelfReportSettingsFile,
+  readEffectiveSelfReport,
+  readEnabledSelfReport,
+} from "../../src/hooks/self-report";
+import { runSelfReportCommand } from "../../src/hooks/self-report-cli";
 
 const CLI = "/usr/local/bin/failproofai";
 let home: string;
@@ -217,8 +223,19 @@ describe("transport choice", () => {
     expect(entryIn("claude")).toEqual({ type: "http", url: "http://127.0.0.1:5555/mcp?agent=claude" });
   });
 
-  it("reads a missing or broken settings file as disabled", async () => {
+  it("reads a missing file as on off Cloud, off on Cloud, and a broken file as off", async () => {
+    // On by default: no file and no local config on an open-source machine.
+    expect(readSelfReportMcpSettings()).toEqual({ enabled: true, port: 4319 });
+    // Cloud enrolled, the daemon has not written the file yet: off.
+    vi.stubEnv("FAILPROOFAI_CLOUD_URL", "https://cloud.example.com");
+    expect(readSelfReportMcpSettings()).toEqual({ enabled: false, port: 4319 });
+    vi.stubEnv("FAILPROOFAI_CLOUD_URL", "");
+    put(resolve(home, ".failproofai", "credentials.json"), JSON.stringify({ cloud: { url: "https://x", machine_id: "m", token: "t" } }));
     expect(readSelfReportMcpSettings().enabled).toBe(false);
+    // Switched back to open source: the default applies again.
+    put(resolve(home, ".failproofai", "config.json"), JSON.stringify({ mode: { kind: "oss" } }));
+    expect(readSelfReportMcpSettings().enabled).toBe(true);
+    // A malformed file is off whatever else is true (fail safe).
     put(resolve(home, ".failproofai", "self-report.json"), "{nope");
     expect(readSelfReportMcpSettings()).toEqual({ enabled: false, port: 4319 });
   });
@@ -543,5 +560,83 @@ describe("mergeTomlManagedBlock", () => {
   });
   it("throws on a half block", async () => {
     expect(() => mergeTomlManagedBlock("# >>> b >>>\nx=1\n", null, M)).toThrow();
+  });
+});
+
+describe("on by default: install, disable, enable", () => {
+  const settingsFile = () => resolve(home, ".failproofai", "self-report.json");
+  /** The sync the CLI runs, against this test's agents and with no daemon. */
+  const sync = () =>
+    syncSelfReportMcp({
+      quiet: true,
+      binaryPath: CLI,
+      agents: ["claude", "cursor"],
+      deps: { daemonLive: async () => false, hooksInstalled: () => true },
+    });
+
+  it("a fresh install with no file writes it on, registers the server and records", async () => {
+    expect(existsSync(settingsFile())).toBe(false);
+    const written = await ensureSelfReportSettingsFile();
+    expect(written).toMatchObject({ enabled: true, source: "local" });
+    expect(readEffectiveSelfReport()?.categories.map((c) => c.name)).toEqual([
+      "looping", "cannot_do_request", "invalid_tool_or_credential", "missing_context", "repeated_tool_failure", "task_failure",
+    ]);
+    const results = await sync();
+    expect(results.map((r) => r.status)).toEqual(["ok", "ok"]);
+    expect(entryIn("claude")).toMatchObject({ type: "stdio" });
+    expect(entryIn("cursor")).toBeDefined();
+    expect(readEnabledSelfReport()).not.toBeNull();
+    // A second install leaves the file as it is.
+    expect(await ensureSelfReportSettingsFile()).toBeNull();
+  });
+
+  it("disable removes the entries and stops recording; enable brings both back", async () => {
+    await ensureSelfReportSettingsFile();
+    await sync();
+    expect(entryIn("claude")).toBeDefined();
+
+    const off = await runSelfReportCommand(["disable"], { sync });
+    expect(off.exitCode).toBe(0);
+    expect(readEffectiveSelfReport()?.enabled).toBe(false);
+    expect(readEnabledSelfReport()).toBeNull();
+    expect(entryIn("claude")).toBeUndefined();
+    expect(entryIn("cursor")).toBeUndefined();
+    const config = JSON.parse(read(resolve(home, ".failproofai", "config.json")));
+    expect(config.selfReport.enabled).toBe(false);
+
+    // An explicit off wins over a later install, with or without the file.
+    expect(await ensureSelfReportSettingsFile()).toBeNull();
+    rmSync(settingsFile());
+    expect(readEnabledSelfReport()).toBeNull();
+    expect(await ensureSelfReportSettingsFile()).toMatchObject({ enabled: false });
+    expect((await sync()).every((r) => r.status === "ok")).toBe(true);
+    expect(entryIn("claude")).toBeUndefined();
+
+    const on = await runSelfReportCommand(["enable"], { sync });
+    expect(on.exitCode).toBe(0);
+    expect(readEnabledSelfReport()).not.toBeNull();
+    expect(entryIn("claude")).toBeDefined();
+    expect(entryIn("cursor")).toBeDefined();
+  });
+
+  it("a Cloud-enrolled machine writes no file on install and stays off until the daemon writes it", async () => {
+    vi.stubEnv("FAILPROOFAI_CLOUD_URL", "https://cloud.example.com");
+    expect(await ensureSelfReportSettingsFile()).toBeNull();
+    expect(existsSync(settingsFile())).toBe(false);
+    expect(readEnabledSelfReport()).toBeNull();
+    await sync();
+    expect(entryIn("claude")).toBeUndefined();
+    const refused = await runSelfReportCommand(["disable"], { sync });
+    expect(refused.exitCode).toBe(1);
+    expect(refused.lines.join("\n")).toContain("Settings > Self Reports");
+  });
+
+  it("a malformed file is off and an install leaves it alone", async () => {
+    put(settingsFile(), "{ not json");
+    expect(await ensureSelfReportSettingsFile()).toBeNull();
+    expect(read(settingsFile())).toBe("{ not json");
+    expect(readEnabledSelfReport()).toBeNull();
+    await sync();
+    expect(entryIn("claude")).toBeUndefined();
   });
 });

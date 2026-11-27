@@ -6,7 +6,9 @@
 //! enrolled. Off Cloud the TypeScript CLI writes it from the local config, so
 //! nothing here touches it then — except a file this daemon itself wrote for an
 //! org the machine has since left, which is removed (a departed org's toggle
-//! must not keep the tool registered in every agent).
+//! must not decide this machine any more). With the file gone the machine is an
+//! open-source one, where Self Reports is on by default unless `config.json`
+//! turned it off, so agents are re-synced to match.
 
 use std::io;
 use std::path::{Path, PathBuf};
@@ -70,7 +72,7 @@ pub fn note_desired(desired: Option<Desired>) {
     *PENDING.lock().unwrap_or_else(|p| p.into_inner()) = Some(desired);
 }
 
-fn take_pending() -> Option<Option<Desired>> {
+pub(crate) fn take_pending() -> Option<Option<Desired>> {
     PENDING.lock().unwrap_or_else(|p| p.into_inner()).take()
 }
 
@@ -117,7 +119,9 @@ pub fn apply(path: &Path, desired: Option<&Desired>, port: u16) -> io::Result<Ap
 }
 
 /// The machine is not enrolled: remove a file this daemon wrote for Cloud.
-/// Returns whether agent configs need a sync (the removed file was enabled).
+/// Returns whether agent configs need a sync: the removed file was enabled, or
+/// the open-source default that now applies (on, unless `config.json` says
+/// off) differs from it.
 pub fn release(path: &Path) -> io::Result<bool> {
     let Some(previous) = sr::read_settings(path) else {
         return Ok(false);
@@ -126,7 +130,13 @@ pub fn release(path: &Path) -> io::Result<bool> {
         return Ok(false);
     }
     match std::fs::remove_file(path) {
-        Ok(()) => Ok(previous.enabled),
+        Ok(()) => {
+            let now_on = path
+                .parent()
+                .and_then(|home| sr::effective_settings(home, &|| false))
+                .is_some_and(|s| s.enabled);
+            Ok(previous.enabled || now_on)
+        }
         Err(err) if err.kind() == io::ErrorKind::NotFound => Ok(false),
         Err(err) => Err(err),
     }
@@ -178,7 +188,10 @@ pub fn tick(enrolled: Option<bool>, withdrawn: &dyn Fn() -> bool) {
             let _ = take_pending();
             match release(&path) {
                 Ok(true) => {
-                    tracing::info!("Self Reports settings from FailproofAI Cloud removed");
+                    tracing::info!(
+                        "Self Reports settings from FailproofAI Cloud removed; \
+                         this machine's own setting applies"
+                    );
                     spawn_sync();
                 }
                 Ok(false) => {}
@@ -206,9 +219,10 @@ fn now_rfc3339() -> String {
 /// How long the startup sync waits for the MCP server to report its bind.
 const STARTUP_LISTEN_WAIT: Duration = Duration::from_secs(10);
 
-/// Whether the startup sync should run: `self-report.json` says enabled.
-fn enabled_on_disk(home: &Path) -> bool {
-    sr::read_settings(&sr::settings_path(home)).is_some_and(|s| s.enabled)
+/// Whether the startup sync should run: Self Reports is on (a missing file is
+/// on off Cloud; `sr::effective_settings`).
+fn enabled_on_disk(home: &Path, enrolled: &dyn Fn() -> bool) -> bool {
+    sr::effective_settings(home, enrolled).is_some_and(|s| s.enabled)
 }
 
 /// Run `failproofai self-report sync --quiet` once at startup, after the MCP
@@ -230,7 +244,7 @@ pub fn spawn_startup_sync(
             let Ok(home) = crate::paths::failproofai_home() else {
                 return;
             };
-            if !enabled_on_disk(&home) {
+            if !enabled_on_disk(&home, &*sr::enrolment_check()) {
                 return;
             }
             if bound != Ok(true) {
@@ -623,9 +637,29 @@ mod tests {
         );
         assert!(!path.exists());
 
+        // A disabled cloud file: the machine is open source now, where Self
+        // Reports is on by default, so agents need the sync too...
         apply(&path, None, 4319).unwrap();
-        assert!(!release(&path).unwrap(), "a disabled one does not");
+        assert!(
+            release(&path).unwrap(),
+            "off -> the open-source default (on)"
+        );
         assert!(!path.exists());
+
+        // ...unless config.json turned it off here: off stays off.
+        let home = path.parent().unwrap();
+        std::fs::write(
+            home.join("config.json"),
+            r#"{"selfReport":{"enabled":false}}"#,
+        )
+        .unwrap();
+        apply(&path, None, 4319).unwrap();
+        assert!(
+            !release(&path).unwrap(),
+            "a disabled one with a local off does not"
+        );
+        assert!(!path.exists());
+        let _ = std::fs::remove_dir_all(home);
     }
 
     #[test]
@@ -652,17 +686,26 @@ mod tests {
     }
 
     #[test]
-    fn the_startup_sync_runs_only_when_the_file_says_enabled() {
+    fn the_startup_sync_runs_only_when_self_reports_is_on() {
         let home = temp_path("startup").parent().unwrap().to_path_buf();
-        assert!(!enabled_on_disk(&home), "no file: off");
+        let oss = || false;
+        let cloud = || true;
+        assert!(
+            enabled_on_disk(&home, &oss),
+            "no file, open source: on by default"
+        );
+        assert!(
+            !enabled_on_disk(&home, &cloud),
+            "no file, enrolled: off until written"
+        );
         let mut s = effective(None, 4319, "2026-11-26T00:00:00Z".into());
         sr::write_settings(&sr::settings_path(&home), &s).unwrap();
-        assert!(!enabled_on_disk(&home), "disabled");
+        assert!(!enabled_on_disk(&home, &oss), "disabled");
         s.enabled = true;
         sr::write_settings(&sr::settings_path(&home), &s).unwrap();
-        assert!(enabled_on_disk(&home), "enabled");
+        assert!(enabled_on_disk(&home, &cloud), "enabled");
         std::fs::write(sr::settings_path(&home), "garbage").unwrap();
-        assert!(!enabled_on_disk(&home), "unparsable: off");
+        assert!(!enabled_on_disk(&home, &oss), "unparsable: off");
         let _ = std::fs::remove_dir_all(&home);
     }
 

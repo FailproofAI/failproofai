@@ -22,7 +22,7 @@
 import { chmodSync, closeSync, existsSync, fsyncSync, mkdirSync, openSync, readFileSync, renameSync, rmSync, writeSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { randomBytes } from "node:crypto";
-import { failproofaiHome } from "./fp-home";
+import { configFile, credentialsFile, failproofaiHome } from "./fp-home";
 
 export {
   SELF_REPORT_SERVER_NAME,
@@ -291,10 +291,13 @@ export function selfReportMcpUrl(port: number): string {
 }
 
 /**
- * Read `self-report.json`. Missing, unparsable or not version 1 reads as
- * `null`, which every caller treats as disabled. A file that says enabled but
- * whose category list is unusable falls back to the defaults (contract §4:
- * "never empty when enabled; defaults if none given").
+ * Read `self-report.json` exactly as it is on disk. Missing, unparsable or not
+ * version 1 reads as `null`. A file that says enabled but whose category list
+ * is unusable falls back to the defaults (contract §4: "never empty when
+ * enabled; defaults if none given").
+ *
+ * This is the raw file. Whether Self Reports is ON is `resolveSelfReport()`,
+ * which tells a missing file (on by default off Cloud) from a broken one (off).
  */
 export function readEffectiveSelfReport(path: string = selfReportSettingsFile()): SelfReportEffective | null {
   let raw: unknown;
@@ -324,9 +327,108 @@ export function readEffectiveSelfReport(path: string = selfReportSettingsFile())
   };
 }
 
-/** The settings only when the feature is on; `null` otherwise. */
+/**
+ * The settings every reader acts on (contract §4). Self Reports is ON by
+ * default. Identical to the daemon's `effective_settings`
+ * (crates/fpai-collect/src/self_report.rs):
+ *
+ * - the file, when it is there and parses;
+ * - an unparsable file: `null`, off (fail safe: a half-written or hand-broken
+ *   file must not turn recording on);
+ * - a missing file on a Cloud-enrolled machine: `null`, off until the daemon
+ *   writes it from the org's setting;
+ * - a missing file otherwise: on with the default categories, unless
+ *   `config.json`'s `selfReport.enabled` is `false` (an explicit off wins).
+ */
+export function resolveSelfReport(
+  path: string = selfReportSettingsFile(),
+  enrolled: () => boolean = selfReportCloudEnrolled,
+): SelfReportEffective | null {
+  const presence = selfReportFilePresence(path);
+  // Present: the file decides. Unreadable is a broken file: off.
+  if (presence === "present") return readEffectiveSelfReport(path);
+  if (presence === "unreadable") return null;
+  if (enrolled() || selfReportLocalConfigOff()) return null;
+  return selfReportDefaultSettings();
+}
+
+/** On, local, the default categories: what a machine with no settings file runs. */
+export function selfReportDefaultSettings(): SelfReportEffective {
+  const port = selfReportPort();
+  return {
+    version: 1,
+    enabled: true,
+    source: "local",
+    categories: SELF_REPORT_DEFAULT_CATEGORIES.map((c) => ({ ...c })),
+    guidance: null,
+    mcp: { port, url: selfReportMcpUrl(port) },
+    updatedAt: "",
+  };
+}
+
+/** `config.json`'s `selfReport.enabled` is exactly `false` (sync; the hook path). */
+function selfReportLocalConfigOff(): boolean {
+  try {
+    const raw: unknown = JSON.parse(readFileSync(configFile(), "utf8"));
+    if (!raw || typeof raw !== "object" || Array.isArray(raw)) return false;
+    const block = (raw as Record<string, unknown>).selfReport;
+    return !!block && typeof block === "object" && (block as Record<string, unknown>).enabled === false;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Is this machine Cloud enrolled, for the missing-file rule? Synchronous (the
+ * hook path), and the same answer as the daemon's `Enrolment::resolve`
+ * (cloud_client.rs) so TS and Rust readers agree: `FAILPROOFAI_CLOUD_URL` set;
+ * else, unless `config.json` says `mode.kind == "oss"`, a credential file:
+ * `FAILPROOFAI_CLOUD_CREDENTIALS` when named, else `credentials.json` with a
+ * `cloud` entry, else the layout-1 `cloud.json`. A credential file that cannot
+ * be read or parsed counts as enrolled, as the daemon's does: a missing
+ * `self-report.json` then stays off rather than guessing on.
+ */
+export function selfReportCloudEnrolled(): boolean {
+  if (process.env.FAILPROOFAI_CLOUD_URL?.trim()) return true;
+  if (selfReportOssMode()) return false;
+  const override = process.env.FAILPROOFAI_CLOUD_CREDENTIALS;
+  if (override) return selfReportFilePresence(override) !== "missing";
+  const creds = credentialsFile();
+  const presence = selfReportFilePresence(creds);
+  if (presence === "missing") return selfReportFilePresence(join(failproofaiHome(), "cloud.json")) !== "missing";
+  if (presence === "unreadable") return true;
+  try {
+    const raw: unknown = JSON.parse(readFileSync(creds, "utf8"));
+    if (!raw || typeof raw !== "object" || Array.isArray(raw)) return true;
+    const cloud = (raw as Record<string, unknown>).cloud;
+    return cloud !== undefined && cloud !== null;
+  } catch {
+    return true;
+  }
+}
+
+function selfReportFilePresence(path: string): "present" | "missing" | "unreadable" {
+  try {
+    readFileSync(path);
+    return "present";
+  } catch (err) {
+    return (err as NodeJS.ErrnoException)?.code === "ENOENT" ? "missing" : "unreadable";
+  }
+}
+
+function selfReportOssMode(): boolean {
+  try {
+    const raw: unknown = JSON.parse(readFileSync(configFile(), "utf8"));
+    const mode = raw && typeof raw === "object" && !Array.isArray(raw) ? (raw as { mode?: unknown }).mode : undefined;
+    return !!mode && typeof mode === "object" && !Array.isArray(mode) && (mode as { kind?: unknown }).kind === "oss";
+  } catch {
+    return false;
+  }
+}
+
+/** The settings only when the feature is on (`resolveSelfReport`); `null` otherwise. */
 export function readEnabledSelfReport(path?: string): SelfReportEffective | null {
-  const s = readEffectiveSelfReport(path);
+  const s = resolveSelfReport(path);
   return s && s.enabled ? s : null;
 }
 
@@ -413,6 +515,33 @@ export async function writeLocalSelfReportConfig(block: SelfReportLocalConfig): 
     ...(block.guidance ? { guidance: block.guidance } : {}),
   };
   writeConfigFileAtomic(configFile(), `${JSON.stringify(raw, null, 2)}\n`, { backup: false });
+}
+
+/**
+ * On install (`policies --install`, `config`): make the effective settings file
+ * exist, so every reader (the hooks, the stdio server, the daemon's HTTP
+ * server, the SDKs, `status`) reads the same thing from disk rather than each
+ * applying the missing-file default on its own.
+ *
+ * Writes only when the file is missing and the machine is not Cloud enrolled
+ * (on Cloud the daemon owns the file). It carries config.json's `selfReport`
+ * block when there is one — so an explicit `enabled: false` there is written
+ * as off — and is on with the defaults otherwise. An existing file, even a
+ * broken one, is left alone: it is the user's or the daemon's, and a broken
+ * file reads as off until `self-report enable` / `disable` rewrites it.
+ * Returns what it wrote, or `null` when it wrote nothing.
+ */
+export async function ensureSelfReportSettingsFile(
+  path: string = selfReportSettingsFile(),
+  enrolled: () => boolean = selfReportCloudEnrolled,
+): Promise<SelfReportEffective | null> {
+  if (selfReportFilePresence(path) !== "missing" || enrolled()) return null;
+  const local = await readLocalSelfReportConfig().catch(() => null);
+  const enabled = !selfReportLocalConfigOff();
+  return writeEffectiveSelfReport(
+    { enabled, categories: local?.categories ?? null, guidance: local?.guidance ?? null },
+    path,
+  );
 }
 
 // ── Cloud enrolment ─────────────────────────────────────────────────────────

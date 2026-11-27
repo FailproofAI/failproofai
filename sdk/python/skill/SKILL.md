@@ -168,8 +168,11 @@ recipe — `references/typescript.md` → *The contract, in TypeScript* and *Shu
   silent emit, because ingest skips an event with no session and answers `200`.
   The one exception is `self_report()`: a report is evidence, so it never
   raises for a missing session. With none passed or bound, an unambiguous open
-  `tool_use` for the call (by its `tool_call_id`, else the one open report-tool
-  call) gives it its session, with no warning. Only when no explicit session,
+  `tool_use` for the call gives it its session, with no warning: the one with its
+  `tool_call_id`, else the NEWEST open report-tool call. Newest, not only: two
+  report calls open in one session (parallel tool calls) resolve to the later
+  one, so pass `tool_call_id` whenever report calls can overlap. Open calls in
+  several sessions resolve to none. Only when no explicit session,
   no such open call and no enclosing scope identifies one is it recorded under
   `session_id="unattributed"` (one warning per process). The other 15 methods
   raise.

@@ -19,6 +19,8 @@ import {
   SELF_REPORT_SERVER_RECORDS,
   readEffectiveSelfReport,
   readLocalSelfReportConfig,
+  resolveSelfReport,
+  selfReportCloudEnrolled,
   selfReportCloudManaged,
   selfReportSettingsFile,
   validateSelfReportCategories,
@@ -190,18 +192,37 @@ function selfReportStranded(
 }
 
 async function selfReportStatus(deps: SelfReportCliDeps): Promise<SelfReportCliResult> {
-  const settings = readEffectiveSelfReport();
+  const file = readEffectiveSelfReport();
+  const settings = resolveSelfReport();
   const cloud = await selfReportCloudManaged();
   const lines: string[] = [];
   if (!settings) {
-    lines.push("Self Reports: off (no settings file)");
+    const missing = !file && !selfReportFileExists();
+    lines.push(
+      missing
+        ? selfReportCloudEnrolled()
+          ? "Self Reports: off (waiting for FailproofAI Cloud to send this machine's setting)"
+          : "Self Reports: off (turned off in config.json)"
+        : "Self Reports: off (the settings file cannot be read)",
+    );
     lines.push(`Settings:   ${selfReportSettingsFile()}`);
-    lines.push(cloud ? "Managed by: FailproofAI Cloud" : "Turn on:    `failproofai self-report enable`");
+    lines.push(cloud ? "Managed by: FailproofAI Cloud (Settings > Self Reports)" : "Turn on:    `failproofai self-report enable`");
     return { exitCode: 0, lines };
   }
   lines.push(`Self Reports: ${settings.enabled ? "on" : "off"}`);
-  lines.push(`Source:     ${settings.source === "cloud" ? "FailproofAI Cloud" : "this machine (config.json)"}`);
+  lines.push(
+    `Source:     ${
+      settings.source === "cloud" ? "FailproofAI Cloud" : file ? "this machine (config.json)" : "the default (no settings file yet)"
+    }`,
+  );
   lines.push(`Settings:   ${selfReportSettingsFile()}`);
+  lines.push(
+    settings.source === "cloud"
+      ? "Turn off:   in the dashboard, Settings > Self Reports"
+      : settings.enabled
+        ? "Turn off:   `failproofai self-report disable`"
+        : "Turn on:    `failproofai self-report enable`",
+  );
   if (settings.updatedAt) lines.push(`Updated:    ${settings.updatedAt}`);
   lines.push(`Categories: ${settings.categories.map((c) => c.name).join(", ")}`);
   if (settings.guidance) lines.push(`Guidance:   ${settings.guidance.length > 60 ? `${settings.guidance.slice(0, 57)}...` : settings.guidance}`);
@@ -326,7 +347,11 @@ async function selfReportDisable(args: string[], deps: SelfReportCliDeps): Promi
   writeEffectiveSelfReport({ enabled: false, categories: previous?.categories, guidance: previous?.guidance });
   return {
     exitCode: 0,
-    lines: ["✓ Self Reports is off.", ...(await selfReportSync(deps)).map((l) => (l.startsWith("▲") ? l : `  ${l}`))],
+    lines: [
+      "✓ Self Reports is off. Agents lose the report tool and nothing is recorded.",
+      ...(await selfReportSync(deps)).map((l) => (l.startsWith("▲") ? l : `  ${l}`)),
+      "  Turn it back on with `failproofai self-report enable`.",
+    ],
   };
 }
 
@@ -341,7 +366,7 @@ async function selfReportTest(args: string[], deps: SelfReportCliDeps): Promise<
   if (!(INTEGRATION_TYPES as readonly string[]).includes(agent)) {
     return { exitCode: 1, lines: [`Not an agent: ${agent}.`, `Agents: ${INTEGRATION_TYPES.join(", ")}`] };
   }
-  const settings = readEffectiveSelfReport();
+  const settings = resolveSelfReport();
   if (!settings?.enabled) {
     return { exitCode: 1, lines: ["Self Reports is off, so there is nothing to test.", "Turn it on with `failproofai self-report enable`."] };
   }
@@ -432,6 +457,15 @@ async function selfReportTest(args: string[], deps: SelfReportCliDeps): Promise<
       "  The collector uploads it to FailproofAI Cloud as a self_report event when this machine is connected.",
     ],
   };
+}
+
+function selfReportFileExists(): boolean {
+  try {
+    readFileSync(selfReportSettingsFile());
+    return true;
+  } catch (err) {
+    return (err as NodeJS.ErrnoException)?.code !== "ENOENT";
+  }
 }
 
 function selfReportListDir(dir: string): string[] {

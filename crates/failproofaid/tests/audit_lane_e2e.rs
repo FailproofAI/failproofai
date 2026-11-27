@@ -144,9 +144,13 @@ fn read_schedule(home: &Path) -> serde_json::Value {
 
 /// A stand-in for the CLI: records that it ran (with the arguments the lane
 /// appended) and exits with `exit_code`.
+/// The CLI the daemon runs, standing in for `failproofai audit`. It ignores the
+/// `self-report sync` the daemon also runs at startup (Self Reports is on by
+/// default, so a home with no `self-report.json` gets that sync too): only an
+/// audit leaves the marker.
 fn stub_cli(marker: &Path, exit_code: i32) -> String {
     format!(
-        "sh -c 'printf \"%s\" \"$*\" > {} ; exit {exit_code}' fp",
+        "sh -c 'case \"$1\" in self-report) exit 0;; esac; printf \"%s\" \"$*\" > {} ; exit {exit_code}' fp",
         marker.display()
     )
 }

@@ -276,8 +276,13 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
     // Self Reports: the `report` tool's MCP server on 127.0.0.1. Its own
     // thread and runtime rather than a collector task, because the collector
     // runs only with an ingest credential and an OSS machine needs this too.
-    // Always listening; `tools/list` is empty while `self-report.json` says
-    // off. A busy port logs a warning and the daemon carries on.
+    // Always listening; `tools/list` is empty while Self Reports is off. On by
+    // default: a missing `self-report.json` reads as on unless this machine is
+    // Cloud enrolled, and the server asks the same enrolment check the policy
+    // poll uses. A busy port logs a warning and the daemon carries on.
+    fpai_collect::self_report::set_enrolment_check(std::sync::Arc::new(
+        cloud_client::self_report_enrolled,
+    ));
     let (self_report_listening, self_report_ready) = std::sync::mpsc::channel();
     let mut self_report_mcp = paths::failproofai_home().ok().and_then(|home| {
         fpai_collect::self_report::spawn(
@@ -312,7 +317,7 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
     // Self Reports: once the MCP server is listening and this socket is bound,
     // re-run the agent sync so agents registered over stdio while the daemon
     // was down move to its HTTP server (the sync's live check pings this
-    // socket and the MCP port). Only when self-report.json says enabled.
+    // socket and the MCP port). Only when Self Reports is on.
     self_report::spawn_startup_sync(self_report_ready, shutdown.clone());
 
     let run_result = srv.run_until(shutdown);

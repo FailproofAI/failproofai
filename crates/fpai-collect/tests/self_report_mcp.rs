@@ -51,13 +51,19 @@ struct Running {
 
 impl Running {
     async fn start(home: &Path) -> Self {
+        Self::start_enrolled(home, false).await
+    }
+
+    async fn start_enrolled(home: &Path, enrolled: bool) -> Self {
         let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
         let port = listener.local_addr().unwrap().port();
         let stop = Arc::new(AtomicBool::new(false));
         let sd = Shutdown::for_test(stop.clone());
         let home = home.to_path_buf();
         let task = tokio::spawn(async move {
-            self_report::serve(listener, home, sd).await.unwrap();
+            self_report::serve_with_enrolment(listener, home, sd, Arc::new(move || enrolled))
+                .await
+                .unwrap();
         });
         Running {
             port,
@@ -247,14 +253,30 @@ async fn initialize_list_and_call_the_report_tool() {
 #[tokio::test(flavor = "multi_thread")]
 async fn the_tool_list_follows_the_settings_file() {
     let home = tmpdir("follow");
-    let server = Running::start(&home).await;
-    assert_eq!(list(&server).await, json!([]), "no file: off");
     let init = json!({"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18"}});
     let instructions = |reply: Option<Value>| reply.unwrap()["result"].get("instructions").cloned();
+
+    // Cloud enrolled and the daemon has not written the file yet: off.
+    let enrolled = Running::start_enrolled(&home, true).await;
+    assert_eq!(list(&enrolled).await, json!([]), "enrolled, no file: off");
     assert_eq!(
-        instructions(server.rpc("", init.clone()).await.1),
+        instructions(enrolled.rpc("", init.clone()).await.1),
         None,
-        "no file: no instructions field"
+        "enrolled, no file: no instructions field"
+    );
+    enrolled.stop().await;
+
+    // Not enrolled: on by default, with the default categories.
+    let server = Running::start(&home).await;
+    let tools = list(&server).await;
+    assert_eq!(tools[0]["name"], "report", "no file: on by default");
+    assert_eq!(
+        tools[0]["inputSchema"]["properties"]["category"]["enum"][0],
+        "looping"
+    );
+    assert!(
+        instructions(server.rpc("", init.clone()).await.1).is_some(),
+        "no file: instructions sent"
     );
 
     write_settings(

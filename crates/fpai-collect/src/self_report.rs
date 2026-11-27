@@ -11,8 +11,11 @@
 //!   spool format, so it reaches Cloud through the existing upload.
 //!
 //! The settings file is written by the daemon when the machine is Cloud
-//! managed and by the TypeScript CLI otherwise. A missing or unparsable file
-//! means the feature is off.
+//! managed and by the TypeScript CLI otherwise. Self Reports is on by default:
+//! a MISSING file means on with the default categories on a machine that is
+//! not Cloud enrolled (unless `config.json`'s `selfReport.enabled` is `false`),
+//! and off on an enrolled one until the daemon writes it. An unparsable file
+//! always means off (see [`effective_settings`]).
 //!
 //! The server binds loopback only and refuses any request whose `Host` or
 //! `Origin` is not this port on `127.0.0.1` / `localhost`, so a web page in a
@@ -232,10 +235,86 @@ pub fn settings_path(home: &Path) -> PathBuf {
     home.join(SETTINGS_FILE)
 }
 
-/// The file, or `None` when it is missing or does not parse (both: disabled).
+/// The file, or `None` when it is missing or does not parse. Readers that
+/// decide whether the feature is on use [`effective_settings`], which tells
+/// the two apart.
 pub fn read_settings(path: &Path) -> Option<Settings> {
     let text = fs::read_to_string(path).ok()?;
     serde_json::from_str(&text).ok()
+}
+
+/// Is this machine Cloud enrolled? Asked only when `self-report.json` is
+/// missing. The daemon installs its own check (the same `Enrolment::resolve`
+/// its policy poll uses) with [`set_enrolment_check`].
+pub type EnrolmentCheck = Arc<dyn Fn() -> bool + Send + Sync>;
+
+static ENROLMENT_CHECK: OnceLock<EnrolmentCheck> = OnceLock::new();
+
+/// Install the enrolment check every reader in this process uses. First call wins.
+pub fn set_enrolment_check(check: EnrolmentCheck) {
+    let _ = ENROLMENT_CHECK.set(check);
+}
+
+/// The installed check; without one (no daemon in this process), not enrolled.
+pub fn enrolment_check() -> EnrolmentCheck {
+    ENROLMENT_CHECK
+        .get()
+        .cloned()
+        .unwrap_or_else(|| Arc::new(|| false))
+}
+
+/// The settings a reader acts on (CONTRACT §4), identical to the TypeScript
+/// `resolveSelfReport` in src/hooks/self-report.ts:
+///
+/// - the file, when it is there and parses;
+/// - an unparsable or unreadable file: `None`, off (fail safe: a half-written
+///   or hand-broken file must not turn recording on);
+/// - a missing file on a Cloud-enrolled machine: `None`, off until the daemon
+///   writes it from the org's setting;
+/// - a missing file otherwise: on with the default categories, unless
+///   `config.json`'s `selfReport.enabled` is `false` (an explicit off wins).
+pub fn effective_settings(home: &Path, enrolled: &dyn Fn() -> bool) -> Option<Settings> {
+    match fs::read_to_string(settings_path(home)) {
+        Ok(text) => serde_json::from_str(&text).ok(),
+        Err(err) if err.kind() == io::ErrorKind::NotFound => missing_file_settings(home, enrolled),
+        Err(_) => None,
+    }
+}
+
+/// What a missing `self-report.json` means (see [`effective_settings`]).
+fn missing_file_settings(home: &Path, enrolled: &dyn Fn() -> bool) -> Option<Settings> {
+    if enrolled() || local_config_disabled(home) {
+        return None;
+    }
+    Some(default_settings(port_from_env()))
+}
+
+/// On, local, the default categories, no guidance: what a machine with no
+/// settings file and no explicit off runs.
+pub fn default_settings(port: u16) -> Settings {
+    Settings {
+        version: SETTINGS_VERSION,
+        enabled: true,
+        source: "local".to_string(),
+        categories: default_categories(),
+        guidance: None,
+        mcp: McpEndpoint::on_port(port),
+        updated_at: String::new(),
+    }
+}
+
+/// `config.json`'s `selfReport.enabled` is exactly `false`.
+fn local_config_disabled(home: &Path) -> bool {
+    let Ok(text) = fs::read_to_string(home.join("config.json")) else {
+        return false;
+    };
+    let Ok(root) = serde_json::from_str::<Value>(&text) else {
+        return false;
+    };
+    root.get("selfReport")
+        .and_then(|b| b.get("enabled"))
+        .and_then(Value::as_bool)
+        == Some(false)
 }
 
 /// Write the settings atomically (tmp + rename), mode 0644.
@@ -368,22 +447,35 @@ pub fn tool_definition(settings: Option<&Settings>) -> Option<Value> {
 
 // ── Settings cache ───────────────────────────────────────────────────────────
 
-/// `self-report.json`, re-read only when its mtime or size changes.
+/// `self-report.json`, re-read only when its mtime or size changes. A missing
+/// file is resolved on every call ([`effective_settings`]): it is cheap, and an
+/// enrolment or a `config.json` off must take effect on the next request.
 struct SettingsCache {
+    home: PathBuf,
     path: PathBuf,
+    enrolled: EnrolmentCheck,
     state: Mutex<Option<(SystemTime, u64, Option<Settings>)>>,
 }
 
 impl SettingsCache {
-    fn new(path: PathBuf) -> Self {
+    fn new(home: &Path, enrolled: EnrolmentCheck) -> Self {
         SettingsCache {
-            path,
+            home: home.to_path_buf(),
+            path: settings_path(home),
+            enrolled,
             state: Mutex::new(None),
         }
     }
 
     fn current(&self) -> Option<Settings> {
-        let meta = fs::metadata(&self.path).ok();
+        let meta = match fs::metadata(&self.path) {
+            Ok(meta) => Some(meta),
+            Err(err) if err.kind() == io::ErrorKind::NotFound => {
+                *self.state.lock().unwrap_or_else(|p| p.into_inner()) = None;
+                return missing_file_settings(&self.home, &*self.enrolled);
+            }
+            Err(_) => None,
+        };
         let stamp = meta.and_then(|m| Some((m.modified().ok()?, m.len())));
         let mut state = self.state.lock().unwrap_or_else(|p| p.into_inner());
         let Some((mtime, len)) = stamp else {
@@ -500,12 +592,23 @@ pub async fn serve(
     home: PathBuf,
     sd: Shutdown,
 ) -> Result<(), TaskError> {
+    serve_with_enrolment(listener, home, sd, enrolment_check()).await
+}
+
+/// [`serve`] with an explicit enrolment check (tests; the daemon installs its
+/// own with [`set_enrolment_check`]).
+pub async fn serve_with_enrolment(
+    listener: tokio::net::TcpListener,
+    home: PathBuf,
+    sd: Shutdown,
+    enrolled: EnrolmentCheck,
+) -> Result<(), TaskError> {
     let port = listener
         .local_addr()
         .map_err(|e| TaskError(e.to_string()))?
         .port();
     let server = Arc::new(Server {
-        settings: SettingsCache::new(settings_path(&home)),
+        settings: SettingsCache::new(&home, enrolled),
         home,
         port,
     });
@@ -717,10 +820,11 @@ impl Server {
     /// The fallback recording. A failure is logged and never reaches the agent:
     /// the call's answer is `Recorded.` whatever happens here.
     ///
-    /// Nothing is recorded unless the settings file says enabled right now: a
-    /// client that listed the tool before it was turned off (or that never
-    /// listed it) can still send a call. Read from disk, not the cache, so a
-    /// disable is honoured on the very next call (as the stdio server does).
+    /// Nothing is recorded unless the settings say enabled right now
+    /// ([`effective_settings`]: a missing file is on off Cloud): a client that
+    /// listed the tool before it was turned off (or that never listed it) can
+    /// still send a call. Read from disk, not the cache, so a disable is
+    /// honoured on the very next call (as the stdio server does).
     fn record(&self, args: &Value, caller: &Caller) {
         let Some(agent) = caller
             .agent
@@ -729,7 +833,7 @@ impl Server {
         else {
             return;
         };
-        if !read_settings(&settings_path(&self.home)).is_some_and(|s| s.enabled) {
+        if !effective_settings(&self.home, &*self.settings.enrolled).is_some_and(|s| s.enabled) {
             return;
         }
         let report = Report::from_args(args);
@@ -1197,7 +1301,8 @@ mod tests {
     fn the_cache_rereads_a_changed_file() {
         let home = temp_home("cache");
         let path = settings_path(&home);
-        let cache = SettingsCache::new(path.clone());
+        // Enrolled: a missing file is off until the daemon writes it.
+        let cache = SettingsCache::new(&home, Arc::new(|| true));
         assert!(cache.current().is_none());
         write_settings(&path, &enabled(default_categories(), None)).unwrap();
         assert!(cache.current().unwrap().enabled);
@@ -1208,6 +1313,93 @@ mod tests {
         assert!(!cache.current().unwrap().enabled);
         fs::remove_file(&path).unwrap();
         assert!(cache.current().is_none());
+        let _ = fs::remove_dir_all(home);
+    }
+
+    /// On by default (CONTRACT §4): what a reader makes of each state of the file.
+    #[test]
+    fn a_missing_file_is_on_off_cloud_and_off_on_cloud() {
+        let home = temp_home("effective");
+        let path = settings_path(&home);
+        // Fresh machine, not enrolled: on, defaults.
+        let s = effective_settings(&home, &|| false).expect("on by default");
+        assert!(s.enabled);
+        assert_eq!(s.source, "local");
+        assert_eq!(s.categories, default_categories());
+        // Enrolled, file not written yet: off.
+        assert_eq!(effective_settings(&home, &|| true), None);
+        // An explicit local off in config.json wins over the default.
+        fs::write(
+            home.join("config.json"),
+            r#"{"selfReport":{"enabled":false}}"#,
+        )
+        .unwrap();
+        assert_eq!(effective_settings(&home, &|| false), None);
+        fs::write(
+            home.join("config.json"),
+            r#"{"selfReport":{"enabled":true}}"#,
+        )
+        .unwrap();
+        assert!(effective_settings(&home, &|| false).unwrap().enabled);
+        // A malformed file is off, enrolled or not (fail safe).
+        fs::write(&path, "{not json").unwrap();
+        assert_eq!(effective_settings(&home, &|| false), None);
+        assert_eq!(effective_settings(&home, &|| true), None);
+        // An explicit enabled:false file is off.
+        let mut off = enabled(default_categories(), None);
+        off.enabled = false;
+        write_settings(&path, &off).unwrap();
+        assert!(!effective_settings(&home, &|| false).unwrap().enabled);
+        // The cache agrees with the reader.
+        fs::remove_file(&path).unwrap();
+        fs::remove_file(home.join("config.json")).unwrap();
+        assert!(
+            SettingsCache::new(&home, Arc::new(|| false))
+                .current()
+                .unwrap()
+                .enabled
+        );
+        assert!(
+            SettingsCache::new(&home, Arc::new(|| true))
+                .current()
+                .is_none()
+        );
+        let _ = fs::remove_dir_all(home);
+    }
+
+    /// A fresh OSS machine: no file, the HTTP server lists the tool and records.
+    #[test]
+    fn an_unenrolled_machine_with_no_file_lists_and_records() {
+        let home = temp_home("http-default-on");
+        let server = server_enrolled(&home, false);
+        let caller = Caller {
+            agent: Some("copilot".to_string()),
+            cwd: None,
+        };
+        let listed = server
+            .dispatch(
+                json!({"jsonrpc": "2.0", "id": 1, "method": "tools/list"}),
+                &caller,
+            )
+            .unwrap();
+        assert_eq!(listed["result"]["tools"][0]["name"], TOOL_NAME);
+        call_report(&server, "copilot");
+        assert_eq!(event_files(&home), 1, "recorded with no settings file");
+        // Enrolled with no file yet: nothing listed, nothing recorded.
+        let enrolled = server_enrolled(&home, true);
+        let listed = enrolled
+            .dispatch(
+                json!({"jsonrpc": "2.0", "id": 1, "method": "tools/list"}),
+                &caller,
+            )
+            .unwrap();
+        assert_eq!(listed["result"]["tools"], json!([]));
+        call_report(&enrolled, "copilot");
+        assert_eq!(
+            event_files(&home),
+            1,
+            "not recorded while enrolled with no file"
+        );
         let _ = fs::remove_dir_all(home);
     }
 
@@ -1358,10 +1550,14 @@ mod tests {
     }
 
     fn server_for(home: &Path) -> Server {
+        server_enrolled(home, true)
+    }
+
+    fn server_enrolled(home: &Path, enrolled: bool) -> Server {
         Server {
             home: home.to_path_buf(),
             port: DEFAULT_PORT,
-            settings: SettingsCache::new(settings_path(home)),
+            settings: SettingsCache::new(home, Arc::new(move || enrolled)),
         }
     }
 

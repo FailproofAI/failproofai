@@ -600,6 +600,14 @@ fn enrolment_withdrawn() -> bool {
     matches!(Enrolment::resolve(), Ok(None))
 }
 
+/// Is this machine Cloud enrolled, for Self Reports' missing-file rule
+/// (`fpai_collect::self_report::effective_settings`)? The same resolution as
+/// the policy poll; an unreadable credential counts as enrolled, so a missing
+/// `self-report.json` stays off rather than guessing on.
+pub fn self_report_enrolled() -> bool {
+    !enrolment_withdrawn()
+}
+
 impl Enrolment {
     fn resolve() -> Result<Option<Self>, String> {
         if let Some(enrolment) = Self::from_env()? {
@@ -839,7 +847,7 @@ impl CloudClient {
         &self,
         applied: Option<u64>,
         policy_errors: Option<&str>,
-    ) -> Result<DesiredState, PollFailure> {
+    ) -> Result<(DesiredState, Option<crate::self_report::Desired>), PollFailure> {
         let mut url = self
             .base_url
             .join("enforcement/v1/desired-state")
@@ -883,9 +891,11 @@ impl CloudClient {
                 // does not decode) must not turn troubleshooting back on or start
                 // an upload, so the last valid answer keeps standing.
                 let (desired, consent, self_report) = decode_desired_state(raw)?;
-                // Applied by the maintenance lane after this tick (see
-                // `self_report::tick`), so a refused response changes nothing.
-                crate::self_report::note_desired(self_report);
+                // `selfReport` is NOT noted here: the reconcile can still refuse
+                // this response (a deployment rollback, a withdrawn enrolment),
+                // and a refused response must not flip the feature. The caller
+                // notes it once the reconcile accepted the deployment
+                // (`reconcile_and_note_self_report`).
                 // The org's troubleshooting switch: `machineLogs: false` means
                 // send no daemon log (logship.rs). Absent, from a Cloud with it
                 // on or one that predates the key, means send.
@@ -894,7 +904,7 @@ impl CloudClient {
                 if let Some(id) = consent.log_request {
                     crate::logship::note_request(&id);
                 }
-                Ok(desired)
+                Ok((desired, self_report))
             })
     }
 
@@ -1441,7 +1451,7 @@ fn poll_once_guarded(
     )
     .map(|errors| encode_policy_errors(&errors));
     match cloud.poll_desired_state(applied, report.as_deref()) {
-        Ok(desired) => {
+        Ok((desired, self_report)) => {
             // The GET created/checked-in the machine row the PUT requires.
             // Do not let a roster network outage interrupt local enforcement.
             if let Ok(path) = agent_roster::roster_path()
@@ -1450,8 +1460,10 @@ fn poll_once_guarded(
             {
                 report_and_reclaim(cloud, &path, Path::new(&home), &roster);
             }
-            match store.reconcile_unless(
+            match reconcile_and_note_self_report(
+                store,
                 &desired,
+                self_report,
                 &|policy: &DesiredPolicy| cloud.artifact(policy),
                 withdrawn,
             ) {
@@ -1503,6 +1515,37 @@ fn poll_once_guarded(
             false
         }
     }
+}
+
+/// Reconcile `desired`, then hand its `selfReport` block to the maintenance
+/// lane only when the reconcile accepted the response.
+///
+/// Refused means: the response itself failed validation (an unknown shape, a
+/// deployment below the rollback floor — both `InvalidDesiredState`), or the
+/// machine was disconnected while the poll was in flight (`Withdrawn`). Such a
+/// response is not the server's current answer for this machine, so its
+/// `selfReport` must not change anything: an out-of-order deployment 99 that
+/// says "on" after deployment 100 said "off" leaves the feature off.
+///
+/// An artifact failure (fetch, hash, I/O) is not a refusal: the response passed
+/// the rollback guard and is the server's newest answer, and an org toggle must
+/// not wait on an unrelated policy download that may keep failing.
+fn reconcile_and_note_self_report(
+    store: &PolicyStore,
+    desired: &DesiredState,
+    self_report: Option<crate::self_report::Desired>,
+    fetcher: &impl crate::cloud_policies::ArtifactFetcher,
+    withdrawn: &dyn Fn() -> bool,
+) -> Result<crate::cloud_policies::ReconcileOutcome, ReconcileError> {
+    let result = store.reconcile_unless(desired, fetcher, withdrawn);
+    let refused = matches!(
+        result,
+        Err(ReconcileError::InvalidDesiredState(_) | ReconcileError::Withdrawn)
+    );
+    if !refused && !withdrawn() {
+        crate::self_report::note_desired(self_report);
+    }
+    result
 }
 
 pub fn poll_interval_from_env() -> Duration {
@@ -1568,6 +1611,7 @@ mod tests {
         /// The poll without an error report, for the tests that predate it.
         fn desired_state(&self, applied: Option<u64>) -> Result<DesiredState, String> {
             self.poll_desired_state(applied, None)
+                .map(|(desired, _)| desired)
                 .map_err(|failure| failure.message)
         }
     }
@@ -2300,6 +2344,111 @@ mod tests {
         let store = temp_store(name);
         store.reconcile(&jev_state(12), &serve).unwrap();
         store
+    }
+
+    fn self_report_on(enabled: bool) -> Option<crate::self_report::Desired> {
+        Some(crate::self_report::Desired {
+            enabled,
+            categories: None,
+            guidance: None,
+        })
+    }
+
+    /// The review's replay: deployment 100 switched Self Reports off, then an
+    /// out-of-order deployment 99 said on. The rollback is refused, and its
+    /// `selfReport` must be refused with it: nothing is queued for the lane, so
+    /// the feature stays off and `active.json` stays at 100.
+    #[test]
+    fn a_rolled_back_response_does_not_change_self_reports() {
+        let _env = lock_env();
+        let _ = crate::self_report::take_pending();
+        let store = temp_store("self-report-rollback");
+
+        reconcile_and_note_self_report(
+            &store,
+            &jev_state(100),
+            self_report_on(false),
+            &serve,
+            &|| false,
+        )
+        .unwrap();
+        assert_eq!(
+            crate::self_report::take_pending(),
+            Some(self_report_on(false)),
+            "an accepted response queues its setting"
+        );
+
+        let refused = reconcile_and_note_self_report(
+            &store,
+            &jev_state(99),
+            self_report_on(true),
+            &serve,
+            &|| false,
+        );
+        assert!(
+            matches!(&refused, Err(ReconcileError::InvalidDesiredState(m)) if m.contains("rollback")),
+            "{refused:?}"
+        );
+        assert_eq!(
+            crate::self_report::take_pending(),
+            None,
+            "a rolled-back response must not queue its selfReport"
+        );
+        assert_eq!(store.read_active().unwrap().unwrap().deployment, 100);
+
+        // Absent `selfReport` on a rolled-back response is refused the same way:
+        // it must not switch an enabled machine off either.
+        let _ = reconcile_and_note_self_report(&store, &jev_state(98), None, &serve, &|| false);
+        assert_eq!(crate::self_report::take_pending(), None);
+        fs::remove_dir_all(store.root()).ok();
+    }
+
+    /// A response whose reconcile runs into `config --disconnect` is discarded,
+    /// its `selfReport` included.
+    #[test]
+    fn a_withdrawn_response_does_not_change_self_reports() {
+        let _env = lock_env();
+        let _ = crate::self_report::take_pending();
+        let store = temp_store("self-report-withdrawn");
+        let result = reconcile_and_note_self_report(
+            &store,
+            &jev_state(5),
+            self_report_on(true),
+            &serve,
+            &|| true,
+        );
+        assert!(
+            matches!(result, Err(ReconcileError::Withdrawn)),
+            "{result:?}"
+        );
+        assert_eq!(crate::self_report::take_pending(), None);
+        fs::remove_dir_all(store.root()).ok();
+    }
+
+    /// A response that passed validation and the rollback guard is the server's
+    /// newest answer even when one of its artifacts fails to download: the org's
+    /// toggle still applies rather than waiting on an unrelated policy.
+    #[test]
+    fn an_accepted_response_with_a_failed_artifact_still_applies_self_reports() {
+        let _env = lock_env();
+        let _ = crate::self_report::take_pending();
+        let store = temp_store("self-report-fetch-fail");
+        let result = reconcile_and_note_self_report(
+            &store,
+            &jev_state(5),
+            self_report_on(true),
+            &|_: &DesiredPolicy| Err::<Vec<u8>, String>("offline".into()),
+            &|| false,
+        );
+        assert!(
+            matches!(result, Err(ReconcileError::Fetch { .. })),
+            "{result:?}"
+        );
+        assert_eq!(
+            crate::self_report::take_pending(),
+            Some(self_report_on(true))
+        );
+        fs::remove_dir_all(store.root()).ok();
     }
 
     /// Exactly what `config --disconnect` removes

@@ -611,7 +611,7 @@ async function runCli() {
           ["(no args)", "Open the policy dashboard on localhost:8020"],
           ["audit", "Scan your agents' history for risky and wasteful patterns"],
           ["otel", "Opt in to OpenTelemetry from agents and apps"],
-          ["self-report", "Let agents report to you when they are stuck"],
+          ["self-report", "Let agents report to you when they are stuck (on by default)"],
         ]),
         ...section("Less often", [
           ["harness", "Collect sessions from extra locations per agent"],
@@ -1070,19 +1070,20 @@ async function runCli() {
 
   // self-report status | enable | disable | test
   //
-  // Self Reports: the `report` tool agents call when they are stuck. On a
-  // machine managed by FailproofAI Cloud the setting comes from Cloud and
-  // enable/disable refuse; otherwise they write config.json's `selfReport` and
-  // ~/.failproofai/self-report.json, then update the agents' MCP entries.
+  // Self Reports: the `report` tool agents call when they are stuck. On by
+  // default. On a machine managed by FailproofAI Cloud the setting comes from
+  // Cloud and enable/disable refuse; otherwise they write config.json's
+  // `selfReport` and ~/.failproofai/self-report.json, then update the agents'
+  // MCP entries (disable removes them and stops recording).
   if (args[0] === "self-report") {
     const subArgs = args.slice(1);
     if (subArgs.length === 0 || subArgs.includes("--help") || subArgs.includes("-h")) {
       await printHelp({
         name: "self-report",
         usage: [
-          ["failproofai self-report status", "Show whether it is on, and where that came from"],
-          ["failproofai self-report enable [options]", "Turn it on for this machine"],
-          ["failproofai self-report disable", "Turn it off for this machine"],
+          ["failproofai self-report status", "Show whether it is on (it is by default), and where that came from"],
+          ["failproofai self-report enable [options]", "Turn it back on for this machine, or change its categories"],
+          ["failproofai self-report disable", "Turn it off: removes the MCP entries and stops recording"],
           ["failproofai self-report test --agent <agent>", "Send one test report end to end"],
           ["failproofai self-report sync [--quiet]", "Update each hooked agent's MCP entry (the daemon runs this)"],
         ],
@@ -1092,7 +1093,8 @@ async function runCli() {
           ["--agent <agent>", "With test: the agent to send it as"],
         ],
         examples: [
-          "failproofai self-report enable",
+          "failproofai self-report status",
+          "failproofai self-report disable",
           "failproofai self-report test --agent claude",
         ],
       });
@@ -2202,10 +2204,17 @@ async function runCli() {
         else updateExit = 1;
       }
     }
-    // Self Reports: bring every hooked agent's MCP registration in line with
-    // self-report.json, also when setup found the machine already configured
-    // and wrote no hooks. Best-effort; prints only what changed.
+    // Self Reports (on by default): write self-report.json when it is missing
+    // off Cloud, then bring every hooked agent's MCP registration in line with
+    // it, also when setup found the machine already configured and wrote no
+    // hooks. Best-effort; prints only what changed.
     if (result.applied) {
+      try {
+        const { ensureSelfReportSettingsFile } = await import("../src/hooks/self-report");
+        await ensureSelfReportSettingsFile();
+      } catch {
+        // the readers apply the same default without the file
+      }
       try {
         const { syncSelfReportMcp, selfReportSyncLines } = await import("../src/hooks/self-report-install");
         const lines = selfReportSyncLines(await syncSelfReportMcp({ quiet: true }));

@@ -1,6 +1,6 @@
 ---
 title: "Read evaluation results"
-description: "Chart evaluation scores over time, compare agents and environments, see why a session scored low, and ask the assistant."
+description: "Chart evaluation scores over time, compare agents and environments, see why a session scored low, and ask the failproof agent."
 icon: "gauge"
 ---
 
@@ -10,16 +10,16 @@ Results from every evaluation, hosted or from your own worker, land in the same 
 
 <Tabs>
   <Tab title="Dashboard">
-    Go to **Observe → evaluations**.
+    Go to **analyse → checks → evals** and open an evaluation. Its page gathers everything about that one evaluation:
 
-    - **Recent runs** lists each evaluation as it lands: whether it came from a hosted (**managed**) or your own (**customer**) evaluator, the agent and session, the evaluation and its version, its status, and its score or metrics.
-    - **Score over time** plots what you ask for. Select **add series** and choose an agent, an environment, an evaluation, and a statistic: avg, min, max, p50, p75, p90, p95, p99, stddev, or mode. Each series is one line; give it its own **curve** to draw it on a separate chart.
+    - KPI tiles for today, the last 7 days, and the last 30 days.
+    - A chart of the score per day, split by environment or agent, for a statistic you choose: avg, p50, p75, p90, p95, p99, min, max, stddev, or mode.
+    - **lowest scores today** (or **failed today** for a pass/fail evaluation), each with the evaluator's reasoning.
+    - **latest runs**: score, agent, session, status, how long it took, and when it ran, failures included.
 
     ![The evaluations page: recent runs tagged customer, a score over time chart with reference lines at 0.5 and 0.8, and one series averaging finished_clean across all agents and environments.](/images/dashboard/evaluations-chart.png)
 
-    One time range and one bin size apply to every series. A fine bin finds an incident; a coarse one shows a trend, and can hide the spikes you are looking for. A bucket where nothing was scored is a gap in the line, never a zero, and reference lines mark 0.5 and 0.8.
-
-    Every part of the view lives in the URL: **share** copies it, and whoever opens it sees exactly the comparison you built.
+    The split, statistic, and range (7, 30, or 90 days, or a custom window) live in the URL, so whoever opens a copied link sees exactly the comparison you built.
   </Tab>
   <Tab title="CLI">
     ```bash
@@ -32,23 +32,23 @@ Results from every evaluation, hosted or from your own worker, land in the same 
   </Tab>
 </Tabs>
 
-Plot **avg** and **p90** for the same evaluation to see whether a good average is hiding a bad tail, or the same evaluation for two agents, or for production and staging, to compare them on one axis. Costs, latencies, and token counts, which carry units, chart under **Observe → metrics**, one chart per unit.
+Switch between **avg** and **p90** to see whether a good average is hiding a bad tail, and split by agent or environment to compare production and staging on one axis. Costs, latencies, and token counts, which carry units, chart on the [metrics](/sessions/metrics) page (**analyse → checks → evals**, then **metrics**), one chart per unit.
 
 ## See why a session scored low
 
-Open a session from **Observe → sessions**; the grid carries each session's scores and filters by score range. The session's right rail leads with the evaluation summary, then a bar per score with the evaluator's reasoning under it.
+Open a session from **trace → sessions**; the grid carries each session's scores and filters by score range. The session's right rail leads with the evaluation summary, then a bar per score with the evaluator's reasoning under it.
 
 ![A session detail view showing evaluation scores and reasoning beside the complete trace.](/images/dashboard/session-detail.png)
 
-## Ask the assistant
+## Ask the failproof agent
 
-Ask about evaluation data in plain English: "tell me about some of the recent evaluations", or which agents' scores are slipping. The [assistant](/sessions/assistant) reads and analyzes the results and answers with tables you can follow up on, and a question worth keeping can become a [query](/sessions/queries) or a [dashboard](/sessions/dashboards).
+Ask about evaluation data in plain English: "tell me about some of the recent evaluations", or which agents' scores are slipping. The [failproof agent](/sessions/assistant) reads and analyzes the results and answers with tables you can follow up on, and a question worth keeping can become a [query](/sessions/queries) or a [dashboard](/sessions/dashboards).
 
-![The evaluations page beside the assistant, which answers "tell me about some of the recent evaluations" with a summary of totals, statuses, and scores.](/images/dashboard/evaluations-assistant.png)
+![The evaluations page beside the failproof agent, which answers "tell me about some of the recent evaluations" with a summary of totals, statuses, and scores.](/images/dashboard/evaluations-assistant.png)
 
 ## Watch and act
 
-- **Dashboards**, under **Analyze → dashboards**, trend the scores you feature, per agent and environment, for the whole organization.
+- **Dashboards**, under **trace → dashboards**, trend the scores you feature, per agent and environment, for the whole organization.
 
   ![A quality dashboard showing average evaluation scores and trends over time.](/images/dashboard/dashboard-quality.png)
 

@@ -1,28 +1,28 @@
 ---
 title: "Jev मूल्यांकन"
-description: "किसी समाप्त सत्र को ज्ञात उत्तरों वाले प्रश्न के विरुद्ध स्कोर करने के लिए Jev का उपयोग करें।"
+description: "एक पूर्ण सत्र को ज्ञात उत्तरों के साथ एक प्रश्न के विरुद्ध स्कोर करने के लिए Jev का उपयोग करें।"
 icon: "list-checks"
 ---
 
-एक Jev मूल्यांकन एक **समाप्त सत्र** को पढ़ता है और 0 से 1 का स्कोर देता है। इसका उपयोग तब करें जब उत्तर पहले से ज्ञात हो, जैसे "क्या ग्राहक ने तात्कालिकता व्यक्त की?" या "ग्राहक कितना निराश था?" यह आपको रन के पार पैटर्न खोजने में मदद करता है; यह tool call को रोकता नहीं है। tool चलने से **पहले** किए गए निर्णयों के लिए, [Jev policies](/hi/policies/jev) का उपयोग करें।
+एक Jev मूल्यांकन एक **पूर्ण सत्र** को पढ़ता है और 0 से 1 तक का स्कोर देता है। इसका उपयोग तब करें जब उत्तर पहले से ज्ञात हो, जैसे "क्या ग्राहक ने तात्कालिकता व्यक्त की?" या "ग्राहक कितना निराश था?" यह आपको रन के पार पैटर्न खोजने में मदद करता है; यह एक टूल कॉल को रोकता नहीं है। **टूल चलने से पहले** किए गए निर्णयों के लिए, [Jev policies](/hi/policies/jev) का उपयोग करें।
 
-## डैशबोर्ड में एक बनाएं
+## डैशबोर्ड में एक बनाएँ
 
-1. **Analyze → eval authoring** खोलें और **new eval** चुनें।
-2. एक प्रश्न और उसके संभावित उत्तरों का वर्णन करें। उदाहरण के लिए: "क्या agent ने रिफंड नीति जांचने से पहले रिफंड का वादा किया? हाँ या नहीं में उत्तर दें।" **draft** चुनें और समीक्षा करें कि परिणाम एक classifier स्कोर है।
-3. हाल के सत्रों पर इसे [टेस्ट](/hi/evaluations/test) करें, फिर [तैनात](/hi/evaluations/deploy) करें। नए समाप्त सत्रों को स्कोर किया जाता है; यदि आपको इतिहास भी चाहिए तो [backfill](/hi/evaluations/deploy#score-sessions-you-already-have) करें।
+1. **analyse → checks → new evaluation** खोलें और **how should it score?** के तहत **decision model** चुनें।
+2. एक प्रश्न और इसके संभावित उत्तरों का वर्णन करें। उदाहरण के लिए: "क्या एजेंट ने रिफंड नीति की जांच करने से पहले रिफंड का वादा किया? हाँ या नहीं का उत्तर दें।" **review** पर, **question** और **yes means** और **no means** की जांच करें; एक decision model हमेशा एक स्कोर देता है।
+3. हाल के सत्रों पर इसे [आज़माएँ](/hi/evaluations/test), फिर इसे [deploy](/hi/evaluations/deploy) करें। नए पूर्ण सत्रों को स्कोर किया जाता है; यदि आपको इतिहास की भी आवश्यकता है तो [backfill](/hi/evaluations/deploy#score-sessions-you-already-have) करें।
 
-![साझा eval authoring फॉर्म, जहाँ आप एक fixed-answer प्रश्न का वर्णन करते हैं, draft की समीक्षा करते हैं, और परीक्षण के बाद तैनात करते हैं। दिया गया उदाहरण एक code evaluation का है; एक Jev प्रश्न समान authoring workflow का उपयोग करता है।](/images/dashboard/eval-authoring-draft.png)
+![साझा eval लेखन फॉर्म, जहाँ आप एक निश्चित-उत्तर प्रश्न का वर्णन करते हैं, ड्राफ्ट की समीक्षा करते हैं, और परीक्षण के बाद deploy करते हैं। दिखाया गया उदाहरण एक कोड मूल्यांकन है; एक Jev प्रश्न समान लेखन प्रवाह का उपयोग करता है।](/images/dashboard/eval-authoring-draft.png)
 
-Assistant code, Jev classification, और एक [judge](/hi/evaluations/judge) के बीच चुन सकता है। तैनात करने से पहले इसकी पसंद जांचें। Jev बिना prose reasoning के एक स्कोर देता है; जब आपको व्याख्या चाहिए तो judge चुनें। प्रश्न प्रकार और score limits के लिए [Jev evaluation reference](/hi/reference/jev-evaluations) देखें।
+जब यह ड्राफ्ट करता है, failproof **code**, एक **decision model** (Jev), और एक [**llm as judge**](/hi/evaluations/judge) के बीच चुन सकता है। deploy करने से पहले इसकी पसंद की जांच करें। Jev गद्य तर्क के बिना एक स्कोर देता है; जब आपको व्याख्या की आवश्यकता हो तो एक judge चुनें। प्रश्न प्रकार और स्कोर सीमा के लिए [Jev evaluation reference](/hi/reference/jev-evaluations) देखें।
 
 ## स्कोर पढ़ें
 
-**Observe → Evaluations** खोलें परिणाम को agent और समय के आधार पर चार्ट करने के लिए। एक terminal से, Cloud CLI समान परिणाम पढ़ सकता है:
+**analyse → checks → evals** खोलें और परिणाम को एजेंट और समय के आधार पर चार्ट करने के लिए मूल्यांकन का चयन करें। एक टर्मिनल से, Cloud CLI समान परिणाम पढ़ सकता है:
 
 ```bash
 fp evals --since 7d
 fp evals --aggregate --since 7d
 ```
 
-Cloud CLI परिणाम पढ़ता है; authoring और deployment डैशबोर्ड में होते हैं। Filters के लिए [Cloud CLI reference](/hi/reference/cloud-cli#evaluations) देखें।
+एक टर्मिनल से, `fp evaluators` Jev मूल्यांकन लिखता है और deploy करता है और `fp evals` उनके परिणाम पढ़ता है। दोनों के लिए [Cloud CLI reference](/hi/reference/cloud-cli#evaluations) देखें।

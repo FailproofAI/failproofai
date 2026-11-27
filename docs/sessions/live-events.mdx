@@ -10,7 +10,7 @@ Live events help you confirm instrumentation and watch a risky run without waiti
 
 <Tabs>
   <Tab title="Dashboard">
-    1. Go to **Observe → Events**.
+    1. Go to **trace → live events**.
     2. Start with the current time window and no filters to confirm data is arriving.
     3. Filter by environment, event type, agent, or session. Use search for payload text.
     4. Select an event to inspect its summary and details. Follow its session link for the full trace.
@@ -42,4 +42,4 @@ Event types include agent lifecycle events, model requests and responses, tool u
 
 If no events appear, run `failproofai config --status`, then [troubleshoot ingestion](/reference/troubleshooting).
 
-Agents that do not run in one of the 12 supported [harnesses](/reference/harnesses) report the same event types through the [Python SDK](/reference/custom-agents), including the human-in-the-loop events (`human_wait`, `human_input`, `human_interrupt`) that gateway and production agents depend on.
+Agents that do not run in one of the 12 supported [harnesses](/reference/harnesses) report the same event types through the [Python SDK](/reference/custom-agents) or the [TypeScript SDK](/reference/custom-agents-typescript), including the human-in-the-loop events (`human_wait`, `human_input`, `human_interrupt`) that gateway and production agents depend on.

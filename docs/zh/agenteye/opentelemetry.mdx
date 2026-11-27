@@ -1,20 +1,20 @@
 ---
 title: "OpenTelemetry"
-description: "通过 OTLP 将编码智能体和应用程序的遥测数据发送到 FailproofAI Cloud。"
+description: "通过 OTLP 将编码代理和应用程序遥测数据发送到 FailproofAI Cloud。"
 icon: "radio"
 ---
 
-OpenTelemetry 允许您使用标准 OTLP/HTTP 协议将智能体追踪、日志和指标发送到 FailproofAI Cloud。此功能为可选项，不启用它不会影响现有的 FailproofAI 集成。
+OpenTelemetry 允许你使用标准 OTLP/HTTP 协议将代理追踪、日志和指标发送到 FailproofAI Cloud。此功能为可选项，不启用也不会影响现有的 FailproofAI 集成。
 
-## 为组织开启数据接收
+## 获取密钥
 
-组织管理员进入 **Settings → OpenTelemetry**，开启数据接收功能。使用具有 `events:add` 权限的 Cloud API 密钥，该权限与智能体报告所用权限相同。
+每个组织的 OTLP 摄取功能始终开启，无需额外启用。使用具有 `events:add` 权限的 Cloud API 密钥即可，该权限与代理上报所用权限相同。
 
-如果数据接收已关闭，Cloud 将拒绝 OTLP 导出，因此 `failproofai otel enable` 不会生效，智能体仍将以原有方式发送会话。运行 `failproofai otel status` 检查组织开关状态，并联系管理员开启该功能。
+在控制台中，**首页 → 初始配置** 有一个 **通过 OpenTelemetry 连接** 卡片：点击 **创建 Collector 密钥** 可生成一个 `events:add` 密钥，系统会显示该密钥一次并附带导出器变量，同时显示连接状态。你也可以在 **设置 → API 密钥** 下，选择 **新建密钥** 时选择 **仅发送日志** 来创建密钥。
 
-## 连接编码智能体
+## 连接编码代理
 
-使用 `failproofai config` 连接您的机器，然后选择智能体：
+使用 `failproofai config` 完成本机配置后，选择要连接的代理：
 
 ```bash
 failproofai otel enable claude
@@ -22,13 +22,13 @@ failproofai otel enable codex
 failproofai otel enable copilot
 ```
 
-该设置命令支持 Claude Code、Codex 和 Copilot，并会根据情况自动选择 Cloud 或本地认证中继。Copilot 自动使用本地中继。使用中继前，请先启动已配置的 FailproofAI 守护进程。
+该设置命令支持 Claude Code、Codex 和 Copilot，并会根据情况自动选择 Cloud 或本地认证中继。Copilot 会自动使用本地中继。使用中继前，请先启动已配置的 FailproofAI 守护进程。
 
-如果 FailproofAI 已在发送某个智能体的会话记录，设置过程将询问是否将该智能体切换到 OTEL。默认选项为否。确认后将停止该智能体的记录上传，不会影响策略执行或其他智能体的报告。
+如果 FailproofAI 已在上传某个代理的会话记录，设置过程中会询问是否将该代理切换至 OTEL，默认选项为否。确认切换后，该代理将停止上传会话记录，但不会影响策略执行或其他代理的上报。
 
 ## 连接应用程序
 
-在应用程序的 OpenTelemetry 配置中使用以下环境变量：
+在应用程序的 OpenTelemetry 埋点中使用以下环境变量：
 
 ```bash
 export OTEL_EXPORTER_OTLP_ENDPOINT=https://app.befailproof.ai/otel
@@ -37,18 +37,18 @@ export OTEL_EXPORTER_OTLP_HEADERS='Authorization=Bearer%20<key>'
 export OTEL_SERVICE_NAME=my-agent
 ```
 
-该端点为 Cloud 的 OTLP 基础地址 `https://app.befailproof.ai/otel`，导出器会自动追加 `/v1/traces`、`/v1/logs` 或 `/v1/metrics`。对于 `OTEL_EXPORTER_OTLP_LOGS_ENDPOINT` 等按信号类型设置的变量，需提供完整路径，例如 `https://app.befailproof.ai/otel/v1/logs`。
+该端点是 Cloud 的 OTLP 基础路径 `https://app.befailproof.ai/otel`，导出器会自动在末尾追加 `/v1/traces`、`/v1/logs` 或 `/v1/metrics`。如使用 `OTEL_EXPORTER_OTLP_LOGS_ENDPOINT` 等按信号类型设置的变量，则需提供完整路径，例如 `https://app.befailproof.ai/otel/v1/logs`。
 
-将 `<key>` 替换为您的 API 密钥。请勿将密钥保存在 shell 历史记录、屏幕录制或已提交的配置文件中。对于已配置的机器，`failproofai otel env --service my-agent` 可打印包含现有密钥的配置块，其输出中包含凭据信息。
+将 `<key>` 替换为你的 API 密钥。请勿将密钥保存在 Shell 历史记录、屏幕录制或已提交的配置文件中。对于已完成配置的本机，可运行 `failproofai otel env --service my-agent` 打印包含现有密钥的完整配置块。该命令的输出包含凭据，请妥善保管。
 
-Cloud 支持以 protobuf 或 JSON 格式（包括 gzip 压缩请求）接收追踪、日志和指标的 OTLP/HTTP 导出，不支持 OTLP/gRPC。
+Cloud 接受 traces、logs 和 metrics 的 OTLP/HTTP 导出，支持 protobuf 或 JSON 格式，包括 gzip 压缩请求，但不支持 OTLP/gRPC。
 
-指标会被确认接收以保证导出器兼容性，但不会被存储或展示。受支持的智能体追踪和编码智能体日志将转换为会话；智能体未导出的字段将保持缺失状态。
+指标数据仅作应答（用于兼容导出器），不会被存储或展示。受支持的代理追踪和编码代理日志将转换为会话；代理未导出的字段将保持缺失状态。
 
 ## 捕获提示词文本
 
 <Warning>
-文本捕获可能包含提示词、工具参数及其他敏感内容。`failproofai otel enable` 将开启此功能。添加 `--no-content` 可关闭提示词和工具详情的捕获。
+文本捕获可能包含提示词、工具参数及其他敏感内容。`failproofai otel enable` 会默认开启此功能。添加 `--no-content` 可关闭提示词和工具详情的捕获。
 </Warning>
 
 ```bash
@@ -56,11 +56,11 @@ failproofai otel enable claude --no-content
 failproofai otel enable codex --no-content
 ```
 
-对于手动配置的智能体，请使用其自身的内容捕获控制选项：
+对于手动配置的代理，请使用其自身的内容捕获控制项：
 
 <Tabs>
   <Tab title="Claude Code">
-    在智能体环境中添加以下变量，与上方应用程序配置块一起使用：
+    在代理的环境变量中，将以下变量与上方的应用程序配置块一并添加：
 
     ```bash
     export CLAUDE_CODE_ENABLE_TELEMETRY=1
@@ -70,7 +70,7 @@ failproofai otel enable codex --no-content
     export OTEL_LOG_TOOL_DETAILS=1
     ```
 
-    将两个内容变量均设为 `0` 可避免捕获提示词和工具详情。
+    将两个内容变量均设置为 `0` 可避免捕获提示词和工具详情。
   </Tab>
   <Tab title="Codex">
     在 Codex 的用户配置中，使用其 OTEL 设置：
@@ -81,7 +81,7 @@ failproofai otel enable codex --no-content
     exporter = { otlp-http = { endpoint = "https://app.befailproof.ai/otel/v1/logs", protocol = "json", headers = { Authorization = "Bearer <key>" } } }
     ```
 
-    Codex 的对话内容保存在日志中；内部运行时追踪和指标应保持禁用状态。Codex 使用您提供的完整端点地址。将 `log_user_prompt` 设为 `false` 可排除提示词；设置命令会保留明确设置的 `false` 值。
+    Codex 的会话内容记录在日志中；内部运行时追踪和指标应保持禁用。Codex 使用你提供的完整端点路径。将 `log_user_prompt` 设置为 `false` 可不捕获提示词；设置命令会保留显式设置的 `false` 值。
   </Tab>
   <Tab title="Gemini CLI">
     通过本地中继使用 Gemini 的遥测设置：
@@ -99,10 +99,10 @@ failproofai otel enable codex --no-content
     }
     ```
 
-    Gemini CLI 不受 `failproofai otel enable` 支持，请使用自己的认证收集器手动配置。将 `logPrompts` 设为 `false` 可禁止捕获提示词。
+    `failproofai otel enable` 不支持 Gemini CLI，请使用自己的认证 Collector 手动进行配置。将 `logPrompts` 设置为 `false` 可不捕获提示词。
   </Tab>
   <Tab title="Copilot in VS Code">
-    使用以下 VS Code 用户设置：
+    在 VS Code 用户设置中添加以下配置：
 
     ```json
     {
@@ -113,23 +113,23 @@ failproofai otel enable codex --no-content
     }
     ```
 
-    运行 `failproofai otel enable copilot` 以启用认证中继。将 `captureContent` 设为 `false` 可省略内容捕获。
+    运行 `failproofai otel enable copilot` 以启用认证中继。将 `captureContent` 设置为 `false` 可不捕获内容。
   </Tab>
 </Tabs>
 
 ## 检查或撤销设置
 
-中继会在网络或服务器出现临时故障时保留遥测数据，并在恢复后自动重试。如收到永久性 `400` 拒绝响应（包括因数据过大无法存储的事件），需要修正负载内容。中继会保留被拒绝的批次以供检查，而不会反复重试发送。
+中继会在网络或服务器出现临时故障时保留遥测数据，并在恢复后自动重试。如收到永久性 `400` 拒绝（包括因事件过大无法存储的情况），需修正请求负载。中继会保留被拒绝的批次以供排查，而不会反复重发。
 
-收到 `401` 或 `403` 后，请将凭据替换为具有同一组织 `events:add` 权限的密钥。重新连接不会自动重发因凭据问题被拒绝的 OTLP 导出数据；请联系运维人员恢复这些批次，并确保其保留在原组织中。
+收到 `401` 或 `403` 后，请将凭据替换为同一组织下具有 `events:add` 权限的密钥。重新连接不会自动重发因凭据被拒的 OTLP 导出数据；如需恢复这些批次，请联系你的运维人员，并确保其保留在原所属组织中。
 
 ```bash
 failproofai otel status
 failproofai otel disable all
 ```
 
-Status 命令可区分由 FailproofAI 管理的设置与您在其他地方配置的遥测。Disable 命令将恢复之前的托管设置以及智能体之前的记录上传选项。
+`status` 命令会区分由 FailproofAI 管理的设置与你在其他地方配置的遥测。`disable` 命令会恢复之前的托管设置以及代理之前的会话记录上传选择。
 
 <Card title="OpenTelemetry CLI" href="/zh/reference/otel" icon="terminal">
-  命令选项、本地中继设置及故障排查。
+  命令选项、本地中继配置及故障排查。
 </Card>

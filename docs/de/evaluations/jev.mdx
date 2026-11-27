@@ -1,28 +1,28 @@
 ---
-title: "Jev-Evaluierungen"
+title: "Jev-Auswertungen"
 description: "Verwende Jev, um eine abgeschlossene Sitzung anhand einer Frage mit bekannten Antworten zu bewerten."
 icon: "list-checks"
 ---
 
-Eine Jev-Evaluierung liest eine **abgeschlossene Sitzung** und gibt eine Bewertung von 0 bis 1 aus. Verwende sie, wenn die Antwort im Voraus bekannt ist, z. B. „Hat der Kunde Dringlichkeit ausgedrückt?" oder „Wie frustriert war der Kunde?" Sie hilft dabei, Muster über mehrere Ausführungen hinweg zu erkennen; sie stoppt keinen Tool-Aufruf. Für Entscheidungen, die **vor** der Ausführung eines Tools getroffen werden, verwende [Jev policies](/de/policies/jev).
+Eine Jev-Auswertung liest eine **abgeschlossene Sitzung** und gibt einen Wert zwischen 0 und 1 zurück. Verwende sie, wenn die Antwort im Voraus bekannt ist – zum Beispiel: „Hat der Kunde Dringlichkeit signalisiert?" oder „Wie frustriert war der Kunde?" Sie hilft dabei, Muster über mehrere Durchläufe hinweg zu erkennen; sie unterbricht keinen Tool-Aufruf. Für Entscheidungen, die **vor** einem Tool-Aufruf getroffen werden, verwende [Jev-Richtlinien](/de/policies/jev).
 
-## Eine Evaluierung im Dashboard erstellen
+## Eine Auswertung im Dashboard erstellen
 
-1. Öffne **Analyze → eval authoring** und wähle **new eval**.
-2. Beschreibe eine Frage und ihre möglichen Antworten. Zum Beispiel: „Hat der Agent eine Rückerstattung versprochen, bevor er die Rückerstattungsrichtlinie geprüft hat? Antworte mit Ja oder Nein." Wähle **draft** und überprüfe, ob das Ergebnis ein Klassifikator-Score ist.
-3. [Teste sie](/de/evaluations/test) anhand aktueller Sitzungen und [deploye sie](/de/evaluations/deploy) anschließend. Neu abgeschlossene Sitzungen werden bewertet; führe ein [Backfill](/de/evaluations/deploy#score-sessions-you-already-have) durch, wenn du auch historische Daten benötigst.
+1. Öffne **Analyse → Checks → Neue Auswertung** und wähle unter **Wie soll bewertet werden?** die Option **Entscheidungsmodell** aus.
+2. Beschreibe eine Frage und ihre möglichen Antworten. Beispiel: „Hat der Agent eine Rückerstattung versprochen, bevor er die Rückerstattungsrichtlinie geprüft hat? Antworte mit Ja oder Nein." Prüfe in der **Vorschau** die **Frage** sowie die Bedeutung von **Ja** und **Nein**; ein Entscheidungsmodell gibt immer einen Wert zurück.
+3. [Teste die Auswertung](/de/evaluations/test) anhand aktueller Sitzungen und [stelle sie dann bereit](/de/evaluations/deploy). Neu abgeschlossene Sitzungen werden automatisch bewertet; für ältere Daten kannst du einen [Rückwärtslauf](/de/evaluations/deploy#score-sessions-you-already-have) durchführen.
 
-![Das gemeinsame Eval-Authoring-Formular, in dem du eine Frage mit festen Antworten beschreibst, den Entwurf überprüfst und nach dem Testen deployest. Das gezeigte Beispiel ist eine Code-Evaluierung; eine Jev-Frage verwendet denselben Authoring-Ablauf.](/images/dashboard/eval-authoring-draft.png)
+![Das gemeinsame Formular zur Auswertungserstellung, in dem eine Frage mit festen Antworten beschrieben, der Entwurf geprüft und nach dem Testen bereitgestellt wird. Das gezeigte Beispiel ist eine Code-Auswertung; eine Jev-Frage verwendet denselben Erstellungsablauf.](/images/dashboard/eval-authoring-draft.png)
 
-Der Assistent kann zwischen Code, Jev-Klassifikation und einem [Judge](/de/evaluations/judge) wählen. Überprüfe seine Wahl vor dem Deployen. Jev liefert einen Score ohne Prosa-Begründung; wähle einen Judge, wenn du eine Erklärung benötigst. Siehe die [Jev-Evaluierungsreferenz](/de/reference/jev-evaluations) für Fragetypen und Score-Grenzen.
+Beim Erstellen eines Entwurfs kann failproofai zwischen **Code**, einem **Entscheidungsmodell** (Jev) und einem [**LLM als Richter**](/de/evaluations/judge) wählen. Überprüfe die Wahl, bevor du die Auswertung bereitstellst. Jev liefert einen Wert ohne ausführliche Begründung; wähle einen Richter, wenn du eine Erklärung benötigst. Unter der [Jev-Auswertungsreferenz](/de/reference/jev-evaluations) findest du Fragetypen und Wertegrenzen.
 
-## Die Scores lesen
+## Ergebnisse lesen
 
-Öffne **Observe → Evaluations**, um das Ergebnis nach Agent und Zeitraum darzustellen. Über ein Terminal kann die Cloud CLI dieselben Ergebnisse abrufen:
+Öffne **Analyse → Checks → Auswertungen** und wähle eine Auswertung aus, um die Ergebnisse nach Agent und Zeitraum aufzuschlüsseln. Über ein Terminal kann die Cloud-CLI dieselben Ergebnisse abrufen:
 
 ```bash
 fp evals --since 7d
 fp evals --aggregate --since 7d
 ```
 
-Die Cloud CLI liest Ergebnisse; Authoring und Deployment erfolgen im Dashboard. Siehe die [Cloud CLI-Referenz](/de/reference/cloud-cli#evaluations) für Filter.
+Im Terminal dient `fp evaluators` zum Erstellen und Bereitstellen von Jev-Auswertungen, während `fp evals` deren Ergebnisse ausliest. Beide Befehle sind in der [Cloud-CLI-Referenz](/de/reference/cloud-cli#evaluations) dokumentiert.

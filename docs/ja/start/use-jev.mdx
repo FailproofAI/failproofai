@@ -1,24 +1,24 @@
 ---
-title: "Jev を使う"
+title: "Jev を使用する"
 description: "完了したセッションの Jev 評価、またはライブのツールコールレビュー用の Jev ポリシーを設定します。"
 icon: "sparkles"
 ---
 
-Jev はエージェント実行の2つのタイミングで役立ちます。完了したセッションを既知の回答と照合してスコアリングするか、エージェントへの指示のコンテキストに基づいてツールコールをレビューします。
+Jev はエージェント実行の 2 つの場面で役立ちます。完了したセッションを既知の回答と照合してスコアリングする場合と、エージェントに依頼した内容のコンテキストに基づいてツールコールをレビューする場合です。
 
 <Tabs>
   <Tab title="Jev evals">
-    「顧客は返金を求めましたか？はい・いいえで答えてください」のように、いくつかの既知の回答を持つ質問に対して完了したセッションをスコアリングできる場合は、Jev eval を使用します。セッション全体のパターンを発見するのに役立ちます。
+    「顧客は返金を求めましたか？はいまたはいいえで答えてください。」のように、完了したセッションをいくつかの既知の回答がある質問に対してスコアリングできる場合は、Jev eval を使用します。セッション全体のパターンを発見するのに役立ちます。
 
-    ## eval を作成する
+    ## 評価を作成する
 
-    Cloud ダッシュボードで、**Analyze → eval authoring → new eval** を開きます。固定回答の質問を1つ入力し、**draft** を選択して、分類スコアが選ばれていることを確認します。実際のセッションで[テスト](/ja/evaluations/test)したら、デプロイします。
+    Cloud ダッシュボードで **analyse → checks → new check**（または **new evaluation**）を開きます。固定回答の質問を 1 つ記述し、下書きされたルールを確認して、**how it checks** が **decision model**（これが Jev）になっていることを確認します。実際のセッションで[テスト](/ja/evaluations/test)したら、有効にしてください。
 
-    ![質問を記述し、ドラフトを確認してデプロイする共有の eval 作成フォーム。このスクリーンショットはコードのドラフトを示していますが、Jev には固定回答の質問を使用してください。](/images/dashboard/eval-authoring-draft.png)
+    ![質問を記述し、下書きを確認してデプロイする共有の評価作成フォーム。このスクリーンショットはコードの下書きを示しています。Jev では固定回答の質問を使用してください。](/images/dashboard/eval-authoring-draft.png)
 
     ## スコアを確認する
 
-    新しいセッションが完了したら、**Observe → Evaluations** を開くか、Cloud CLI を使用します。
+    新しいセッションが完了したら、**analyse → checks → evals** を開いて評価を選択するか、Cloud CLI を使用します。
 
     ```bash
     fp evals --since 7d
@@ -28,9 +28,9 @@ Jev はエージェント実行の2つのタイミングで役立ちます。完
     CLI はスコアを読み取ります。Jev eval の作成は現在ダッシュボードから行います。質問の種類と例については [Jev evaluations](/ja/evaluations/jev) を参照してください。
   </Tab>
   <Tab title="Jev policies">
-    ツールコールが安全かどうかを判断するために、文字列マッチングポリシーがリクエストのコンテキストを必要とする場合は、Jev ポリシーレビューを使用します。まず **observe** モードで開始し、インストール済みのポリシーが各コールを決定する間も Jev の回答を確認できるようにします。
+    文字列マッチングポリシーがツールコールの安全性を判断するためにリクエストのコンテキストを必要とする場合は、Jev ポリシーレビューを使用します。まず **observe** モードで開始し、インストール済みのポリシーが各コールを決定している間に Jev の回答を確認できるようにします。
 
-    Jev のチェックはパックから提供されます。Failproof AI はパックを同梱していません。インストールするまで、Jev は設定されていても何も確認しません。
+    Jev のチェックはパックから提供されます。Failproof AI はパックを同梱していません。インストールするまで、設定されていても Jev は何も確認しません。
 
     ```bash
     failproofai policies add FailproofAI/jev-policies
@@ -38,7 +38,7 @@ Jev はエージェント実行の2つのタイミングで役立ちます。完
 
     ## Cloud Jev を設定する
 
-    Cloud ダッシュボードで、**Administration → Keys** を開き、**machine** プリセットでキーを作成します。[クイックスタート](/ja/start/quickstart)に記載の通り、`failproofai config` でそのキーを使用します。既存の Jev 設定がないマシンでは、Cloud Jev が observe モードで有効になります。接続を確認するには以下を実行します。
+    Cloud ダッシュボードで **settings → api keys** を開き、**new key** の下にある **a machine running failproofai** を選択します。[クイックスタート](/ja/start/quickstart)に記載されている通り、`failproofai config` と一緒に使用します。既存の Jev 設定がないマシンでは、observe モードで Cloud Jev が有効になります。次のコマンドで接続を確認してください。
 
     ```bash
     failproofai jev status
@@ -47,9 +47,9 @@ Jev はエージェント実行の2つのタイミングで役立ちます。完
 
     ## 独自のエンドポイントを使用する
 
-    ローカルダッシュボードで、**Settings → Jev** を開きます。プロバイダーを選択し、トークンを貼り付け、**observe** を選択して Jev をオンにします。
+    ローカルダッシュボードで **Settings → Jev** を開きます。プロバイダーを選択し、トークンを貼り付け、**observe** を選択して Jev をオンにします。
 
-    ![プロバイダー、トークン入力欄、observe モードが選択されたローカルの Jev 設定パネル。](/images/dashboard/jev-settings.png)
+    ![プロバイダー、トークンフィールド、observe モードが選択されたローカルの Jev 設定パネル。](/images/dashboard/jev-settings.png)
 
     またはターミナルからエンドポイントを設定してテストします。
 
@@ -58,6 +58,6 @@ Jev はエージェント実行の2つのタイミングで役立ちます。完
     failproofai jev test
     ```
 
-    フックされたエージェントに `README.md` のファイル読み取りツールを使用させます。そのツールコールがセッションに表示されることを確認し、ローカルダッシュボードの **Policies → Activity** で内容を確認します。observe の結果が正しければ、[Jev policies](/ja/policies/jev) でいつ強制するかを説明しています。プロバイダーの詳細と設定については、[インテグレーションリファレンス](/ja/reference/jev)を参照してください。
+    フックされたエージェントに `README.md` のファイル読み取りツールを使用させてみてください。そのツールコールがセッションに表示されることを確認し、ローカルダッシュボードの **Policies → Activity** で内容を確認します。observe の結果が適切であれば、[Jev policies](/ja/policies/jev) でいつ強制適用するかを説明しています。プロバイダーの詳細と設定については [integration reference](/ja/reference/jev) を参照してください。
   </Tab>
 </Tabs>

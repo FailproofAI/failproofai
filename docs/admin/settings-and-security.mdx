@@ -10,9 +10,9 @@ Use Settings for deployment-specific operational values and model context-window
 
 <Tabs>
   <Tab title="Dashboard">
-    1. Go to **Administration → Settings**, find the setting group, and read its description and current source.
+    1. Go to **settings → general**, find the setting group (**sign-in**, **where alerts go**, **measurements**, or **other**), and read its description and current source.
     2. Change the value and save it.
-    3. For model context windows, add or update the model override and confirm the effective limit.
+    3. For model context windows (under **measurements**), add or update the model override and confirm the effective limit.
     4. Recheck sessions and metrics that depend on the changed value.
 
     ![The Settings page showing organization authentication and operational settings.](/images/dashboard/settings.png)
@@ -50,7 +50,7 @@ All dashboard-editable settings are organization-scoped. Deployment-wide behavio
 | `alerts.webhook_default_url` | empty | Default generic JSON webhook URL. |
 | `alerts.webhook_signing_secret` | empty | HMAC-SHA256 key used for the `X-AgentEye-Signature` header; reads are masked. |
 | `alerts.enabled_channels` | email, Slack, webhook | Organization-wide channel kinds that alert rules may dispatch. |
-| `default_user_permissions` | `standard` | Named permission set preselected for new invitations. |
+| `default_user_permissions` | `standard` | Named permission set preselected for new invitations. In the dashboard, change it under **settings → members** as the role new members start as. |
 
 `allowed_sign_ins` is a filter, not a grant: a person must already be an organization member. Use an empty list to allow every member; the bare value `*` is rejected. Alert URLs must use HTTPS except for loopback development addresses.
 

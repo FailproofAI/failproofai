@@ -33,10 +33,10 @@ The package is installed as `failproofai-sdk` and imported in Python as `failpro
 
 <Tabs>
   <Tab title="Dashboard">
-    1. Go to **Admin → Keys** and create a key with `events:add`.
+    1. Go to **settings → api keys** and create a key with `events:add`.
     2. [Connect the Failproof daemon to Cloud](/start/setup#connect-a-machine-to-cloud) on the agent machine.
-    3. Run one instrumented session, then find its exact ID under **Observe → Events**.
-    4. Go to **Observe → Sessions**, select the same environment, and open the reconstructed trace.
+    3. Run one instrumented session, then find its exact ID under **trace → live events**.
+    4. Go to **trace → sessions**, select the same environment, and open the reconstructed trace.
 
     ![A custom Python agent session reconstructed as an execution graph and ordered event trace.](/images/dashboard/session-detail.png)
   </Tab>
@@ -80,8 +80,8 @@ when none is registered. You can also pass `failproofai_sdk.OtelSpanExporter()`
 directly to your own span processor. Other exporters remain unchanged.
 
 The connected FailproofAI daemon delivers exports; the SDK needs no network
-setup, key, or local listener. An admin must enable
-[OpenTelemetry ingest](/agenteye/opentelemetry). A bare `instrument()` never
+setup, key, or local listener. [OpenTelemetry ingest](/agenteye/opentelemetry)
+is always on in Cloud. A bare `instrument()` never
 enables OTEL. `uninstrument("otel")` disables only its own processor.
 Your instrumentation controls content capture. Flush the provider before exit.
 The SDK still declares zero hard runtime dependencies and imports OpenTelemetry
@@ -230,7 +230,7 @@ These five names are reserved and rejected outright: `timestamp`, `session_id`, 
 
 <Tabs>
   <Tab title="Dashboard">
-    In **Observe → Events**, verify `agent_start` exists first and `agent_end` exists last. Then open **Observe → Sessions** and confirm model, tool, human, hook, and error events appear in the intended order. Use the session ID as the primary troubleshooting key.
+    In **trace → live events**, verify `agent_start` exists first and `agent_end` exists last. Then open **trace → sessions** and confirm model, tool, human, hook, and error events appear in the intended order. Use the session ID as the primary troubleshooting key.
   </Tab>
   <Tab title="CLI">
     ```bash

@@ -2,7 +2,7 @@
   "$schema": "https://mintlify.com/docs.json",
   "theme": "palm",
   "name": "Failproof AI",
-  "description": "Trace agent behavior, find failures with audits, and prevent repeat failures with deployed policies.",
+  "description": "The reliability layer for autonomous agents: trace every run, find where agents fail, and stop it with policies enforced in realtime.",
   "colors": {
     "primary": "#c92251",
     "light": "#e4587d",
@@ -99,7 +99,7 @@
             ]
           },
           {
-            "tab": "Trace Agents",
+            "tab": "Trace",
             "icon": "route",
             "groups": [
               {
@@ -133,7 +133,7 @@
             ]
           },
           {
-            "tab": "Find failures",
+            "tab": "Analyse",
             "icon": "scan-search",
             "groups": [
               {
@@ -166,7 +166,7 @@
             ]
           },
           {
-            "tab": "Prevent failures",
+            "tab": "Fix",
             "icon": "shield-check",
             "groups": [
               {
@@ -197,7 +197,7 @@
             ]
           },
           {
-            "tab": "Admin",
+            "tab": "Settings",
             "icon": "settings-2",
             "groups": [
               {
@@ -304,7 +304,7 @@
             ]
           },
           {
-            "tab": "Trace Agents",
+            "tab": "Trace",
             "icon": "route",
             "groups": [
               {
@@ -338,7 +338,7 @@
             ]
           },
           {
-            "tab": "Find failures",
+            "tab": "Analyse",
             "icon": "scan-search",
             "groups": [
               {
@@ -371,7 +371,7 @@
             ]
           },
           {
-            "tab": "Prevent failures",
+            "tab": "Fix",
             "icon": "shield-check",
             "groups": [
               {
@@ -402,7 +402,7 @@
             ]
           },
           {
-            "tab": "Admin",
+            "tab": "Settings",
             "icon": "settings-2",
             "groups": [
               {
@@ -502,7 +502,7 @@
             ]
           },
           {
-            "tab": "Trace Agents",
+            "tab": "Trace",
             "icon": "route",
             "groups": [
               {
@@ -536,7 +536,7 @@
             ]
           },
           {
-            "tab": "Find failures",
+            "tab": "Analyse",
             "icon": "scan-search",
             "groups": [
               {
@@ -569,7 +569,7 @@
             ]
           },
           {
-            "tab": "Prevent failures",
+            "tab": "Fix",
             "icon": "shield-check",
             "groups": [
               {
@@ -600,7 +600,7 @@
             ]
           },
           {
-            "tab": "Admin",
+            "tab": "Settings",
             "icon": "settings-2",
             "groups": [
               {
@@ -701,7 +701,7 @@
             ]
           },
           {
-            "tab": "Trace Agents",
+            "tab": "Trace",
             "icon": "route",
             "groups": [
               {
@@ -735,7 +735,7 @@
             ]
           },
           {
-            "tab": "Find failures",
+            "tab": "Analyse",
             "icon": "scan-search",
             "groups": [
               {
@@ -768,7 +768,7 @@
             ]
           },
           {
-            "tab": "Prevent failures",
+            "tab": "Fix",
             "icon": "shield-check",
             "groups": [
               {
@@ -799,7 +799,7 @@
             ]
           },
           {
-            "tab": "Admin",
+            "tab": "Settings",
             "icon": "settings-2",
             "groups": [
               {
@@ -900,7 +900,7 @@
             ]
           },
           {
-            "tab": "Trace Agents",
+            "tab": "Trace",
             "icon": "route",
             "groups": [
               {
@@ -934,7 +934,7 @@
             ]
           },
           {
-            "tab": "Find failures",
+            "tab": "Analyse",
             "icon": "scan-search",
             "groups": [
               {
@@ -967,7 +967,7 @@
             ]
           },
           {
-            "tab": "Prevent failures",
+            "tab": "Fix",
             "icon": "shield-check",
             "groups": [
               {
@@ -998,7 +998,7 @@
             ]
           },
           {
-            "tab": "Admin",
+            "tab": "Settings",
             "icon": "settings-2",
             "groups": [
               {
@@ -1099,7 +1099,7 @@
             ]
           },
           {
-            "tab": "Trace Agents",
+            "tab": "Trace",
             "icon": "route",
             "groups": [
               {
@@ -1133,7 +1133,7 @@
             ]
           },
           {
-            "tab": "Find failures",
+            "tab": "Analyse",
             "icon": "scan-search",
             "groups": [
               {
@@ -1166,7 +1166,7 @@
             ]
           },
           {
-            "tab": "Prevent failures",
+            "tab": "Fix",
             "icon": "shield-check",
             "groups": [
               {
@@ -1197,7 +1197,7 @@
             ]
           },
           {
-            "tab": "Admin",
+            "tab": "Settings",
             "icon": "settings-2",
             "groups": [
               {
@@ -1298,7 +1298,7 @@
             ]
           },
           {
-            "tab": "Trace Agents",
+            "tab": "Trace",
             "icon": "route",
             "groups": [
               {
@@ -1332,7 +1332,7 @@
             ]
           },
           {
-            "tab": "Find failures",
+            "tab": "Analyse",
             "icon": "scan-search",
             "groups": [
               {
@@ -1365,7 +1365,7 @@
             ]
           },
           {
-            "tab": "Prevent failures",
+            "tab": "Fix",
             "icon": "shield-check",
             "groups": [
               {
@@ -1396,7 +1396,7 @@
             ]
           },
           {
-            "tab": "Admin",
+            "tab": "Settings",
             "icon": "settings-2",
             "groups": [
               {
@@ -1497,7 +1497,7 @@
             ]
           },
           {
-            "tab": "Trace Agents",
+            "tab": "Trace",
             "icon": "route",
             "groups": [
               {
@@ -1531,7 +1531,7 @@
             ]
           },
           {
-            "tab": "Find failures",
+            "tab": "Analyse",
             "icon": "scan-search",
             "groups": [
               {
@@ -1564,7 +1564,7 @@
             ]
           },
           {
-            "tab": "Prevent failures",
+            "tab": "Fix",
             "icon": "shield-check",
             "groups": [
               {
@@ -1595,7 +1595,7 @@
             ]
           },
           {
-            "tab": "Admin",
+            "tab": "Settings",
             "icon": "settings-2",
             "groups": [
               {
@@ -1696,7 +1696,7 @@
             ]
           },
           {
-            "tab": "Trace Agents",
+            "tab": "Trace",
             "icon": "route",
             "groups": [
               {
@@ -1730,7 +1730,7 @@
             ]
           },
           {
-            "tab": "Find failures",
+            "tab": "Analyse",
             "icon": "scan-search",
             "groups": [
               {
@@ -1763,7 +1763,7 @@
             ]
           },
           {
-            "tab": "Prevent failures",
+            "tab": "Fix",
             "icon": "shield-check",
             "groups": [
               {
@@ -1794,7 +1794,7 @@
             ]
           },
           {
-            "tab": "Admin",
+            "tab": "Settings",
             "icon": "settings-2",
             "groups": [
               {
@@ -1895,7 +1895,7 @@
             ]
           },
           {
-            "tab": "Trace Agents",
+            "tab": "Trace",
             "icon": "route",
             "groups": [
               {
@@ -1929,7 +1929,7 @@
             ]
           },
           {
-            "tab": "Find failures",
+            "tab": "Analyse",
             "icon": "scan-search",
             "groups": [
               {
@@ -1962,7 +1962,7 @@
             ]
           },
           {
-            "tab": "Prevent failures",
+            "tab": "Fix",
             "icon": "shield-check",
             "groups": [
               {
@@ -1993,7 +1993,7 @@
             ]
           },
           {
-            "tab": "Admin",
+            "tab": "Settings",
             "icon": "settings-2",
             "groups": [
               {
@@ -2094,7 +2094,7 @@
             ]
           },
           {
-            "tab": "Trace Agents",
+            "tab": "Trace",
             "icon": "route",
             "groups": [
               {
@@ -2128,7 +2128,7 @@
             ]
           },
           {
-            "tab": "Find failures",
+            "tab": "Analyse",
             "icon": "scan-search",
             "groups": [
               {
@@ -2161,7 +2161,7 @@
             ]
           },
           {
-            "tab": "Prevent failures",
+            "tab": "Fix",
             "icon": "shield-check",
             "groups": [
               {
@@ -2192,7 +2192,7 @@
             ]
           },
           {
-            "tab": "Admin",
+            "tab": "Settings",
             "icon": "settings-2",
             "groups": [
               {
@@ -2293,7 +2293,7 @@
             ]
           },
           {
-            "tab": "Trace Agents",
+            "tab": "Trace",
             "icon": "route",
             "groups": [
               {
@@ -2327,7 +2327,7 @@
             ]
           },
           {
-            "tab": "Find failures",
+            "tab": "Analyse",
             "icon": "scan-search",
             "groups": [
               {
@@ -2360,7 +2360,7 @@
             ]
           },
           {
-            "tab": "Prevent failures",
+            "tab": "Fix",
             "icon": "shield-check",
             "groups": [
               {
@@ -2391,7 +2391,7 @@
             ]
           },
           {
-            "tab": "Admin",
+            "tab": "Settings",
             "icon": "settings-2",
             "groups": [
               {
@@ -2492,7 +2492,7 @@
             ]
           },
           {
-            "tab": "Trace Agents",
+            "tab": "Trace",
             "icon": "route",
             "groups": [
               {
@@ -2526,7 +2526,7 @@
             ]
           },
           {
-            "tab": "Find failures",
+            "tab": "Analyse",
             "icon": "scan-search",
             "groups": [
               {
@@ -2559,7 +2559,7 @@
             ]
           },
           {
-            "tab": "Prevent failures",
+            "tab": "Fix",
             "icon": "shield-check",
             "groups": [
               {
@@ -2590,7 +2590,7 @@
             ]
           },
           {
-            "tab": "Admin",
+            "tab": "Settings",
             "icon": "settings-2",
             "groups": [
               {
@@ -2691,7 +2691,7 @@
             ]
           },
           {
-            "tab": "Trace Agents",
+            "tab": "Trace",
             "icon": "route",
             "groups": [
               {
@@ -2725,7 +2725,7 @@
             ]
           },
           {
-            "tab": "Find failures",
+            "tab": "Analyse",
             "icon": "scan-search",
             "groups": [
               {
@@ -2758,7 +2758,7 @@
             ]
           },
           {
-            "tab": "Prevent failures",
+            "tab": "Fix",
             "icon": "shield-check",
             "groups": [
               {
@@ -2789,7 +2789,7 @@
             ]
           },
           {
-            "tab": "Admin",
+            "tab": "Settings",
             "icon": "settings-2",
             "groups": [
               {
@@ -2890,7 +2890,7 @@
             ]
           },
           {
-            "tab": "Trace Agents",
+            "tab": "Trace",
             "icon": "route",
             "groups": [
               {
@@ -2924,7 +2924,7 @@
             ]
           },
           {
-            "tab": "Find failures",
+            "tab": "Analyse",
             "icon": "scan-search",
             "groups": [
               {
@@ -2957,7 +2957,7 @@
             ]
           },
           {
-            "tab": "Prevent failures",
+            "tab": "Fix",
             "icon": "shield-check",
             "groups": [
               {
@@ -2988,7 +2988,7 @@
             ]
           },
           {
-            "tab": "Admin",
+            "tab": "Settings",
             "icon": "settings-2",
             "groups": [
               {

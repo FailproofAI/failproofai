@@ -1,36 +1,36 @@
 ---
 title: "Sử dụng Jev"
-description: "Thiết lập các đánh giá Jev cho các phiên kết thúc hoặc các chính sách Jev để xem xét lệnh gọi công cụ trực tiếp."
+description: "Thiết lập các đánh giá Jev cho các phiên hoàn thành hoặc các chính sách Jev để xem xét lệnh gọi công cụ trực tiếp."
 icon: "sparkles"
 ---
 
-Jev hỗ trợ ở hai điểm trong quá trình chạy của một agent: ghi điểm một phiên kết thúc dựa trên các câu trả lời đã biết, hoặc xem xét một lệnh gọi công cụ trong bối cảnh của những gì bạn yêu cầu agent thực hiện.
+Jev hỗ trợ tại hai điểm trong quá trình chạy agent: đánh giá một phiên hoàn thành so với các câu trả lời đã biết, hoặc xem xét một lệnh gọi công cụ trong bối cảnh những gì bạn yêu cầu agent thực hiện.
 
 <Tabs>
   <Tab title="Jev evals">
-    Sử dụng một đánh giá Jev khi một phiên kết thúc có thể được ghi điểm dựa trên một câu hỏi có một vài câu trả lời đã biết, chẳng hạn như "Khách hàng có yêu cầu hoàn tiền không? Trả lời có hoặc không." Nó giúp bạn tìm ra các mô hình trên các phiên.
+    Sử dụng Jev eval khi một phiên hoàn thành có thể được đánh giá so với một câu hỏi có một vài câu trả lời đã biết, chẳng hạn như "Khách hàng có yêu cầu hoàn tiền không? Trả lời có hoặc không." Nó giúp bạn tìm ra các mô hình trong các phiên.
 
-    ## Tạo một đánh giá
+    ## Tạo một eval
 
-    Trong bảng điều khiển Cloud, mở **Analyze → eval authoring → new eval**. Nhập một câu hỏi có câu trả lời cố định, chọn **draft**, và kiểm tra rằng nó đã chọn điểm phân loại. [Kiểm tra nó](/vi/evaluations/test) trên các phiên thực tế, sau đó triển khai nó.
+    Trong bảng điều khiển Cloud, mở **analyse → checks → new check** (hoặc **new evaluation**). Mô tả một câu hỏi với câu trả lời cố định, xem xét quy tắc nó dự thảo, và kiểm tra rằng **how it checks** là **decision model** — đó là Jev. [Kiểm tra](/vi/evaluations/test) trên các phiên thực tế, sau đó bật nó.
 
-    ![Biểu mẫu tác giả đánh giá được chia sẻ nơi bạn mô tả một câu hỏi, xem lại bản nháp và triển khai nó. Ảnh chụp này cho thấy bản nháp mã; sử dụng một câu hỏi có câu trả lời cố định cho Jev.](/images/dashboard/eval-authoring-draft.png)
+    ![Biểu mẫu tạo eval chia sẻ nơi bạn mô tả một câu hỏi, xem xét bản dự thảo và triển khai nó. Ảnh chụp này hiển thị một bản dự thảo mã; sử dụng một câu hỏi với câu trả lời cố định cho Jev.](/images/dashboard/eval-authoring-draft.png)
 
-    ## Đọc các điểm
+    ## Đọc các điểm số
 
-    Sau khi một phiên mới hoàn tất, mở **Observe → Evaluations** hoặc sử dụng Cloud CLI:
+    Sau khi một phiên mới hoàn thành, mở **analyse → checks → evals** và chọn đánh giá, hoặc sử dụng Cloud CLI:
 
     ```bash
     fp evals --since 7d
     fp evals --aggregate --since 7d
     ```
 
-    CLI đọc các điểm; tạo một đánh giá Jev hiện tại sử dụng bảng điều khiển. Xem [Jev evaluations](/vi/evaluations/jev) để biết các loại câu hỏi và ví dụ.
+    CLI đọc các điểm số; tạo Jev eval hiện tại sử dụng bảng điều khiển. Xem [Jev evaluations](/vi/evaluations/jev) để biết các loại câu hỏi và ví dụ.
   </Tab>
   <Tab title="Jev policies">
-    Sử dụng xem xét chính sách Jev khi một chính sách khớp chuỗi cần bối cảnh của yêu cầu của bạn để quyết định xem liệu một lệnh gọi công cụ có an toàn hay không. Bắt đầu ở chế độ **observe** để bạn có thể kiểm tra các câu trả lời của Jev trong khi các chính sách đã cài đặt của bạn vẫn quyết định mỗi lệnh gọi.
+    Sử dụng xem xét chính sách Jev khi một chính sách khớp chuỗi cần bối cảnh của yêu cầu của bạn để quyết định xem lệnh gọi công cụ có an toàn không. Bắt đầu ở chế độ **observe** để bạn có thể kiểm tra các câu trả lời của Jev trong khi các chính sách đã cài đặt của bạn vẫn quyết định từng lệnh gọi.
 
-    Các kiểm tra của Jev đến từ một gói; Failproof AI không cung cấp bất kỳ gói nào. Cho đến khi bạn cài đặt chúng, Jev không hỏi gì, ngay cả khi nó được cấu hình:
+    Các kiểm tra của Jev đến từ một gói; Failproof AI không gửi gói nào. Cho đến khi bạn cài đặt chúng, Jev không hỏi gì, ngay cả khi nó được cấu hình:
 
     ```bash
     failproofai policies add FailproofAI/jev-policies
@@ -38,7 +38,7 @@ Jev hỗ trợ ở hai điểm trong quá trình chạy của một agent: ghi �
 
     ## Thiết lập Cloud Jev
 
-    Trong bảng điều khiển Cloud, mở **Administration → Keys** và tạo một khóa với cài đặt sẵn **machine**. Sử dụng nó với `failproofai config` như được hiển thị trong [quickstart](/vi/start/quickstart). Trên một máy không có cấu hình Jev hiện tại, điều này bật Cloud Jev ở chế độ observe. Kiểm tra kết nối với:
+    Trong bảng điều khiển Cloud, mở **settings → api keys** và, dưới **new key**, chọn **a machine running failproofai**. Sử dụng nó với `failproofai config` như được hiển thị trong [quickstart](/vi/start/quickstart). Trên một máy không có cấu hình Jev hiện có, điều này cho phép Cloud Jev ở chế độ observe. Kiểm tra kết nối với:
 
     ```bash
     failproofai jev status
@@ -47,9 +47,9 @@ Jev hỗ trợ ở hai điểm trong quá trình chạy của một agent: ghi �
 
     ## Sử dụng endpoint của riêng bạn
 
-    Trong bảng điều khiển cục bộ, mở **Settings → Jev**. Chọn nhà cung cấp, dán mã thông báo của nó, chọn **observe**, và bật Jev.
+    Trong bảng điều khiển cục bộ, mở **Settings → Jev**. Chọn nhà cung cấp, dán token của nó, chọn **observe**, và bật Jev.
 
-    ![Bảng điều khiển cài đặt Jev cục bộ với một nhà cung cấp, trường mã thông báo và chế độ observe được chọn.](/images/dashboard/jev-settings.png)
+    ![Bảng điều khiển cài đặt Jev cục bộ với một nhà cung cấp, trường token và chế độ observe được chọn.](/images/dashboard/jev-settings.png)
 
     Hoặc cấu hình và kiểm tra endpoint của bạn từ một terminal:
 
@@ -58,6 +58,6 @@ Jev hỗ trợ ở hai điểm trong quá trình chạy của một agent: ghi �
     failproofai jev test
     ```
 
-    Yêu cầu một agent được kết nối để sử dụng công cụ đọc tệp của nó trên `README.md`. Xác nhận rằng lệnh gọi công cụ đó xuất hiện trong phiên, sau đó kiểm tra nó dưới **Policies → Activity** trong bảng điều khiển cục bộ. Sau khi các kết quả observe trông đúng, [Jev policies](/vi/policies/jev) giải thích khi nào cần thực thi. Để biết chi tiết nhà cung cấp và cấu hình, xem [integration reference](/vi/reference/jev).
+    Yêu cầu một agent được hook sử dụng công cụ đọc tệp của nó trên `README.md`. Xác nhận rằng lệnh gọi công cụ đó xuất hiện trong phiên, sau đó kiểm tra nó dưới **Policies → Activity** trong bảng điều khiển cục bộ. Khi kết quả observe trông ổn, [Jev policies](/vi/policies/jev) giải thích khi nào cần thực thi. Để biết chi tiết nhà cung cấp và cấu hình, xem [integration reference](/vi/reference/jev).
   </Tab>
 </Tabs>

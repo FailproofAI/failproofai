@@ -4,26 +4,26 @@ description: "Detect recurrence and route an incident to the right responders."
 icon: "bell-ring"
 ---
 
-Alerts watch a measurable condition and create an incident when it triggers. Use them when a failure should produce a timely response, whether or not a policy can block it.
+Alerts watch a measurable condition and open an insight when it triggers. Use them when a failure should produce a timely response, whether or not a policy can block it.
 
 ## Create and test an alert
 
 <Tabs>
   <Tab title="Dashboard">
-    1. Go to **Analyze → Alerts** and select **new alert**. You can also start from the bell on a representative error.
-    2. Enter the name, severity, trigger kind, condition, evaluation interval, breach count, window, and channels.
-    3. Save the alert, open its detail page, and run **test**.
-    4. Go to **Analyze → Issues** to acknowledge, assign, discuss, subscribe to, and resolve incidents created by the alert.
+    1. Go to **analyse → alerts** and select **new alert**. You can also start from the bell on a representative error.
+    2. Write the rule as one sentence after **tell me when** — the signal, where, the threshold, and for how long — or start from a quick pick. Then set the severity, who to tell, and the name. **advanced** holds the check interval, how many checks before firing, and the exact rule.
+    3. Select **create alert**, open its page, and select **test notification**.
+    4. Go to **analyse → insights** to acknowledge, assign, discuss, subscribe to, and resolve the insights the alert opens.
 
-    The first part of the form identifies the alert and the signal that should trigger it.
+    The rule reads as one sentence, and the form shows how often it would have fired over the last 24 hours.
 
     ![The first part of the new-alert form with its name, description, enabled state, and trigger type.](/images/dashboard/alert-new-trigger.png)
 
-    The second part controls how long the condition must persist, how often it is evaluated, and where notifications are sent.
+    Below it, set the severity and where notifications go; **advanced** controls how often the rule is checked and how many checks it takes to fire.
 
     ![The second part of the new-alert form with breach logic, schedule, severity, delivery channels, and create action.](/images/dashboard/alert-new-routing.png)
 
-    After saving, use the Alerts list to confirm the rule is enabled and that its trigger, window, severity, and channels match what you intended.
+    After saving, use the alerts list to confirm the rule is enabled and that its trigger, window, severity, and channels match what you intended.
 
     ![The Alerts page showing alert rules with their triggers, evaluation windows, channels, and severity.](/images/dashboard/alerts.png)
 
@@ -47,7 +47,7 @@ Alerts watch a measurable condition and create an incident when it triggers. Use
   </Tab>
 </Tabs>
 
-Alert conditions can be based on errors, evaluation scores, evaluation combinations, or custom SQL. Add recipients, test the rule, and open the resulting incident to acknowledge, assign, comment, subscribe, and resolve it.
+Alert conditions can be based on errors, evaluation scores, evaluation combinations, or custom SQL. Add recipients, test the rule, and open the resulting insight to acknowledge, assign, comment, subscribe, and resolve it.
 
 ## Good alert design
 

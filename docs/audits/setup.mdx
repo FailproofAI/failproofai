@@ -10,10 +10,10 @@ The quality of an audit starts with its scope. A broad request such as “find p
 
 <Tabs>
   <Tab title="Dashboard">
-    1. Go to **Analyze → Audits → New audit** and enter the name and description.
-    2. Set the cadence, time window, agent/environment scope, ignored errors, sensitivity, and maximum findings.
-    3. In **agents**, add or review agent context, then add the operator brief and any public HTTPS reference URLs.
-    4. Choose notification channels and select **create audit**. The first run queues immediately.
+    1. Go to **analyse → checks → new audit** — or **new check**, and answer **failures i don't know about yet**. Under **what it looks for**, describe the failure; asking failproof in the box at the top of the page drafts the whole form.
+    2. On **review**, set the name, **what it reads** (environments and agents), **how often**, the time window, **how picky** (sensitivity), and **failures per run**.
+    3. Under **what the audit knows**, add notes about your agents (the operator brief), any public HTTPS reference URLs, and errors to ignore, and check the [agent context](/audits/agent-contracts) of the agents in scope.
+    4. Under **who hears about it**, choose email or Slack and select **create audit →**. The first run queues immediately.
 
     ![The new audit form with name, description, cadence, window, environment and agent scope, ignored errors, analysis settings, brief, reference pages, and notification channels.](/images/dashboard/audit-new.png)
   </Tab>

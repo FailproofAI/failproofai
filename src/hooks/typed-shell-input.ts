@@ -15,7 +15,8 @@
  *   - Text that ends a line is the lines it runs.
  *   - Keys alone (Ctrl-C, Ctrl-D, an arrow key, Enter) add no text of their own;
  *     a line they bring back from history was judged when it was first typed.
- *   - Everything else is refused: text that does not end its line, because the
+ *   - Everything else is refused: text that does not end its command (no line
+ *     end, a trailing backslash, an open quote or heredoc), because the
  *     shell runs it once a later write adds the rest, which is then judged
  *     without it (`rm -rf ~/.fail` now, `proofai` and Enter next); and text
  *     mixed with editing keys (Tab completion, Ctrl-W, Ctrl-Y, a cursor key),
@@ -84,7 +85,52 @@ export function readTypedText(text: unknown): TypedInput {
   if (!lines.endsWith("\n")) {
     return { kind: "unreadable", why: "it does not end its line, so the shell would run it with whatever is typed next" };
   }
-  return { kind: "command", command: lines.slice(0, -1) };
+  const command = lines.slice(0, -1);
+  if (continuesPastWrite(command)) {
+    return { kind: "unreadable", why: "its command continues onto a later write, which would be judged without it" };
+  }
+  return { kind: "command", command };
+}
+
+/**
+ * Whether the shell is still reading the same command when this text ends: a
+ * trailing backslash, an unclosed quote, or a heredoc whose closing line has
+ * not been sent. Its rest then arrives in a later write, judged on its own
+ * (`cp source \` now, `hook` and Enter next).
+ */
+function continuesPastWrite(command: string): boolean {
+  let quote: "'" | '"' | null = null;
+  const heredocs: string[] = [];
+  const lines = command.split("\n");
+  for (let n = 0; n < lines.length; n++) {
+    const line = lines[n];
+    if (quote === null && heredocs.length > 0) {
+      if (line.replace(/^\t+/, "") === heredocs[0]) heredocs.shift();
+      continue;
+    }
+    for (let i = 0; i < line.length; i++) {
+      const ch = line[i];
+      if (quote === "'") {
+        if (ch === "'") quote = null;
+      } else if (ch === "\\") {
+        if (i === line.length - 1) return true;
+        i++;
+      } else if (quote === '"') {
+        if (ch === '"') quote = null;
+      } else if (ch === "'" || ch === '"') {
+        quote = ch;
+      } else if (ch === "#" && (i === 0 || /\s/.test(line[i - 1]))) {
+        break;
+      } else if (ch === "<" && line[i + 1] === "<" && line[i + 2] !== "<") {
+        const m = /^<<-?\s*(['"]?)([^\s'"<>;&|()]+)\1/.exec(line.slice(i));
+        if (m) {
+          heredocs.push(m[2]);
+          i += m[0].length - 1;
+        }
+      }
+    }
+  }
+  return quote !== null || heredocs.length > 0;
 }
 
 /**

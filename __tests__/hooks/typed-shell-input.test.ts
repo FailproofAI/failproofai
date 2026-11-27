@@ -14,6 +14,10 @@ describe("readTypedText", () => {
     ["several lines", "cd /tmp\nrm -rf x\n", "cd /tmp\nrm -rf x"],
     ["a carriage return as Enter", "ls\r", "ls"],
     ["CRLF line ends", "a\r\nb\r\n", "a\nb"],
+    ["a heredoc sent whole", "cat > notes <<'EOF'\nline\nEOF\n", "cat > notes <<'EOF'\nline\nEOF"],
+    ["an escaped backslash at the end", "echo a\\\\\n", "echo a\\\\"],
+    ["a quote closed on the same line", "echo 'it''s'\n", "echo 'it''s'"],
+    ["a comment with a quote in it", "ls # don't\n", "ls # don't"],
   ])("reads %s as the lines it runs", (_label, text, command) => {
     expect(readTypedText(text)).toEqual({ kind: "command", command });
   });
@@ -37,6 +41,9 @@ describe("readTypedText", () => {
     ["Tab completion", "rm -rf ~/.failpr\t\n"],
     ["Ctrl-W", "rm -rf ~/x\u0017~/.failproofai\n"],
     ["a cursor key mid-line", "rm -rf ~/.f\u001b[Dx\n"],
+    ["a trailing backslash, continued in the next write", "cp source \\\n"],
+    ["an unclosed quote", "cp source 'ho\n"],
+    ["a heredoc whose closing line has not been sent", "cat > notes <<EOF\nline\n"],
     ["a non-string", 42],
     ["a missing field", undefined],
   ])("refuses %s", (_label, text) => {

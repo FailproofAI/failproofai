@@ -567,7 +567,7 @@ enum Outcome {
 /// system PATH. There is deliberately no fallback to a bare `failproofai`: one
 /// that resolved to a DIFFERENT installation than the one that wrote this unit
 /// would scan with a different build's audit engine, silently.
-fn cli_command() -> Option<String> {
+pub(crate) fn cli_command() -> Option<String> {
     usable_cli_command(std::env::var("FAILPROOFAI_CLI_CMD").ok())
 }
 

@@ -8,6 +8,7 @@
 // assertions compare against the Python SDK's golden trace for the equivalent
 // `FunctionAgent` program.
 import * as failproofai from "@failproofai/sdk";
+import { selfReportTool } from "@failproofai/sdk/llamaindex";
 import { wrapEventCaller, wrapLLMEvent } from "@llamaindex/core/decorator";
 import {
   ToolCallLLM,
@@ -334,6 +335,15 @@ async function main(scenario: string): Promise<void> {
   const QUESTIONS = ["weather in Paris?", "weather in Rome?"];
 
   switch (scenario) {
+    case "self-report": {
+      const turns: Turn[] = [
+        { tool: { name: "failproofai_report", input: { category: "invalid_tool_or_credential", detail: "The weather API rejected its key." }, id: "call_r1" }, usage: { prompt_tokens: 12, completion_tokens: 5 } },
+        { text: "I could not reach the weather service.", usage: { prompt_tokens: 30, completion_tokens: 7 } },
+      ];
+      const out = await agent({ llm: new ScriptedLLM(turns), tools: [selfReportTool<typeof getWeather>(), getWeather] }).run(QUESTION);
+      report({ answer: out.data.result });
+      break;
+    }
     case "workflow": {
       const out = await agent({ llm: new ScriptedLLM(), tools: [getWeather] }).run(QUESTION);
       report({ answer: out.data.result });

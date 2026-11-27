@@ -778,10 +778,9 @@ describe("config --status — Codex trust", () => {
     const f = facts({ codex: { kind: "untrusted", path: "/h/.codex/hooks.json", untrusted: 10, total: 10 } });
     const lines = renderStatusScreen(f, PLAIN);
     expect(rowValue(lines, "codex")).toBe("○ Not enforcing: hooks not trusted");
-    expect(enforcement(lines).slice(-3)).toEqual([
+    expect(enforcement(lines).slice(-2)).toEqual([
       "",
-      "▲ Codex won't run failproofai's hooks until they're trusted.",
-      "  Re-run  failproofai config  and allow sudo, or open  codex  once and approve the hooks.",
+      "▲ Codex won't run failproofai's hooks until they're trusted.  ·  failproofai config",
     ]);
   });
 

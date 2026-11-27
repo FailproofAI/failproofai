@@ -173,6 +173,35 @@ export async function daemonAcceptsConnections(
   });
 }
 
+/** The Self Reports MCP server a daemon's pong names (see crates/PROTOCOL.md). */
+export interface DaemonSelfReportServer {
+  instanceId: string;
+  port: number;
+}
+
+/**
+ * The Self Reports MCP server the daemon behind this home's socket is serving,
+ * from its pong (a live daemon: a socket file left by a hard-killed one
+ * refuses the connection). Used where a stale answer writes something lasting
+ * (the Self Reports transport choice), never on the hook path. `null` when no
+ * daemon answers, when its MCP listener is not bound (a busy port), or when the
+ * daemon predates the field. The endpoint's
+ * MCP `initialize` carries the same `instanceId`, which is how a caller proves
+ * the HTTP port belongs to this daemon and not to another one.
+ */
+export async function daemonSelfReportServer(responseTimeoutMs = 1000): Promise<DaemonSelfReportServer | null> {
+  const attempt = await attemptDaemonRequest(
+    (protocolVersion) => ({ type: "ping", protocolVersion }),
+    { responseTimeoutMs },
+  );
+  if (!attempt.ok || attempt.message.type !== "pong") return null;
+  const sr = attempt.message.selfReport as Record<string, unknown> | undefined;
+  if (!sr || typeof sr !== "object") return null;
+  const { instanceId, port } = sr;
+  if (typeof instanceId !== "string" || instanceId === "" || typeof port !== "number" || !Number.isInteger(port)) return null;
+  return { instanceId, port };
+}
+
 function socketPath(): string {
   if (process.env.FAILPROOFAI_DAEMON_SOCKET) return process.env.FAILPROOFAI_DAEMON_SOCKET;
   return daemonSocketPath();

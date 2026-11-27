@@ -64,7 +64,6 @@ import { INTEGRATION_TYPES, type IntegrationType, type HookScope } from "./types
 import { cloudDashboardUrl, enforcingPolicyCount, installHooks, notEnforcingReason } from "./manager";
 import { installAgentSkill } from "./agent-skill";
 import {
-  CODEX_UNTRUSTED_NOTICE,
   codexHookTrust,
   removeCodexSystemHooks,
   type CodexHookTrust,
@@ -1898,7 +1897,9 @@ export function doneLines(
       lines.push(kit.ok(`Policies are enforcing on ${on}.`));
     }
   }
-  if (codexSkips) lines.push(...kit.notice("caution", CODEX_UNTRUSTED_NOTICE));
+  // No trust notice here: an untrusted Codex is left out of the count above,
+  // its reports are still recorded (by the MCP server), and `config --status`
+  // says how to trust the hooks.
   if (!state.connected) lines.push(`  Connect to cloud any time:  ${kit.cmd("failproofai config")}`);
   for (const warning of describeCustomPolicies(state.cwd).warnings) {
     lines.push(kit.caution(warning.replace(/^! /, "")));

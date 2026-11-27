@@ -6,6 +6,7 @@
  * `src/audit/cli-adapters/*.ts` keeps the per-CLI maps in one place.
  */
 import type { IntegrationType } from "./types";
+import { isSelfReportToolName, SELF_REPORT_MCP_TOOL_NAME } from "./self-report-names";
 import {
   CODEX_TOOL_MAP,
   COPILOT_TOOL_MAP,
@@ -37,6 +38,10 @@ export function canonicalizeToolName(
   cli: IntegrationType,
 ): string | undefined {
   if (!raw) return raw;
+  // The Self Reports tool, under whatever name this agent gives MCP tools, is
+  // filed under one name so the hook's short-circuit and the collector see it
+  // the same way on every agent.
+  if (isSelfReportToolName(raw)) return SELF_REPORT_MCP_TOOL_NAME;
   if (cli === "copilot") return COPILOT_TOOL_MAP[raw] ?? raw;
   if (cli === "cursor") return CURSOR_TOOL_MAP[raw] ?? raw;
   if (cli === "codex") return CODEX_TOOL_MAP[raw] ?? raw;

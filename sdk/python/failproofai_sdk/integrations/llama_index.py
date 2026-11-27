@@ -1586,3 +1586,82 @@ adapter = _LlamaIndexAdapter()
 
 install: Callable[..., None] = adapter.install
 uninstall: Callable[..., None] = adapter.uninstall
+
+
+# ---------------------------------------------------------------------------
+# Self Reports: the ready-made report tool
+# ---------------------------------------------------------------------------
+
+def _active_span_id() -> "str | None":
+    try:
+        from llama_index_instrumentation.span import active_span_id
+    except ImportError:  # older cores carry it in-tree
+        from llama_index.core.instrumentation.span import active_span_id
+    return active_span_id.get()
+
+
+def _report_identity():
+    """The identity of the LlamaIndex agent whose tool span is active, if recorded."""
+    state = adapter.state
+    if state is None:
+        return None
+    span_id = _active_span_id()
+    if span_id is None:
+        return None
+    with state._lock:
+        run = state._run_of(span_id)
+        key = (run.sub_key or run.span_id) if run is not None else None
+    if key is not None:
+        return state.tracker.identity(key, warn=False)
+    return state.tracker.identity(None, span_id, warn=False)
+
+
+def self_report_tool(
+    *,
+    session_id: "str | None" = None,
+    agent_id: "str | None" = None,
+    categories: "list[dict] | None" = None,
+    guidance: "str | None" = None,
+):
+    """The FailproofAI report tool as a LlamaIndex `FunctionTool`.
+
+        from failproofai_sdk.integrations.llama_index import self_report_tool
+        agent = FunctionAgent(tools=[*my_tools, self_report_tool()], llm=llm)
+
+    The schema and description come from `self-report.json` (or the defaults),
+    read when the tool is built. Identity: the factory's `session_id` /
+    `agent_id`, else the agent run this adapter is recording (when
+    instrumented), else the ambient scope, else "unattributed". Always returns `"Recorded."`.
+    """
+    from llama_index.core.tools import FunctionTool
+
+    from failproofai_sdk import _self_report
+
+    spec = _self_report.self_report_spec(categories=categories, guidance=guidance)
+    names = list(spec["input_schema"]["properties"]["category"]["enum"])
+    extra = _core.framework_fields(FRAMEWORK, DIST)
+
+    def failproofai_report(category, detail) -> str:
+        identity = None
+        try:
+            identity = _report_identity()
+        except Exception:  # noqa: BLE001 - identity is best-effort; the report is not
+            logger.debug("failproofai_sdk: could not resolve the report's agent run", exc_info=True)
+        return _self_report.record_framework_call(
+            category, detail, identity=identity, session_id=session_id,
+            agent_id=agent_id, fields=extra,
+        )
+
+    failproofai_report.__annotations__ = _self_report.framework_signature(names)
+
+    async def afailproofai_report(category, detail) -> str:
+        return failproofai_report(category, detail)
+
+    afailproofai_report.__annotations__ = _self_report.framework_signature(names)
+
+    return FunctionTool.from_defaults(
+        fn=failproofai_report,
+        async_fn=afailproofai_report,
+        name=spec["name"],
+        description=spec["description"],
+    )

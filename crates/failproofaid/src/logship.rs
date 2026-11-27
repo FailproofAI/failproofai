@@ -917,6 +917,19 @@ fn ship_at(machine_id: &str, scrub: &Scrub, post: &dyn Fn(&Value) -> PostOutcome
     }
 }
 
+/// Serialises every test that touches the process-wide state, in this module
+/// and in `cloud_client`'s desired-state tests.
+#[cfg(test)]
+pub(crate) static TEST_LOCK: Mutex<()> = Mutex::new(());
+
+/// What the org's switch and the open request are: (`uploads allowed`,
+/// `requested id`).
+#[cfg(test)]
+pub(crate) fn consent_for_test() -> (bool, Option<String>) {
+    let st = state();
+    (!st.cloud_off, st.requested.clone())
+}
+
 #[cfg(test)]
 pub(crate) fn reset_for_test(enabled: bool) {
     let mut st = state();
@@ -930,7 +943,7 @@ mod tests {
     use std::cell::RefCell;
 
     // The module keeps one process-wide state; serialise the tests that use it.
-    static LOCK: Mutex<()> = Mutex::new(());
+    use super::TEST_LOCK as LOCK;
 
     fn line(level: &str, target: &str, msg: &str) -> String {
         format!("2026-11-18T13:18:37.676211Z {level:>5} {target}: {msg}\n")

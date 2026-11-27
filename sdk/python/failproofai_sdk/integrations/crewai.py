@@ -1667,3 +1667,158 @@ def _count(usage, keys):
 
 
 adapter = _CrewAIAdapter()
+
+
+# ---------------------------------------------------------------------------
+# Self Reports: the ready-made report tool
+# ---------------------------------------------------------------------------
+
+def _report_identity():
+    """The identity of the CrewAI agent running this tool, if recorded.
+
+    CrewAI keeps its own event-scope stack on a contextvar. Inside a tool's
+    `_run` the top is the tool usage (a leaf, not a node), so walk down to the
+    nearest scope this adapter has as a node: the agent execution that called
+    the tool. The stack itself is private to crewai, so a missing one falls
+    back to the public `get_current_parent_id()` and the adapter's own
+    root-fallback.
+    """
+    tracker = adapter._tracker
+    if tracker is None:
+        return None
+    from crewai.events import event_context
+
+    key = None
+    stack = getattr(event_context, "_event_id_stack", None)
+    if stack is not None:
+        with adapter._lock:
+            for entry in reversed(stack.get()):
+                event_id = entry[0] if isinstance(entry, tuple) else entry
+                if event_id in adapter._nodes:
+                    key = event_id
+                    break
+    if key is None:
+        key = adapter._parent_key(event_context.get_current_parent_id())
+    if key is None:
+        return None
+    return tracker.identity(None, key, warn=False)
+
+
+def _report_call_id() -> "str | None":
+    """The id of the CrewAI tool usage running this tool, or None.
+
+    CrewAI pushes a `tool_usage_started` scope (its event's `event_id`)
+    synchronously when it emits the event, before the tool runs; that id is
+    the `tool_call_id` this adapter records the `tool_use` under. It is read
+    here because the adapter's own handler runs on CrewAI's event bus and may
+    record that `tool_use` after the report.
+    """
+    if adapter._tracker is None:
+        # Not instrumented: no `tool_use` carries this id, so it joins nothing.
+        return None
+    from crewai.events import event_context
+
+    stack = getattr(event_context, "_event_id_stack", None)
+    if stack is None:
+        return None
+    for entry in reversed(stack.get()):
+        if isinstance(entry, tuple) and len(entry) == 2 and entry[1] == "tool_usage_started":
+            return entry[0] if isinstance(entry[0], str) and entry[0] else None
+    return None
+
+
+def _never_cache(_args=None, _result=None) -> bool:
+    """The report tool's `cache_function`: every call must run and record."""
+    return False
+
+
+_context_tool_classes: dict = {}
+
+
+def _context_preserving(structured):
+    """`structured` with an `ainvoke` that runs the tool in the caller's context.
+
+    CrewAI before 1.15 runs a sync tool's function through `run_in_executor`
+    without copying the context, so the report tool's `_run` saw an empty
+    CrewAI event stack in a fresh worker thread and could take another,
+    newer crew's identity. `asyncio.to_thread` copies the context (what 1.15+
+    does itself). Same validation and usage counting: it calls the tool's own
+    sync `invoke`. Left unchanged if the instance cannot take the subclass.
+    """
+    import asyncio
+
+    base = type(structured)
+    cls = _context_tool_classes.get(base)
+    if cls is None:
+        async def ainvoke(self, input, config=None, **kwargs):  # noqa: A002 - CrewAI's name
+            return await asyncio.to_thread(self.invoke, input, config, **kwargs)
+
+        cls = type(base.__name__, (base,), {"__module__": __name__, "ainvoke": ainvoke})
+        _context_tool_classes[base] = cls
+    try:
+        object.__setattr__(structured, "__class__", cls)
+    except TypeError:
+        logger.debug("failproofai_sdk: could not wrap CrewAI's structured tool", exc_info=True)
+    return structured
+
+
+def self_report_tool(
+    *,
+    session_id: "str | None" = None,
+    agent_id: "str | None" = None,
+    categories: "list[dict] | None" = None,
+    guidance: "str | None" = None,
+):
+    """The FailproofAI report tool as a CrewAI `BaseTool` instance.
+
+        from failproofai_sdk.integrations.crewai import self_report_tool
+        Agent(role=..., goal=..., tools=[*my_tools, self_report_tool()])
+
+    The schema and description come from `self-report.json` (or the defaults),
+    read when the tool is built. Identity: the factory's `session_id` /
+    `agent_id`, else the crew run this adapter is recording (when instrumented),
+    else the ambient scope, else "unattributed". Always returns `"Recorded."`.
+    Never cached, and run in the caller's context on CrewAI's async path.
+    """
+    from crewai.tools import BaseTool
+
+    from failproofai_sdk import _self_report
+
+    spec = _self_report.self_report_spec(categories=categories, guidance=guidance)
+    names = list(spec["input_schema"]["properties"]["category"]["enum"])
+    extra = framework_fields(NAME, DIST)
+
+    def _run(self, category, detail) -> str:
+        identity = None
+        tool_call_id = None
+        try:
+            identity = _report_identity()
+            tool_call_id = _report_call_id()
+        except Exception:  # noqa: BLE001 - identity is best-effort; the report is not
+            logger.debug("failproofai_sdk: could not resolve the report's crew run", exc_info=True)
+        return _self_report.record_framework_call(
+            category, detail, identity=identity, session_id=session_id,
+            agent_id=agent_id, tool_call_id=tool_call_id, fields=extra,
+        )
+
+    _run.__annotations__ = _self_report.framework_signature(names)
+
+    def to_structured_tool(self):
+        return _context_preserving(BaseTool.to_structured_tool(self))
+
+    tool_cls = type(
+        "FailproofAIReportTool",
+        (BaseTool,),
+        {
+            "__module__": __name__,
+            "__doc__": "Report to FailproofAI that the agent is stuck.",
+            "__annotations__": {"name": str, "description": str},
+            "name": spec["name"],
+            "description": spec["description"],
+            "_run": _run,
+            "to_structured_tool": to_structured_tool,
+        },
+    )
+    # Never cached: CrewAI's cache would answer a repeated report (same
+    # arguments) with the stored "Recorded." and the report would not be made.
+    return tool_cls(cache_function=_never_cache)

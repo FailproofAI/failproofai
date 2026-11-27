@@ -850,3 +850,110 @@ fn a_malformed_start_time_or_tool_call_id_never_drops_the_decision() {
         assert_eq!(events[1]["outcome"], "deny");
     }
 }
+
+// ---- Self Reports ------------------------------------------------------------
+
+fn self_report_row(ts: i64) -> String {
+    serde_json::json!({
+        "timestamp": ts,
+        "eventType": "PreToolUse",
+        "integration": "claude",
+        "toolName": "mcp__failproofai_local__report",
+        "toolCallId": "toolu_01",
+        "decision": "allow",
+        "durationMs": 1,
+        "sessionId": "sess-a",
+        "cwd": "/home/u/repo",
+        "selfReport": {"category": "invalid_tool_or_credential", "detail": "tracker rejected its API key", "source": "mcp"}
+    })
+    .to_string()
+}
+
+#[test]
+fn a_self_report_row_also_emits_a_self_report_event() {
+    let row = parse(&self_report_row(1785740912184));
+    let events = transform::to_events(&row, 7, "prod");
+    assert_eq!(events.len(), 3, "the hook pair plus the report");
+    let hook = &events[1];
+    let report = &events[2];
+    assert_eq!(report["type"], "self_report");
+    assert_eq!(report["session_id"], "sess-a");
+    assert_eq!(report["agent_id"], hook["agent_id"]);
+    assert_eq!(report["agent_id"], "claude-repo");
+    assert_eq!(report["environment"], "prod");
+    assert_eq!(report["category"], "invalid_tool_or_credential");
+    assert_eq!(report["detail"], "tracker rejected its API key");
+    assert_eq!(report["source"], "mcp");
+    assert_eq!(report["integration"], "claude");
+    assert_eq!(report["tool_call_id"], "toolu_01");
+    assert!(
+        report["timestamp"].as_str().unwrap() > hook["timestamp"].as_str().unwrap(),
+        "stamped after its own hook leg"
+    );
+}
+
+#[test]
+fn a_self_report_with_missing_fields_is_still_recorded() {
+    let mut v: Value = serde_json::from_str(&self_report_row(1785740912184)).unwrap();
+    v["selfReport"] = serde_json::json!({"category": "made_up", "detail": "x".repeat(2500)});
+    v.as_object_mut().unwrap().remove("toolCallId");
+    let events = transform::to_events(&parse(&v.to_string()), 0, "local");
+    let report = &events[2];
+    assert_eq!(report["category"], "made_up", "unknown categories are kept");
+    assert_eq!(report["detail"].as_str().unwrap().chars().count(), 2000);
+    assert_eq!(report["source"], "mcp");
+    assert!(report.get("tool_call_id").is_none());
+
+    // A malformed selfReport never drops the row.
+    v["selfReport"] = serde_json::json!("nonsense");
+    let events = transform::to_events(&parse(&v.to_string()), 0, "local");
+    assert_eq!(events.len(), 2);
+}
+
+#[test]
+fn a_row_without_self_report_emits_only_the_pair() {
+    assert_eq!(
+        transform::to_events(&parse(&allow_row(1785740912000, "Bash")), 0, "local").len(),
+        2
+    );
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn a_self_report_row_is_never_rolled_up() {
+    let store = tmpdir("sr-store");
+    let state = tmpdir("sr-state");
+    let spool = tmpdir("sr-spool");
+    let mut lines: Vec<String> = (0..5)
+        .map(|i| allow_row(1785740912000 + i * 100, "Bash"))
+        .collect();
+    lines.push(self_report_row(1785740912700));
+    fs::write(store.join("current.jsonl"), lines.join("\n") + "\n").unwrap();
+
+    run_once(&store, &state, &spool, HooksVerbosity::Decisions).await;
+
+    let events = spooled(&spool);
+    let reports: Vec<_> = events
+        .iter()
+        .filter(|e| e["type"] == "self_report")
+        .collect();
+    assert_eq!(reports.len(), 1);
+    assert_eq!(reports[0]["category"], "invalid_tool_or_credential");
+    let agg = events
+        .iter()
+        .find(|e| e["type"] == "hook_completed" && e["failproofai_allow_count"].is_number())
+        .expect("the plain allows still roll up");
+    assert_eq!(
+        agg["failproofai_allow_count"], 5,
+        "the report row is not in it"
+    );
+    assert!(
+        events
+            .iter()
+            .any(|e| e["type"] == "hook_completed" && e["tool_call_id"] == "toolu_01"),
+        "the report row keeps its exact hook pair"
+    );
+
+    fs::remove_dir_all(&store).ok();
+    fs::remove_dir_all(&state).ok();
+    fs::remove_dir_all(&spool).ok();
+}

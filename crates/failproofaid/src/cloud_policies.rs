@@ -535,6 +535,12 @@ impl PolicyStore {
         &self.root
     }
 
+    /// The highest deployment the server has offered this process (the
+    /// rollback floor). A response below it is an out-of-order older answer.
+    pub fn server_high_water(&self) -> u64 {
+        self.server_high_water.load(Ordering::Relaxed)
+    }
+
     /// Forgets the highest deployment the server has offered this process.
     ///
     /// The deployment counter is the server's per (org, machine) — a different

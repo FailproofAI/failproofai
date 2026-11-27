@@ -108,7 +108,7 @@ which is almost never what you want.
 
 ---
 
-## the fifteen event types
+## the sixteen event types
 
 | group | events | what they mean |
 |---|---|---|
@@ -120,6 +120,7 @@ which is almost never what you want.
 | humans | `human_wait` `human_input` | you asked a person / they answered |
 | | `human_pause` `human_interrupt` | a person paused / stopped the agent |
 | failures | `error` | something went wrong |
+| self reports | `self_report` | the agent said it is stuck (see below) |
 
 **Events come in pairs.** The closing event carries a `duration_ms` measured
 from the matching opening one. An opening event with no close renders as a span
@@ -141,11 +142,16 @@ Measured from the real runs in this directory, not declared.
 | `human_wait` / `human_input` | yes | yes | yes | — | you |
 | `agent_pause` / `agent_resume` | yes | yes | yes | — | you |
 | `human_pause` / `human_interrupt` | — | — | — | — | you |
+| `self_report` | tool | tool | tool | tool / capability | you |
 
 A dash means the framework has no such concept, not that it is missing.
 Pydantic AI has no node boundary and no built-in human pause, so there is
 nothing to map. `human_pause` and `human_interrupt` describe a *person* acting
 on the agent — a stop button — which no framework signals; emit those yourself.
+
+`self_report` comes from the report tool the agent itself calls when it is
+stuck. Add it with `self_report_tool()` from the framework's integration module
+(each guide shows the line), or call `failproofai_sdk.self_report(...)` yourself.
 
 ---
 

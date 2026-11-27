@@ -263,6 +263,30 @@ tool and is captured in full.
 
 ---
 
+## Self Reports
+
+Give the agent a tool to say it is stuck: looping, a broken tool or credential,
+missing context, a request it cannot do.
+
+```python
+from llama_index.core.agent.workflow import FunctionAgent
+from failproofai_sdk.integrations.llama_index import self_report_tool
+
+agent = FunctionAgent(name="researcher", llm=llm, tools=[search, self_report_tool()])
+```
+
+A `FunctionTool`. While the adapter is installed the report lands on the agent whose tool span called it; otherwise on the enclosing `failproofai_sdk.session()`.
+
+The tool's description and its `category` enum come from
+`~/.failproofai/self-report.json` (your org's categories when Self Reports is on
+in FailproofAI Cloud, or set locally with `failproofai self-report enable`), and
+fall back to six built-in categories. It always answers `Recorded.` and changes
+nothing; the call becomes a `self_report` event on the agent's session. To keep
+it out of a transcript you show users, filter on
+`failproofai_sdk.is_self_report_tool(name)`.
+
+---
+
 ## Pitfalls
 
 ### Every token count is null

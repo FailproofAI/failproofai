@@ -14,7 +14,7 @@ import { spawnSync } from "node:child_process";
 import { readFileSync, rmSync, writeFileSync } from "node:fs";
 
 import * as failproofai from "@failproofai/sdk";
-import { langchainHandler } from "@failproofai/sdk/langchain";
+import { langchainHandler, selfReportTool } from "@failproofai/sdk/langchain";
 import type { CallbackManagerForLLMRun } from "@langchain/core/callbacks/manager";
 import { Document } from "@langchain/core/documents";
 import { Embeddings } from "@langchain/core/embeddings";
@@ -35,7 +35,7 @@ import {
   RunnableSequence,
   type RunnableConfig,
 } from "@langchain/core/runnables";
-import { tool } from "@langchain/core/tools";
+import { tool, type StructuredToolInterface } from "@langchain/core/tools";
 import { convertToOpenAITool } from "@langchain/core/utils/function_calling";
 import { VectorStore } from "@langchain/core/vectorstores";
 import { Annotation, Command, END, MemorySaver, MessagesAnnotation, START, StateGraph, interrupt } from "@langchain/langgraph";
@@ -74,6 +74,29 @@ class ScriptedModel extends BaseChatModel {
           content: "",
           tool_calls: [{ id: "call_1", name: "get_weather", args: { city: "Paris" }, type: "tool_call" }],
           usage_metadata: { input_tokens: 12, output_tokens: 5, total_tokens: 17 },
+          response_metadata: { finish_reason: "tool_calls" },
+        });
+    return { generations: [{ text: typeof message.content === "string" ? message.content : "", message }] };
+  }
+}
+
+/** Calls the Self Reports tool once, then answers. */
+class ReportModel extends ScriptedModel {
+  override async _generate(messages: BaseMessage[]): Promise<ChatResult> {
+    this.calls += 1;
+    const answered = messages.some((m) => m.getType() === "tool");
+    const message = answered
+      ? new AIMessage({ content: "I could not reach the weather service.", response_metadata: { finish_reason: "stop" } })
+      : new AIMessage({
+          content: "",
+          tool_calls: [
+            {
+              id: "call_r1",
+              name: "failproofai_report",
+              args: { category: "invalid_tool_or_credential", detail: "The weather API rejected its key." },
+              type: "tool_call",
+            },
+          ],
           response_metadata: { finish_reason: "tool_calls" },
         });
     return { generations: [{ text: typeof message.content === "string" ? message.content : "", message }] };
@@ -458,6 +481,17 @@ async function main(scenario: string): Promise<void> {
       const agent = createReactAgent({ llm: new ScriptedModel(), tools: [getWeather], name: "react_bot" });
       const out = await agent.invoke(question);
       report({ answer: out.messages.at(-1)?.content });
+      break;
+    }
+    case "self-report": {
+      const agent = createReactAgent({
+        llm: new ReportModel(),
+        tools: [selfReportTool<StructuredToolInterface>(), getWeather],
+        name: "react_bot",
+      });
+      const out = await agent.invoke(question);
+      const toolMessage = out.messages.find((m) => m.getType() === "tool");
+      report({ answer: out.messages.at(-1)?.content, toolResult: toolMessage?.content });
       break;
     }
     case "error": {

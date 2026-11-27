@@ -23,7 +23,7 @@ and `failproofaid` — the daemon the `failproofai` CLI installs — picks them 
 Nothing here opens a socket, and nothing blocks your agent loop on the network.
 
 This is the TypeScript counterpart to the Python
-[`failproofai-sdk`](https://pypi.org/project/failproofai-sdk/). Same 15 events,
+[`failproofai-sdk`](https://pypi.org/project/failproofai-sdk/). Same 16 events,
 same wire format, same spool directory: a fleet running both writes into one
 pipe, and the dashboard cannot tell which language wrote what.
 
@@ -341,6 +341,9 @@ The 15 event methods, for anything the adapters do not cover:
 `agentEnd` · `agentPause` · `agentResume` · `hookTriggered` · `hookCompleted` ·
 `error` · `humanWait` · `humanInput` · `humanPause` · `humanInterrupt`
 
+plus `selfReport(category, detail, options?)`, the `self_report` event (see
+[Self Reports](#self-reports--let-the-agent-say-it-is-stuck)).
+
 ```ts
 failproofai.event.humanWait({ inputId: "approval-1", prompt: "Ship it?" });
 // …later, from anywhere in the same session:
@@ -439,6 +442,79 @@ runnable version: a real OpenAI tool loop instrumented exactly like this. The
 integration suite runs that file on every CI run, as an ES module and as
 CommonJS, against the real `openai` client — the example is proven, not just
 documented.
+
+## Self Reports — let the agent say it is stuck
+
+Offer your agent one more tool, `failproofai_report`. When the model is blocked
+(looping, a broken credential, a request it cannot do) it calls the tool, the SDK
+records a `self_report` event in the current session and agent, and the call
+answers `Recorded.`, so the loop carries on. The reports show up on the Self
+Reports page in FailproofAI Cloud.
+
+With a framework, add the ready-made tool from its subpath:
+
+```ts
+import { selfReportTool } from "@failproofai/sdk/ai";          // Vercel AI SDK 4–7
+await generateText({ model, prompt, tools: { failproofai_report: selfReportTool(), ...tools } });
+
+import { selfReportTool } from "@failproofai/sdk/langchain";   // @langchain/core >=0.3.44
+createReactAgent({ llm, tools: [selfReportTool<StructuredToolInterface>(), ...tools] });
+
+import { selfReportTool } from "@failproofai/sdk/mastra";      // createTool + your zod
+new Agent({ ...config, tools: { failproofai_report: selfReportTool<typeof myTool>(), ...tools } });
+
+import { selfReportTool } from "@failproofai/sdk/llamaindex";  // a plain BaseTool
+agent({ llm, tools: [selfReportTool<typeof myTool>(), ...tools] });
+```
+
+With a provider SDK directly:
+
+```ts
+const tools = [failproofai.openaiTool(), ...yours];   // or openaiResponsesTool(), anthropicTool()
+// for each tool call the model makes:
+const answer = failproofai.handleToolCall(call.name, call.arguments, { toolCallId: call.id });
+if (answer !== null) toolResults.push({ id: call.id, content: answer });   // "Recorded."
+```
+
+`handleToolCall` returns `null` for any other tool, accepts the arguments as an
+object or as the JSON string a provider sent, and never throws. To record a
+report from your own code, `failproofai.selfReport(category, detail)`.
+`failproofai.selfReportSpec()` gives `{ name, description, inputSchema }` for any
+other tool format.
+
+- **On by default.** The tool works as soon as you add it: no setting has to be
+  turned on first, and adding it is the opt-in.
+- **Categories.** The tool's categories, and an optional paragraph of guidance,
+  come from `~/.failproofai/self-report.json` (`$FAILPROOFAI_HOME` moves it), which
+  the daemon writes for a Cloud-managed machine and the failproofai CLI writes
+  otherwise. A missing or disabled file means the six default
+  categories (`failproofai.DEFAULT_SELF_REPORT_CATEGORIES`).
+  `failproofai.selfReportSettings()` returns what the file says.
+- **Where a report lands.** An explicit `sessionId`, else the open `tool_use` of
+  the report call that an adapter recorded (so inside a framework's tool loop it
+  joins that agent, even with no `failproofai` scope around it), else the
+  enclosing scope, else the session `unattributed` with one warning. A report
+  never throws for want of a session.
+- **What is recorded.** `category` as the model gave it (an unknown one is kept),
+  `detail` cut to 2,000 characters, `source: "sdk"`, and `tool_call_id` when
+  there is one.
+- **Frameworks stay optional.** Each tool loads its framework from your
+  application when you call it. Pass `{ module }` to use a specific copy (a
+  bundled one, or the ES-module copy in an ESM app):
+  `selfReportTool({ module: await import("@langchain/core/tools") })`. The AI SDK
+  tool needs no zod and works on v7, which cannot be `require`d, by building the
+  `jsonSchema()` object itself. The LangChain, Mastra and LlamaIndex tools return
+  `unknown` unless you name the type, as above.
+- **LangChain needs `@langchain/core` 0.3.44 or later for this tool**: older
+  0.3 releases read a tool's schema only as zod and send the model an empty one,
+  so on them `selfReportTool()` throws a `FailproofAICompatError` that says so
+  (the tracer still works from 0.3.0). A `module` you pass in is not checked.
+- **Edge builds** offer the same spec and tools, which answer `Recorded.` and
+  record nothing. The Edge LangChain tool is a real LangChain tool when you pass
+  `{ module: await import("@langchain/core/tools") }`; without it, it is a plain
+  named-tool object that `@langchain/core` 0.3.52 and later recognise.
+
+---
 
 ## Configuration
 

@@ -18,6 +18,7 @@ from failproofai_sdk._schema import (
     HumanWaitEvent,
     ModelRequestEvent,
     ModelResponseEvent,
+    SelfReportEvent,
     ToolResultEvent,
     ToolUseEvent,
 )
@@ -62,6 +63,32 @@ _PROMOTED_STRING = frozenset(
 )
 
 _U32_MAX = 2**32 - 1
+
+#: Longest `detail` a `self_report` carries. The same limit every recorder of
+#: the event applies (hook, MCP server, both SDKs), so a report reads the same
+#: whichever path wrote it.
+SELF_REPORT_DETAIL_LIMIT = 2000
+
+
+def clip_report_text(text: str, limit: "int | None" = SELF_REPORT_DETAIL_LIMIT) -> str:
+    """`text` with no lone surrogate, cut to `limit` code points (`None`: not cut).
+
+    Code points are what the daemon (`truncate_chars`) and the CLI count, so
+    every recorder keeps the same prefix of a long detail. A surrogate pair
+    spelled as two code points is joined; a lone one becomes U+FFFD. Either
+    would otherwise reach the event file as an unpaired `\\ud8xx` escape, which
+    the Rust collector rejects, losing the report. The shared cases are in
+    test-fixtures/self-report/truncation.golden.json.
+    """
+    if any("\ud800" <= ch <= "\udfff" for ch in text):
+        text = text.encode("utf-16", "surrogatepass").decode("utf-16", "replace")
+    return text if limit is None else text[:limit]
+
+
+#: The session a `self_report` is filed under when nothing else identifies one —
+#: the same value the MCP server fallback uses.
+UNATTRIBUTED_SESSION = "unattributed"
+_warned_unattributed = False
 
 
 def _validate_promoted_numeric(name: str, value) -> None:
@@ -287,6 +314,14 @@ class EventNamespace:
     def __init__(self, writer) -> None:
         self._writer = writer
         self._pending: dict[str, datetime] = {}
+        # _tool_key(session_id, tool_call_id) -> (session_id, agent_id,
+        # tool_name, tool_call_id) for every tool_use not yet closed by its
+        # tool_result. Keyed by session like `_pending`: two sessions may reuse
+        # one call id, and a bare key let the second replace (and its result
+        # remove) the first's entry. Read only by `self_report`, so a report
+        # made from inside a tool the caller already brackets lands on that
+        # tool's session and agent. Same cap and eviction as `_pending`.
+        self._open_tools: dict[str, tuple[str, str, str, str]] = {}
 
     def _track_pending(self, key: str, ts: datetime) -> None:
         # Evicting has to tolerate another thread doing the same thing, because
@@ -320,6 +355,100 @@ class EventNamespace:
             else:
                 self._pending.pop(oldest, None)  # may already be gone
         self._pending[key] = ts
+
+    def _track_open_tool(self, key: str, entry: "tuple[str, str, str, str]") -> None:
+        # Tolerant for the reasons spelled out in `_track_pending`.
+        if len(self._open_tools) >= _PENDING_CAP:
+            try:
+                oldest = next(iter(self._open_tools))
+            except (StopIteration, RuntimeError):
+                pass
+            else:
+                self._open_tools.pop(oldest, None)
+        self._open_tools.pop(key, None)  # re-insert at the end: newest last
+        self._open_tools[key] = entry
+
+    def _report_identity(
+        self, tool_call_id: "str | None", agent_id: "str | None"
+    ) -> "tuple[str, str, str | None]":
+        """Where a `self_report` with no explicit `session_id` belongs, and its call id.
+
+        Most specific first, within the ambient session when one is bound:
+        the open `tool_use` with this `tool_call_id`; then, only when no open
+        call has that id (or none was given), the newest open `tool_use` of
+        the report tool itself, since an adapter may have recorded its own id
+        rather than the model's; then the enclosing scope; then
+        `"unattributed"` with one warning. With no ambient session, an open
+        `tool_use` is used only when every candidate is in one session: the
+        newest of several sessions would be a guess. An id open in several
+        sessions is such a guess too, and never falls back to the tool name.
+        Never raises: a report is evidence, and losing it to a missing scope is
+        the worse outcome.
+
+        The third item is the `tool_call_id` to record: the caller's, else the
+        matched `tool_use`'s own id, so a tool that cannot see the model's call
+        id (LlamaIndex, CrewAI) still joins the call the adapter recorded.
+        """
+        global _warned_unattributed
+        from failproofai_sdk._self_report import is_self_report_tool
+
+        ambient = _context.session_id()
+        try:
+            open_tools = list(self._open_tools.values())
+        except RuntimeError:  # resized under us by another thread
+            open_tools = []
+        candidates = [e for e in open_tools if ambient is None or e[0] == ambient]
+
+        def unambiguous(found: "list[tuple[str, str, str, str]]") -> "tuple[str, str, str, str] | None":
+            if not found or (ambient is None and len({e[0] for e in found}) > 1):
+                return None
+            return found[-1]
+
+        by_id = [e for e in candidates if e[3] == tool_call_id] if tool_call_id is not None else []
+        if by_id:
+            # The id is known here: its call, or no guess at all.
+            match = unambiguous(by_id)
+        else:
+            match = unambiguous([e for e in candidates if is_self_report_tool(e[2])])
+        if match is not None:
+            entry = match
+            call_id = entry[3]
+            return (
+                entry[0],
+                agent_id if agent_id is not None else entry[1],
+                tool_call_id if tool_call_id is not None else call_id,
+            )
+        if agent_id is None:
+            agent_id = _context.agent_id()
+        if ambient is not None:
+            return ambient, agent_id, tool_call_id
+        if not _warned_unattributed:
+            _warned_unattributed = True
+            logger.warning(
+                "Failproof AI recorded a self report with no session bound; it is filed "
+                "under session_id=%r. Pass session_id=... or wrap the agent in "
+                "`failproofai_sdk.session()`.",
+                UNATTRIBUTED_SESSION,
+            )
+        return UNATTRIBUTED_SESSION, agent_id, tool_call_id
+
+    def _open_report_call_id(self, session_id: str, agent_id: str) -> "str | None":
+        """The id of the one open report-tool `tool_use` of this session and agent.
+
+        None when there is none, or several: two report calls open at once
+        (parallel tool calls) would make the id a guess between them.
+        """
+        from failproofai_sdk._self_report import is_self_report_tool
+
+        try:
+            open_tools = list(self._open_tools.values())
+        except RuntimeError:  # resized under us by another thread
+            return None
+        found = [
+            e[3] for e in open_tools
+            if e[0] == session_id and e[1] == agent_id and is_self_report_tool(e[2])
+        ]
+        return found[0] if len(found) == 1 else None
 
     def _validate_fields(self, fields: dict) -> None:
         bad = _RESERVED & fields.keys()
@@ -367,6 +496,7 @@ class EventNamespace:
         session_id, agent_id = _resolve_identity(session_id, agent_id)
         ts = self._now()
         self._track_pending(_tool_key(session_id, tool_call_id), ts)
+        self._track_open_tool(_tool_key(session_id, tool_call_id), (session_id, agent_id, tool_name, tool_call_id))
         self._writer.submit(
             ToolUseEvent(
                 timestamp=self._fmt_ts(ts),
@@ -396,6 +526,7 @@ class EventNamespace:
         session_id, agent_id = _resolve_identity(session_id, agent_id)
         ts = self._now()
         start_ts = self._pending.pop(_tool_key(session_id, tool_call_id), None)
+        self._open_tools.pop(_tool_key(session_id, tool_call_id), None)
         duration_ms = _measured_duration_ms(start_ts, ts)
         self._writer.submit(
             ToolResultEvent(
@@ -767,6 +898,72 @@ class EventNamespace:
                 reason=reason,
                 user_id=user_id,
                 at_step=at_step,
+                extra_fields=fields,
+            ).to_dict()
+        )
+
+    def self_report(
+        self,
+        category: str,
+        detail: "str | None" = "",
+        *,
+        session_id: str | None = None,
+        agent_id: str | None = None,
+        tool_call_id: str | None = None,
+        **fields,
+    ) -> None:
+        """Record that the agent reported itself stuck (a `self_report` event).
+
+        `category` is recorded as given, even if it is not one of the configured
+        categories: a report is evidence, and refusing one because the model
+        picked a stale name would lose exactly the signal this exists for.
+        `detail` of `None` is recorded as `""`; anything longer than
+        `SELF_REPORT_DETAIL_LIMIT` characters is cut to it.
+
+        `source` is always `"sdk"` and cannot be overridden: it is how the
+        dashboard tells an SDK report from one the coding-agent hook recorded.
+
+        Session, most specific first: an explicit `session_id`; the open
+        `tool_use` for this call (by `tool_call_id`, then the newest open
+        report-tool call) within the enclosing session; the enclosing scope;
+        otherwise `"unattributed"` with one warning. A missing session never
+        raises here, unlike the other event methods — the TypeError/ValueError
+        checks on the arguments themselves still apply. With no `tool_call_id`
+        given, the report takes the id of the open report-tool `tool_use` it
+        was matched to (or, with an explicit `session_id`, of the one such call
+        open for that session and agent; none when several are open).
+        """
+        if "source" in fields:
+            raise ValueError("source is set by the SDK (always \"sdk\") and cannot be passed by the caller")
+        self._validate_fields(fields)
+        if not isinstance(category, str):
+            raise TypeError(
+                f"category must be a str, got {type(category).__name__}: {category!r}"
+            )
+        if detail is None:
+            detail = ""
+        if not isinstance(detail, str):
+            raise TypeError(f"detail must be a str, got {type(detail).__name__}: {detail!r}")
+        if tool_call_id is not None:
+            _validate_promoted_string("tool_call_id", tool_call_id)
+        if session_id is None:
+            session_id, agent_id, tool_call_id = self._report_identity(tool_call_id, agent_id)
+        elif tool_call_id is None:
+            # A framework tool that resolved its session from the adapter's run
+            # (LlamaIndex, CrewAI) but cannot see the model's call id. The agent
+            # is resolved first, so only that agent's open call is a candidate.
+            session_id, agent_id = _resolve_identity(session_id, agent_id)
+            tool_call_id = self._open_report_call_id(session_id, agent_id)
+        session_id, agent_id = _resolve_identity(session_id, agent_id)
+        ts = self._now()
+        self._writer.submit(
+            SelfReportEvent(
+                timestamp=self._fmt_ts(ts),
+                session_id=session_id,
+                agent_id=agent_id,
+                category=clip_report_text(category, None),
+                detail=clip_report_text(detail),
+                tool_call_id=tool_call_id,
                 extra_fields=fields,
             ).to_dict()
         )

@@ -12,8 +12,23 @@ icon: "list-tree"
 - Hook triggered and completed
 - Human wait, input, pause, and interrupt
 - Explicit errors
+- Self reports (`self_report`): an agent saying it is stuck
 
 Every event carries a timestamp, session ID, agent ID, event type, and environment. Event-specific fields contain model, tool, correlation, outcome, content, duration, or error data.
+
+### The `self_report` event
+
+Written when an agent calls the [Self Reports](/self-reports) tool. Besides the common fields it carries:
+
+| Field | Value |
+| --- | --- |
+| `category` | The category the agent chose, recorded as given even when it is not on the list |
+| `detail` | The agent's one-sentence description of what blocks it, at most 2,000 characters; `""` when it gave none |
+| `source` | `mcp` from a coding agent (its hook or failproofai's MCP server), `sdk` from the Python or TypeScript SDK |
+| `tool_call_id` | The model's id for the call, when known |
+| `integration` | The coding agent it came from, such as `claude` or `hermes` (not set by the SDKs) |
+
+A report the MCP server records itself is attributed to that agent's newest session in the same working directory within the last 6 hours, else to the session `unattributed`.
 
 ## Inspect an event contract
 
@@ -61,8 +76,25 @@ Do not use `timestamp`, `session_id`, `agent_id`, `type`, or `environment` as cu
 - `failproofai-sdk` always spools under `~/.failproofai/custom-agents`. `FAILPROOFAI_HOME` relocates that home; the `custom-agents` segment is always appended, so the spool cannot be placed outside it. Only the SDK's own `configure(base_dir=...)` writes elsewhere. `AGENTEYE_HOME` is read by the older `agenteye-collector` to choose what to watch, and no longer affects where the SDK writes.
 - Environment labels can be set through SDK configuration or `AGENTEYE_ENVIRONMENT`.
 - Daemon credentials are stored separately from non-secret settings.
+- `~/.failproofai/self-report.json` holds the effective [Self Reports](/self-reports) setting every reader uses: the daemon's MCP server, `failproofai mcp`, both SDKs, and `failproofai self-report status`. Self Reports is on by default: a missing file means on with the default categories, except on a machine connected to Failproof AI Cloud, where it means off until `failproofaid` writes the file from your organization's setting. A file that cannot be parsed means off.
 
 Use stable, low-cardinality environment names. Commas are not supported in daemon environment labels.
+
+### `self-report.json`
+
+```json
+{
+  "version": 1,
+  "enabled": true,
+  "source": "cloud",
+  "categories": [{ "name": "looping", "description": "You keep repeating the same or circular steps without making progress." }],
+  "guidance": null,
+  "mcp": { "port": 4319, "url": "http://127.0.0.1:4319/mcp" },
+  "updatedAt": "2026-11-25T10:00:00Z"
+}
+```
+
+`source` is `cloud` when `failproofaid` wrote it from your organization's setting, or `local` when failproofai wrote it on this machine: `policies --install` and `config` write it on when it is missing, and `failproofai self-report enable` or `disable` rewrite it. The file is written atomically with mode 0644, so agent processes running as another account can read it. `FAILPROOFAI_HOME` moves it with the rest of `~/.failproofai`, and `FAILPROOFAI_SELF_REPORT_PORT`, read when the daemon starts, sets the port.
 
 ## Change an environment label
 

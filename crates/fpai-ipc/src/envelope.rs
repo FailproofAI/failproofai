@@ -8,7 +8,10 @@
 
 use serde::{Deserialize, Serialize};
 
-/// Bumped whenever a change is made to either message enum below.
+/// Bumped whenever a request or reply gains a field that changes how a request
+/// is answered. A new one-way message ([`ClientMessage::SelfReportLog`]) needs
+/// no bump: an older daemon fails to parse its unknown `type` and closes the
+/// connection, which is exactly "ignored" for a message that expects no reply.
 pub const PROTOCOL_VERSION: u32 = 2;
 
 /// The oldest version the daemon still answers, and the oldest a client will
@@ -72,13 +75,67 @@ pub enum ClientMessage {
         #[serde(default, skip_serializing_if = "Option::is_none")]
         agent_settings_path: Option<String>,
     },
+    /// One Self Reports MCP event from a process outside the daemon (the
+    /// stdio server `failproofai mcp`, or a CLI `self-report sync`), for the
+    /// daemon's log. One-way: the daemon writes no reply and the sender does
+    /// not wait for one. An older daemon cannot parse it and closes the
+    /// connection, which drops it.
+    #[serde(rename_all = "camelCase")]
+    SelfReportLog {
+        protocol_version: u32,
+        event: SelfReportLogEvent,
+    },
+}
+
+/// See [`ClientMessage::SelfReportLog`]. Every field but `event` is optional
+/// and unknown fields are ignored, so either side can add one.
+#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase", default)]
+pub struct SelfReportLogEvent {
+    /// `initialize`, `tools/list`, `tools/call`, `sync` or `error`.
+    pub event: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub agent: Option<String>,
+    /// `stdio` (the stdio server) or `cli` (a sync).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub transport: Option<String>,
+    /// For a call: `recorded`, `skipped` or `failed`.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub outcome: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub reason: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub category: Option<String>,
+    /// Whether `category` is on the settings' list.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub known_category: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub session: Option<String>,
+    /// The start of the report's detail. The daemon scrubs secrets from it
+    /// and cuts it again before it logs anything.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub preview: Option<String>,
+    /// A sync's result: `added claude (http); removed pi; failed …`.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub summary: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(tag = "type", rename_all = "camelCase")]
 pub enum ServerMessage {
     #[serde(rename_all = "camelCase")]
-    Pong { protocol_version: u32 },
+    Pong {
+        protocol_version: u32,
+        /// The Self Reports MCP server this daemon is serving, present only
+        /// while its loopback listener is bound. An optional, additive field
+        /// that older clients ignore. A client about to point agents at
+        /// `http://127.0.0.1:<port>/mcp` compares this with the `instanceId`
+        /// the endpoint's `initialize` returns, which proves the port is held
+        /// by the daemon behind THIS socket and not by another daemon (another
+        /// user or another FAILPROOFAI_HOME) whose own bind won.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        self_report: Option<SelfReportServer>,
+    },
     #[serde(rename_all = "camelCase")]
     HookResult {
         protocol_version: u32,
@@ -109,6 +166,17 @@ pub enum ServerMessage {
     },
 }
 
+/// See [`ServerMessage::Pong`].
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct SelfReportServer {
+    /// Random per daemon process; the MCP `initialize` result carries the
+    /// same value as `serverInfo.instanceId`.
+    pub instance_id: String,
+    /// The loopback port the MCP listener bound.
+    pub port: u16,
+}
+
 impl ClientMessage {
     pub fn protocol_version(&self) -> u32 {
         match self {
@@ -117,6 +185,9 @@ impl ClientMessage {
                 protocol_version, ..
             } => *protocol_version,
             ClientMessage::PolicyEvaluation {
+                protocol_version, ..
+            } => *protocol_version,
+            ClientMessage::SelfReportLog {
                 protocol_version, ..
             } => *protocol_version,
         }
@@ -160,7 +231,7 @@ impl ClientMessage {
                 cwd,
                 agent_settings_path: agent_settings_path.filter(|_| keep_settings),
             },
-            ping @ ClientMessage::Ping { .. } => ping,
+            other @ (ClientMessage::Ping { .. } | ClientMessage::SelfReportLog { .. }) => other,
         }
     }
 }
@@ -170,7 +241,9 @@ impl ServerMessage {
     /// checks for its own version accepts an answer from a newer daemon.
     pub fn with_protocol_version(mut self, version: u32) -> Self {
         match &mut self {
-            ServerMessage::Pong { protocol_version }
+            ServerMessage::Pong {
+                protocol_version, ..
+            }
             | ServerMessage::HookResult {
                 protocol_version, ..
             }
@@ -186,7 +259,9 @@ impl ServerMessage {
 
     pub fn protocol_version(&self) -> u32 {
         match self {
-            ServerMessage::Pong { protocol_version } => *protocol_version,
+            ServerMessage::Pong {
+                protocol_version, ..
+            } => *protocol_version,
             ServerMessage::HookResult {
                 protocol_version, ..
             } => *protocol_version,
@@ -298,6 +373,60 @@ mod tests {
         let json = serde_json::to_string(&msg).unwrap();
         let decoded: ServerMessage = serde_json::from_str(&json).unwrap();
         assert_eq!(decoded, msg);
+    }
+
+    #[test]
+    fn a_pong_carries_the_self_report_server_only_when_there_is_one() {
+        let bare = ServerMessage::Pong {
+            protocol_version: PROTOCOL_VERSION,
+            self_report: None,
+        };
+        let json = serde_json::to_value(&bare).unwrap();
+        assert!(json.get("selfReport").is_none(), "{json}");
+        // A pong from a daemon that predates the field still parses.
+        let old: ServerMessage =
+            serde_json::from_value(serde_json::json!({"type": "pong", "protocolVersion": 2}))
+                .unwrap();
+        assert_eq!(old, bare);
+        let full = ServerMessage::Pong {
+            protocol_version: PROTOCOL_VERSION,
+            self_report: Some(SelfReportServer {
+                instance_id: "abc".into(),
+                port: 4319,
+            }),
+        };
+        let json = serde_json::to_value(&full).unwrap();
+        assert_eq!(json["selfReport"]["instanceId"], "abc");
+        assert_eq!(json["selfReport"]["port"], 4319);
+        assert_eq!(serde_json::from_value::<ServerMessage>(json).unwrap(), full);
+    }
+
+    #[test]
+    fn a_self_report_log_reads_with_only_its_event_and_ignores_unknown_fields() {
+        let msg: ClientMessage = serde_json::from_value(serde_json::json!({
+            "type": "selfReportLog",
+            "protocolVersion": PROTOCOL_VERSION,
+            "event": {"event": "tools/call", "agent": "copilot", "knownCategory": false, "later": 1}
+        }))
+        .unwrap();
+        let ClientMessage::SelfReportLog { event, .. } = msg else {
+            panic!("expected SelfReportLog");
+        };
+        assert_eq!(event.event, "tools/call");
+        assert_eq!(event.agent.as_deref(), Some("copilot"));
+        assert_eq!(event.known_category, Some(false));
+        assert_eq!(event.session, None);
+        // Absent fields stay off the wire.
+        let json = serde_json::to_value(ClientMessage::SelfReportLog {
+            protocol_version: PROTOCOL_VERSION,
+            event: SelfReportLogEvent {
+                event: "initialize".into(),
+                ..Default::default()
+            },
+        })
+        .unwrap();
+        assert_eq!(json["type"], "selfReportLog");
+        assert_eq!(json["event"], serde_json::json!({"event": "initialize"}));
     }
 
     #[test]

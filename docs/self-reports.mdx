@@ -1,0 +1,141 @@
+---
+title: "Self Reports"
+description: "Let your agents tell you when they are stuck: looping, a broken credential, missing context, or a request they cannot do."
+icon: "flag"
+---
+
+Self Reports gives every agent one extra tool, `report`. An agent that is blocked and cannot make progress on its own calls it with a category and one factual sentence. Failproof AI records the call as a `self_report` event on the agent's session, and the tool answers `Recorded.`.
+
+A report never unblocks the agent and never changes a decision. Afterwards the agent works around the problem or tells the user what is blocking it. No policy can block or rewrite a report: failproofai's hook allows the call before any policy, session pause, or Jev review runs.
+
+## On by default
+
+Self Reports is on as soon as failproofai is installed. `failproofai policies --install` and `failproofai config` register the `failproofai_local` MCP server in every agent they install hooks for, and write `~/.failproofai/self-report.json` with the default categories so every reader sees the same settings.
+
+<Tabs>
+  <Tab title="Failproof AI Cloud">
+    On a machine connected to Failproof AI Cloud, the setting comes from your organization, and it is on unless someone turned it off.
+
+    1. Go to **settings → self reports**.
+    2. Keep it on, or switch it off. Keep the default categories or write your own, and optionally add guidance for the agents.
+
+    Every connected machine picks the change up on its next policy poll. `failproofaid` writes `~/.failproofai/self-report.json` from it and adds the `failproofai_local` MCP server to every agent that has failproofai hooks, or removes it when the switch is off. Until the first poll after connecting writes that file, the machine treats Self Reports as off. The daemon updates the agents whenever what their entries depend on changes: the first time it writes the file, when the file's source changes (a machine's own file replaced by the organization's), when the switch flips, and when the port changes.
+
+    On a Cloud-managed machine, `failproofai self-report enable` and `disable` refuse and point you to the dashboard.
+  </Tab>
+  <Tab title="Local (open source)">
+    ```bash
+    failproofai self-report status
+    failproofai self-report disable
+    failproofai self-report enable
+    failproofai self-report test --agent claude
+    ```
+
+    With no settings file and no `selfReport` block in `~/.failproofai/config.json`, Self Reports is on with the default categories.
+
+    `failproofai self-report disable` turns it off. It writes `enabled: false` to the `selfReport` block of `~/.failproofai/config.json` and to `~/.failproofai/self-report.json`, and removes the MCP entries from every agent. Your categories are kept for next time. An agent that is already running keeps the tool it loaded, but from then on its calls are allowed and not recorded. An explicit `enabled: false` always wins: a later install leaves it off.
+
+    `failproofai self-report enable` turns it back on and registers the MCP server again. To replace the default categories, pass `--categories-file <file>`, a JSON list of `{name, description}`. To append instructions to the tool's description, pass `--guidance "<text>"`.
+
+    `test` sends one report end to end as the agent you name and shows where it landed.
+  </Tab>
+</Tabs>
+
+A settings file that cannot be parsed counts as off, so a broken file never starts recording. Run `failproofai self-report enable` or `disable` to write it again.
+
+## Categories
+
+An organization's own list replaces these entirely. Names are lowercase letters, digits, and underscores; a list holds 1 to 32 categories.
+
+| Category | Description shown to the agent |
+| --- | --- |
+| `looping` | You keep repeating the same or circular steps without making progress. |
+| `cannot_do_request` | The user asked for something you cannot do here: a missing capability, tool or permission, or it is only possible by cheating. |
+| `invalid_tool_or_credential` | A tool, MCP server, plugin, API key or token you need is broken, invalid, expired or rejected. |
+| `missing_context` | Information or access you need is missing and you cannot get it yourself. Not for normal clarifying questions. |
+| `repeated_tool_failure` | A command or tool failed on several distinct attempts and is blocking you. A single error is not enough. |
+| `task_failure` | You genuinely tried and could not complete the task. Not for refusals or policy blocks. |
+
+A report with a category that is not on the list is still recorded under the name the agent gave. The detail is cut to 2,000 characters (Unicode code points, so an emoji or other character outside the Basic Multilingual Plane counts once and is never split). An agent that calls the tool without loading its schema sometimes guesses the argument names, so when `detail` is missing or empty the first non-empty of `summary`, `sentence`, `message`, `description`, `reason`, `text` and `details` is recorded instead, and when `category` is, `type` or `kind`. Other unknown arguments are ignored; a call is never rejected.
+
+## Agent support
+
+failproofai registers one MCP server, named `failproofai_local`, in each agent's user-level MCP settings. Agents see its tool as `mcp__failproofai_local__report` (Claude Code, Codex, Factory, Devin, and Pi, whose tool comes from failproofai's Pi extension, see below), `failproofai_local_report` (OpenCode), `mcp_failproofai_local_report` (Hermes, Antigravity) or `failproofai_local__report` (OpenClaw, Goose). The name is not `failproofai`, which is the name the [Cloud MCP gateway](/reference/mcp) is usually added under, so the two coexist. For Claude Code and Codex, whose hooks record the report, the entry points at the daemon's local server, `http://127.0.0.1:4319/mcp` (set `FAILPROOFAI_SELF_REPORT_PORT` to move it), when `failproofaid` is serving it and the agent's hooks will run, and runs `failproofai mcp` over stdio otherwise (see [When the hooks do not run](#when-the-hooks-do-not-run)). Every other agent always gets `failproofai mcp` over stdio, because its report is recorded by the server, which needs the agent's working directory to find the session (see below). Every entry is marked as failproofai's, so removing it never touches a server you added.
+
+The transport is chosen when the entries are written, from a live check: the daemon behind this account's socket must answer, and the endpoint must answer as that same daemon (both carry the daemon's instance id). A port held by another daemon, for example another user's, or one whose own server could not bind the port, gives stdio. When the daemon starts, it re-runs `failproofai self-report sync`, so Claude Code and Codex move to HTTP. The sync writes the stdio command as the `failproofai` that npm installed beside the daemon's Node, so it finds it even under the service's own `PATH`, and when it cannot update an agent the daemon's log names the agent and the reason. If the daemon stops, `failproofai self-report status` finds agents pointing at an endpoint that does not answer, or an agent the server records left on HTTP by an earlier version, and moves them to stdio. A running agent keeps the server it loaded at startup.
+
+Both transports send the model short server instructions in the MCP handshake: when to report, the category names, and your guidance. Some agents, Claude Code among them, load MCP tools only on demand. They add a server's instructions to the system prompt, though, so the model knows the tool exists. Copilot CLI passes a server's instructions to the model only for servers on its allowlist (or with `--allow-all-mcp-server-instructions`), so on Copilot the model may see only the tool's own description.
+
+Pi has no MCP support before 0.99, so an MCP entry for it reaches no model. failproofai's Pi extension, which every Pi with failproofai hooks already loads, registers the tool itself as `mcp__failproofai_local__report` on every Pi version, with the server's instructions in Pi's system prompt. It asks `failproofai mcp --agent pi` for the tool when Pi starts (no tool while Self Reports is off) and hands each call to it, so the text, the categories and the recording are the same as every other agent's. `self-report sync` writes no Pi MCP entry and takes out one an earlier version wrote. Hermes and OpenClaw defer MCP tools behind their tool search (`tools.tool_search` / `tools.toolSearch`). Neither has a per-server setting to load one server directly, so failproofai leaves that setting alone, and the model sees `report` in the deferred tool listing.
+
+Where an agent's hooks see MCP tool calls and the server they belong to, the hook records the report. Where they do not, failproofai's MCP server records it. It attributes the report to that agent's newest session seen by the hooks in the last 6 hours: in the server's working directory if there is one, else in a directory above or below it. With neither, it takes the agent's newest session only when all of the agent's sessions in those 6 hours are in one directory, and files the report as `unattributed` otherwise, rather than guess between projects. The lookup reads every page of hook activity written in the 6 hours, however busy other agents or projects kept the hooks, so a session that is still in the window is found. The agent the report is filed under comes from that session's own hook events.
+
+These agents are registered over stdio for that reason: the MCP entry is per user, not per project, so an HTTP URL could carry only `?agent=`, and the server could not tell which project called. The daemon's HTTP server still answers an entry like that (one written by hand, or by an earlier version until the next sync), but it never guesses across projects: with no working directory, it files the report under that agent's newest session only when all of the agent's recent sessions are in one directory, and as `unattributed` otherwise. It records nothing while Self Reports is off.
+
+| Agent | Where the server is registered | Recorded by |
+| --- | --- | --- |
+| Claude Code | `~/.claude.json` | Hook, or the MCP server while hooks are off |
+| Codex | `~/.codex/config.toml` | Hook, or the MCP server while Codex has not trusted the hooks |
+| Cursor | `~/.cursor/mcp.json` | MCP server. Cursor's tool hook names the call `MCP:report`, without the server, so it cannot tell our `report` from another server's, and the call goes through the policies like any other. When the daemon cannot be reached, it is denied with every other call |
+| Copilot CLI | `~/.copilot/mcp-config.json` | MCP server |
+| OpenCode | `~/.config/opencode/opencode.json` | MCP server |
+| Pi | failproofai's Pi extension | MCP server |
+| Hermes | Each profile's `config.yaml` | MCP server |
+| OpenClaw | Each profile's `openclaw.json` | MCP server |
+| Factory | `~/.factory/mcp.json` | MCP server |
+| Devin | `~/.config/devin/mcp_config.json` | MCP server |
+| Antigravity | `~/.gemini/config/mcp_config.json` | MCP server |
+| Goose | `~/.config/goose/config.yaml` | MCP server |
+
+### When the hooks do not run
+
+Claude Code and Codex can load the MCP server while skipping failproofai's hooks, and then no hook records a report:
+
+- Codex 0.129 and later runs a hook from `~/.codex/hooks.json` only once a person trusted it, at its current hash. Hooks in Codex's system config (`/etc/codex/config.toml`, where `failproofai config` puts them when it has sudo) run without trust.
+- Claude Code runs no hooks with `disableAllHooks: true`, and only managed ones with a managed `allowManagedHooksOnly: true`.
+
+So the stdio server records a Claude Code or Codex report itself unless that agent's hook already recorded it: the agent runs its hook before it sends the MCP call, so the server looks for the hook's record of the same report from the last two minutes. A report is recorded once either way, and a person who trusts the hooks while the agent runs changes nothing. A report the server records goes on the session the agent's own files name (Codex's rollout, Claude Code's transcript for that directory). `self-report sync` registers such an agent over stdio, never on the daemon's endpoint, which records nothing for it. `self-report status --verbose` says who records each one's reports and, for an untrusted Codex, how to trust the hooks: re-run `failproofai config` and allow sudo, or open `codex` once and approve them.
+
+### Other agents' servers
+
+Devin also lists the MCP servers of other agents' configs: `~/.claude.json` (user and per-project servers), a project's `.mcp.json`, and `.cursor/mcp.json` in the directory it runs in. It keeps one server per name, and its own `~/.config/devin/mcp_config.json` wins over the imported ones, except that a `.cursor/mcp.json` in the working directory (so `~/.cursor/mcp.json` when Devin runs in your home directory) wins over Devin's own. Servers under other names are listed beside ours: a `failproofai` or `failproofai-local` that `devin mcp list` shows comes from one of those files (for example a Claude Code project's `mcpServers`), not from failproofai, which only ever writes `failproofai_local`.
+
+### Cursor approval
+
+If `cursor-agent mcp list` shows `failproofai_local` as "not loaded (needs approval)", run `cursor-agent mcp enable failproofai_local`. cursor-agent asks for approval of servers in a project's `.cursor/mcp.json`, so this happens, for example, when it runs with your home directory as the project. The approval is per project and per entry, so failproofai does not write it for you. `self-report sync` and `self-report status --verbose` say so for Cursor.
+
+On Antigravity, an MCP call can come through its `call_mcp_tool` wrapper. The hook lets that call through ahead of the policies only when the wrapper names server `failproofai_local` and tool `report`. A wrapped call to any other server goes through the policies as usual.
+
+`failproofai self-report status` prints one header line (on or off, and where the setting comes from), one line with the agents whose server is registered and working, and a line with the fix for each agent that has a problem: not registered, an endpoint that does not answer, a command that cannot run, a config it cannot read. `--verbose` adds the settings file, the categories, the daemon's endpoint (`not running (agents use stdio)` when no daemon is set up here) and, per agent, the transport, the URL or command, and who records its reports. `--json` prints all of it as JSON.
+
+`policies --install`, `config`, `policies --uninstall`, `enable` and `disable` each print one Self Reports line, such as `Self Reports: on for 12 agents`, which also names any agent they could not update. `self-report sync` lists every change.
+
+If an MCP server named `failproofai_local` that failproofai did not write is already there, it is left alone and reported as a conflict. A server named `failproofai`, such as the [Cloud MCP gateway](/reference/mcp), is never touched or reported: it sits next to `failproofai_local`, and its tools go through your policies like any other server's.
+
+## The daemon's log
+
+The daemon's log (`~/.failproofai/logs/daemon.log`, which machine logs upload) has a line for every Self Reports MCP event: each `initialize` and `tools/list`, each `tools/call` with the agent, the category, the session it was filed under, and whether it was recorded or skipped and why, and each sync's result. A write failure, a category the settings do not list, and an unreadable settings file are warnings. A line carries at most the first 40 characters of the report's detail, after secrets are scrubbed from it. The stdio server, which runs as a child of each agent, sends its events to the daemon over its socket and never waits for it: with no daemon, or a version that predates this, they are dropped.
+
+## Containers
+
+In a container, run `failproofaid` in the foreground as the container's main process, with the agent started beside it. Reports, like every other hook event, reach Failproof AI Cloud only through the daemon: without it, the agent still gets the tool over stdio, but reports stay on disk in the container.
+
+A daemon you start by hand has no service unit, so it has none of the commands the unit would give it:
+
+- **The startup sync** runs the CLI named by `FAILPROOFAI_CLI_CMD`. Without it, the daemon looks for `failproofai` on `PATH`, then in npm's global bin (`$NPM_CONFIG_PREFIX/bin`, `~/.npm-global/bin`, `/usr/local/bin`) and `~/.bun/bin`. After an `npm install -g failproofai`, agents therefore move to HTTP when the daemon starts. If the CLI is somewhere else, set `FAILPROOFAI_CLI_CMD` to the command that runs it, or run `failproofai self-report sync` once the daemon is up.
+- **The policy worker** evaluates every hook the daemon receives, from every agent, Claude Code included. Without `FAILPROOFAI_WORKER_CMD`, the daemon looks for `dist/worker.mjs` relative to its working directory. If it is not there, every hook routed through the daemon fails closed: Claude Code's tool calls, for example, are denied. `policies --install --cli hermes` (or `openclaw`) refuses outright. Set it to the worker in the installed package:
+
+  ```bash
+  export FAILPROOFAI_WORKER_CMD="node $(npm root -g)/failproofai/dist/worker.mjs"
+  failproofaid &
+  ```
+
+## Your own agents
+
+The Python and TypeScript SDKs offer the same tool, named `failproofai_report`, as ready-made tools for LangChain, LangGraph, CrewAI, LlamaIndex, Pydantic AI, the Vercel AI SDK and Mastra, and as raw OpenAI and Anthropic tool definitions. See [Python custom agents](/start/integrations/custom-agents#self-reports) and [TypeScript custom agents](/reference/custom-agents-typescript#self-reports). SDK reports carry `source: "sdk"`; reports from coding agents carry `source: "mcp"`.
+
+## Privacy
+
+The tool's description tells the agent there is no need to mention the report to the user. Terminal agents still show the tool call on screen; in your own UI, hide it with `is_self_report_tool(name)` (Python) or `isSelfReportTool(name)` (TypeScript).
+
+A report holds the category, the agent's one-sentence detail, and the session, agent, and environment it came from. It is uploaded with the session's other events.

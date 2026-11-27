@@ -230,6 +230,24 @@ from failproofai_sdk.integrations.pydantic_ai import FailproofAI
 agent = Agent("openai:gpt-5", capabilities=[FailproofAI()])
 ```
 
+## The report tool (Self Reports)
+
+Each adapter module also ships `self_report_tool()`, the FailproofAI report
+tool in that framework's own tool type. Add it to the agent's tools; it does not
+need `instrument()`, but with the adapter installed the report lands on the
+agent that called it.
+
+| Framework | Import | Type |
+|---|---|---|
+| LangChain / LangGraph | `from failproofai_sdk.integrations.langchain import self_report_tool` | `StructuredTool` |
+| CrewAI | `from failproofai_sdk.integrations.crewai import self_report_tool` | `BaseTool` |
+| LlamaIndex | `from failproofai_sdk.integrations.llama_index import self_report_tool` | `FunctionTool` |
+| Pydantic AI | `from failproofai_sdk.integrations.pydantic_ai import self_report_tool` | `Tool` |
+
+Pydantic AI can add it for you, opt in only: `FailproofAI(self_report=True)` or
+`instrument("pydantic_ai", self_report=True)`. Every factory takes
+`session_id=`, `agent_id=`, `categories=` and `guidance=`.
+
 ## Mixing adapters with hand-written events
 
 They compose, and this is the supported way to add detail an adapter cannot know

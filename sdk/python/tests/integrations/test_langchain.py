@@ -404,10 +404,11 @@ _SCHEMA_TYPES = {
     "tool_use", "tool_result", "model_request", "model_response",
     "hook_triggered", "hook_completed", "error",
     "human_wait", "human_input", "human_pause", "human_interrupt",
+    "self_report",
 }
 
 
-def test_only_the_fifteen_known_event_types_are_emitted(tmp_path, instrumented):
+def test_only_the_known_event_types_are_emitted(tmp_path, instrumented):
     app = build_graph(checkpointer=InMemorySaver())
     config = {"configurable": {"thread_id": "vocab"}}
     app.invoke(empty_state(), config=config)
@@ -2336,3 +2337,110 @@ def test_an_unrelated_runnable_invoked_with_none_is_not_the_humans_approval(
     beats = [e for e in only(rows, "agent_start") if e["agent_id"] == "RunnableLambda"]
     assert len(beats) == 1
     assert beats[0]["session_id"] != "hitl-unrelated"
+
+
+# ---------------------------------------------------------------------------
+# Self Reports: the ready-made report tool
+# ---------------------------------------------------------------------------
+
+def _report_graph(report_tool):
+    model = fake_model(
+        AIMessage(
+            "stuck",
+            tool_calls=[{
+                "name": "failproofai_report",
+                "args": {"category": "repeated_tool_failure", "detail": "The build fails every time."},
+                "id": "call_report",
+            }],
+        ),
+    )
+
+    def plan(state):
+        return {"messages": [model.invoke(state["messages"])]}
+
+    graph = StateGraph(State)
+    graph.add_node("plan", plan)
+    graph.add_node("tools", ToolNode([adder, report_tool]))
+    graph.add_edge(START, "plan")
+    graph.add_edge("plan", "tools")
+    graph.add_edge("tools", END)
+    return graph.compile(name="reporting_graph")
+
+
+def test_self_report_tool_schema_matches_the_spec():
+    from langchain_core.tools import StructuredTool
+    from langchain_core.utils.function_calling import convert_to_openai_tool
+
+    tool_ = adapter.self_report_tool()
+    assert isinstance(tool_, StructuredTool)
+    spec = failproofai_sdk.self_report_spec()
+    converted = convert_to_openai_tool(tool_)["function"]
+    assert converted["name"] == "failproofai_report"
+    assert converted["description"] == spec["description"]
+    assert converted["parameters"]["properties"] == spec["input_schema"]["properties"]
+    assert converted["parameters"]["required"] == ["category", "detail"]
+
+
+def test_self_report_tool_records_on_the_instrumented_run(tmp_path, instrumented):
+    app = _report_graph(adapter.self_report_tool())
+    out = app.invoke(empty_state())
+    rows = read_events(tmp_path)
+    (report,) = only(rows, "self_report")
+    root = only(rows, "agent_start")[0]
+    assert report["session_id"] == root["session_id"]
+    assert report["agent_id"] == root["agent_id"]
+    assert report["tool_call_id"] == "call_report"
+    assert (report["category"], report["detail"], report["source"]) == (
+        "repeated_tool_failure", "The build fails every time.", "sdk",
+    )
+    assert report["framework"] == "langchain"
+    tool_messages = [m for m in out["messages"] if isinstance(m, ToolMessage)]
+    assert [m.content for m in tool_messages] == ["Recorded."]
+
+
+def test_self_report_tool_async_path(tmp_path, instrumented):
+    import asyncio
+
+    asyncio.run(_report_graph(adapter.self_report_tool()).ainvoke(empty_state()))
+    (report,) = only(read_events(tmp_path), "self_report")
+    assert report["tool_call_id"] == "call_report"
+
+
+def test_self_report_tool_ambient_scope_without_instrumentation(tmp_path):
+    with failproofai_sdk.session("lc-ambient"):
+        assert adapter.self_report_tool().invoke({"category": "looping", "detail": "d"}) == "Recorded."
+    (report,) = only(read_events(tmp_path), "self_report")
+    assert (report["session_id"], report["agent_id"]) == ("lc-ambient", "main")
+
+
+def test_self_report_tool_takes_the_tool_call_id_without_instrumentation(tmp_path):
+    # ToolNode invokes the tool with the model's ToolCall; the id comes from it.
+    with failproofai_sdk.session("lc-plain"):
+        _report_graph(adapter.self_report_tool()).invoke(empty_state())
+    (report,) = only(read_events(tmp_path), "self_report")
+    assert (report["session_id"], report["tool_call_id"]) == ("lc-plain", "call_report")
+
+
+def test_self_report_tool_takes_the_tool_call_id_on_the_async_path_without_instrumentation(tmp_path):
+    import asyncio
+
+    with failproofai_sdk.session("lc-plain-async"):
+        asyncio.run(_report_graph(adapter.self_report_tool()).ainvoke(empty_state()))
+    (report,) = only(read_events(tmp_path), "self_report")
+    assert report["tool_call_id"] == "call_report"
+
+
+def test_self_report_tool_invoked_with_a_tool_call_dict_records_its_id(tmp_path):
+    tool_ = adapter.self_report_tool(session_id="lc-direct")
+    tool_.invoke({"name": "failproofai_report", "args": {"category": "looping", "detail": "d"},
+                  "id": "call_direct", "type": "tool_call"})
+    tool_.invoke({"category": "looping", "detail": "plain args"})
+    first, second = only(read_events(tmp_path), "self_report")
+    assert first["tool_call_id"] == "call_direct"
+    assert "tool_call_id" not in second
+
+
+def test_self_report_tool_explicit_identity_wins(tmp_path, instrumented):
+    _report_graph(adapter.self_report_tool(session_id="lc-s", agent_id="lc-a")).invoke(empty_state())
+    (report,) = only(read_events(tmp_path), "self_report")
+    assert (report["session_id"], report["agent_id"]) == ("lc-s", "lc-a")

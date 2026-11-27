@@ -82,6 +82,7 @@ def _emit_everything():
     ns.human_input(**ids, input_id="i1", response="y")
     ns.human_pause(**ids, reason="r", user_id="u")
     ns.human_interrupt(**ids, reason="r", user_id="u", at_step="1")
+    ns.self_report("looping", "d", **ids, tool_call_id="tc")
     return recorder.entries
 
 
@@ -203,7 +204,7 @@ def test_a_reserved_name_is_rejected_by_every_event_method():
     """One method forgetting `_validate_fields` would let a caller rewrite `type`."""
     ns = EventNamespace(_Recorder())
     methods = [m for m in dir(ns) if not m.startswith("_") and callable(getattr(ns, m))]
-    assert len(methods) == 15, f"expected 15 event methods, found {len(methods)}: {sorted(methods)}"
+    assert len(methods) == 16, f"expected 16 event methods, found {len(methods)}: {sorted(methods)}"
 
     required = {
         "tool_use": dict(tool_name="t", tool_call_id="c"),
@@ -215,6 +216,7 @@ def test_a_reserved_name_is_rejected_by_every_event_method():
         "human_input": dict(input_id="i"),
         "agent_pause": dict(pause_id="p"),
         "agent_resume": dict(pause_id="p"),
+        "self_report": dict(category="looping", detail="d"),
     }
     for method in methods:
         with pytest.raises(ValueError, match="Reserved field names"):
@@ -609,6 +611,7 @@ ALL_METHODS = [
     ("error", {"error_type": "E", "message": "m"}),
     ("human_wait", {"input_id": "i"}), ("human_input", {"input_id": "i"}),
     ("human_pause", {}), ("human_interrupt", {}),
+    ("self_report", {"category": "looping", "detail": "d"}),
 ]
 
 
@@ -630,6 +633,11 @@ def test_a_non_string_session_id_is_refused_on_every_event(method, extra, bad):
     success, the collector deletes the batch, and the event is gone. `None` is
     the realistic way in — an uninitialised variable, a lookup that missed.
     """
+    if method == "self_report" and bad is None:
+        # `None` means "resolve" on every method, and `self_report` alone never
+        # raises when nothing resolves: it files the report as "unattributed"
+        # (tests/test_self_report.py). The non-None bad values still raise.
+        pytest.skip("self_report resolves a None session instead of raising")
     ns = EventNamespace(_Recorder())
     with pytest.raises(TypeError, match="session_id"):
         getattr(ns, method)(session_id=bad, agent_id="a", **extra)

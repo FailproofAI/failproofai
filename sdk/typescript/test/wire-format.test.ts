@@ -206,6 +206,7 @@ describe("event wire format", () => {
       schema.humanInputEvent({ ...identity, inputId: "i", response: "r", durationMs: 1 }),
       schema.humanPauseEvent({ ...identity, reason: "r", userId: "u" }),
       schema.humanInterruptEvent({ ...identity, reason: "r", userId: "u", atStep: "s" }),
+      schema.selfReportEvent({ ...identity, category: "c", detail: "d", source: "sdk", toolCallId: "c1" }),
     ];
     for (const event of builders) for (const key of Object.keys(event)) declared.add(key);
 

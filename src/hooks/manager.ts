@@ -43,6 +43,8 @@ import { packPolicyParamKey } from "./policy-evaluator";
 import { probeDaemonPolicyEvaluation } from "./daemon-service";
 import { NO_PRINTED_COMMAND_REASON, sudoPath } from "./system-command";
 import { keepAgentSelectionTrue } from "./agent-selection";
+import { removeSelfReportMcp, selfReportSummary, syncSelfReportMcp } from "./self-report-install";
+import { ensureSelfReportSettingsFile, selfReportSettingsState } from "./self-report";
 import { INDENT, colorsEnabled, optsFor, printBlock, screenKit, type ScreenKitOpts } from "./tui";
 
 const VALID_POLICY_NAMES = new Set(BUILTIN_POLICIES.map((p) => p.name));
@@ -1008,6 +1010,33 @@ async function installHooksImpl(
     } catch {}
   }
 
+  // Self Reports: on by default, so the agents that now have hooks get
+  // failproofai's MCP server unless it was turned off (and lose a stale one
+  // when it is). The settings file is written first when it is missing (off
+  // Cloud), so every reader agrees. Best-effort: a config it cannot change is
+  // reported, never a failed install.
+  // Only a user-scope install touches the agents' user-wide MCP configs: a
+  // project or local install must not register anything outside that project.
+  if (scope === "user") {
+  try {
+    await ensureSelfReportSettingsFile();
+  } catch {
+    // the readers apply the same default without the file
+  }
+  try {
+    const results = await syncSelfReportMcp({
+      quiet: true,
+      alsoHooked: writtenSettingsPaths.map((written) => written.cli),
+      binaryPath,
+    });
+    // One line; the per-agent changes are `self-report sync`'s and `status`'s.
+    const summary = selfReportSummary(results, selfReportSettingsState());
+    if (summary) console.log(summary.ok ? kit.ok(summary.text) : kit.caution(summary.text, summary.fix));
+  } catch {
+    // never block the install
+  }
+  }
+
   // Last, after everything above: the agents whose hooks were actually written.
   // A call that returned early (only a third-party pack's policies were named)
   // or threw wrote none and changes nothing.
@@ -1209,6 +1238,19 @@ export async function removeHooks(policyNames?: string[], scope: HookScope | "al
         continue;
       }
       totalRemoved += removedHere;
+    }
+  }
+
+  // Self Reports, after the hooks: an agent whose user-scope hooks go also loses failproofai's
+  // MCP server, whatever the setting says. Project/local removals leave it:
+  // the user-scope hooks that use it are still there.
+  if (scope === "user" || scope === "all") {
+    try {
+      const summary = selfReportSummary(removeSelfReportMcp({ agents: selectedClis, quiet: true }), "removed");
+      const kit = screenKit(optsFor(process.stdout));
+      if (summary) say(summary.ok ? kit.ok(summary.text) : kit.caution(summary.text, summary.fix));
+    } catch {
+      // never block the removal
     }
   }
 

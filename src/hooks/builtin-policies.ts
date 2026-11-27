@@ -1413,6 +1413,12 @@ function simpleCommandDestroys(words: string[], namesState: (text: string) => bo
     return operands.length > 1 && namesState(operands[operands.length - 1]);
   }
 
+  // `yq -i` edits in place.
+  if (head === "yq" && args.some((a) => a === "-i" || a.startsWith("--inplace") || /^-[A-Za-z]*i[A-Za-z]*$/.test(a))) return true;
+
+  // A `python -c` whose program `pythonCodeOnlyReads` vetted, now the marker.
+  if (PYTHON_HEAD_RE.test(head) && readOnlyPythonMarker !== null && args.includes(readOnlyPythonMarker)) return false;
+
   // `git` normally carries the path as prose in a message or a body.
   if (head === "git") {
     const subcommand = gitSubcommand(args);
@@ -2637,6 +2643,328 @@ function blockWorkOnMain(ctx: PolicyContext): PolicyResult {
  * deny is what actually happened on every machine and the allow never ran. The
  * merge keeps the behaviour users have.
  */
+// -- block-failproofai-commands: arguments that never run --
+//
+// Both halves of this guard read the command without knowing where quoting
+// ends, which is what makes them hard to fool with `fail"proof"ai`. The price
+// was paid by reads and by text: `jq '.categories | length' <state>` split at
+// the `|` inside the filter and judged `length'` an unknown, destructive
+// command; `grep -E '(failproofai_local|x)' f` split at the `(` and saw the
+// binary in command position; a heredoc writing notes that mention the CLI
+// was judged line by line as if it were a script. Before either half looks,
+// the command is rewritten so only those inert pieces disappear:
+//
+// - a quoted argument of a command that never executes its arguments (the
+//   grep family, jq, yq), unless it names the state or holds a substitution;
+// - the body of a heredoc fed to a command that only writes it out (`cat`,
+//   `tee`, `:`), when nothing in the same command could run what it wrote;
+// - the program of a `python -c` that can only read (`pythonCodeOnlyReads`),
+//   replaced by a per-call marker that `simpleCommandDestroys` reads as a
+//   reader.
+//
+// Anything the scan does not fully understand (an unbalanced quote, a heredoc
+// with no end) leaves the command exactly as it was, so a confusing command is
+// judged as strictly as before.
+
+/** Commands that never execute an argument: their quoted operands are data. */
+const INERT_ARGUMENT_HEADS = new Set(["grep", "egrep", "fgrep", "rg", "jq"]);
+
+/** Commands a heredoc body can be fed to without the body running. */
+const HEREDOC_DATA_HEADS = new Set(["cat", "tee", ":"]);
+
+/**
+ * Command words that run code they are handed, so a heredoc written by another
+ * part of the same command could be executed by them, and a body piped to them
+ * runs. Also any command word that is a path (`/tmp/p.sh`, `./p.sh`).
+ */
+const CODE_RUNNING_HEADS = new Set([
+  "sh", "bash", "zsh", "dash", "ksh", "fish", "ash", "csh", "tcsh", "source", ".", "eval", "exec",
+  "xargs", "env", "sudo", "doas", "su", "ssh", "script", "watch", "nohup", "setsid", "timeout", "nice",
+  "node", "bun", "deno", "perl", "ruby", "php", "lua", "npx", "bunx", "pnpx", "npm", "pnpm", "yarn",
+  "make", "chmod", "crontab", "at", "batch", "systemd-run", "launchctl",
+]);
+
+const PYTHON_HEAD_RE = /^python(?:\d+(?:\.\d+)?)?$/;
+
+/** A word of a command, with where it sits in the raw text. */
+interface ShellWord {
+  /** The word with its quotes removed (`fail"proof"ai` → `failproofai`). */
+  value: string;
+  start: number;
+  end: number;
+  /** Any part of it was quoted. */
+  quoted: boolean;
+  /** Its raw text contains `$(`, `${` or a backtick, quoted or not. */
+  substitutes: boolean;
+}
+
+/** A simple command: its words, and whether a `|` follows it. */
+interface ShellSimple {
+  words: ShellWord[];
+  pipedOut: boolean;
+  pipedIn: boolean;
+  /** Heredocs opened in this command: delimiter, and the raw span of the body (with its end line). */
+  /** Raw span of each body; `expands` when an unquoted delimiter lets `$(…)` or a backtick in it run. */
+  heredocs: Array<{ bodyStart: number; bodyEnd: number; expands: boolean }>;
+}
+
+/**
+ * Split `cmd` into simple commands the way a shell would, honouring quotes,
+ * or null when it cannot be done with confidence (unbalanced quotes, a
+ * heredoc without its end line, nested `$(` inside quotes it would have to
+ * follow). Separators: `;`, `&`, `|`, newline and the brackets of a subshell,
+ * brace group or substitution.
+ */
+function scanShellCommands(cmd: string): ShellSimple[] | null {
+  const out: ShellSimple[] = [];
+  let words: ShellWord[] = [];
+  let heredocs: ShellSimple["heredocs"] = [];
+  let pendingHeredocs: Array<{ delim: string; strip: boolean; quoted: boolean; owner: number }> = [];
+  let pipedIn = false;
+  let cur: ShellWord | null = null;
+  const flushWord = (end: number) => {
+    if (cur) {
+      cur.end = end;
+      words.push(cur);
+      cur = null;
+    }
+  };
+  const flushCommand = (pipedOut: boolean) => {
+    if (words.length > 0 || heredocs.length > 0) out.push({ words, pipedOut, pipedIn, heredocs });
+    pipedIn = pipedOut;
+    words = [];
+    heredocs = [];
+  };
+  let i = 0;
+  while (i < cmd.length) {
+    const c = cmd[i];
+    if (c === "\n") {
+      flushWord(i);
+      // Heredoc bodies start on the line after their operator.
+      let pos = i + 1;
+      for (const h of pendingHeredocs) {
+        const bodyStart = pos;
+        let found = false;
+        while (pos <= cmd.length) {
+          const nl = cmd.indexOf("\n", pos);
+          const lineEnd = nl === -1 ? cmd.length : nl;
+          const line = cmd.slice(pos, lineEnd);
+          const next = nl === -1 ? cmd.length : nl + 1;
+          if ((h.strip ? line.replace(/^\t+/, "") : line) === h.delim) {
+            const body = cmd.slice(bodyStart, pos);
+            const span = { bodyStart, bodyEnd: lineEnd, expands: !h.quoted && /\$\(|`/.test(body) };
+            // The command that opened it, which a `;` may already have ended.
+            if (h.owner < out.length) out[h.owner].heredocs.push(span);
+            else heredocs.push(span);
+            pos = next;
+            found = true;
+            break;
+          }
+          if (nl === -1) break;
+          pos = next;
+        }
+        if (!found) return null;
+      }
+      const hadHeredocs = pendingHeredocs.length > 0;
+      pendingHeredocs = [];
+      flushCommand(false);
+      i = hadHeredocs ? pos : i + 1;
+      continue;
+    }
+    if (c === "\\") {
+      if (!cur) cur = { value: "", start: i, end: i, quoted: true, substitutes: false };
+      if (cmd[i + 1] === "\n") {
+        i += 2;
+        continue;
+      }
+      cur.value += cmd[i + 1] ?? "";
+      i += 2;
+      continue;
+    }
+    if (c === "'" || c === '"' || (c === "$" && cmd[i + 1] === "'")) {
+      if (!cur) cur = { value: "", start: i, end: i, quoted: true, substitutes: false };
+      cur.quoted = true;
+      if (c === "$") {
+        const close = cmd.indexOf("'", i + 2);
+        if (close === -1) return null;
+        cur.value += decodeAnsiC(cmd.slice(i + 2, close));
+        i = close + 1;
+        continue;
+      }
+      if (c === "'") {
+        const close = cmd.indexOf("'", i + 1);
+        if (close === -1) return null;
+        cur.value += cmd.slice(i + 1, close);
+        i = close + 1;
+        continue;
+      }
+      let j = i + 1;
+      while (j < cmd.length && cmd[j] !== '"') {
+        if (cmd[j] === "\\") j++;
+        else if (cmd[j] === "`" || (cmd[j] === "$" && (cmd[j + 1] === "(" || cmd[j + 1] === "{"))) cur.substitutes = true;
+        j++;
+      }
+      if (j >= cmd.length) return null;
+      cur.value += cmd.slice(i + 1, j).replace(/\\(["\\$`])/g, "$1");
+      i = j + 1;
+      continue;
+    }
+    if (c === "<" && cmd[i + 1] === "<" && cmd[i + 2] !== "<") {
+      flushWord(i);
+      let j = i + 2;
+      const strip = cmd[j] === "-";
+      if (strip) j++;
+      while (cmd[j] === " " || cmd[j] === "\t") j++;
+      const m = /^(?:'([^'\n]*)'|"([^"\n]*)"|([^\s;&|<>()]+))/.exec(cmd.slice(j));
+      if (!m) return null;
+      const raw = m[1] ?? m[2] ?? m[3];
+      pendingHeredocs.push({ delim: raw.replace(/\\/g, ""), strip, quoted: m[3] === undefined || raw.includes("\\"), owner: out.length });
+      words.push({ value: "<<", start: i, end: j, quoted: false, substitutes: false });
+      i = j + m[0].length;
+      continue;
+    }
+    if (/[;&|(){}`]/.test(c) || (c === "$" && cmd[i + 1] === "(")) {
+      flushWord(i);
+      flushCommand(c === "|" && cmd[i + 1] !== "|");
+      i += c === "$" ? 2 : c === "|" || c === "&" ? (cmd[i + 1] === c ? 2 : 1) : 1;
+      continue;
+    }
+    if (c === " " || c === "\t" || c === "\r") {
+      flushWord(i);
+      i++;
+      continue;
+    }
+    if (c === "<" || c === ">") {
+      flushWord(i);
+      let j = i;
+      while (cmd[j] === "<" || cmd[j] === ">" || cmd[j] === "|" || cmd[j] === "&") j++;
+      words.push({ value: cmd.slice(i, j), start: i, end: j, quoted: false, substitutes: false });
+      i = j;
+      continue;
+    }
+    if (!cur) cur = { value: "", start: i, end: i, quoted: false, substitutes: false };
+    if (c === "$" && cmd[i + 1] === "{") cur.substitutes = true;
+    cur.value += c;
+    i++;
+  }
+  if (pendingHeredocs.length > 0) return null;
+  flushWord(cmd.length);
+  flushCommand(false);
+  return out;
+}
+
+/** The command word of a simple command (after assignments and runners), or undefined. */
+function scannedHead(words: ShellWord[]): { word: ShellWord; at: number } | undefined {
+  for (let i = 0; i < words.length; i++) {
+    const v = words[i].value;
+    if (/^[<>]/.test(v)) {
+      i++; // and its target
+      continue;
+    }
+    if (ENV_ASSIGNMENT_RE.test(v) || SHELL_KEYWORD_PREFIXES.has(v)) continue;
+    return { word: words[i], at: i };
+  }
+  return undefined;
+}
+
+/**
+ * True when a `python -c` program can only read files: it imports nothing
+ * beyond json/sys/pprint/tomllib, names no dunder, no escape sequence that
+ * could spell another name, no call that writes, deletes, renames, runs or
+ * looks a name up dynamically, and every `open(` is a read.
+ */
+function pythonCodeOnlyReads(code: string): boolean {
+  if (code.length > 2000 || code.includes("__")) return false;
+  if (/\\(?![nt])/.test(code)) return false;
+  const imported = [
+    ...[...code.matchAll(/\bfrom\s+([\w.]+)\s+import\b/g)].map((m) => m[1]),
+    ...[...code.matchAll(/\bimport\s+([\w.]+(?:\s*,\s*[\w.]+)*)/g)].flatMap((m) => m[1].split(/\s*,\s*/)),
+  ];
+  if (/\bimport\b/.test(code) && imported.length === 0) return false;
+  if (imported.some((m) => !["json", "sys", "pprint", "tomllib"].includes(m))) return false;
+  const FORBIDDEN =
+    /\b(?:exec|eval|compile|getattr|setattr|delattr|globals|locals|vars|breakpoint|memoryview|input|help|write|writelines|truncate|unlink|remove|rmdir|rmtree|rename|renames|replace|chmod|chown|symlink|link|mkdir|makedirs|system|popen|spawn\w*|fork|kill|modules|stdin|path_hooks|meta_path|settrace|setprofile|exit)\b/;
+  if (FORBIDDEN.test(code)) return false;
+  // Every `open` is a call, and every call reads.
+  const opens = [...code.matchAll(/\bopen\b/g)];
+  for (const m of opens) {
+    const after = code.slice(m.index! + 4);
+    if (!/^\s*\(/.test(after)) return false;
+    let depth = 0;
+    let end = -1;
+    let topComma = -1;
+    for (let k = after.indexOf("("); k < after.length; k++) {
+      const ch = after[k];
+      if (ch === "(" || ch === "[" || ch === "{") depth++;
+      else if (ch === ")" || ch === "]" || ch === "}") {
+        depth--;
+        if (depth === 0) {
+          end = k;
+          break;
+        }
+      } else if (ch === "," && depth === 1 && topComma === -1) topComma = k;
+    }
+    if (end === -1) return false;
+    if (topComma !== -1) {
+      const rest = after.slice(topComma + 1, end);
+      const READ_ARG = String.raw`\s*(?:(?:mode\s*=\s*)?['"](?:r|rb|rt|br|tr)['"]|encoding\s*=\s*['"][A-Za-z0-9_-]+['"])\s*`;
+      if (!new RegExp(`^${READ_ARG}(?:,${READ_ARG})*$`).test(rest)) return false;
+    }
+  }
+  return true;
+}
+
+/**
+ * `cmd` with its inert pieces taken out (see above), and the marker that now
+ * stands for a read-only `python -c` program, or `cmd` unchanged.
+ */
+function withoutInertArguments(cmd: string, marker: string): string {
+  const scanned = scanShellCommands(cmd);
+  if (!scanned) return cmd;
+  const cuts: Array<{ start: number; end: number; text: string }> = [];
+  const heads = scanned.map((s) => scannedHead(s.words));
+  const anyCodeRunner = heads.some((h) => {
+    if (!h) return false;
+    const base = h.word.value.slice(h.word.value.lastIndexOf("/") + 1);
+    return CODE_RUNNING_HEADS.has(base) || h.word.value.includes("/") || PYTHON_HEAD_RE.test(base);
+  });
+  scanned.forEach((simple, n) => {
+    const head = heads[n];
+    if (!head) return;
+    const base = head.word.value.slice(head.word.value.lastIndexOf("/") + 1);
+    const args = simple.words.slice(head.at + 1);
+    // rg runs a preprocessor named by `--pre`.
+    if (INERT_ARGUMENT_HEADS.has(base) && !(base === "rg" && args.some((w) => w.value.startsWith("--pre")))) {
+      args.forEach((w, k) => {
+        const prev = k === 0 ? simple.words[head.at] : args[k - 1];
+        if (!w.quoted || w.substitutes || /^[<>]/.test(prev.value)) return;
+        if (FAILPROOFAI_STATE_PATH_RE.test(w.value) || globCouldNameState(w.value)) return;
+        cuts.push({ start: w.start, end: w.end, text: "''" });
+      });
+    }
+    if (PYTHON_HEAD_RE.test(base)) {
+      const c = args.findIndex((w) => w.value === "-c");
+      const code = c === -1 ? undefined : args[c + 1];
+      if (code && !code.substitutes && pythonCodeOnlyReads(code.value)) {
+        cuts.push({ start: code.start, end: code.end, text: marker });
+      }
+    }
+    if (simple.heredocs.length > 0 && HEREDOC_DATA_HEADS.has(base) && !simple.pipedOut && !anyCodeRunner) {
+      for (const h of simple.heredocs) if (!h.expands) cuts.push({ start: h.bodyStart, end: h.bodyEnd, text: "" });
+    }
+  });
+  if (cuts.length === 0) return cmd;
+  cuts.sort((a, b) => b.start - a.start);
+  let result = cmd;
+  let floor = Infinity;
+  for (const cut of cuts) {
+    if (cut.end > floor) return cmd; // overlapping pieces: not understood
+    result = result.slice(0, cut.start) + cut.text + result.slice(cut.end);
+    floor = cut.start;
+  }
+  return result;
+}
+
 function blockFailproofaiCommands(ctx: PolicyContext): PolicyResult {
   // A file tool reaches the state without a shell at all. Writing
   // `{"enabledPolicies":[]}` over `~/.failproofai/policies-config.json`, or an
@@ -2665,7 +2993,21 @@ function blockFailproofaiCommands(ctx: PolicyContext): PolicyResult {
     return allow();
   }
   if (ctx.toolName !== "Bash") return allow();
-  const cmd = getCommand(ctx);
+  // Per call, so no command can spell it.
+  const marker = `fpReadOnlyPython${Math.random().toString(36).slice(2)}${Date.now().toString(36)}`;
+  const cmd = withoutInertArguments(getCommand(ctx), marker);
+  readOnlyPythonMarker = marker;
+  try {
+    return judgeFailproofaiCommand(cmd);
+  } finally {
+    readOnlyPythonMarker = null;
+  }
+}
+
+/** The marker standing for a read-only `python -c` program in the command being judged. */
+let readOnlyPythonMarker: string | null = null;
+
+function judgeFailproofaiCommand(cmd: string): PolicyResult {
   // The raw command AND its shell-unescaped form: a shell strips quotes and
   // backslashes before running the binary, so `fail\proofai config --pause`
   // reaches the pause CLI even though the literal name is broken.

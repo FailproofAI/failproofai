@@ -80,7 +80,7 @@ and one that propagates is reported exactly once, by the enclosing `agent()`.
 
 ## Explicit identity still works
 
-`session_id` and `agent_id` are optional keyword arguments on all 15 `event.*`
+`session_id` and `agent_id` are optional keyword arguments on all 16 `event.*`
 methods, not removed ones. Passing them explicitly still works, and still wins
 over whatever is bound:
 
@@ -93,6 +93,18 @@ Omit `session_id` with nothing bound and you get a **`TypeError`** naming both
 fixes. That is deliberate: the alternative is dropping the event silently, and
 this SDK already asks you to debug enough invisible failures. `agent_id` never
 raises — it is a label, and it falls back to `"main"`.
+
+`self_report()` is the exception: it never raises for a missing session,
+because losing a report to a missing scope is worse than filing it
+unattributed. With no session bound and none passed, an unambiguous open
+`tool_use` for the call supplies the session and agent, with no warning: the
+one matched by `tool_call_id`, else the newest open report-tool call. Two report
+calls open in one session at once (parallel tool calls) resolve to the newer one,
+so pass `tool_call_id` when report calls can overlap; open calls in several
+sessions resolve to none. Only when no
+explicit session, no such open call and no enclosing scope resolves the identity
+is the report recorded under `session_id="unattributed"`, with one warning per
+process. Every other event method raises as above.
 
 ## Don't use a module global
 

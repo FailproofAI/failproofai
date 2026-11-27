@@ -62,7 +62,9 @@ module-level flag that makes every hook a straight pass-through, so an agent
 built before `uninstrument()` stops recording rather than recording into a
 half-dismantled adapter. By the same token, agents constructed *before*
 `instrument()` are not instrumented; construct them after, or pass
-`capabilities=[FailproofAI()]` yourself.
+`capabilities=[FailproofAI()]` yourself. A capability you pass yourself is
+yours: it records whether or not `instrument()` ran, and `uninstrument()` does
+not stop it.
 
 What is deliberately not captured
 ---------------------------------
@@ -132,7 +134,9 @@ _tracker = RunTracker(NAME, base_fields=framework_fields(NAME, DIST))
 
 # Flipped by install()/uninstall(). Agents built while instrumented keep the
 # capability instance, so this flag — not the patch — is what actually stops the
-# recording. Read on every hook, written only under the registry lock.
+# recording of the capability install() injected. A `FailproofAI()` the user
+# passed in `capabilities=` records regardless. Read on every hook, written
+# only under the registry lock.
 _enabled = False
 _capability: "FailproofAI | None" = None
 _patcher = _core.Patcher()
@@ -380,10 +384,15 @@ def _is_base_model(value: Any) -> bool:
 # ---------------------------------------------------------------------------
 
 class _RunState:
-    __slots__ = ("key", "scope", "spans", "closed", "reported_error")
+    __slots__ = ("key", "scope", "spans", "closed", "reported_error", "installed")
 
-    def __init__(self, key: Any) -> None:
+    def __init__(self, key: Any, installed: bool = False) -> None:
         self.key = key
+        # Whether the capability running it was injected by `instrument()`.
+        # `uninstrument()` tears down only those: a `FailproofAI()` the
+        # developer attached by hand records whether or not instrument() ran,
+        # and its runs finish on their own.
+        self.installed = installed
         self.scope: Any = None
         # Leaf spans this run has opened and not yet closed, newest last. This
         # exists because a leaf can outlive its own run — see `_close_spans`.
@@ -549,17 +558,22 @@ def _close_spans(state: _RunState, exc: "BaseException | None") -> None:
             )
 
 
-def _close_open_runs() -> None:
-    """Close every run this adapter still has open, newest first.
+def _close_open_runs() -> bool:
+    """Close every run the installed capability still has open, newest first.
 
     Teardown, not a hot path: `uninstall()` is the only caller. Each run's
     leaves close before its `agent_end`, and `_claim_run` makes the run's own
-    `wrap_run` frame a no-op when it eventually unwinds.
+    `wrap_run` frame a no-op when it eventually unwinds. A run of a manually
+    attached capability is left open to finish normally.
+
+    Returns whether any such manual run is still open.
     """
     with _runs_lock:
         states = list(_open_runs.values())
     for state in reversed(states):
-        _core.call_safely(_close_run, (state,), {}, f"{__name__}.uninstall")
+        if state.installed:
+            _core.call_safely(_close_run, (state,), {}, f"{__name__}.uninstall")
+    return any(not state.installed for state in states)
 
 
 def _close_run(state: _RunState) -> None:
@@ -604,6 +618,7 @@ class FailproofAI(AbstractCapability):
         capture_content: bool = True,
         session_id: str | None = None,
         id: str | None = None,
+        self_report: bool = False,
     ) -> None:
         # `AbstractCapability` is a `@dataclass(init=False)`, so it contributes
         # class-level defaults (`id`, `defer_loading`, …) and no `__init__` to
@@ -611,6 +626,27 @@ class FailproofAI(AbstractCapability):
         self.capture_content = capture_content
         self.session_id = session_id
         self.id = id
+        self.self_report = self_report
+        # False for one you construct yourself: it records whether or not
+        # `instrument()` ran. `install()` sets True on the one it injects, which
+        # then records only while instrumented (so `uninstrument()` stops it).
+        self._installed = False
+
+    def _recording(self) -> bool:
+        return _enabled or not getattr(self, "_installed", False)
+
+    def get_toolset(self):
+        """The FailproofAI report tool, when `self_report=True` was asked for.
+
+        Opt-in, never default: adding a tool changes what the model sees, and
+        this capability is otherwise pure observation. Built per agent, so the
+        categories are the ones in `self-report.json` when the agent is built.
+        """
+        if not self.self_report:
+            return None
+        from pydantic_ai.toolsets import FunctionToolset
+
+        return FunctionToolset([self_report_tool()])
 
     def get_ordering(self) -> CapabilityOrdering:
         """Outermost, so our spans bracket every other capability's work.
@@ -623,7 +659,7 @@ class FailproofAI(AbstractCapability):
     # -- run --------------------------------------------------------------
 
     async def wrap_run(self, ctx, *, handler):
-        if not _enabled:
+        if not self._recording():
             return await handler()
         state = self._begin_run(ctx)
         try:
@@ -660,7 +696,7 @@ class FailproofAI(AbstractCapability):
                 metadata=getattr(ctx, "metadata", None),
             ),
         )
-        state = _RunState(key)
+        state = _RunState(key, installed=bool(getattr(self, "_installed", False)))
         _register_run(state)
         try:
             scope = failproofai_sdk.session(identity.session_id, agent_id=identity.agent_id)
@@ -730,7 +766,7 @@ class FailproofAI(AbstractCapability):
     # -- model ------------------------------------------------------------
 
     async def wrap_model_request(self, ctx, *, request_context, handler):
-        if not _enabled:
+        if not self._recording():
             return await handler(request_context)
         state = self._begin_model(ctx, request_context)
         try:
@@ -834,7 +870,7 @@ class FailproofAI(AbstractCapability):
     # -- tools ------------------------------------------------------------
 
     async def wrap_tool_execute(self, ctx, *, call, tool_def, args, handler):
-        if not _enabled:
+        if not self._recording():
             return await handler(args)
         state = self._begin_tool(ctx, call, tool_def, args)
         try:
@@ -951,7 +987,9 @@ class _Adapter:
         _capability = FailproofAI(
             capture_content=bool(options.get("capture_content", True)),
             session_id=options.get("session_id"),
+            self_report=bool(options.get("self_report", False)),
         )
+        _capability._installed = True
         _patcher.patch(Agent, "__init__", _wrap_init(Agent.__init__))
         _enabled = True
 
@@ -967,7 +1005,13 @@ class _Adapter:
         # `wrap_run` frame does not emit a second `agent_end` when it finally
         # unwinds. `close_open_agents()` stays as the backstop for a key that
         # reached the tracker without reaching `_open_runs`.
-        _close_open_runs()
+        #
+        # A manually attached `FailproofAI()` keeps recording after
+        # `uninstrument()`, and its runs share this tracker: while one is in
+        # flight the tracker is left as it is, so it can still emit its leaves
+        # and its own `agent_end`.
+        if _close_open_runs():
+            return
         _tracker.close_open_agents()
         _tracker.reset()
 
@@ -975,3 +1019,53 @@ class _Adapter:
 adapter = _Adapter()
 install = adapter.install
 uninstall = adapter.uninstall
+
+
+# ---------------------------------------------------------------------------
+# Self Reports: the ready-made report tool
+# ---------------------------------------------------------------------------
+
+def self_report_tool(
+    *,
+    session_id: str | None = None,
+    agent_id: str | None = None,
+    categories: "list[dict] | None" = None,
+    guidance: str | None = None,
+):
+    """The FailproofAI report tool as a Pydantic AI `Tool`.
+
+        from failproofai_sdk.integrations.pydantic_ai import self_report_tool
+        agent = Agent(model, tools=[self_report_tool()])
+
+    or let the capability add it: `capabilities=[FailproofAI(self_report=True)]`
+    / `failproofai_sdk.instrument("pydantic_ai", self_report=True)`.
+
+    The JSON schema is exactly `self_report_spec()["input_schema"]` (built from
+    `self-report.json`, or the defaults). The call carries the model's
+    `tool_call_id`. Identity: the factory's `session_id`/`agent_id`, else the
+    run a `FailproofAI` capability on the agent is recording (it binds the run's
+    scope; `FailproofAI(self_report=True)` alone does, with or without
+    `instrument()`), else the ambient scope, else "unattributed". Always
+    returns `"Recorded."`.
+    """
+    from pydantic_ai import Tool
+
+    from failproofai_sdk import _self_report
+
+    spec = _self_report.self_report_spec(categories=categories, guidance=guidance)
+    extra = framework_fields(NAME, DIST)
+
+    def failproofai_report(ctx: Any, category: Any = "", detail: Any = "", **raw: Any) -> str:
+        return _self_report.record_framework_call(
+            category, detail, session_id=session_id, agent_id=agent_id,
+            tool_call_id=getattr(ctx, "tool_call_id", None), fields=extra,
+            extra_args=raw,
+        )
+
+    return Tool.from_schema(
+        failproofai_report,
+        name=spec["name"],
+        description=spec["description"],
+        json_schema=spec["input_schema"],
+        takes_ctx=True,
+    )

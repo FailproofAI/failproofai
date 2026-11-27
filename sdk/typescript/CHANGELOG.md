@@ -10,9 +10,36 @@ section is missing or empty is refused before anything is built.
 
 ## 0.0.1-beta.3 — 2026-11-24
 
+### Features
+
+- **Self Reports.** A `self_report` event (`event.selfReport` / `selfReport()`,
+  `source: "sdk"`) and the `failproofai_report` tool an agent calls when it is
+  stuck: `selfReportSpec()`, `openaiTool()`, `anthropicTool()`, `handleToolCall()`
+  and `isSelfReportTool()` in the core, and a ready-made `selfReportTool()` on
+  `/ai` (v4–v7, no zod), `/langchain`, `/mastra` and `/llamaindex`, inert in the
+  Edge build. Categories and guidance come from `$FAILPROOFAI_HOME/self-report.json`
+  (`selfReportSettings()`), with the six defaults when it is missing or disabled.
+  A report made inside a framework's tool loop joins the agent whose loop called
+  it, and never throws for want of a session; with no scope it joins an open
+  call only when all candidates are in one session, and a `toolCallId` open in
+  several sessions is never resolved by the tool name instead; with an explicit
+  `sessionId` the call id is taken only from the one open report call of that
+  session and agent. `detail` is cut to 2000 code points (as the daemon and the
+  Python SDK count) with no lone surrogate. `openaiResponsesTool()` sets
+  `strict: true`, as openai's `FunctionTool` type requires. The `/langchain` tool
+  also reads the call id from `configurable.tool_call_id`. The `/ai` tool carries both
+  schema keys for a `module` passed in, and the Edge `/langchain` tool builds a
+  real LangChain tool with a `module` passed in (the tool needs
+  `@langchain/core` 0.3.44 or later).
+
 ### Fixes
 
-- _Nothing yet._
+- **The `/langchain` report tool refuses an `@langchain/core` older than 0.3.44.**
+  Before 0.3.44 a tool's schema is read only as zod, so the model was offered
+  `failproofai_report` with an empty schema. `selfReportTool()` now throws a
+  `FailproofAICompatError` naming the version found and the upgrade. The peer
+  range stays `>=0.3.0 <2`: the tracer records the same trace on 0.3.0, 0.3.43
+  and 0.3.44. A `module` passed in is not version-checked.
 
 ## 0.0.1-beta.2 — 2026-10-16
 

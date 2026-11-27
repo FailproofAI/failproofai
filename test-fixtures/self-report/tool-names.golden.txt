@@ -1,0 +1,13 @@
+mcp__failproofai_local__report
+failproofai_local___report
+failproofai_local__report
+failproofai_report
+failproofai_local_report
+failproofai_local.report
+failproofai_local/report
+failproofai_local:report
+mcp_failproofai_local_report
+mcp__failproofai_local_report
+mcp:failproofai_local:report
+mcp:failproofai_local/report
+failproofai_local-report

@@ -12,7 +12,7 @@ import { createRequire } from "node:module";
 import { join } from "node:path";
 
 import * as failproofai from "@failproofai/sdk";
-import { middleware, telemetry, tracer, wrapModel } from "@failproofai/sdk/ai";
+import { middleware, selfReportTool, telemetry, tracer, wrapModel } from "@failproofai/sdk/ai";
 import {
   generateObject,
   generateText,
@@ -27,7 +27,7 @@ import { z } from "zod";
 
 // --- version-specific: LanguageModelV1 (promptTokens/completionTokens, `text` + `toolCalls`)
 
-type Script = "loop" | "answer" | "object" | "fail";
+type Script = "loop" | "answer" | "object" | "fail" | "report";
 type StreamPart = Awaited<ReturnType<MockLanguageModelV1["doStream"]>>["stream"] extends ReadableStream<infer P> ? P : never;
 
 const usage = (input: number, output: number) => ({ promptTokens: input, completionTokens: output });
@@ -45,6 +45,14 @@ function scripted(script: Script = "loop") {
       generated += 1;
       if (script === "fail") throw new Error("model exploded");
       if (script === "object") return { text: '{"city":"Paris"}', finishReason: "stop", usage: usage(5, 3), rawCall };
+      if (script === "report" && generated === 1) {
+        return {
+          toolCalls: [{ toolCallType: "function", toolCallId: "call-r1", toolName: "failproofai_report", args: '{"category":"invalid_tool_or_credential","detail":"The weather API rejected its key."}' }],
+          finishReason: "tool-calls",
+          usage: usage(11, 7),
+          rawCall,
+        };
+      }
       if (script === "loop" && generated === 1) {
         return {
           toolCalls: [{ toolCallType: "function", toolCallId: "call-1", toolName: "weather", args: '{"city":"Paris"}' }],
@@ -322,6 +330,31 @@ async function main(scenario: string): Promise<void> {
         failproofai.agent("planner", { goal: "plan" }, () => ask(scripted(), { telemetry: telemetry({ functionId: "weather-agent" }) })),
       );
       break;
+    case "self-report":
+      await failproofai.session({ sessionId: "req-sr" }, () =>
+        failproofai.agent("planner", { goal: "plan" }, async () => {
+          const { text } = await generateText({
+            model: scripted("report"),
+            prompt: "Weather in Paris?",
+            tools: { failproofai_report: selfReportTool(), ...makeTools() },
+            ...loop,
+            experimental_telemetry: telemetry({ functionId: "weather-agent" }),
+          });
+          report({ text });
+        }),
+      );
+      break;
+    case "self-report-bare": {
+      const { text } = await generateText({
+        model: scripted("report"),
+        prompt: "Weather in Paris?",
+        tools: { failproofai_report: selfReportTool() },
+        ...loop,
+        experimental_telemetry: telemetry({ functionId: "weather-agent" }),
+      });
+      report({ text });
+      break;
+    }
     case "readme":
       await readme();
       break;

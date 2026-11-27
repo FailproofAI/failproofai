@@ -38,6 +38,12 @@ vi.mock("../../src/hooks/manager", () => ({
   }),
 }));
 
+// Self Reports MCP removal reads agent configs through the real integrations;
+// its own behaviour is covered in self-report-install.test.ts.
+vi.mock("../../src/hooks/self-report-install", () => ({
+  removeSelfReportMcp: vi.fn(() => []),
+  selfReportRegistrationStatus: vi.fn(() => []),
+}));
 vi.mock("../../src/hooks/agent-skill", () => ({
   installedAgentSkillDirs: () => skillDirs,
   removeAgentSkill: vi.fn(() => {
@@ -564,5 +570,96 @@ describe("hooks/uninstall-cli — the agent selection is not uninstall's to chan
       source: "uninstall_command",
       silent: true,
     });
+  });
+});
+
+describe("hooks/uninstall-cli — Self Reports MCP server", () => {
+  it("an orphan MCP registration alone is something to uninstall, named in the plan", async () => {
+    installedClis = [];
+    configured = false;
+    rmSync(servicePath, { force: true });
+    const mod = await import("../../src/hooks/self-report-install");
+    const orphan = { agent: "copilot", path: "/x/.copilot/mcp-config.json", hooked: false, registered: true, transport: "stdio", endpoint: "/x/failproofai", conflict: false } as const;
+    vi.mocked(mod.selfReportRegistrationStatus).mockReturnValue([
+      orphan,
+      { ...orphan, agent: "claude", path: "/x/.claude.json", registered: false, transport: null, endpoint: null },
+    ]);
+    const { runUninstallCommand } = await import("../../src/hooks/uninstall-cli");
+    try {
+      const dry = await runUninstallCommand({ dryRun: true });
+      expect(dry.lines.join("\n")).not.toContain("Nothing to uninstall");
+      expect(dry.lines.join("\n")).toContain("the Self Reports MCP server from 1 agent config");
+      expect(vi.mocked(mod.removeSelfReportMcp)).not.toHaveBeenCalled();
+
+      vi.mocked(mod.removeSelfReportMcp).mockReturnValueOnce([
+        { agent: "copilot", path: orphan.path, action: "removed", transport: "stdio", status: "ok" },
+      ]);
+      const res = await runUninstallCommand({ yes: true });
+      expect(res.exitCode).toBe(0);
+      expect(res.lines.join("\n")).toContain("Removed the Self Reports MCP server from 1 agent config.");
+    } finally {
+      vi.mocked(mod.selfReportRegistrationStatus).mockReturnValue([]);
+    }
+  });
+
+  it("an agent config that cannot be inspected is not \"nothing to uninstall\": the cleanup is tried and reported incomplete", async () => {
+    installedClis = [];
+    configured = false;
+    rmSync(servicePath, { force: true });
+    const mod = await import("../../src/hooks/self-report-install");
+    const broken = {
+      agent: "copilot", path: "/x/.copilot/mcp-config.json", hooked: false, registered: false,
+      transport: null, endpoint: null, conflict: false, error: "Unexpected token } in JSON",
+    } as const;
+    vi.mocked(mod.selfReportRegistrationStatus).mockReturnValue([broken]);
+    const { runUninstallCommand } = await import("../../src/hooks/uninstall-cli");
+    try {
+      const dry = await runUninstallCommand({ dryRun: true });
+      const plan = dry.lines.join("\n");
+      expect(plan).not.toContain("Nothing to uninstall");
+      expect(plan).toContain("could not be read");
+      expect(plan).toContain(broken.path);
+
+      vi.mocked(mod.removeSelfReportMcp).mockReturnValueOnce([
+        { agent: "copilot", path: broken.path, action: "skipped", transport: null, status: "error", detail: broken.error },
+      ]);
+      const res = await runUninstallCommand({ yes: true });
+      expect(res.exitCode).toBe(1);
+      expect(res.lines.join("\n")).toContain(`Could not remove the Self Reports MCP server from ${broken.path}`);
+    } finally {
+      vi.mocked(mod.selfReportRegistrationStatus).mockReturnValue([]);
+    }
+  });
+
+  it("with every agent config genuinely absent, there is still nothing to uninstall", async () => {
+    installedClis = [];
+    configured = false;
+    rmSync(servicePath, { force: true });
+    const mod = await import("../../src/hooks/self-report-install");
+    vi.mocked(mod.selfReportRegistrationStatus).mockReturnValue([
+      { agent: "copilot", path: "/x/.copilot/mcp-config.json", hooked: false, registered: false, transport: null, endpoint: null, conflict: false },
+    ]);
+    const { runUninstallCommand } = await import("../../src/hooks/uninstall-cli");
+    try {
+      const res = await runUninstallCommand({ yes: true });
+      expect(res.exitCode).toBe(0);
+      expect(res.lines.join("\n")).toContain("Nothing to uninstall");
+    } finally {
+      vi.mocked(mod.selfReportRegistrationStatus).mockReturnValue([]);
+    }
+  });
+
+  it("removes failproofai's MCP server from every agent and says so", async () => {
+    const mod = await import("../../src/hooks/self-report-install");
+    vi.mocked(mod.removeSelfReportMcp).mockReturnValueOnce([
+      { agent: "claude", path: "/x/.claude.json", action: "removed", transport: "http", status: "ok" },
+      { agent: "codex", path: "/x/.codex/config.toml", action: "unchanged", transport: null, status: "ok" },
+    ]);
+    const { runUninstallCommand } = await import("../../src/hooks/uninstall-cli");
+    const res = await runUninstallCommand({ yes: true, cwd: join(home, "project") });
+
+    expect(res.exitCode).toBe(0);
+    expect(vi.mocked(mod.removeSelfReportMcp)).toHaveBeenCalledWith({ quiet: true });
+    expect(res.lines.join("\n")).toContain("Removed the Self Reports MCP server from 1 agent config.");
   });
 });

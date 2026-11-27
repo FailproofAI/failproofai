@@ -362,6 +362,37 @@ export function humanInterruptEvent(event: HumanInterruptEvent): Record<string, 
   );
 }
 
+export interface SelfReportEvent extends Identity {
+  /** The category the agent chose. Recorded as given, even when it is not a known one. */
+  category: string;
+  /** One factual sentence: what is blocking the agent. Empty when it gave none. */
+  detail: string;
+  /** `"sdk"` from this package; `"mcp"` from the MCP server and the hooks. */
+  source: string;
+  /** The model's own id for the report call, when there was one. */
+  toolCallId?: string | null;
+  extraFields?: ExtraFields;
+}
+
+/**
+ * `self_report` — an agent saying it is stuck (Self Reports).
+ *
+ * The same shape the hooks pipeline and the MCP server write, so the server
+ * reads one event type whichever way it arrived: `category`, `detail` and
+ * `source` beside the identity, `tool_call_id` when the call had one.
+ */
+export function selfReportEvent(event: SelfReportEvent): Record<string, unknown> {
+  return build(
+    identityBlock(event, "self_report", {
+      category: event.category,
+      detail: event.detail,
+      source: event.source,
+    }),
+    [["tool_call_id", event.toolCallId]],
+    event.extraFields ?? {},
+  );
+}
+
 /**
  * Every field name any event builder above declares, plus the wire names of the
  * identity block. `integrations/core.ts` derives its forbidden-extras set from
@@ -407,4 +438,7 @@ export const DECLARED_FIELD_NAMES: ReadonlySet<string> = new Set([
   "options",
   "response",
   "at_step",
+  "category",
+  "detail",
+  "source",
 ]);

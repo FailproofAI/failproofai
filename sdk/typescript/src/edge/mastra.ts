@@ -2,6 +2,7 @@
 
 import { noopAdapter } from "./adapter.js";
 import { notice } from "./notice.js";
+import { inertNamedTool } from "./self-report-tool.js";
 
 export function wrapTool<T>(tool: T): T {
   notice();
@@ -15,3 +16,9 @@ export function workflow<T>(workflowName: string, body: () => T): T {
 }
 
 export const adapter = noopAdapter("mastra");
+
+/** The Self Reports tool, answering `Recorded.` and recording nothing. */
+export function selfReportTool<T = unknown>(...options: unknown[]): T {
+  void options;
+  return inertNamedTool<T>();
+}

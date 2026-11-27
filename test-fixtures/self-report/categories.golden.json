@@ -1,0 +1,26 @@
+[
+  {
+    "name": "looping",
+    "description": "You keep repeating the same or circular steps without making progress."
+  },
+  {
+    "name": "cannot_do_request",
+    "description": "The user asked for something you cannot do here: a missing capability, tool or permission, or it is only possible by cheating."
+  },
+  {
+    "name": "invalid_tool_or_credential",
+    "description": "A tool, MCP server, plugin, API key or token you need is broken, invalid, expired or rejected."
+  },
+  {
+    "name": "missing_context",
+    "description": "Information or access you need is missing and you cannot get it yourself. Not for normal clarifying questions."
+  },
+  {
+    "name": "repeated_tool_failure",
+    "description": "A command or tool failed on several distinct attempts and is blocking you. A single error is not enough."
+  },
+  {
+    "name": "task_failure",
+    "description": "You genuinely tried and could not complete the task. Not for refusals or policy blocks."
+  }
+]

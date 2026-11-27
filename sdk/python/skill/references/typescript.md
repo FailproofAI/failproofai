@@ -1,7 +1,7 @@
 # TypeScript and JavaScript agents — `@failproofai/sdk`
 
 Everything in `SKILL.md` §2 (plan) and §6 (production) applies unchanged. The
-TypeScript SDK writes the **same 15 events, the same wire format, into the same
+TypeScript SDK writes the **same 16 events, the same wire format, into the same
 spool directory** as the Python one, and `failproofaid` ships both. A fleet running
 both languages writes into one pipe, and the dashboard cannot tell which language
 wrote what. This page is what differs: install, names, adapters, bundlers, runtimes,

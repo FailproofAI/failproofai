@@ -9,8 +9,10 @@
  *   express.
  * * **Adapters** — `instrument()`. Wires LangChain/LangGraph, the Vercel AI
  *   SDK, Mastra and LlamaIndex.TS to the scopes above.
- * * **`event.*`** — the 15 event methods, for anything the adapters do not
+ * * **`event.*`** — the event methods, for anything the adapters do not
  *   cover.
+ * * **Self Reports** — `selfReport()` and the report tool (`openaiTool()`, `openaiResponsesTool()`,
+ *   `anthropicTool()`, `handleToolCall()`), so an agent can say it is stuck.
  *
  * `sessionId` and `agentId` are optional on every event method: omitted, they
  * resolve from the enclosing scope. Nothing bound and nothing passed is an
@@ -74,9 +76,33 @@ export type {
   HumanWaitOptions,
   ModelRequestOptions,
   ModelResponseOptions,
+  SelfReportOptions,
   ToolResultOptions,
   ToolUseOptions,
 } from "./events.js";
+
+export {
+  DEFAULT_SELF_REPORT_CATEGORIES,
+  SELF_REPORT_RESULT,
+  SELF_REPORT_TOOL_NAME,
+  anthropicTool,
+  handleToolCall,
+  isSelfReportTool,
+  openaiResponsesTool,
+  openaiTool,
+  selfReport,
+  selfReportSettings,
+  selfReportSettingsPath,
+  selfReportSpec,
+} from "./self-report.js";
+export type {
+  AnthropicTool,
+  OpenAIResponsesTool,
+  OpenAITool,
+  SelfReportCategory,
+  SelfReportSettings,
+  SelfReportSpec,
+} from "./self-report.js";
 
 export { setLogger, setLogLevel } from "./logger.js";
 export type { Logger, LogLevel } from "./logger.js";
@@ -136,7 +162,7 @@ export function configure(options: ConfigureOptions = {}): void {
 }
 
 /**
- * The 15 event methods.
+ * The event methods: the 15 shared event types, plus `selfReport`.
  *
  * A forwarding view of the process-wide namespace rather than a direct
  * reference, so a test can replace `runtime.event` with a recording namespace

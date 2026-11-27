@@ -90,6 +90,15 @@ const USER_SETTINGS_PATH = resolve(homedir(), ".claude", "settings.json");
 const PROJECT_SETTINGS_PATH = resolve(process.cwd(), ".claude", "settings.json");
 const LOCAL_SETTINGS_PATH = resolve(process.cwd(), ".claude", "settings.local.json");
 
+// Self Reports MCP registration has its own suite (self-report-install.test.ts);
+// here only the calls into it are checked.
+vi.mock("../../src/hooks/self-report-install", () => ({
+  syncSelfReportMcp: vi.fn(() => []),
+  removeSelfReportMcp: vi.fn(() => []),
+  selfReportSyncLines: vi.fn(() => []),
+  selfReportSummary: vi.fn(() => null),
+}));
+
 describe("hooks/manager", () => {
   beforeEach(() => {
     vi.resetAllMocks();
@@ -171,6 +180,33 @@ describe("hooks/manager", () => {
         expect(hook.timeout).toBe(60);
         expect(hook.command).toBe(`"/usr/local/bin/failproofai" --hook ${eventType} --agent-scope user`);
       }
+    });
+
+    it("syncs the Self Reports MCP server for the agents it just hooked, with the hooks' binary", async () => {
+      vi.mocked(existsSync).mockReturnValue(true);
+      vi.mocked(readFileSync).mockReturnValue("{}");
+      const sr = await import("../../src/hooks/self-report-install");
+
+      const { installHooks } = await import("../../src/hooks/manager");
+      await installHooks();
+
+      expect(sr.syncSelfReportMcp).toHaveBeenCalledWith({
+        quiet: true,
+        alsoHooked: ["claude"],
+        binaryPath: "/usr/local/bin/failproofai",
+      });
+    });
+
+    it("a project-scope install never touches the agents' user-wide MCP configs", async () => {
+      vi.mocked(existsSync).mockReturnValue(true);
+      vi.mocked(readFileSync).mockReturnValue("{}");
+      const sr = await import("../../src/hooks/self-report-install");
+      vi.mocked(sr.syncSelfReportMcp).mockClear();
+
+      const { installHooks } = await import("../../src/hooks/manager");
+      await installHooks(undefined, "project", "/tmp/some-project");
+
+      expect(sr.syncSelfReportMcp).not.toHaveBeenCalled();
     });
 
     // `--install` with no names WIRES HOOKS. It does not choose policies, and
@@ -824,6 +860,22 @@ describe("hooks/manager", () => {
   });
 
   describe("removeHooks", () => {
+    it("removes the Self Reports MCP server for the agents whose user-scope hooks go", async () => {
+      vi.mocked(existsSync).mockReturnValue(false);
+      const sr = await import("../../src/hooks/self-report-install");
+      const { removeHooks } = await import("../../src/hooks/manager");
+
+      await removeHooks(undefined, "all", undefined, { cli: ["claude", "codex"] });
+      expect(sr.removeSelfReportMcp).toHaveBeenCalledWith({ agents: ["claude", "codex"], quiet: true });
+
+      vi.mocked(sr.removeSelfReportMcp).mockClear();
+      await removeHooks(undefined, "project", undefined, { cli: ["claude"] });
+      expect(sr.removeSelfReportMcp).not.toHaveBeenCalled();
+
+      await removeHooks(["block-sudo"], "user", undefined, { cli: ["claude"] });
+      expect(sr.removeSelfReportMcp).not.toHaveBeenCalled();
+    });
+
     it("removes only failproofai hooks, preserving others", async () => {
       vi.mocked(existsSync).mockReturnValue(true);
       const settings = {

@@ -1297,3 +1297,101 @@ class TestTaskHumanInput:
         with pytest.raises(KeyboardInterrupt) as excinfo:
             _provider()._prompt_input(None)
         assert excinfo.value is boom
+
+
+# ---------------------------------------------------------------------------
+# Self Reports: the ready-made report tool
+# ---------------------------------------------------------------------------
+
+USE_REPORT = (
+    "Thought: I am stuck.\nAction: failproofai_report\n"
+    'Action Input: {"category": "missing_context", "detail": "The input file is not provided."}'
+)
+
+
+class TestSelfReportTool:
+    def test_is_a_base_tool_with_the_spec(self):
+        from failproofai_sdk.integrations.crewai import self_report_tool
+
+        tool = self_report_tool()
+        assert isinstance(tool, BaseTool)
+        assert tool.name == "failproofai_report"
+        assert failproofai_sdk.self_report_spec()["description"] in tool.description
+        schema = tool.args_schema.model_json_schema()
+        assert schema["properties"]["category"]["enum"] == (
+            failproofai_sdk.self_report_spec()["input_schema"]["properties"]["category"]["enum"]
+        )
+        assert set(schema["required"]) == {"category", "detail"}
+
+    def test_records_on_the_instrumented_crew_agent(self, instrumented, emitted):
+        from failproofai_sdk.integrations.crewai import self_report_tool
+
+        llm = ScriptedLLM(model="scripted/fake-1", responses=[USE_REPORT, FINAL])
+        kickoff(build_crew(llm, tools=[self_report_tool()]))
+        events = emitted()
+        (report,) = [e for e in events if e["type"] == "self_report"]
+        starts = [e for e in events if e["type"] == "agent_start"]
+        assert report["session_id"] == starts[0]["session_id"]
+        assert report["agent_id"] == starts[1]["agent_id"]  # the agent, not the crew
+        assert (report["category"], report["detail"], report["source"]) == (
+            "missing_context", "The input file is not provided.", "sdk",
+        )
+        assert report["framework"] == "crewai"
+        # CrewAI's tool sees no call id: the report takes the open call's.
+        (use,) = [e for e in events if e["type"] == "tool_use" and e["tool_name"] == "failproofai_report"]
+        assert use["tool_call_id"] and report["tool_call_id"] == use["tool_call_id"]
+
+    def test_is_never_cached(self, emitted):
+        from failproofai_sdk.integrations.crewai import self_report_tool
+
+        tool = self_report_tool()
+        args = {"category": "looping", "detail": "same"}
+        assert tool.cache_function(args, "Recorded.") is False
+        assert tool.to_structured_tool().cache_function(args, "Recorded.") is False
+
+    def test_async_invoke_runs_in_the_callers_context(self, emitted):
+        import asyncio
+        import contextvars
+        import threading
+
+        from failproofai_sdk.integrations.crewai import self_report_tool
+
+        seen = []
+        probe = contextvars.ContextVar("probe", default=None)
+        tool = self_report_tool()
+        structured = tool.to_structured_tool()
+        # Its own ainvoke, not CrewAI's: CrewAI < 1.15 hands a sync tool to
+        # run_in_executor without the caller's context.
+        from crewai.tools.structured_tool import CrewStructuredTool
+
+        assert isinstance(structured, CrewStructuredTool)
+        assert type(structured).ainvoke is not CrewStructuredTool.ainvoke
+        original = structured.func
+
+        def spy(**kw):
+            seen.append((probe.get(), threading.current_thread() is threading.main_thread()))
+            return original(**kw)
+
+        structured.func = spy
+
+        async def call():
+            probe.set("caller")
+            with failproofai_sdk.session("crew-async"):
+                return await structured.ainvoke({"category": "looping", "detail": "d"})
+
+        assert asyncio.run(call()) == "Recorded."
+        # Off the loop's thread, with the caller's context (and its session).
+        assert seen == [("caller", False)]
+        (report,) = [e for e in emitted() if e["type"] == "self_report"]
+        assert report["session_id"] == "crew-async"
+
+    def test_ambient_and_explicit_identity(self, emitted):
+        from failproofai_sdk.integrations.crewai import self_report_tool
+
+        with failproofai_sdk.session("crew-ambient"):
+            assert self_report_tool().run(category="looping", detail="d") == "Recorded."
+        self_report_tool(session_id="crew-s", agent_id="crew-a").run(category="looping", detail="d")
+        reports = [e for e in emitted() if e["type"] == "self_report"]
+        assert [(r["session_id"], r["agent_id"]) for r in reports] == [
+            ("crew-ambient", "main"), ("crew-s", "crew-a"),
+        ]

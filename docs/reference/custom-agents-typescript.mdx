@@ -194,7 +194,7 @@ A `using` block that catches its own failure reports it with `span.fail(error)` 
 
 ## Event catalog
 
-The same fifteen methods as the Python SDK, in camelCase. Most come in **pairs** — you call the opener, then the closer, and the SDK times the gap.
+The same sixteen methods as the Python SDK, in camelCase. Most come in **pairs** — you call the opener, then the closer, and the SDK times the gap.
 
 | | Opens | Closes |
 | --- | --- | --- |
@@ -205,7 +205,7 @@ The same fifteen methods as the Python SDK, in camelCase. Most come in **pairs**
 | **Hooks** | `hookTriggered` | `hookCompleted` |
 | **Humans** | `humanWait` | `humanInput` |
 
-Three stand alone: `error`, `humanPause`, `humanInterrupt`.
+Four stand alone: `error`, `humanPause`, `humanInterrupt`, and `selfReport` (see [Self Reports](#self-reports)).
 
 <Accordion title="Every field, per method" icon="table">
 
@@ -228,6 +228,7 @@ Every method also takes `sessionId` and `agentId`, which the scopes fill in for 
 | `humanInput` | `inputId` | `response` |
 | `humanPause` | — | `reason`, `userId` |
 | `humanInterrupt` | — | `reason`, `userId`, `atStep` |
+| `selfReport` | `category` | `detail`, `toolCallId` |
 
 Any other key you add becomes a custom payload field. Namespace anything framework-specific `fw_*`; a name that collides with a declared field is refused rather than silently overwriting a promoted column.
 
@@ -392,6 +393,30 @@ Identity is ambient: everything inside `agent()` lands on that run's session wit
 - **Emit the pairs.** A `modelRequest` with no `modelResponse` is a span the dashboard shows as running forever — hence the `catch`.
 
 [`sdk/typescript/examples/research-agent.ts`](https://github.com/FailproofAI/failproofai/blob/main/sdk/typescript/examples/research-agent.ts) in the repository is the complete, runnable version: a real OpenAI tool loop instrumented exactly like this, run in CI on every change as an ES module and as CommonJS.
+
+## Self Reports
+
+Offer your agent one more tool, `failproofai_report`, so the model can say it is stuck. The call records a `self_report` event in the current session and agent, with `source: "sdk"`, and answers `Recorded.`. See [Self Reports](/self-reports) for the categories.
+
+With a framework, add the ready-made tool from its subpath:
+
+```ts
+import { selfReportTool } from "@failproofai/sdk/ai";          // Vercel AI SDK
+await generateText({ model, prompt, tools: { failproofai_report: selfReportTool(), ...tools } });
+
+import { selfReportTool } from "@failproofai/sdk/langchain";   // @langchain/core
+createReactAgent({ llm, tools: [selfReportTool<StructuredToolInterface>(), ...tools] });
+```
+
+`@failproofai/sdk/mastra` and `@failproofai/sdk/llamaindex` export the same `selfReportTool()`. With a provider SDK directly:
+
+```ts
+const tools = [failproofai.openaiTool(), ...yours];   // or openaiResponsesTool(), anthropicTool()
+const answer = failproofai.handleToolCall(call.name, call.arguments, { toolCallId: call.id });
+if (answer !== null) toolResults.push({ id: call.id, content: answer });   // "Recorded."
+```
+
+`handleToolCall` returns `null` for any other tool and never throws. `failproofai.selfReport(category, detail)` records a report from your own code, `failproofai.selfReportSpec()` returns `{ name, description, inputSchema }` for any other tool format, and `failproofai.isSelfReportTool(name)` lets you hide the call in your UI. The categories come from `~/.failproofai/self-report.json`, else the six defaults. Edge builds offer the same tools, which answer `Recorded.` and record nothing.
 
 ## Evaluations
 

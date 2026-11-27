@@ -72,10 +72,17 @@ export function getBaseDir(): string {
  * a first batch is written.
  */
 export function failproofaiCustomAgentsDir(): string {
+  return join(failproofaiHome(), "custom-agents");
+}
+
+/**
+ * `~/.failproofai`, or `$FAILPROOFAI_HOME` when it is set — the umbrella every
+ * local failproofai file lives under (the spool above, `self-report.json`).
+ */
+export function failproofaiHome(): string {
   // Blank or whitespace-only means unset: otherwise it resolves against the cwd.
   const fpHome = process.env.FAILPROOFAI_HOME?.trim();
-  const base = fpHome ? expandUser(fpHome) : join(homedir(), ".failproofai");
-  return join(base, "custom-agents");
+  return fpHome ? expandUser(fpHome) : join(homedir(), ".failproofai");
 }
 
 /**

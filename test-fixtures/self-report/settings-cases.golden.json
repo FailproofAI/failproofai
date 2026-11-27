@@ -1,0 +1,221 @@
+{
+  "_comment": "Every Self Reports settings reader (the CLI's resolveSelfReport, the daemon's effective_settings and its HTTP settings cache) must reach the same on/off for each case. `file` null means no self-report.json; `text` is a raw file body.",
+  "cases": [
+    {
+      "name": "no file, not enrolled: on by default",
+      "file": null,
+      "enrolled": false,
+      "on": true
+    },
+    {
+      "name": "no file, enrolled: off until the daemon writes the org setting",
+      "file": null,
+      "enrolled": true,
+      "on": false
+    },
+    {
+      "name": "local file on, not enrolled",
+      "file": {
+        "version": 1,
+        "enabled": true,
+        "source": "local",
+        "categories": [
+          {
+            "name": "looping",
+            "description": "You keep repeating the same or circular steps without making progress."
+          }
+        ],
+        "guidance": null,
+        "mcp": {
+          "port": 4319,
+          "url": "http://127.0.0.1:4319/mcp"
+        },
+        "updatedAt": "2026-11-27T10:00:00Z"
+      },
+      "enrolled": false,
+      "on": true
+    },
+    {
+      "name": "local file on, enrolled: ignored until the org setting arrives",
+      "file": {
+        "version": 1,
+        "enabled": true,
+        "source": "local",
+        "categories": [
+          {
+            "name": "looping",
+            "description": "You keep repeating the same or circular steps without making progress."
+          }
+        ],
+        "guidance": null,
+        "mcp": {
+          "port": 4319,
+          "url": "http://127.0.0.1:4319/mcp"
+        },
+        "updatedAt": "2026-11-27T10:00:00Z"
+      },
+      "enrolled": true,
+      "on": false
+    },
+    {
+      "name": "local file off, not enrolled",
+      "file": {
+        "version": 1,
+        "enabled": false,
+        "source": "local",
+        "categories": [
+          {
+            "name": "looping",
+            "description": "You keep repeating the same or circular steps without making progress."
+          }
+        ],
+        "guidance": null,
+        "mcp": {
+          "port": 4319,
+          "url": "http://127.0.0.1:4319/mcp"
+        },
+        "updatedAt": "2026-11-27T10:00:00Z"
+      },
+      "enrolled": false,
+      "on": false
+    },
+    {
+      "name": "cloud file on, enrolled",
+      "file": {
+        "version": 1,
+        "enabled": true,
+        "source": "cloud",
+        "categories": [
+          {
+            "name": "looping",
+            "description": "You keep repeating the same or circular steps without making progress."
+          }
+        ],
+        "guidance": null,
+        "mcp": {
+          "port": 4319,
+          "url": "http://127.0.0.1:4319/mcp"
+        },
+        "updatedAt": "2026-11-27T10:00:00Z"
+      },
+      "enrolled": true,
+      "on": true
+    },
+    {
+      "name": "cloud file off, enrolled",
+      "file": {
+        "version": 1,
+        "enabled": false,
+        "source": "cloud",
+        "categories": [
+          {
+            "name": "looping",
+            "description": "You keep repeating the same or circular steps without making progress."
+          }
+        ],
+        "guidance": null,
+        "mcp": {
+          "port": 4319,
+          "url": "http://127.0.0.1:4319/mcp"
+        },
+        "updatedAt": "2026-11-27T10:00:00Z"
+      },
+      "enrolled": true,
+      "on": false
+    },
+    {
+      "name": "cloud file on, not enrolled (left from an org; the daemon removes it)",
+      "file": {
+        "version": 1,
+        "enabled": true,
+        "source": "cloud",
+        "categories": [
+          {
+            "name": "looping",
+            "description": "You keep repeating the same or circular steps without making progress."
+          }
+        ],
+        "guidance": null,
+        "mcp": {
+          "port": 4319,
+          "url": "http://127.0.0.1:4319/mcp"
+        },
+        "updatedAt": "2026-11-27T10:00:00Z"
+      },
+      "enrolled": false,
+      "on": true
+    },
+    {
+      "name": "version 2, local, on, not enrolled: unsupported, off",
+      "file": {
+        "version": 2,
+        "enabled": true,
+        "source": "local",
+        "categories": [
+          {
+            "name": "looping",
+            "description": "You keep repeating the same or circular steps without making progress."
+          }
+        ],
+        "guidance": null,
+        "mcp": {
+          "port": 4319,
+          "url": "http://127.0.0.1:4319/mcp"
+        },
+        "updatedAt": "2026-11-27T10:00:00Z"
+      },
+      "enrolled": false,
+      "on": false
+    },
+    {
+      "name": "version 2, cloud, on, enrolled: unsupported, off",
+      "file": {
+        "version": 2,
+        "enabled": true,
+        "source": "cloud",
+        "categories": [
+          {
+            "name": "looping",
+            "description": "You keep repeating the same or circular steps without making progress."
+          }
+        ],
+        "guidance": null,
+        "mcp": {
+          "port": 4319,
+          "url": "http://127.0.0.1:4319/mcp"
+        },
+        "updatedAt": "2026-11-27T10:00:00Z"
+      },
+      "enrolled": true,
+      "on": false
+    },
+    {
+      "name": "version 0: unsupported, off",
+      "file": {
+        "version": 0,
+        "enabled": true,
+        "source": "local",
+        "categories": [
+          {
+            "name": "looping",
+            "description": "You keep repeating the same or circular steps without making progress."
+          }
+        ],
+        "guidance": null,
+        "mcp": {
+          "port": 4319,
+          "url": "http://127.0.0.1:4319/mcp"
+        },
+        "updatedAt": "2026-11-27T10:00:00Z"
+      },
+      "enrolled": false,
+      "on": false
+    },
+    {
+      "name": "unparsable file: off",
+      "text": "{not json",
+      "enrolled": false,
+      "on": false
+    }
+  ]
+}

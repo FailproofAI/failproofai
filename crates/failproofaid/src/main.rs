@@ -9,6 +9,7 @@ mod lock;
 mod logfile;
 mod logship;
 mod paths;
+mod self_report;
 mod server;
 mod telemetry;
 #[cfg(test)]
@@ -272,6 +273,26 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
     // WITHOUT root, against a system unit — takes effect without a restart.
     let mut audit_lane = audit_lane::spawn(shutdown.clone());
 
+    // Self Reports: the `report` tool's MCP server on 127.0.0.1. Its own
+    // thread and runtime rather than a collector task, because the collector
+    // runs only with an ingest credential and an OSS machine needs this too.
+    // Always listening; `tools/list` is empty while Self Reports is off. On by
+    // default: a missing `self-report.json` reads as on unless this machine is
+    // Cloud enrolled, and the server asks the same enrolment check the policy
+    // poll uses. A busy port logs a warning and the daemon carries on.
+    fpai_collect::self_report::set_enrolment_check(std::sync::Arc::new(
+        cloud_client::self_report_enrolled,
+    ));
+    let (self_report_listening, self_report_ready) = std::sync::mpsc::channel();
+    let mut self_report_mcp = paths::failproofai_home().ok().and_then(|home| {
+        fpai_collect::self_report::spawn(
+            home,
+            self_report::port(),
+            shutdown.clone(),
+            self_report_listening,
+        )
+    });
+
     // Handled rather than `?`-ed, because a bare `?` here returns past every
     // join below — including the telemetry flush — so a daemon that cannot bind
     // its socket would buffer `daemon_started` and then take it to the grave.
@@ -293,6 +314,11 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
         }
     };
     tracing::info!("listening on {}", socket_path.display());
+    // Self Reports: once the MCP server is listening and this socket is bound,
+    // re-run the agent sync so agents registered over stdio while the daemon
+    // was down move to its HTTP server (the sync's live check pings this
+    // socket and the MCP port). Only when Self Reports is on.
+    self_report::spawn_startup_sync(self_report_ready, shutdown.clone());
 
     let run_result = srv.run_until(shutdown);
 
@@ -314,6 +340,7 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
     // waits on its child and kills the process group rather than waiting the
     // scan out, so a `systemctl stop` is never held up by an audit.
     join_lane(&mut audit_lane);
+    join_lane(&mut self_report_mcp);
 
     // Joined BEFORE the stop event is recorded, so nothing contends with the
     // final send. `run_result` is what distinguishes the two ways this daemon

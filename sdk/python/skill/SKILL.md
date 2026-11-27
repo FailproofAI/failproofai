@@ -15,7 +15,7 @@ description: |-
 # Failproof AI SDK — Python and TypeScript
 
 Two packages, one pipe: `failproofai-sdk` (Python, imported as `failproofai_sdk`)
-and `@failproofai/sdk` (TypeScript/JavaScript). They write the same 15 events in
+and `@failproofai/sdk` (TypeScript/JavaScript). They write the same 16 events in
 the same wire format into the same spool directory. Everything in this file is
 language-neutral unless it says otherwise, and code blocks are Python.
 **For a TypeScript or JavaScript agent, read `references/typescript.md` alongside
@@ -40,7 +40,7 @@ your agent calls failproofai_sdk.event.*
 about it: everything up to the `.jsonl` is yours to get right and yours to verify,
 and it is verifiable on a laptop with no server, no API key, and no network.
 
-The API is small — 15 event methods, all keyword-only. The hard parts are
+The API is small — 16 event methods, all keyword-only except `self_report`'s two leading arguments. The hard parts are
 **deciding where to call them** and **knowing which silences are bugs**, because
 this SDK does not raise when you get it wrong. Sections 1-3 are the plan, 4 is the
 code, 5-6 are the proof, 7 is scoring the runs.
@@ -137,6 +137,7 @@ doesn't apply; there is no requirement to emit every type.
 | your `except` blocks | `error` | the Errors surface |
 | a policy/guard/middleware layer | `hook_triggered` / `hook_completed` | hook behaviour |
 | an approval gate or human handoff | `human_wait` / `human_input`, `human_pause`, `human_interrupt` | where runs sit waiting on people |
+| the agent's tool list | the report tool (`self_report_tool()` / `openai_tool()`), which emits `self_report` | the agent telling you it is stuck, and why (Self Reports) |
 | a run that suspends and resumes — waiting for a human, throttled, user-paused | `agent_pause` / `agent_resume` | a real "paused" state: the agent isn't ended, the resume isn't a new agent, and wait time is excluded from active work |
 
 If the codebase has one tool dispatcher and one LLM wrapper, you have two edit
@@ -155,7 +156,7 @@ recipe — `references/typescript.md` → *The contract, in TypeScript* and *Shu
 
 - **There IS an ambient session, and it is the ergonomic path.** `session()`,
   `agent()` and `tool_call()` bind identity on contextvars, so `session_id` and
-  `agent_id` are optional on all 15 event methods — omitted, they resolve from
+  `agent_id` are optional on all 16 event methods — omitted, they resolve from
   the enclosing scope. `current()` reads it; `propagate(fn)` carries it into a
   new thread, which contextvars do NOT do on their own.
 
@@ -165,6 +166,16 @@ recipe — `references/typescript.md` → *The contract, in TypeScript* and *Shu
 
   Nothing bound and nothing passed raises `TypeError` naming the fix — never a
   silent emit, because ingest skips an event with no session and answers `200`.
+  The one exception is `self_report()`: a report is evidence, so it never
+  raises for a missing session. With none passed or bound, an unambiguous open
+  `tool_use` for the call gives it its session, with no warning: the one with its
+  `tool_call_id`, else the NEWEST open report-tool call. Newest, not only: two
+  report calls open in one session (parallel tool calls) resolve to the later
+  one, so pass `tool_call_id` whenever report calls can overlap. Open calls in
+  several sessions resolve to none. Only when no explicit session,
+  no such open call and no enclosing scope identifies one is it recorded under
+  `session_id="unattributed"` (one warning per process). The other 15 methods
+  raise.
 
   Two more shapes raise, for the same reason:
 

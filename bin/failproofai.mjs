@@ -314,6 +314,43 @@ if (hookIdx >= 0) {
   }
 }
 
+// mcp [--agent <integration>] — the Self Reports MCP server over stdio, spawned
+// by an agent that registered it. Outside runCli() like --hook: stdout is the
+// JSON-RPC stream, so nothing else (layout notices, onboarding, the install
+// report) may run or print first, and it must work with no daemon.
+const SELF_REPORT_MCP_HELP = {
+  name: "mcp",
+  usage: [["failproofai mcp [--agent <agent>]", "Serve the Self Reports tool over stdio MCP"]],
+  options: [
+    ["--agent <agent>", "The agent this server was registered for"],
+    ["", "claude, codex, copilot, cursor, opencode, pi,"],
+    ["", "hermes, openclaw, factory, devin, antigravity, goose"],
+  ],
+};
+if (args[0] === "mcp") {
+  if (args.includes("--help") || args.includes("-h")) {
+    await printHelp(SELF_REPORT_MCP_HELP);
+    await exitAfterFlush(0);
+  }
+  const agentIdx = args.indexOf("--agent");
+  const agentArg = agentIdx >= 0 ? args[agentIdx + 1] : undefined;
+  const stray = args.slice(1).find((a, i) => a !== "--agent" && args[i] !== "--agent");
+  if ((agentIdx >= 0 && (!agentArg || agentArg.startsWith("-"))) || stray) {
+    process.stderr.write(
+      `✕ ${stray ? `Unexpected argument: ${stray}.` : "Missing agent name after --agent."}\n  Run  failproofai help mcp  for usage.\n`,
+    );
+    await exitAfterFlush(1);
+  }
+  try {
+    const { runSelfReportMcpServer } = await import("../src/hooks/self-report-mcp");
+    await runSelfReportMcpServer({ agent: agentArg });
+    await exitAfterFlush(0);
+  } catch (err) {
+    process.stderr.write(`✕ failproofai mcp: ${err instanceof Error ? err.message : String(err)}\n`);
+    await exitAfterFlush(1);
+  }
+}
+
 /**
  * Centralised error handler for all CLI subcommands.
  * CliError  → clean message, no stack trace, exit exitCode (1 or 2)
@@ -469,7 +506,7 @@ async function runCli() {
   // at all, only the paragraph in the top-level dump that this rewrite moved.
   // `help` and `publish` are new. `policy` and `pack` are canonicalized to
   // `policies` above and never reach this list.
-  const SUBCOMMANDS = ["policies", "audit", "config", "uninstall", "backfill", "flush", "harness", "otel", "jev", "publish", "update", "migrate", "help"];
+  const SUBCOMMANDS = ["policies", "audit", "config", "uninstall", "backfill", "flush", "harness", "otel", "jev", "self-report", "publish", "update", "migrate", "help"];
   // ── help ─────────────────────────────────────────────────────────────────
   //
   // The index and the reference manual used to be the same document: 152 lines,
@@ -498,6 +535,12 @@ async function runCli() {
         ],
       });
       process.exit(0);
+      process.exit(0);
+    }
+    // `mcp` is machine-facing too (an agent spawns it), so like --hook it is a
+    // help topic rather than a row on the index.
+    if (helpTopic === "mcp") {
+      await printHelp(SELF_REPORT_MCP_HELP);
       process.exit(0);
     }
     // Canonicalize the topic the same way a typed command is canonicalized, so
@@ -568,6 +611,7 @@ async function runCli() {
           ["(no args)", "Open the policy dashboard on localhost:8020"],
           ["audit", "Scan your agents' history for risky and wasteful patterns"],
           ["otel", "Opt in to OpenTelemetry from agents and apps"],
+          ["self-report", "Let agents report to you when they are stuck (on by default)"],
         ]),
         ...section("Less often", [
           ["harness", "Collect sessions from extra locations per agent"],
@@ -644,7 +688,14 @@ async function runCli() {
   {
     const isHelpOrVersion =
       args.includes("--help") || args.includes("-h") || args.includes("--version") || args.includes("-v");
-    if (args[0] === "audit" && args.includes("--scheduled")) {
+    // `self-report sync` takes it too: failproofaid runs it (`--quiet`) at
+    // startup and after every settings change, unattended, exactly like a
+    // scheduled audit. A person running it by hand on a stale home is told to
+    // run `failproofai config`, which migrates visibly.
+    const unattended =
+      (args[0] === "audit" && args.includes("--scheduled")) ||
+      (args[0] === "self-report" && args[1] === "sync" && !isHelpOrVersion);
+    if (unattended) {
       // NOT `layoutWarningForHook` — that one answers the hook's question
       // ("are policies unenforced?") and deliberately stays quiet when the
       // global config is readable. This gate is about the LAYOUT, and must
@@ -743,6 +794,52 @@ async function runCli() {
   // over. Every precondition a person can get wrong is still checked HERE,
   // synchronously, because reporting success and leaving the real failure in the
   // journal is what already cost twenty minutes on a live machine.
+  // `failproofai self-report sync [--quiet]`: add or remove failproofai's
+  // Self Reports MCP server in every agent with failproofai hooks, from
+  // ~/.failproofai/self-report.json. The daemon runs it with --quiet whenever
+  // that file's `enabled` (or port) changes; it is idempotent.
+  // Dispatched ahead of the status|enable|disable|test branch below, which
+  // lists it on the `self-report --help` page.
+  if (args[0] === "self-report" && args[1] === "sync") {
+    const subArgs = args.slice(2);
+    if (subArgs.includes("--help") || subArgs.includes("-h")) {
+      await printHelp({
+        name: "self-report sync",
+        usage: [["failproofai self-report sync [--quiet]", "Register or remove the Self Reports MCP server (failproofai_local) in each hooked agent"]],
+        options: [["--quiet", "Print nothing; the exit code says whether every agent succeeded"]],
+        optionsCol: 12,
+      });
+      process.exit(0);
+    }
+    const unknown = subArgs.find((a) => a !== "--quiet");
+    if (unknown) {
+      throw new CliError(`Unexpected argument: ${unknown}.\nRun  \`failproofai self-report sync --help\`  for usage.`);
+    }
+    lastSubcommand = "self-report";
+    const { syncSelfReportMcp, selfReportSyncLines } = await import("../src/hooks/self-report-install");
+    const results = await syncSelfReportMcp({ quiet: true });
+    const failed = results.some((r) => r.status === "error");
+    if (!subArgs.includes("--quiet")) {
+      const lines = selfReportSyncLines(results);
+      await printLines(lines.length > 0 ? lines : ["Self Reports MCP registration is already up to date."], !failed);
+    } else {
+      // The daemon runs this with --quiet and logs our stdout and stderr: what
+      // changed (one line), and each agent that failed, so "exit 1" is never
+      // all its journal says.
+      if (process.env.FAILPROOFAI_SELF_REPORT_SYNC_LOG === "stdout") {
+        const { selfReportSyncLogLine } = await import("../src/hooks/self-report-install");
+        const changed = selfReportSyncLogLine(results.filter((x) => x.status !== "error" && x.status !== "conflict"));
+        if (changed) process.stdout.write(`${changed}\n`);
+      }
+      for (const r of results.filter((x) => x.status === "error")) {
+        process.stderr.write(`${r.agent}: not updated in ${r.path || "its config"}: ${r.detail ?? "error"}\n`);
+      }
+    }
+    lastSubcommand = null;
+    await exitAfterFlush(failed ? 1 : 0);
+    return;
+  }
+
   if (args[0] === "flush") {
     const subArgs = args.slice(1);
     if (subArgs.includes("--help") || subArgs.includes("-h")) {
@@ -977,6 +1074,55 @@ async function runCli() {
       // A path is a value the user typed, and `enterprise-docs/product-analytics.md`
       // promises we send shape, never value.
       sub: ["list", "add-path", "remove-path"].includes(subArgs[0]) ? subArgs[0] : "unknown",
+    });
+    lastSubcommand = null;
+    await exitAfterFlush(result.exitCode);
+    return;
+  }
+
+  // self-report status | enable | disable | test
+  //
+  // Self Reports: the `report` tool agents call when they are stuck. On by
+  // default. On a machine managed by FailproofAI Cloud the setting comes from
+  // Cloud and enable/disable refuse; otherwise they write config.json's
+  // `selfReport` and ~/.failproofai/self-report.json, then update the agents'
+  // MCP entries (disable removes them and stops recording).
+  if (args[0] === "self-report") {
+    const subArgs = args.slice(1);
+    if (subArgs.length === 0 || subArgs.includes("--help") || subArgs.includes("-h")) {
+      await printHelp({
+        name: "self-report",
+        usage: [
+          ["failproofai self-report status [--verbose] [--json]", "Whether it is on, the agents it serves, and any that need a fix"],
+          ["failproofai self-report enable [options]", "Turn it back on for this machine, or change its categories"],
+          ["failproofai self-report disable", "Turn it off: removes the MCP entries and stops recording"],
+          ["failproofai self-report test --agent <agent>", "Send one test report end to end"],
+          ["failproofai self-report sync [--quiet]", "Update each hooked agent's failproofai_local MCP entry (the daemon runs this)"],
+        ],
+        options: [
+          ["--categories-file <f>", "JSON list of {name, description}; replaces the defaults"],
+          ["--guidance <text>", "Extra instructions appended to the tool description"],
+          ["--agent <agent>", "With test: the agent to send it as"],
+          ["--verbose", "With status: paths, endpoints, categories and each agent's transport"],
+          ["--json", "With status: everything, as JSON"],
+        ],
+        examples: [
+          "failproofai self-report status",
+          "failproofai self-report disable",
+          "failproofai self-report test --agent claude",
+        ],
+      });
+      process.exit(0);
+    }
+    lastSubcommand = "self-report";
+    const { runSelfReportCommand } = await import("../src/hooks/self-report-cli");
+    const result = await runSelfReportCommand(subArgs);
+    if (result.json !== undefined) process.stdout.write(`${JSON.stringify(result.json, null, 2)}\n`);
+    else await printReport(`self-report ${subArgs[0]}`, result.lines, { ok: result.exitCode === 0 });
+    await track("cli_self_report", {
+      ok: result.exitCode === 0,
+      // The subcommand only — never a category, guidance text or a path.
+      sub: ["status", "enable", "disable", "test", "sync"].includes(subArgs[0]) ? subArgs[0] : "unknown",
     });
     lastSubcommand = null;
     await exitAfterFlush(result.exitCode);
@@ -2048,30 +2194,13 @@ async function runCli() {
     // running Hermes or OpenClaw gateway kept the plugin it loaded before (or
     // none) until someone thought to run `update`. Setup has already brought
     // the daemon to this version and the entry check migrated the home.
+    // Then Self Reports: every hooked agent's MCP entry brought in line with
+    // self-report.json. Both behind one spinner line, which leaves the Self
+    // Reports line and only what needs the user (src/hooks/setup-finish.ts).
     let updateExit = 0;
     if (result.applied) {
-      const { runUpdateSteps, markUpdated, setupNeedsUpdateSteps, setupGatewayLine, restartNewlyPlugged } =
-        await import("../src/hooks/update-run");
-      const { screenKit, colorsEnabled } = await import("../src/hooks/tui");
-      const kit = screenKit({ color: colorsEnabled(process.stdout) });
-      if (!setupNeedsUpdateSteps(version)) {
-        // Already updated on this version: only a profile this run plugged in
-        // (one created since) has a gateway still running without the plugin.
-        const gateway = setupGatewayLine(await restartNewlyPlugged(pluggedBefore).catch(() => []));
-        if (gateway) process.stdout.write(`${gateway.ok ? kit.ok(gateway.text) : kit.caution(gateway.text)}\n`);
-      } else {
-        const run = await runUpdateSteps({ layout: false, daemon: false, restart: true });
-        // One line at most, in update's own words; a Hermes failure keeps its
-        // existing ✕ line so it is not lost.
-        const gateway = setupGatewayLine(run.restarts);
-        const out = [
-          ...run.lines.filter((l) => l.startsWith("✕")),
-          ...(gateway ? [gateway.ok ? kit.ok(gateway.text) : kit.caution(gateway.text)] : []),
-        ];
-        if (out.length > 0) process.stdout.write(`${out.join("\n")}\n`);
-        if (run.ok) markUpdated(version);
-        else updateExit = 1;
-      }
+      const { finishSetup } = await import("../src/hooks/setup-finish");
+      updateExit = await finishSetup({ version, pluggedBefore });
     }
     await warnTokenOnArgv();
     await track("cli_configure_invoked", {

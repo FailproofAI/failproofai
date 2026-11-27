@@ -1,0 +1,146 @@
+---
+title: "Jev über FailproofAI Cloud"
+description: "Cloud-Maschinenschlüssel, Verbindungsstatus, Limits und Fehlerverhalten für die Live-Jev-Richtlinienprüfung."
+icon: "cloud"
+---
+
+Dies ist die Cloud-Routenreferenz für [Jev-Richtlinien](/de/policies/jev). Jev, TypeSafes Klassifikator, liest jeden Tool-Aufruf im Vergleich zu dem, was Sie tatsächlich angefordert haben, und antwortet neben Ihren Richtlinien, nicht anstelle von ihnen. Über **FailproofAI Cloud** verwendet eine verbundene Maschine Jev mit demselben Schlüssel, mit dem sie sich bereits verbindet: kein TypeSafe-Konto, kein zweiter Schlüssel, kein Endpunkt zum Konfigurieren. Jeder Aufruf wird dem bestehenden Plan-Kontingent Ihrer Organisation angerechnet.
+
+Alles, was Jev tut, bleibt gegenüber der [Bring-your-own-Key-Einrichtung](/de/reference/jev-providers) unverändert: Harte Richtlinien bleiben endgültig, die Ablehnung einer überprüfbaren Richtlinie wird nur dann aufgehoben, wenn Jev genau zu diesem Anliegen befragt wurde, und jeder Fehler fällt für diesen Aufruf auf das Regex-Ergebnis zurück.
+
+<Note>
+Erfordert **failproofai 1.0.8-beta.0** oder höher. 1.0.7 hat kein Jev, auch wenn es in der Sortierung über den 1.0.7-Betas steht. Ohne eine Jev-Konfiguration ändert sich nichts: Hooks führen die Regex-Richtlinien exakt wie bisher aus.
+</Note>
+
+## Vor dem Start
+
+Installieren Sie Failproof AI auf der Maschine, auf der Ihr Agent läuft, und hängen Sie dessen Hooks an einen [unterstützten Harness](/de/reference/harnesses) an. Wenn Sie von Grund auf neu starten, folgen Sie dem [Quickstart](/de/start/quickstart) bis zur Hook-Installation. Prüfen Sie die installierte CLI mit `failproofai --version`; aktualisieren Sie sie, wenn sie vor Jev liegt. Sie benötigen außerdem Zugang zur **Einstellungen → API-Schlüssel**-Seite Ihrer Organisation, um einen Maschinenschlüssel zu erstellen.
+
+Jev überprüft benannte Tool-Aufrufe am `PreToolUse`- oder `PermissionRequest`-Gate. Es überprüft nicht jedes Ereignis in einer Sitzung. Um zu sehen, wie Jev eine Richtlinienablehnung aufhebt, benötigen Sie eine installierte Richtlinie, die als [überprüfbar](/de/policies/authority) markiert ist; alle anderen Richtlinienablehnungen bleiben endgültig.
+
+## Einschalten
+
+1. **Erstellen Sie einen Schlüssel mit Jev.** Öffnen Sie im FailproofAI Cloud-Dashboard **Einstellungen → API-Schlüssel** und wählen Sie im Formular **Neuer Schlüssel** die Option **eine Maschine, die failproofai ausführt**. Damit werden die drei Berechtigungen gewährt, die eine Maschine benötigt: `events:add` (Aktivität senden), `policies:pull` (Richtlinien empfangen) und `jev:evaluate` (Jev, dem Plan Ihrer Organisation angerechnet). Ein Schlüssel kann `jev:evaluate` nicht ohne die anderen beiden tragen.
+2. **Verbinden Sie die Maschine** mit diesem Schlüssel. Lesen Sie dessen einmaligen Geheimwert an einer Eingabeaufforderung, und führen Sie dann den vollständigen Setup-Befehl aus:
+
+   ```bash
+   read -rs FAILPROOFAI_CLOUD_TOKEN && export FAILPROOFAI_CLOUD_TOKEN
+   failproofai config
+   ```
+
+   `failproofai config` installiert den Daemon, hängt Hooks für die gefundenen Agent-CLIs an und verbindet die Maschine. Die Umgebungsvariable hält den Schlüssel aus den Befehlsargumenten und Ihrem Shell-Verlauf heraus. Wenn Ihr Harness später installiert wurde, [hängen Sie ihn explizit an](/de/start/quickstart).
+
+   Wenn Ihre Organisation ihre eigene FailproofAI Cloud anstelle der gehosteten betreibt, fügen Sie deren Adresse hinzu: `--url https://<your dashboard host>` (oder exportieren Sie `FAILPROOFAI_CLOUD_URL`). Ohne sie wird der Schlüssel gegen den gehosteten Dienst geprüft und die Verbindung schlägt fehl. Wenn das Zertifikat dieses Hosts von einer privaten CA stammt, installieren Sie die CA im System-Trust-Store der Maschine (zum Beispiel mit `update-ca-certificates`), nicht nur in `NODE_EXTRA_CA_CERTS`: Der Daemon, der Ereignisse sendet und Richtlinien abruft, liest den System-Store. Siehe [Fehlerbehebung](/de/reference/troubleshooting).
+
+Das ist alles. Beim Verbinden wird der Schlüssel gespeichert, und wenn die Maschine **noch keine** Jev-Konfiguration hat, wird eine für FailproofAI Cloud geschrieben. Ab der ersten Bereitstellung der Maschine (innerhalb von etwa 30 s) legt FailproofAI Cloud den Modus fest: `enforce`, während eine Jev-Richtlinie für sie bereitgestellt ist, `off`, wenn keine bereitgestellt ist (siehe [Wer den Modus festlegt](#who-sets-the-mode)). Die Ausgabe bestätigt dies:
+
+```text
+  Jev       configured through FailproofAI Cloud; waiting for FailproofAI Cloud's Jev mode, which arrives with this machine's first deployment (within ~30 s) and decides.
+```
+
+Prüfungen, die FailproofAI Cloud bereitstellt, laufen in Cloud. Um eigene Prüfungen auf der Maschine hinzuzufügen, installieren Sie ein Pack:
+
+```bash
+failproofai policies add FailproofAI/jev-policies
+```
+
+**Mit `--no-transcripts` schaltet das Verbinden Jev nicht ein.** Jev sendet jeden geprüften Tool-Aufruf und die letzte Eingabeaufforderung an FailproofAI Cloud, was mehr ist als eine Verbindung, die nur Entscheidungen senden soll. Der Schlüssel wird dennoch gespeichert, und die Ausgabe besagt, dass Jev verfügbar ist und wie man es einschaltet:
+
+```bash
+failproofai jev setup --provider failproofai
+```
+
+Es schaltet Jev über FailproofAI Cloud auch **aus**. Eine `jev.json`, die Jev über FailproofAI Cloud ausführt (hinterlassen von einer früheren Verbindung mit eingeschalteten Transkripten), wird nach derselben Regel entfernt, die `config --disconnect` verwendet, und die Ausgabe besagt, dass Jev über FailproofAI Cloud auf dieser Maschine ausgeschaltet bleibt. Eine `jev.json` für Ihren eigenen Jev-Endpunkt bleibt unverändert, ebenso wie eine FailproofAI Cloud-Konfiguration, die Sie ausgeschaltet haben (`--mode off`).
+
+<Warning>
+Beim Verbinden wird eine vorhandene `~/.failproofai/jev.json` **niemals überschrieben**. Wenn Sie bereits Ihren eigenen Jev-Endpunkt verwenden, wird dieser weiterhin verwendet, und die Ausgabe besagt, dass die Datei so belassen wurde, wie sie konfiguriert war — und wenn diese Datei Jev ausgeschaltet lässt (verweigert oder ausgeschaltet), wird dies und die Behebung erläutert. Um diese Maschine auf FailproofAI Cloud umzustellen, führen Sie `failproofai jev setup --provider failproofai` aus.
+</Warning>
+
+## Wer den Modus festlegt
+
+Auf einer Maschine, die mit FailproofAI Cloud verbunden ist, **legt FailproofAI Cloud den Jev-Modus fest**; nichts auf der Maschine tut dies:
+
+- `enforce`, während eine Jev- (oder Regex + Jev-) Richtlinie für die Maschine bereitgestellt ist: Jeder geprüfte Tool-Aufruf eines Agents, auf den eine dieser Richtlinien abzielt, geht an FailproofAI Cloud, das seine Prüfungen zusammen mit den Prüfungen der dort installierten Packs abfragt. Ein Aufruf eines Agents, auf den keine Cloud-Jev-Richtlinie abzielt und der keine eigene Pack-Prüfung hat, wird überhaupt nicht gesendet. Im `enforce`-Modus blockieren Jevs eigene Deny-Prüfungen Aufrufe und heben auch die Regex-Urteile auf, die sie überprüfen.
+- `off`, wenn keine bereitgestellt ist: überhaupt kein Jev, unabhängig davon, was `jev.json` sagt.
+
+Um eine Jev-Richtlinie auszuprobieren, bevor sie wirkt, stellen Sie sie mit dem Effekt **observe** bereit: Ihre Prüfungen werden weiterhin abgefragt, und was sie getan hätten, wird als **would-have** unter **fix → activity** aufgezeichnet, aber sie blockiert niemals einen Aufruf und hebt keinen auf. `failproofai jev setup --mode` und der Schalter **Einstellungen → Jev** im lokalen Dashboard zeigen an, dass der Modus von FailproofAI Cloud verwaltet wird, und ändern nichts. `jev.json` wird für Cloud-Prüfungen nicht verwendet, auch wenn sie einen anderen Anbieter nennt. `failproofai config --disconnect` gibt Jev an die eigene `jev.json` der Maschine zurück.
+
+`failproofai jev status` meldet dann `Jev checks run on FailproofAI Cloud (mode: enforce)`. Es nennt auch die Prüfungen, die jede `both`-Richtlinie überprüfen. Die Fleet-Seite zeigt, warum eine Maschine mit einem Modus nicht fragen kann:
+
+- `transcripts_disabled`: Die Maschine wurde mit `--no-transcripts` verbunden, was Jev nie einschaltet.
+- `jev_unconfigured`: Der Schlüssel der Maschine trägt kein `jev:evaluate`.
+- `jev_rate_limited`: FailproofAI Cloud hat einige Aufrufe der Maschine aufgrund des Jev-Rate-Limits der Organisation abgelehnt, und diese Aufrufe wurden allein durch die Regex-Richtlinien entschieden.
+- `jev_unavailable`: Mehrere Aufrufe in Folge sind fehlgeschlagen, sodass die Maschine Jevs FailproofAI Cloud jeweils für eine Minute überspringt. Sie versucht es von selbst erneut.
+
+Wenn FailproofAI Cloud nicht innerhalb von 5 Sekunden antwortet, entscheiden die Regex-Richtlinien allein, wie bei jedem Jev-Ausfall. Nach 3 aufeinanderfolgenden Fehlern hört die Maschine jeweils für eine Minute auf zu fragen, damit ein Cloud-Ausfall nicht jeden Tool-Aufruf verlangsamt.
+
+Eine Sitzungspause (`failproofai config --pause`) stoppt die Jev-Prüfungen von FailproofAI Cloud nicht, genau wie sie von Cloud verwaltete Richtlinien nicht stoppt. Sie pausiert die Jev-Prüfungen von auf der Maschine installierten Packs.
+
+## Was es tut, prüfen
+
+```bash
+failproofai jev status
+failproofai jev test
+```
+
+`status` zeigt den Anbieter als **FailproofAI Cloud**, den Cloud-Host, mit dem sich die Maschine verbunden hat, den Modus und die Schlüsselquelle als **FailproofAI Cloud-Verbindung** an, niemals den Schlüssel selbst. Wenn eine FailproofAI Cloud-`jev.json` vorhanden ist, Jev aber nicht ausgeführt werden kann, wird der Grund angegeben:
+
+| `status` meldet | `status --json` | Bedeutung |
+| --- | --- | --- |
+| **off — no Jev key is stored for this machine's FailproofAI Cloud connection** | `key-lacks-jev` | Die Maschine ist verbunden, aber es ist kein Jev-Schlüssel für sie gespeichert: Dem Schlüssel fehlt `jev:evaluate`, oder die Verbindung konnte ihn nicht bestätigen. Führen Sie `failproofai config` erneut mit dem Schlüssel in `FAILPROOFAI_CLOUD_TOKEN` aus; wenn die Berechtigung fehlt, verwenden Sie einen **Maschinen**-Schlüssel. |
+| **off — this machine is not connected to FailproofAI Cloud** | `not-connected` | Auf dieser Maschine besteht keine FailproofAI Cloud-Verbindung, der der Jev-Schlüssel gehören könnte. |
+
+Nach `failproofai config --disconnect` gibt es keine FailproofAI Cloud-`jev.json` mehr (es sei denn, sie wurde ausgeschaltet, was beibehalten wird), sodass `status` Jev einfach als ausgeschaltet meldet. `status --json` enthält dieselben Fakten (`provider: "failproofai"`, `keySource: "cloud"`, `cloudConnected`, `keyCarriesJev`), auch wenn die Konfiguration fehlt oder verweigert wird. `permissions` ist immer die von `jev.json`; eine Verweigerung bezüglich `credentials.json` fügt `credentialsPermissions` hinzu sowie `fix`, wenn ein Befehl es behebt. `test` sendet eine Live-Anfrage und meldet deren Latenz und die Jev-Version, die geantwortet hat. Es beendet sich mit 1 und zeigt dies im Titel an, wenn die Antwort nach dem Hook-Timeout eintrifft (Hooks würden `timeout` aufzeichnen) oder ihre Prüffrage falsch beantwortet.
+
+Das **Einstellungen → Jev**-Panel im lokalen Dashboard zeigt auch die **FailproofAI Cloud-Verbindung**: welche Organisation die Maschine meldet und ob ihr Schlüssel Jev trägt. Es wird aus den eigenen Dateien der Maschine gelesen, ohne Netzwerkaufruf.
+
+## Einen echten Aufruf verifizieren
+
+Starten Sie eine neue Sitzung im eingehängten Agent. Bitten Sie ihn, sein Dateilesewerkzeug auf `README.md` anzuwenden und den Titel zu melden. Bestätigen Sie, dass die Sitzung diesen Tool-Aufruf enthält, und führen Sie dann `failproofai jev status` erneut aus: Die Anzahl der kürzlich ausgewerteten Aufrufe sollte steigen. Öffnen Sie **Richtlinien → Aktivität** im [lokalen Dashboard](/de/reference/local-dashboard#review-policy-activity), um das Jev-Urteil und den Modus dieses Aufrufs zu untersuchen. In Cloud zeigt **fix → activity** Jev-Ergebnisse für gelieferte Aktivität. Im Beobachtungsmodus wird das Urteil als **would-have** aufgezeichnet, und das Richtlinienergebnis entscheidet weiterhin den Aufruf. Eine Aufhebung erscheint nur, wenn eine überprüfbare Richtlinie übereinstimmte und Jev deren benannte Prüfungen aufhob.
+
+## Was die Richtlinienseite erreicht
+
+Die Maschine sendet ihre Hook-Aktivität bereits an FailproofAI Cloud (`events:add`). Mit eingeschaltetem Jev enthält der Datensatz jedes gesperrten Aufrufs auch, welcher Auswerter lief, was Jev entschieden hat, welche Richtlinien es aufgehoben hat, warum es zurückgefallen ist, seine Latenz und das Modell, das geantwortet hat — Entscheidungen, Codes und Namen, niemals den Befehl oder Ihre Eingabeaufforderung. In Cloud unter **fix → activity**:
+
+- Ein Aufruf, den Jevs eigenes Urteil entschieden hat (Enforce-Modus), wird **Jev** zugeschrieben, und wenn die entscheidende Prüfung von einem Pack kam, nennt der Datensatz auch dieses Pack und seine Version;
+- Im Beobachtungsmodus erscheint Jevs Ablehnung oder Warnung als **would-have**, neben den Rollouts, die Sie beobachten;
+- Die Richtlinien, die Jev aufgehoben hat oder im Beobachtungsmodus aufgehoben hätte, werden pro Richtlinie gezählt.
+- Eine Entscheidung, an der Jev beteiligt war (eine Blockierung, eine Warnung, eine Aufhebung oder ein would-have im Beobachtungsmodus), listet jede abgefragte Prüfung und deren Schlussfolgerung auf: Urteil, Grund (`not-detected`, `exempt`, `fired`, `op-requested`, …), seine Evidenz `p`, die `exempt`-Antwort und die Antwort jeder Sonde. Eine Prüfung einer im Beobachtungsmodus bereitgestellten Richtlinie wird ebenfalls aufgelistet, als beobachtet markiert; sie blockiert niemals. Jev antwortet mit Wahrscheinlichkeiten, nicht mit Prosa, daher gibt es keinen Freitext-Grund. Einfache Erlaubnisse werden in Zählungen zusammengefasst und tragen diese Liste nicht.
+
+## Wenn Jev nicht antworten kann
+
+Jede dieser Situationen fällt für diesen Aufruf auf das Ergebnis Ihrer Richtlinien zurück und wird mit ihrem Grund aufgezeichnet:
+
+| Grund | Ursache |
+| --- | --- |
+| `out-of-credits` | Ihre Organisation hat ihr Plan-Kontingent aufgebraucht. |
+| `http-401`, `http-403` | Der Schlüssel wurde widerrufen oder trägt kein `jev:evaluate`. Verbinden Sie sich erneut mit einem Schlüssel, der dies tut. |
+| `http-429` | FailproofAI Cloud begrenzt Jev für Ihre Organisation durch Rate-Limiting. Bis die angeforderte Wartezeit abgelaufen ist (sein `Retry-After`, höchstens 60 Sekunden) sendet die Maschine nichts und jeder Aufruf fällt sofort zurück. Auf diese Weise zurückgehaltene Aufrufe werden als `http-429` aufgezeichnet, oder als `rate-limited`, wenn das eigene Rate-Limit der Maschine sie zuerst zurückhält. |
+| `http-429` (Tageslimit) | Ihre Organisation hat ihr tägliches Jev-Aufrufkontingent aufgebraucht: **10.000 pro UTC-Tag**, es sei denn, der Betreiber Ihrer FailproofAI Cloud hat ein anderes Limit festgelegt. Jeder Aufruf fällt zurück, bis der Zähler um 00:00 UTC zurückgesetzt wird; die Maschine fragt höchstens einmal pro Minute erneut an, sodass sie den Reset innerhalb einer Minute erkennt. `failproofai jev test` meldet: „Daily Jev limit for this org reached; resets at 00:00 UTC." |
+| `http-422` | Jev hat die Anfrage dieses Aufrufs abgelehnt, in der Regel weil der Tool-Aufruf dichten Text (Base64, Hex, minimierten Code) über Jevs Token-Budget enthielt. Dieser Aufruf fällt jedes Mal zurück; es handelt sich nicht um einen Ausfall. |
+| `http-502` | Jev ist gerade nicht verfügbar. |
+| `http-503` | Diese Cloud kann Jev für Ihre Organisation nicht bedienen: kein Modell-Gateway, eine noch nicht bereitgestellte Organisation oder das Gateway ist ausgefallen. Wenden Sie sich an Ihren Administrator; Hooks fragen höchstens einmal pro Minute erneut an. |
+| `http-404` | Diese FailproofAI Cloud stellt Jev noch nicht bereit. |
+| `timeout` | Keine Antwort innerhalb von `timeoutMs` (Standard 3000). Während FailproofAI Cloud den Jev-Modus der Maschine festlegt, beträgt die Wartezeit 5000 ms und das `timeoutMs` von `jev.json` wird nicht verwendet. |
+| `model-mismatch` | Eine andere Jev-Version als 1.13 hat geantwortet. |
+
+## Wo der Schlüssel liegt und wohin er geht
+
+- Der Schlüssel wird einmal gespeichert, in `~/.failproofai/credentials.json` (`0600`, in einem nur dem Eigentümer zugänglichen Verzeichnis), neben den anderen FailproofAI Cloud-Anmeldedaten. `jev.json` enthält für diese Route keinen Schlüssel; ein dort eingetragener macht die Konfiguration ungültig.
+- Wenn `credentials.json` **irgendeine** Berechtigung für jemand anderen als Sie trägt (Gruppe oder Andere, Lesen oder Schreiben), oder wenn ihr Verzeichnis von jemand anderem als Ihnen **beschrieben** werden kann, wird sie **verweigert**, nicht gelesen, und Jev ist ausgeschaltet, bis Sie es beheben: `chmod 600` für die Datei, `chmod 700` für das Verzeichnis (oder erneut verbinden, was die Datei mit `0600` neu schreibt und das Verzeichnis nur dem Eigentümer zugänglich macht). Ein Verzeichnis, das andere nur lesen können, ist in Ordnung; eines, das sie beschreiben können, ermöglicht ihnen den Austausch der Datei.
+- Der Schlüssel zählt nur, solange die Verbindung, mit der er kam, auf der Maschine ist: eine Richtlinien- oder Melde-Berechtigung für dieselbe FailproofAI Cloud **mit demselben Schlüssel**, in derselben Datei. Ein hinterlassener Jev-Schlüssel ohne eine solche wird ignoriert, und Jev bleibt ausgeschaltet. Dies passiert, wenn ein älteres `config --disconnect` von failproofai den Jev-Schlüssel hinterlässt (es weiß nicht, ihn zu entfernen), oder wenn ein älteres `config --token` von failproofai mit einem anderen Schlüssel verbindet, der in FailproofAI Cloud einer anderen Organisation gehören kann. Um Jev wieder einzuschalten, verbinden Sie sich erneut mit einem **Maschinen**-Schlüssel.
+- Der Schlüssel wird nur an den Cloud-Ursprung gesendet, gegen den er verifiziert wurde. Eine `jev.json`, die auf einen anderen Ort zeigt, wird verweigert.
+- **Ein Agent auf der Maschine kann ihn lesen.** `credentials.json` ist nur dem Eigentümer zugänglich, und der Agent läuft als dieser Eigentümer. Das Lesen von Failproofs eigenen Dateien ist absichtlich erlaubt (nur das Ändern wird blockiert, durch `block-failproofai-commands`), sodass das Einzige zwischen einem Agent und dieser Datei `block-read-outside-cwd` ist — eine *überprüfbare* Richtlinie — und von einer im Home-Verzeichnis gestarteten Sitzung, nichts. Ein Schlüssel mit `jev:evaluate` verbraucht das Jev-Kontingent Ihrer Organisation (bis zur Tageshöchstgrenze) von überall, wo er verwendet wird, also behandeln Sie einen Maschinenschlüssel wie jede andere Ausgaben-Berechtigung: Wenn ein Agent ihn möglicherweise gelesen hat, widerrufen Sie ihn unter **Einstellungen → API-Schlüssel** und verbinden Sie sich erneut mit einem neuen.
+- Nur Ihre globalen Dateien entscheiden dies. Ein Repository kann Cloud-Jev nicht einschalten, nicht auf einen anderen Ort verweisen oder seinen Schlüssel bereitstellen, und `FAILPROOFAI_JEV_API_KEY` wird für diese Route ignoriert.
+- Für jeden von Jev ausgewerteten Aufruf geht eine Anfrage an FailproofAI Cloud, die das enthält, was die [Bring-your-own-Key-Seite](/de/reference/jev-providers#what-leaves-the-machine) auflistet (Geheimnisse geschwärzt). FailproofAI Cloud leitet es an TypeSafe weiter und protokolliert oder speichert es nicht.
+
+## Ausschalten
+
+Auf einer verbundenen Maschine ist Jev ausgeschaltet, wenn FailproofAI Cloud keine Jev-Richtlinie für sie bereitstellt: Entfernen oder archivieren Sie die Jev-Richtlinien dort.
+
+| Befehl | Ergebnis |
+| --- | --- |
+| Entfernen Sie die Jev-Richtlinien der Maschine in FailproofAI Cloud | Clouds Modus wird beim nächsten Poll (etwa 30 s) `off`: überhaupt kein Jev, unabhängig davon, was `jev.json` sagt. |
+| `failproofai config --disconnect` | Trennen Sie die Maschine: Der Schlüssel wird entfernt, ebenso wie `jev.json`, wenn sie FailproofAI Cloud nennt und nicht ausgeschaltet ist. Eine `jev.json` für Ihren eigenen Endpunkt bleibt erhalten. |
+
+Ab dem nächsten Tool-Aufruf führen Hooks die Regex-Richtlinien exakt wie zuvor aus.

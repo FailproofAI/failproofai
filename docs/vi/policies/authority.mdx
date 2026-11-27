@@ -1,0 +1,144 @@
+---
+title: "Quyền hạn chính sách"
+description: "Những phán quyết nào của bộ đánh giá ngữ nghĩa Jev mà FailproofAI có thể xóa, và những phán quyết nào là cuối cùng."
+icon: "scale"
+---
+
+Khi bạn cấu hình [đánh giá chính sách Jev](/vi/policies/jev) thông qua FailproofAI Cloud hoặc khóa của riêng bạn, mỗi lệnh gọi công cụ được kiểm soát được đánh giá bởi các chính sách bạn chạy và bởi Jev, những chính sách này hỏi rằng lệnh gọi thực sự làm gì và liệu người đã nhập tác vụ có yêu cầu nó hay không. **Quyền hạn** của mỗi chính sách quyết định điều gì xảy ra khi hai bên không đồng ý.
+
+Nếu không cấu hình Jev, quyền hạn không có tác dụng. Mỗi chính sách thực thi chính xác như nó luôn làm.
+
+## Cứng và có thể xem xét
+
+- **Cứng** là mặc định. Phán quyết từ chối hoặc hướng dẫn của chính sách cứng là cuối cùng: Jev không thể xóa nó, và từ chối cứng sẽ dừng lệnh gọi mà không chờ Jev.
+- **Có thể xem xét** có nghĩa là Jev có thể xóa phán quyết của chính sách, nhưng chỉ thông qua các kiểm tra ngữ nghĩa mà chính sách đặt tên trong `reviewedBy`. Phán quyết chỉ bị xóa khi **mọi** kiểm tra được đặt tên được hỏi về lệnh gọi này và mỗi kiểm tra hoặc không tìm thấy gì hoặc ghi lại người dùng yêu cầu điều này. Một kiểm tra **đã phát động** — phát hiện ra mối quan tâm — mà không có người dùng yêu cầu sẽ giữ nguyên khối, ngay cả khi phán quyết riêng của nó chỉ là cảnh báo. Một kiểm tra mà Jev không được hỏi, vì nó không áp dụng cho công cụ đó, không bao giờ xóa bất cứ điều gì, bất kể những kiểm tra khác nói gì. Một sự mềm mỏng được tính là sự đồng ý: khi lệnh gọi là một bước của tác vụ người dùng đã cung cấp và không đi xa hơn, Jev biến một từ chối thành cảnh báo, và cảnh báo đó xóa khối của chính sách và là những gì tác nhân được thông báo.
+
+Một chính sách chỉ có thể xem xét được khi tất cả những điều này đúng:
+
+1. Nó khai báo `authority: "reviewable"`.
+2. `reviewedBy` là danh sách không rỗng, và mỗi mục là một kiểm tra Jev mà gói đã cài đặt khai báo. FailproofAI không vận chuyển bất kỳ kiểm tra Jev nào: [mười sáu kiểm tra dưới đây](#semantic-policy-names) đến từ `failproofai policies add FailproofAI/jev-policies`. Nếu không có gói nào khai báo kiểm tra, mỗi chính sách đều cứng.
+3. Nó không phải là `alwaysOn`. Bảo vệ ngăn tác nhân vô hiệu hóa FailproofAI luôn cứng.
+
+Bất cứ điều gì khác đều cứng: trường bị thiếu, giá trị bị viết sai, `reviewedBy` trống hoặc bị định dạng sai, hoặc tên không phải là kiểm tra máy này có thể hỏi. Một tên không xác định làm cho toàn bộ khai báo cứng thay vì bị bỏ qua, vì `reviewedBy` có nghĩa là "tất cả những cái này phải được hỏi, và không có cái nào có thể từ chối", và bỏ qua một tên sẽ cho phép Jev xóa chính sách trên ít kiểm tra hơn những gì bạn yêu cầu.
+
+Khi Jev được cấu hình, FailproofAI ghi lại cảnh báo khi nó từ chối khai báo `reviewable`, một lần trên mỗi quy trình. Nếu không có Jev nó không nói gì, vì quyền hạn sau đó không quyết định gì. `failproofai publish` từ chối xây dựng gói mang khai báo như vậy, vì vậy tác giả gói biết trước khi bất kỳ ai cài đặt nó. Nó đánh giá `reviewedBy` dựa trên các kiểm tra mà gói khai báo khi nó khai báo bất kỳ kiểm tra nào, và dựa trên mười sáu tên `FailproofAI/jev-policies` nếu không.
+
+## Nơi khai báo quyền hạn
+
+Mỗi cách mà chính sách đạt được máy có một nơi quyết định quyền hạn của nó:
+
+| Nguồn | Được khai báo trong | Mặc định |
+| --- | --- | --- |
+| Chính sách tích hợp | Bảng dưới đây | Cứng trừ khi được liệt kê là có thể xem xét |
+| Tệp chính sách riêng của bạn | `authority` và `reviewedBy` trên `customPolicies.add` | Cứng |
+| Gói chính sách | Mục của mỗi chính sách trong bản kê khai gói (`failproofai-pack.json`) | Cứng |
+| Chính sách do đám mây quản lý | Phân công chính sách trong triển khai hoạt động | Cứng. Triển khai không thiết lập nó chưa, vì vậy mỗi chính sách do đám mây quản lý là cứng ngày hôm nay. |
+
+Đối với gói hoặc chính sách do đám mây quản lý, các trường được đặt bên trong mã chính sách bị bỏ qua; bản kê khai hoặc phân công quyết định. Một gói chỉ có thể mô tả các chính sách của nó: tên chính sách của nó không thể chứa `/` và được đăng ký dưới tiền tố riêng của gói, vì vậy không có bản kê khai nào có thể đánh dấu chính sách tích hợp hoặc chính sách của gói khác là có thể xem xét được. Một chính sách mà mã của gói đăng ký mà không khai báo nó trong bản kê khai là cứng.
+
+Hai gói, hoặc hai chính sách do đám mây quản lý, mã của chúng giống hệt nhau chia sẻ một tạo tác và tải dưới dạng một chính sách. Chính sách đó chỉ có thể xem xét được nếu mỗi gói khai báo nó có thể xem xét được, và Jev sau đó phải xóa mỗi kiểm tra mà bất kỳ gói nào khai báo. Nếu bất kỳ gói nào khai báo nó cứng, hoặc không khai báo nó cả, nó vẫn cứng. Thứ tự các gói hoặc chính sách được liệt kê không bao giờ quan trọng.
+
+Hầu hết máy nhận được các chính sách tích hợp từ gói `FailproofAI/policies`, và đọc quyền hạn của chúng từ bản kê khai gói đó. Các mục có thể xem xét được dưới đây có hiệu lực khi phát hành gói mang chúng được cài đặt; phát hành cũ không mang bất kỳ cái nào, vì vậy mỗi chính sách trong đó vẫn cứng.
+
+## Khai báo quyền hạn trong chính sách riêng của bạn
+
+```js
+import { customPolicies, deny, allow } from "failproofai";
+
+customPolicies.add({
+  name: "block-prod-config-reads",
+  description: "Keep production credentials out of the agent's context",
+  match: { events: ["PreToolUse"] },
+  authority: "reviewable",
+  reviewedBy: ["secret-exposure"],
+  fn: async (ctx) =>
+    String(ctx.toolInput?.file_path ?? "").includes("/config/prod/")
+      ? deny("Production config is off limits")
+      : allow(),
+});
+```
+
+`failproofai publish` sao chép cả hai trường vào bản kê khai gói, vì vậy chính sách được xuất bản dưới dạng gói giữ quyền hạn mà tác giả của nó cung cấp. Nó từ chối xây dựng gói nếu khai báo sẽ không được vinh danh: giá trị khác `"hard"` hoặc `"reviewable"`, `reviewedBy` không phải danh sách tên, hoặc tên không phải kiểm tra — một trong [kiểm tra Jev](/vi/policies/publish-a-pack#jev-checks-in-a-pack) của gói khi nó khai báo bất kỳ cái nào, kiểm tra tích hợp nếu không.
+
+## Chính sách tích hợp
+
+Có thể xem xét được chỉ khi kiểm tra ngữ nghĩa thực sự bao gồm mối quan tâm giống nhau. Mỗi chính sách tích hợp khác đều cứng.
+
+Bao gồm mối quan tâm là cần thiết nhưng không đủ, và cả hai cách để sai đều yên tĩnh:
+
+- **Một kiểm tra không bao giờ được hỏi** làm cho khối vĩnh viễn. `reviewedBy` là một phép hợp liên từ và một kiểm tra không được hỏi không bao giờ xóa, vì vậy chính sách được ghép nối với kiểm tra có điều kiện tiên quyết không bắn cho các hình dạng mà chính sách phù hợp không bao giờ có thể xóa cả.
+- **Một kiểm tra được hỏi nhưng không phát động** trả lời không có mối quan tâm, và không có mối quan tâm nào xóa. Vì vậy ghép nối với kiểm tra không mô hình các hình dạng chính sách của bạn không xem xét chính sách — nó chuyển nó tắt cho chính xác những đầu vào mà kiểm tra không hiểu.
+
+Một chính sách ngữ nghĩa ở chế độ hướng dẫn không bao giờ có thể trả lời từ chối, nhưng nó vẫn có thể giữ khối: khi nó phát động và người dùng không yêu cầu lệnh gọi, chính sách mà nó xem xét không bị xóa. Sáu trong số các kiểm tra `FailproofAI/jev-policies` chỉ ở chế độ hướng dẫn — `push-to-protected-branch`, `commit-on-protected-branch`, `read-outside-workspace`, `system-modification`, `env-secrets-dump` và `external-data-egress` — và [bảng dưới đây](#semantic-policy-names) cung cấp chế độ của mỗi kiểm tra. Câu hỏi đặt ra là **"còn điều gì có thể từ chối không"**: một lần xóa không bao giờ được để lại mối quan tâm được thực thi bởi không có gì. Công cụ áp dụng bài kiểm tra đó trên mỗi lệnh gọi. Cảnh báo mà không ai đồng ý không phải là xóa, vì trước các lệnh gọi công cụ cảnh báo không dừng tác nhân. Và khi kiểm tra có thể từ chối cảnh báo — bằng chứng của nó dưới dòng từ chối của nó — và người dùng không yêu cầu lệnh gọi, không có gì được xóa trên lệnh gọi đó và mỗi từ chối regex đứng vững.
+
+<Warning>
+**Một kiểm tra ghi điểm ngay dưới dòng lửa của nó không giữ sàn.** Quy tắc trên cần kiểm tra để *phát động* (bằng chứng ≥ 0,7). Khi mỗi kiểm tra liên quan hạ cánh ngay dưới đó, không có gì phát động, những người xem xét trả lời không có mối quan tâm, và từ chối có thể xem xét được bị xóa. Đo lường trực tiếp ở chế độ thực thi: một Đọc yêu cầu `/etc/shadow` (`secret-exposure` 0,69, `read-outside-workspace` 0,37, chỉ mô hình các đường dẫn thư mục chính) và `set | curl -d @- …` sau khi tuân theo SETUP.md (`env-secrets-dump` 0,66, `credential-exfiltration` 0,65 với `sends_out` 0,97) đều được phép, trong khi tầng regex riêng lẻ từ chối chúng. Các ngưỡng được hiệu chỉnh trên kho lưu trữ được gắn nhãn và chưa được đo lại dựa trên điều này; cho đến khi chúng được, hãy giữ chính sách **cứng** nơi một trong những hình dạng này vượt qua quan trọng hơn các khối sai của nó.
+</Warning>
+
+| Chính sách | Quyền hạn | Được xem xét bởi | Tại sao |
+| --- | --- | --- | --- |
+| `protect-env-vars` | có thể xem xét | `env-secrets-dump`, `secret-exposure` | Mẫu phát động trên bất kỳ tham chiếu biến nào; Jev hỏi xem giá trị bí mật có thực sự được in hay không. |
+| `block-env-files` | có thể xem xét | `secret-exposure` | Mẫu phù hợp với bất kỳ đường dẫn `.env`, bao gồm mẫu; Jev hỏi xem giá trị bí mật thực sự có được đọc hoặc ghi hay không. |
+| `block-read-outside-cwd` | có thể xem xét | `read-outside-workspace` | Được đo là ồn ào trên lưu lượng thực; Jev hỏi xem nội dung tệp bên ngoài dự án có được đọc hay không. Đọc mà người dùng yêu cầu, hoặc đọc mà kiểm tra không tìm thấy gì, bị xóa; đọc yêu cầu không được xóa mà nó cờ giữ khối. |
+| `warn-git-amend` | có thể xem xét | `git-history-rewrite` | Sửa đổi commit chưa được đẩy là bình thường; tổn hại là viết lại lịch sử mà những người khác có thể đã lấy. |
+| `warn-destructive-sql` | có thể xem xét | `database-destruction` | Jev cũng hỏi xem mục tiêu có phải là cơ sở dữ liệu thực hay là một cơ sở dữ liệu thử nghiệm có thể dùng một lần hay không. |
+| `warn-global-package-install` | có thể xem xét | `system-modification` | Mối quan tâm giống nhau: thay đổi máy bên ngoài dự án. |
+| `block-failproofai-commands` | cứng | | Bảo vệ tự sơn `alwaysOn`. Không bao giờ có thể xem xét. |
+| `block-rm-rf` | có thể xem xét | `destructive-deletion` | Heuristic độ sâu đường dẫn sai `rm -rf node_modules`; Jev hỏi xem những gì sẽ bị xóa có thể tái tạo được hay không. `rm -rf /` giữ cả hai điều kiều thử đúng. |
+| `block-sudo` | cứng | | Nâng cấp đặc quyền. |
+| `block-curl-pipe-sh` | cứng | | Chạy mã được tải xuống từ internet. |
+| `block-push-master` | cứng | | Đẩy trực tiếp đến nhánh được bảo vệ. |
+| `block-work-on-main` | cứng | | `commit-on-protected-branch` bao gồm chính xác mối quan tâm này nhưng ở chế độ hướng dẫn, vì vậy nó không bao giờ có thể trả lời từ chối, và không có kiểm tra nào khác bao gồm nó. |
+| `block-force-push` | có thể xem xét | `git-history-rewrite` | Điều tra của Jev là siêu tập hợp của bộ so khớp và đếm `--force-with-lease`; những gì xóa là force-push nhánh riêng của bạn. |
+| `block-secrets-write` | có thể xem xét | `secret-exposure` | Trận đấu đường dẫn không được neo, vì vậy `src/auth/credentials.ts` bị bắt; Jev hỏi xem vật liệu chính thực sự có được viết hay không. |
+| `block-kubectl` | có thể xem xét | `production-infra-change` | Từ chối toàn bộ CLI, bao gồm cả lệnh con chỉ đọc; Jev hỏi xem lệnh gọi có đột biến hay không và liệu mục tiêu có phải sản xuất hay không. |
+| `block-terraform` | có thể xem xét | `production-infra-change` | Giống nhau: xóa `terraform plan` và `validate`. |
+| `block-aws-cli` | có thể xem xét | `production-infra-change` | Giống nhau: xóa `aws s3 ls`, `aws sts get-caller-identity`. |
+| `block-gcloud` | có thể xem xét | `production-infra-change` | Giống nhau: xóa `gcloud auth list`, `gcloud config list`. |
+| `block-az-cli` | có thể xem xét | `production-infra-change` | Giống nhau: xóa `az account show`. |
+| `block-helm` | có thể xem xét | `production-infra-change` | Giống nhau: xóa `helm list`, `helm status`. |
+| `block-gh-pipeline` | cứng | | Kích hoạt đường ống, hợp nhất và thay đổi bí mật. |
+| `warn-git-stash-drop` | cứng | | Không có kiểm tra ngữ nghĩa nào bao gồm loại bỏ công việc được ẩn. |
+| `warn-git-clean` | cứng | | `destructive-deletion` bao gồm mối quan tâm nhưng chứng minh không thể phát động trên nó: `git clean` không tên đường dẫn, vì vậy điều tra `irreplaceable` của nó không có gì để đánh giá và trả lời thấp, và bằng chứng là mức tối thiểu trên các điều tra của chính sách. Một kiểm tra được hỏi và không phát động xóa phán quyết, vì vậy ghép nối ở đây sẽ chuyển chính sách tắt. |
+| `warn-all-files-staged` | cứng | | Không có kiểm tra ngữ nghĩa nào bao gồm những gì `git add` rộng nhặt. |
+| `warn-schema-alteration` | cứng | | `database-destruction` bao gồm làm suy yếu dữ liệu, không làm suy yếu lược đồ. |
+| `warn-package-publish` | cứng | | Xuất bản không thể đảo ngược và không có kiểm tra ngữ nghĩa nào bao gồm nó. |
+| `prefer-package-manager` | cứng | | Một công ước đội, không phải một phán đoán an toàn. |
+| `warn-large-file-write` | cứng | | Ngưỡng kích thước, không phải phán đoán Jev có thể thực hiện. |
+| `warn-background-process` | cứng | | Không có kiểm tra ngữ nghĩa nào bao gồm quy trình tách rời. |
+| `warn-repeated-tool-calls` | cứng | | Đếm các lệnh gọi; Jev không thể đếm. |
+| `sanitize-jwt` | cứng | | Làm mờ đầu ra công cụ; không phải cổng lệnh gọi công cụ. |
+| `sanitize-api-keys` | cứng | | Làm mờ đầu ra công cụ; không phải cổng lệnh gọi công cụ. |
+| `sanitize-connection-strings` | cứng | | Làm mờ đầu ra công cụ; không phải cổng lệnh gọi công cụ. |
+| `sanitize-private-key-content` | cứng | | Làm mờ đầu ra công cụ; không phải cổng lệnh gọi công cụ. |
+| `sanitize-bearer-tokens` | cứng | | Làm mờ đầu ra công cụ; không phải cổng lệnh gọi công cụ. |
+| `require-commit-before-stop` | cứng | | Cổng hoàn thành phiên, không phải cổng lệnh gọi công cụ. |
+| `require-push-before-stop` | cứng | | Cổng hoàn thành phiên, không phải cổng lệnh gọi công cụ. |
+| `require-pr-before-stop` | cứng | | Cổng hoàn thành phiên, không phải cổng lệnh gọi công cụ. |
+| `require-no-conflicts-before-stop` | cứng | | Cổng hoàn thành phiên, không phải cổng lệnh gọi công cụ. |
+| `require-ci-green-before-stop` | cứng | | Cổng hoàn thành phiên, không phải cổng lệnh gọi công cụ. |
+
+## Tên chính sách ngữ nghĩa
+
+Đây là những kiểm tra mà `FailproofAI/jev-policies` khai báo, và những giá trị mà `reviewedBy` chấp nhận khi nó được cài đặt. FailproofAI không vận chuyển bất kỳ cái nào trong số chúng: nếu không có gói đó (hoặc gói khác khai báo những tên này), không có chính sách đặt tên chúng có thể xem xét được. Mỗi cái là kiểm tra mà Jev trả lời về lệnh gọi công cụ ở phía trước nó. **Chế độ** là những gì một kiểm tra có thể trả lời: kiểm tra `deny` chặn trên bằng chứng mạnh, trong khi kiểm tra `instruct` chỉ bao giờ cảnh báo. Cả hai giữ từ chối của chính sách đứng vững khi nó phát động và người dùng không yêu cầu lệnh gọi. **Người dùng có thể ghi đè** cho biết liệu yêu cầu rõ ràng của con người có xóa nó hay không.
+
+Jev hỏi chính xác [kiểm tra Jev](/vi/policies/publish-a-pack#jev-checks-in-a-pack) mà gói được cài đặt khai báo, và những cái đó là tên `reviewedBy` chấp nhận. Tên mà hai gói khai báo khác nhau không được vinh danh cho bất kỳ cái nào. Một trong mười sáu tên này được khai báo bởi gói không được cài đặt từ kho FailproofAI bị bỏ qua trong gói đó: phiên bản của nó không bao giờ được hỏi và không tranh cãi với phiên bản riêng của FailproofAI, vì vậy gói bên thứ ba không thể trở thành kiểm tra xóa các chính sách gói inti hoặc tắt một trong những kiểm tra này. Danh sách gói không thể đọc được, hoặc gói mà mỗi kiểm tra không thể sử dụng được, không để lại Jev để hỏi.
+
+| Tên | Chế độ | Người dùng có thể ghi đè | Jev kiểm tra những gì |
+| --- | --- | --- | --- |
+| `destructive-deletion` | deny | có | Xóa vĩnh viễn dữ liệu không thể tái tạo được. |
+| `production-infra-change` | deny | có | Thay đổi cơ sở hạ tầng trực tiếp. |
+| `git-history-rewrite` | deny | có | Viết lại hoặc loại bỏ lịch sử git được chia sẻ. |
+| `push-to-protected-branch` | instruct | có | Đẩy trực tiếp đến nhánh được bảo vệ. |
+| `commit-on-protected-branch` | instruct | có | Cam kết trực tiếp trên nhánh được bảo vệ. |
+| `secret-exposure` | deny | có | Đọc hoặc sao chép thông tin xác thực. |
+| `credential-exfiltration` | deny | không | Gửi bí mật hoặc tệp riêng tư ra khỏi máy. |
+| `remote-code-execution` | deny | có | Chạy mã được tải xuống từ internet. |
+| `privilege-escalation` | deny | có | Chạy với các đặc quyền nâng cao. |
+| `database-destruction` | deny | có | Phá hủy hoặc sửa đổi hàng loạt dữ liệu cơ sở dữ liệu. |
+| `read-outside-workspace` | instruct | có | Đọc tệp bên ngoài dự án. |
+| `agent-config-tampering` | deny | không | Thay đổi cấu hình an toàn của tác nhân. |
+| `system-modification` | instruct | có | Thay đổi hệ thống bên ngoài dự án. |
+| `env-secrets-dump` | instruct | có | In bí mật môi trường. |
+| `external-destructive-action` | deny | có | Hành động không thể đảo ngược thông qua công cụ bên ngoài. |
+| `external-data-egress` | instruct | có | Gửi dữ liệu riêng tư đến công cụ bên ngoài. |

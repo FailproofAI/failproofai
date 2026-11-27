@@ -1,0 +1,63 @@
+---
+title: "Jev を使う"
+description: "完了したセッションの Jev 評価、またはライブのツール呼び出しレビュー用の Jev ポリシーを設定します。"
+icon: "sparkles"
+---
+
+Jev はエージェント実行の2つの場面で役立ちます。完了したセッションを既知の答えと照合してスコアリングする場合と、エージェントへの指示の文脈においてツール呼び出しをレビューする場合です。
+
+<Tabs>
+  <Tab title="Jev evals">
+    完了したセッションを「顧客は返金を求めましたか？はいかいいえで答えてください。」のような、いくつかの既知の答えを持つ質問に対してスコアリングできる場合に Jev eval を使用します。セッション全体のパターンを発見するのに役立ちます。
+
+    ## 評価を作成する
+
+    Cloud ダッシュボードで **analyse → checks → new check**（または **new evaluation**）を開きます。固定回答の質問を1つ記述し、ドラフトされたルールを確認して、**how it checks** が **decision model**（これが Jev です）になっていることを確認してください。実際のセッションで[テスト](/ja/evaluations/test)してから有効にします。
+
+    ![質問を記述し、ドラフトを確認してデプロイする共有の eval 作成フォーム。このスクリーンショットはコードのドラフトを示しています。Jev には固定回答の質問を使用してください。](/images/dashboard/eval-authoring-draft.png)
+
+    ## スコアを確認する
+
+    新しいセッションが完了したら、**analyse → checks → evals** を開いて評価を選択するか、Cloud CLI を使用します。
+
+    ```bash
+    fp evals --since 7d
+    fp evals --aggregate --since 7d
+    ```
+
+    CLI はスコアを読み取ります。Jev eval の作成は現在ダッシュボードから行います。質問の種類と例については [Jev 評価](/ja/evaluations/jev) を参照してください。
+  </Tab>
+  <Tab title="Jev policies">
+    文字列マッチングポリシーがツール呼び出しの安全性を判断するためにリクエストの文脈を必要とする場合に、Jev ポリシーレビューを使用します。まず **observe** モードで開始することで、インストール済みのポリシーが各呼び出しを判断しながら Jev の回答を確認できます。
+
+    Jev のチェックはパックから提供されます。Failproof AI はパックを同梱していません。インストールするまで、Jev は設定されていても何も確認しません。
+
+    ```bash
+    failproofai policies add FailproofAI/jev-policies
+    ```
+
+    ## Cloud Jev を設定する
+
+    Cloud ダッシュボードで **settings → api keys** を開き、**new key** の下で **a machine running failproofai** を選択します。[クイックスタート](/ja/start/quickstart)で示されているように `failproofai config` と組み合わせて使用します。既存の Jev 設定がないマシンでは、observe モードで Cloud Jev が有効になります。次のコマンドで接続を確認してください。
+
+    ```bash
+    failproofai jev status
+    failproofai jev test
+    ```
+
+    ## 独自のエンドポイントを使用する
+
+    ローカルダッシュボードで **Settings → Jev** を開きます。プロバイダーを選択し、トークンを貼り付けて **observe** を選択し、Jev をオンにします。
+
+    ![プロバイダー、トークンフィールド、observe モードが選択されたローカルの Jev 設定パネル。](/images/dashboard/jev-settings.png)
+
+    またはターミナルからエンドポイントを設定してテストします。
+
+    ```bash
+    failproofai jev --url https://api.typesafe.ai/v1 --mode observe --key-stdin < ~/typesafe.key
+    failproofai jev test
+    ```
+
+    フックされたエージェントに `README.md` のファイル読み取りツールを使用させてください。そのツール呼び出しがセッションに表示されることを確認してから、ローカルダッシュボードの **Policies → Activity** で内容を確認します。observe の結果が正しく見えたら、[Jev ポリシー](/ja/policies/jev) でいつ強制適用するかを説明しています。プロバイダーの詳細と設定については、[インテグレーションリファレンス](/ja/reference/jev)を参照してください。
+  </Tab>
+</Tabs>

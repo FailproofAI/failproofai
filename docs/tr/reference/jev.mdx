@@ -1,0 +1,22 @@
+---
+title: "Jev integration reference"
+description: "Configuration, providers, keys, request data, and failure behavior for Jev."
+icon: "braces"
+---
+
+Jev, Failproof AI'de iki kullanım alanına sahiptir:
+
+| Kullanım | Çalışma Zamanı | Döndürülen Değer | Başlangıç |
+| --- | --- | --- | --- |
+| Session değerlendirmesi | Bir session bittiğinde | Sabit cevaplı bir soru için puan | [Jev değerlendirmeleri](/tr/evaluations/jev) |
+| Tool-call politika incelemesi | Gated bir tool call çalışmadan önce | Yüklü politikaların yanında bir karar | [Jev politikaları](/tr/policies/jev) |
+
+## Referans sayfaları
+
+| Konu | Detaylar |
+| --- | --- |
+| [Değerlendirme soruları](/tr/reference/jev-evaluations) | Boolean ve sıralı puan kriterleri, sonuçlar, limitler ve geri doldurma. |
+| [Provider karşılaştırması ve kendi anahtarını kurma](/tr/reference/jev-providers) | TypeSafe, OpenRouter, Vercel, Cloudflare ve özel uç noktalar; URL çıkarımı, model kimlikleri, `jev.json`, modlar ve fallback kodları. |
+| [FailproofAI Cloud yolu](/tr/reference/jev-cloud) | Machine-key izinleri, otomatik observe kurulumu, kullanım limitleri, bağlantı durumu ve veri işleme. |
+
+Yerel CLI komutları [Failproof AI CLI referansında](/tr/reference/failproof-cli) listelenmektedir. [Yerel dashboard referansı](/tr/reference/local-dashboard#set-up-jev) Jev ayarlarını ve etkinlik görünümünü açıklamaktadır.

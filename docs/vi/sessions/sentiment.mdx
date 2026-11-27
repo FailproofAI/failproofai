@@ -1,0 +1,43 @@
+---
+title: "Phân tích cảm xúc"
+description: "Tìm các tin nhắn thể hiện sự bực dọc, lúng túng và chỉnh sửa bằng điểm cảm xúc Jev."
+icon: "smile"
+---
+
+Jev chấm điểm mỗi tin nhắn mà người dùng gửi cho agent của bạn từ 0 đến 100 cho bốn cảm xúc — **tức giận**, **bực dọc**, **vui vẻ** và **lúng túng** — cũng như ba tín hiệu về hiệu suất của agent:
+
+- **Chỉnh sửa**: người dùng nói agent đã làm sai điều gì đó.
+- **Giải quyết**: người dùng xác nhận agent đã giải quyết vấn đề của họ.
+- **Hoài nghi**: người dùng đặt câu hỏi về tính chính xác của câu trả lời từ agent hoặc liệu nó có thực sự hoạt động hay không.
+
+Sử dụng phân tích cảm xúc để tìm các cuộc trò chuyện nơi mọi người đang mất kiên nhẫn, các agent mà họ liên tục chỉnh sửa, và các phản hồi được đánh giá cao. Đây là chấm điểm Jev tích hợp sẵn; bạn không cần tạo một đánh giá. Để có câu hỏi trả lời cố định của riêng bạn, [tạo một đánh giá Jev](/vi/evaluations/jev).
+
+<Note>
+  Cảm xúc được tắt cho đến khi quản trị viên bật nó cho tổ chức. Jev tạo một yêu cầu chấm điểm cho mỗi tin nhắn và nhận tin nhắn đó kèm theo phản hồi của agent trước nó. Chấm điểm sử dụng ngân sách mô hình của tổ chức bạn.
+</Note>
+
+## Bật nó
+
+1. Vào **cài đặt → chung**.
+2. Dưới **phép đo**, bật **cảm xúc con người** và xác nhận.
+
+Các tin nhắn từ ngày hôm qua được chấm điểm trước tiên. Sau đó, các tin nhắn mới được chấm điểm trong vòng một hoặc hai phút sau khi đến.
+
+## Tìm một cuộc trò chuyện để xem xét
+
+Mở **theo dõi → cảm xúc**. Lọc theo thời gian, môi trường, agent hoặc ID phiên. Tiêu đề đếm tin nhắn và phiên, hiển thị có bao nhiêu tin nhắn được **đánh dấu**, và đặt tên tín hiệu hàng đầu. Một tin nhắn được đánh dấu khi điểm tức giận, bực dọc, chỉnh sửa, lúng túng hoặc hoài nghi đạt 35 trên 100.
+
+![Bảng điều khiển Cảm xúc hiển thị số lượng tin nhắn và phiên, các tin nhắn được đánh dấu, và điểm Jev theo thời gian.](/images/dashboard/sentiment-overview.png)
+
+Sử dụng **Điểm theo thời gian** để so sánh các tín hiệu. Chọn điểm để hiển thị, sau đó chọn một điểm để xem các tin nhắn trong khoảng thời gian đó. Bảng **Theo agent** hiển thị nơi tín hiệu được tập trung. Trong **Tin nhắn**, sắp xếp theo điểm âm mạnh nhất hoặc chọn một điểm duy nhất. Mở một tin nhắn trong phiên của nó để đọc cuộc trò chuyện xung quanh trước khi quyết định điều gì đã thất bại.
+
+![Danh sách tin nhắn Cảm xúc được sắp xếp theo điểm âm mạnh nhất, với liên kết đến từng phiên nguồn.](/images/dashboard/sentiment-messages.png)
+
+## Những tin nhắn nào được chấm điểm
+
+Chỉ những tin nhắn mà một người viết:
+
+- Các tin nhắn mà agent tùy chỉnh của bạn ghi lại dưới dạng đầu vào con người với SDK.
+- Các lời nhắc được nhập vào Claude Code, Codex, OpenCode, pi, Hermes và OpenClaw, khi các bản ghi phiên được gửi (mặc định). Các công việc theo lịch, hướng dẫn được tiêm, chuyển giao agent con và các văn bản khác mà chính thời gian chạy của agent viết không được chấm điểm. Các chạy không tương tác như `claude -p`, `codex exec` và `hermes -z` cũng không được chấm điểm: một tập lệnh đã viết các lời nhắc đó, không phải một người.
+
+Chấm điểm đánh giá các từ riêng của người dùng. Một hướng dẫn ngắn gọn, trực tiếp như "sửa nó" không được tính là sự tức giận, và việc đặt câu hỏi không được tính là sự lúng túng. Một yêu cầu mới không phải là một sự chỉnh sửa, và lời cảm ơn riêng lẻ không được tính là đã giải quyết.

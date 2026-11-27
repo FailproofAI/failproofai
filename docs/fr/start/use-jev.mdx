@@ -1,0 +1,63 @@
+---
+title: "Utiliser Jev"
+description: "Configurez les évaluations Jev pour les sessions terminées ou les politiques Jev pour l'examen des appels d'outils en direct."
+icon: "sparkles"
+---
+
+Jev intervient à deux moments d'une exécution d'agent : noter une session terminée par rapport à des réponses connues, ou examiner un appel d'outil dans le contexte de ce que vous avez demandé à l'agent de faire.
+
+<Tabs>
+  <Tab title="Évaluations Jev">
+    Utilisez une évaluation Jev lorsqu'une session terminée peut être notée par rapport à une question ayant quelques réponses connues, par exemple « Le client a-t-il demandé un remboursement ? Répondre par oui ou non. » Cela vous aide à identifier des tendances entre les sessions.
+
+    ## Créer une évaluation
+
+    Dans le tableau de bord Cloud, ouvrez **analyse → vérifications → nouvelle vérification** (ou **nouvelle évaluation**). Décrivez une question à réponse fixe, examinez la règle qu'elle génère, et vérifiez que **comment elle vérifie** correspond au **modèle de décision** — c'est Jev. [Testez-la](/fr/evaluations/test) sur de vraies sessions, puis activez-la.
+
+    ![Le formulaire de création d'évaluation partagé où vous décrivez une question, examinez le brouillon et le déployez. Cette capture d'écran montre un brouillon de code ; utilisez une question à réponse fixe pour Jev.](/images/dashboard/eval-authoring-draft.png)
+
+    ## Lire les scores
+
+    Après qu'une nouvelle session se termine, ouvrez **analyse → vérifications → évaluations** et sélectionnez l'évaluation, ou utilisez le CLI Cloud :
+
+    ```bash
+    fp evals --since 7d
+    fp evals --aggregate --since 7d
+    ```
+
+    Le CLI lit les scores ; la création d'une évaluation Jev s'effectue actuellement via le tableau de bord. Consultez [Évaluations Jev](/fr/evaluations/jev) pour les types de questions et les exemples.
+  </Tab>
+  <Tab title="Politiques Jev">
+    Utilisez l'examen par politique Jev lorsqu'une politique de correspondance de chaînes a besoin du contexte de votre requête pour déterminer si un appel d'outil est sûr. Commencez en mode **observation** afin de pouvoir inspecter les réponses de Jev pendant que vos politiques installées continuent de décider de chaque appel.
+
+    Les vérifications de Jev proviennent d'un pack ; Failproof AI n'en fournit aucun. Tant que vous ne les installez pas, Jev ne pose aucune question, même lorsqu'il est configuré :
+
+    ```bash
+    failproofai policies add FailproofAI/jev-policies
+    ```
+
+    ## Configurer Cloud Jev
+
+    Dans le tableau de bord Cloud, ouvrez **paramètres → clés API** et, sous **nouvelle clé**, choisissez **une machine exécutant failproofai**. Utilisez-la avec `failproofai config` comme indiqué dans le [guide de démarrage rapide](/fr/start/quickstart). Sur une machine sans configuration Jev existante, cela active Cloud Jev en mode observation. Vérifiez la connexion avec :
+
+    ```bash
+    failproofai jev status
+    failproofai jev test
+    ```
+
+    ## Utiliser votre propre point de terminaison
+
+    Dans le tableau de bord local, ouvrez **Paramètres → Jev**. Choisissez le fournisseur, collez son jeton, sélectionnez **observation**, et activez Jev.
+
+    ![Le panneau de paramètres Jev local avec un fournisseur, un champ de jeton et le mode observation sélectionné.](/images/dashboard/jev-settings.png)
+
+    Ou configurez et testez votre point de terminaison depuis un terminal :
+
+    ```bash
+    failproofai jev --url https://api.typesafe.ai/v1 --mode observe --key-stdin < ~/typesafe.key
+    failproofai jev test
+    ```
+
+    Demandez à un agent connecté d'utiliser son outil de lecture de fichiers sur `README.md`. Confirmez que cet appel d'outil apparaît dans la session, puis inspectez-le sous **Politiques → Activité** dans le tableau de bord local. Une fois que les résultats en mode observation semblent corrects, [Politiques Jev](/fr/policies/jev) explique quand appliquer les restrictions. Pour les détails des fournisseurs et la configuration, consultez la [référence d'intégration](/fr/reference/jev).
+  </Tab>
+</Tabs>

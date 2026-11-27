@@ -1,0 +1,28 @@
+---
+title: "Jev değerlendirmeleri"
+description: "Tamamlanmış bir oturumu bilinen yanıtlara karşı puanlamak için Jev kullanın."
+icon: "list-checks"
+---
+
+Bir Jev değerlendirmesi **tamamlanmış bir oturumu** okur ve 0 ile 1 arasında bir puan verir. Yanıtın önceden bilindiği durumlarda kullanın; örneğin "Müşteri aciliyet belirtti mi?" veya "Müşteri ne kadar hayal kırıklığına uğradı?" gibi sorular. Bu, çalışmalar arasında desenleri bulmanıza yardımcı olur; bir araç çağrısını durdurmaz. Bir araç çalıştırılmadan **önce** alınan kararlar için [Jev politikaları](/tr/policies/jev) kullanın.
+
+## Panoda bir tane oluşturun
+
+1. **analyse → checks → new evaluation** açın ve **how should it score?** altında **decision model** seçin.
+2. Bir soruyu ve olası yanıtlarını açıklayın. Örneğin: "Ajan iadeler politikasını kontrol etmeden önce geri ödeme vaat etti mi? Evet veya hayır cevap verin." **review** seçeneğinde, **question** ve **yes means** ile **no means** öğelerini kontrol edin; bir karar modeli her zaman bir puan verir.
+3. Son oturumlar üzerinde [deneyin](/tr/evaluations/test), sonra [dağıtın](/tr/evaluations/deploy). Yeni tamamlanan oturumlar puanlandırılır; geçmiş verileriniz varsa [backfill](/tr/evaluations/deploy#score-sessions-you-already-have) yapın.
+
+![Paylaşılan değerlendirme yazma formu, burada sabit yanıtlı bir soruyu açıklayabilir, taslağı inceleyebilir ve test ettikten sonra dağıtabilirsiniz. Gösterilen örnek bir kod değerlendirmesidir; bir Jev sorusu aynı yazma akışını kullanır.](/images/dashboard/eval-authoring-draft.png)
+
+Taslak oluştururken failproof, **code**, bir **decision model** (Jev) veya [**llm as judge**](/tr/evaluations/judge) arasından seçim yapabilir. Dağıtmadan önce seçimini kontrol edin. Jev bir puanı prose akıl yürütme olmadan verir; açıklama gerektiğinde bir judge seçin. Soru türleri ve puan sınırları için [Jev değerlendirme referansına](/tr/reference/jev-evaluations) bakın.
+
+## Puanları okuyun
+
+**analyse → checks → evals** açın ve değerlendirmeyi seçip sonucu agent ve zamana göre gösterin. Terminalden, Cloud CLI aynı sonuçları okuyabilir:
+
+```bash
+fp evals --since 7d
+fp evals --aggregate --since 7d
+```
+
+Terminalden `fp evaluators` Jev değerlendirmelerini yazar ve dağıtırken, `fp evals` sonuçlarını okur. Her ikisi için [Cloud CLI referansına](/tr/reference/cloud-cli#evaluations) bakın.

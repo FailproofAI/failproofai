@@ -1,0 +1,91 @@
+---
+title: "Những bộ đánh giá LLM"
+description: "Chấm điểm các phiên theo những tiêu chí mà code không thể đo được — tính chính xác, giọng điệu, liệu agent có tuân theo chính sách hay không — bằng cách mô tả tiêu chuẩn tốt và để một mô hình đọc cuộc hội thoại."
+icon: "scale"
+---
+
+Một đánh giá Python được lưu trữ có thể đếm và so sánh: có bao nhiêu lần gọi công cụ, bao nhiêu lỗi, phiên kéo dài bao lâu. Nó không thể cho bạn biết liệu một câu trả lời có *chính xác* hay không, liệu một câu trả lời có thô lỗ hay không, hoặc liệu agent có kiểm tra chính sách trước khi hành động hay không.
+
+Một **bộ đánh giá LLM** có thể. Bạn mô tả tiêu chuẩn tốt bằng ngôn ngữ thường ngày, và một mô hình đọc phiên và trả về điểm từ 0 đến 1 cùng với lý do của nó.
+
+<Note>
+Một bộ đánh giá tốn một lần gọi mô hình cho mỗi phiên nó chạy, và một đánh giá code không tốn gì cả. Chỉ sử dụng bộ đánh giá cho những câu hỏi cần cuộc hội thoại được *hiểu* — và cung cấp cho nó một điều kiện, để nó chạy trên các phiên mà câu hỏi thực sự liên quan.
+</Note>
+
+## Tôi nên sử dụng cái nào?
+
+| Câu hỏi | Sử dụng |
+| --- | --- |
+| Nó có gọi cùng một công cụ hai lần không? | code |
+| Có bao nhiêu lỗi? | code |
+| Phiên có dưới 30 giây không? | code |
+| Khách hàng có bày tỏ sự khẩn cấp không? | [mô hình quyết định](/vi/evaluations/jev) |
+| Khách hàng bực bội đến mức nào? | [mô hình quyết định](/vi/evaluations/jev) |
+| Câu trả lời có thực sự chính xác không? | **bộ đánh giá** |
+| Câu trả lời có thô lỗ hay bỏ qua không? | **bộ đánh giá** |
+| Nó có kiểm tra chính sách hoàn tiền trước khi hứa hoàn tiền không? | **bộ đánh giá** |
+
+Quy tắc ngón tay: **có thể đếm được → code, câu trả lời bạn có thể liệt kê trước → [mô hình quyết định](/vi/evaluations/jev), cần lời giải thích → bộ đánh giá.** Bộ đánh giá là cái viết bằng văn bản về những gì nó thấy; hãy sử dụng nó khi con số sẽ khiến ai đó hỏi "tại sao?".
+
+Bạn không phải quyết định trước. Mô tả những gì bạn muốn đo lường và failproof sẽ chọn, sau đó cho bạn biết nó chọn cái gì và tại sao. Bạn có thể chuyển đổi nó dưới **how should it score?**.
+
+## Viết một bộ
+
+1. Đi đến **analyse → checks → new evaluation** và chọn **llm as judge** dưới **how should it score?**.
+2. Mô tả những gì bạn muốn đánh giá.
+3. Trên **review**, kiểm tra các tiêu chí (**what the judge looks for**), ngưỡng (**passes at or above**), và **condition**, sau đó triển khai.
+
+### Tiêu chí
+
+Một hoặc hai câu, được viết như một yêu cầu chứ không phải một câu hỏi:
+
+> The assistant must not promise or approve a refund without first checking the refund policy.
+
+Hãy cụ thể về những gì sẽ khiến nó *không đạt*. "Was the response good?" cho bạn một con số không có ý nghĩa; câu ở trên cho bạn một con số bạn có thể hành động dựa trên đó.
+
+### Ngưỡng
+
+Điểm mà tại hoặc trên đó phiên đạt yêu cầu. `0.7` là một điểm bắt đầu hợp lý. Điểm đầy đủ từ 0 đến 1 luôn được lưu trữ, vì vậy ngưỡng chỉ quyết định thành công/thất bại — bạn có thể thấy phân bố và điều chỉnh.
+
+### Điều kiện
+
+Điều kiện Python giống như bất kỳ đánh giá nào khác, và nó quan trọng hơn nhiều ở đây. Nếu không có, bộ đánh giá chạy trên **mọi** phiên trong tổ chức của bạn, với chi phí một lần gọi mô hình:
+
+```python
+session.count("tool_use") > 0
+```
+
+```python
+session.agent_id == "support-bot" and session.count("error") > 0
+```
+
+Bảng điều khiển cảnh báo bạn nếu bạn triển khai một bộ đánh giá không có điều kiện. Điều này đôi khi là đúng — một agent quy mô thấp bạn muốn được đánh giá đầy đủ — nhưng nó phải là một quyết định, không phải một sự cố.
+
+## Bộ đánh giá thấy gì
+
+Cuộc hội thoại, dưới dạng các lượt, gần đây nhất trước nếu phiên dài:
+
+- những gì người dùng nói
+- những gì trợ lý trả lời
+- **mọi công cụ agent gọi, và những gì cuộc gọi đó trả về, theo thứ tự**
+
+Phần cuối cùng là những gì khiến "did it do X *before* Y" trở thành một câu hỏi công bằng. Một lệnh gọi công cụ không thành công được hiển thị là một lỗi, vì vậy "did it recover gracefully from an error" cũng hoạt động.
+
+Các phiên rất dài được cắt ngắn để phù hợp với bối cảnh của mô hình. Khi điều đó xảy ra, lý do nói rõ ràng — bạn sẽ không bao giờ thấy một phán xét được đưa ra trên một phần phiên được trình bày như được đưa ra trên toàn bộ nó.
+
+## Đọc các kết quả
+
+Một bộ đánh giá tạo ra một **score** giống như bất kỳ đánh giá được chấm điểm nào khác, vì vậy nó biểu đồ, lọc và kích hoạt cảnh báo theo cách tương tự. Cùng với con số, nó lưu trữ **reasoning** của bộ đánh giá — đoạn văn giải thích những gì nó thấy. Hãy đọc điều đó trước tiên khi một điểm khiến bạn ngạc nhiên; nó thường là một phiên thực sự thú vị hoặc là dấu hiệu tiêu chí cần được tinh chỉnh rõ hơn.
+
+Điểm số ổn định đối với các trường hợp rõ ràng nhưng không hoàn toàn xác định từng chút một. Coi một điểm biên giới duy nhất như một lời nhắc để đi đọc phiên, không phải như một phán xét.
+
+## Giới hạn
+
+- **Thử nghiệm chưa có sẵn.** Một lần chạy khô không có phân công phiên đằng sau nó, và phân công đó là những gì cho phép chi tiêu ngân sách mô hình của bạn — vì vậy không có gì để một lệnh gọi kiểm tra tính phí. Triển khai với một điều kiện hẹp và đọc một vài kết quả đầu tiên.
+- **Backfill chi tiêu ngân sách mô hình của bạn.** Backfill một đánh giá code miễn phí; chấm điểm các phiên trước đó với một bộ đánh giá tốn một lần gọi mô hình cho mỗi phiên. Đánh dấu **preview past sessions after deploy**, hoặc chọn **score past sessions** trên trang của nó: đếm những gì còn thiếu miễn phí, và không có gì được chấm điểm cho đến khi bạn xác nhận. Giữ cửa sổ hẹp.
+- **Chỉnh sửa tiêu chí xuất bản một phiên bản mới.** Điểm cũ và mới không thể so sánh được, vì vậy chúng được giữ riêng biệt thay vì trộn lẫn vào một đường xu hướng.
+- **Một bộ đánh giá luôn tạo ra một điểm, không bao giờ là một chỉ số hoặc một khẳng định.**
+
+## Khi ngân sách của bạn hết
+
+Các bộ đánh giá chi tiêu ngân sách mô hình của tổ chức bạn. Khi nó cạn kiệt, các đánh giá bộ đánh giá dừng lại với một lý do rõ ràng thay vì thất bại im lặng, và **các đánh giá code tiếp tục chạy bình thường**. Nâng ngân sách và chúng sẽ tiếp tục trên phiên tiếp theo.

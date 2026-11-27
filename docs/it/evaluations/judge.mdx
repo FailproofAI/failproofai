@@ -1,0 +1,91 @@
+---
+title: "Giudici LLM"
+description: "Valuta le sessioni su aspetti che il codice non può misurare — correttezza, tono, se l'agente ha seguito una policy — descrivendo come dovrebbe andare bene e lasciando che un modello legga la conversazione."
+icon: "scale"
+---
+
+Una valutazione Python ospitata può contare e confrontare: quante chiamate a strumenti, quanti errori, quanto tempo ha impiegato una sessione. Non può dirti se una risposta era *corretta*, se una risposta era scortese, o se l'agente ha controllato una policy prima di agire.
+
+Un **giudice LLM** può farlo. Descrivi come dovrebbe andare bene in linguaggio naturale e un modello legge la sessione e restituisce un punteggio da 0 a 1 con il suo ragionamento.
+
+<Note>
+Un giudice costa una chiamata a un modello per ogni sessione su cui viene eseguito, e una valutazione del codice non costa nulla. Usa un giudice solo per domande che hanno bisogno che la conversazione sia *compresa* — e dagli una condizione, così viene eseguito sulle sessioni a cui la domanda è effettivamente pertinente.
+</Note>
+
+## Quale mi serve?
+
+| Domanda | Usa |
+| --- | --- |
+| Ha chiamato lo stesso strumento due volte? | codice |
+| Quanti errori c'erano? | codice |
+| La sessione è stata sotto 30 secondi? | codice |
+| Il cliente ha espresso urgenza? | [modello decisionale](/it/evaluations/jev) |
+| Quanto era frustrato il cliente? | [modello decisionale](/it/evaluations/jev) |
+| La risposta era effettivamente corretta? | **giudice** |
+| La risposta era scortese o liquidante? | **giudice** |
+| Ha controllato la policy di rimborso prima di promettere un rimborso? | **giudice** |
+
+La regola pratica: **contabile → codice, risposte che puoi elencare in anticipo → [modello decisionale](/it/evaluations/jev), ha bisogno di una spiegazione → giudice.** Un giudice è quello che scrive prosa su quello che ha visto; usalo quando il numero farà sì che qualcuno chieda "perché?".
+
+Non devi decidere in anticipo. Descrivi cosa vuoi misurare e failproofai sceglie, poi ti dice quale ha scelto e perché. Puoi cambiarlo sotto **come dovrebbe valutare?**.
+
+## Scrivere uno
+
+1. Vai su **analizza → verifiche → nuova valutazione** e scegli **llm come giudice** sotto **come dovrebbe valutare?**.
+2. Descrivi cosa vuoi valutato.
+3. Su **revisione**, controlla i criteri (**cosa cerca il giudice**), la soglia (**passa a o sopra**), e la **condizione**, quindi distribuisci.
+
+### Criteri
+
+Una o due frasi, scritte come un requisito piuttosto che una domanda:
+
+> L'assistente non deve promettere o approvare un rimborso senza prima aver controllato la policy di rimborso.
+
+Sii specifico su cosa comporterebbe un *fallimento*. "La risposta era buona?" ti dà un numero che non significa nulla; la frase sopra ti dà uno su cui puoi agire.
+
+### Soglia
+
+Il punteggio a o sopra il quale la sessione passa. `0.7` è un buon punto di partenza. Il punteggio completo da 0 a 1 è sempre archiviato, quindi la soglia decide solo pass/fail — puoi vedere la distribuzione e aggiustare.
+
+### Condizione
+
+La stessa condizione Python di qualsiasi altra valutazione, e conta molto di più qui. Senza una, il giudice viene eseguito su **ogni** sessione della tua organizzazione, con una chiamata a un modello ciascuna:
+
+```python
+session.count("tool_use") > 0
+```
+
+```python
+session.agent_id == "support-bot" and session.count("error") > 0
+```
+
+Il dashboard ti avverte se distribuisci un giudice senza condizione. A volte è giusto — un agente a basso volume che vuoi completamente valutato — ma dovrebbe essere una decisione, non un incidente.
+
+## Cosa vede il giudice
+
+La conversazione, come turni, più recenti per primi se la sessione è lunga:
+
+- cosa ha detto l'utente
+- cosa ha risposto l'assistente
+- **ogni strumento che l'agente ha chiamato, e cosa ha restituito quella chiamata, in ordine**
+
+Quest'ultima parte è quello che rende "l'ha fatto X *prima di* Y" una domanda giusta da fare. Una chiamata a uno strumento fallita viene mostrata come un fallimento, quindi "si è ripreso con grazia da un errore" funziona anche.
+
+Le sessioni molto lunghe vengono troncate per adattarsi al contesto del modello. Quando accade il ragionamento lo dice esplicitamente — non vedrai mai un giudizio fatto su parte di una sessione presentato come uno fatto su tutto.
+
+## Lettura dei risultati
+
+Un giudice produce un **punteggio** come qualsiasi altra valutazione punteggiata, quindi crea grafici, filtra e attiva avvisi allo stesso modo. Accanto al numero, archivia il **ragionamento** del giudice — il paragrafo che spiega cosa ha visto. Leggi prima quello quando un punteggio ti sorprende; è solitamente o una sessione genuinamente interessante o un segno che i criteri hanno bisogno di essere affinati.
+
+I punteggi sono stabili per i casi chiari ma non bit-per-bit deterministici. Tratta un singolo punteggio borderline come un invito a leggere la sessione, non come un verdetto.
+
+## Limiti
+
+- **I test non sono ancora disponibili.** Una prova non ha un'assegnazione di sessione dietro di essa, e quell'assegnazione è quello che autorizza a spendere il tuo budget di modello — quindi non c'è nulla per cui una chiamata di test possa caricare. Distribuisci su una condizione stretta e leggi i primi risultati.
+- **Il backfill spende il tuo budget di modello.** Il backfill di una valutazione del codice è gratuito; valutare sessioni passate con un giudice costa una chiamata a un modello per ciascuna. Spunta **anteprima sessioni passate dopo la distribuzione**, o seleziona **valuta sessioni passate** sulla sua pagina: contare cosa manca è gratuito, e nulla viene valutato finché non confermi. Mantieni la finestra stretta.
+- **Modificare i criteri pubblica una nuova versione.** I punteggi vecchi e nuovi non sono comparabili, quindi vengono tenuti separati piuttosto che mischiati in una linea di tendenza.
+- **Un giudice produce sempre un punteggio**, mai una metrica o un'asserzione.
+
+## Quando il tuo budget si esaurisce
+
+I giudici spendono il budget di modello della tua organizzazione. Quando è esaurito, le valutazioni dei giudici si fermano con una ragione chiara piuttosto che non riuscire silenziosamente, e **le valutazioni del codice continuano a funzionare normalmente**. Aumenta il budget e riprendono sulla prossima sessione.

@@ -1,0 +1,28 @@
+---
+title: "Jev evaluations"
+description: "Sử dụng Jev để chấm điểm một phiên làm việc hoàn thành dựa trên một câu hỏi với những câu trả lời đã biết."
+icon: "list-checks"
+---
+
+Một đánh giá Jev đọc một **phiên làm việc hoàn thành** và cho một điểm từ 0 đến 1. Sử dụng nó khi câu trả lời đã biết trước, chẳng hạn như "Khách hàng có bày tỏ sự cấp thiết không?" hoặc "Khách hàng bực bội đến mức nào?" Nó giúp bạn tìm ra các mẫu trên các lần chạy; nó không dừng lại một lệnh gọi công cụ. Đối với các quyết định được đưa ra **trước** khi một công cụ chạy, sử dụng [Jev policies](/vi/policies/jev).
+
+## Tạo một cái trong bảng điều khiển
+
+1. Mở **analyse → checks → new evaluation** và chọn **decision model** dưới **how should it score?**.
+2. Mô tả một câu hỏi và các câu trả lời có thể có của nó. Ví dụ: "Liệu tác nhân có hứa hoàn tiền trước khi kiểm tra chính sách hoàn tiền không? Trả lời có hoặc không." Trên **review**, kiểm tra **question** và **yes means** và **no means**; một mô hình quyết định luôn cho một điểm.
+3. [Thử nó](/vi/evaluations/test) trên các phiên gần đây, sau đó [triển khai nó](/vi/evaluations/deploy). Các phiên hoàn thành mới được chấm điểm; [backfill](/vi/evaluations/deploy#score-sessions-you-already-have) nếu bạn cũng cần lịch sử.
+
+![Mẫu tác giả đánh giá được chia sẻ, nơi bạn mô tả một câu hỏi có câu trả lời cố định, xem xét bản nháp và triển khai sau khi thử nghiệm. Ví dụ được hiển thị là một đánh giá mã; một câu hỏi Jev sử dụng quy trình tác giả giống nhau.](/images/dashboard/eval-authoring-draft.png)
+
+Khi nó dự thảo, failproof có thể chọn giữa **code**, một **decision model** (Jev), và một [**llm as judge**](/vi/evaluations/judge). Kiểm tra lựa chọn của nó trước khi triển khai. Jev cho một điểm mà không cần lý luận bằng chữ; chọn một thẩm phán khi bạn cần một lời giải thích. Xem [Jev evaluation reference](/vi/reference/jev-evaluations) để biết các loại câu hỏi và giới hạn điểm.
+
+## Đọc các điểm
+
+Mở **analyse → checks → evals** và chọn đánh giá để vẽ biểu đồ kết quả theo tác nhân và thời gian. Từ một terminal, Cloud CLI có thể đọc các kết quả tương tự:
+
+```bash
+fp evals --since 7d
+fp evals --aggregate --since 7d
+```
+
+Từ một terminal, `fp evaluators` tạo tác giả và triển khai Jev evaluations và `fp evals` đọc kết quả của chúng. Xem [Cloud CLI reference](/vi/reference/cloud-cli#evaluations) để biết cả hai.

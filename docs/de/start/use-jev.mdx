@@ -1,0 +1,63 @@
+---
+title: "Jev verwenden"
+description: "Jev-Evaluierungen für abgeschlossene Sitzungen oder Jev-Richtlinien für die Live-Überprüfung von Tool-Aufrufen einrichten."
+icon: "sparkles"
+---
+
+Jev unterstützt an zwei Punkten eines Agent-Durchlaufs: Bewertung einer abgeschlossenen Sitzung anhand bekannter Antworten oder Überprüfung eines Tool-Aufrufs im Kontext Ihrer Aufgabenstellung.
+
+<Tabs>
+  <Tab title="Jev Evals">
+    Verwenden Sie ein Jev Eval, wenn eine abgeschlossene Sitzung anhand einer Frage mit wenigen bekannten Antworten bewertet werden kann, z. B. „Hat der Kunde eine Rückerstattung angefragt? Antworten Sie mit Ja oder Nein." Damit lassen sich Muster über mehrere Sitzungen hinweg erkennen.
+
+    ## Ein Eval erstellen
+
+    Öffnen Sie im Cloud-Dashboard **analyse → checks → new check** (oder **new evaluation**). Beschreiben Sie eine Frage mit festgelegten Antworten, überprüfen Sie die erstellte Regel und stellen Sie sicher, dass unter **how it checks** das **decision model** ausgewählt ist – das ist Jev. [Testen Sie es](/de/evaluations/test) mit echten Sitzungen und aktivieren Sie es anschließend.
+
+    ![Das gemeinsame Eval-Erstellungsformular, in dem Sie eine Frage beschreiben, den Entwurf prüfen und ihn bereitstellen. Dieser Screenshot zeigt einen Code-Entwurf; verwenden Sie für Jev eine Frage mit festgelegten Antworten.](/images/dashboard/eval-authoring-draft.png)
+
+    ## Die Bewertungen lesen
+
+    Nachdem eine neue Sitzung abgeschlossen ist, öffnen Sie **analyse → checks → evals** und wählen Sie die Evaluierung aus, oder verwenden Sie die Cloud CLI:
+
+    ```bash
+    fp evals --since 7d
+    fp evals --aggregate --since 7d
+    ```
+
+    Die CLI liest Bewertungen; das Erstellen eines Jev Evals erfolgt derzeit über das Dashboard. Unter [Jev evaluations](/de/evaluations/jev) finden Sie Fragetypen und Beispiele.
+  </Tab>
+  <Tab title="Jev Policies">
+    Verwenden Sie die Jev-Richtlinienprüfung, wenn eine auf String-Matching basierende Richtlinie den Kontext Ihrer Anfrage benötigt, um zu entscheiden, ob ein Tool-Aufruf sicher ist. Starten Sie im **observe**-Modus, damit Sie Jevs Antworten einsehen können, während Ihre installierten Richtlinien weiterhin über jeden Aufruf entscheiden.
+
+    Jevs Prüfungen stammen aus einem Paket; Failproof AI liefert keines mit. Bis Sie diese installieren, stellt Jev keine Fragen, auch wenn es konfiguriert ist:
+
+    ```bash
+    failproofai policies add FailproofAI/jev-policies
+    ```
+
+    ## Cloud Jev einrichten
+
+    Öffnen Sie im Cloud-Dashboard **settings → api keys** und wählen Sie unter **new key** die Option **a machine running failproofai** aus. Verwenden Sie diesen Schlüssel mit `failproofai config`, wie im [Quickstart](/de/start/quickstart) beschrieben. Auf einer Maschine ohne bestehende Jev-Konfiguration aktiviert dies Cloud Jev im observe-Modus. Überprüfen Sie die Verbindung mit:
+
+    ```bash
+    failproofai jev status
+    failproofai jev test
+    ```
+
+    ## Einen eigenen Endpunkt verwenden
+
+    Öffnen Sie im lokalen Dashboard **Settings → Jev**. Wählen Sie den Anbieter, fügen Sie dessen Token ein, wählen Sie **observe** und aktivieren Sie Jev.
+
+    ![Das lokale Jev-Einstellungsfeld mit einem Anbieter, Token-Feld und ausgewähltem observe-Modus.](/images/dashboard/jev-settings.png)
+
+    Oder konfigurieren und testen Sie Ihren Endpunkt über ein Terminal:
+
+    ```bash
+    failproofai jev --url https://api.typesafe.ai/v1 --mode observe --key-stdin < ~/typesafe.key
+    failproofai jev test
+    ```
+
+    Bitten Sie einen verknüpften Agenten, sein Datei-Lese-Tool auf `README.md` anzuwenden. Bestätigen Sie, dass dieser Tool-Aufruf in der Sitzung erscheint, und überprüfen Sie ihn dann unter **Policies → Activity** im lokalen Dashboard. Sobald die observe-Ergebnisse korrekt aussehen, erklärt [Jev policies](/de/policies/jev), wann eine Durchsetzung sinnvoll ist. Anbieterdetails und Konfigurationsoptionen finden Sie in der [Integrations-Referenz](/de/reference/jev).
+  </Tab>
+</Tabs>

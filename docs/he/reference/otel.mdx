@@ -1,0 +1,77 @@
+---
+title: "OpenTelemetry CLI"
+description: "הצטרף ל-OTEL עבור סוכנים לכתיבת קוד, בדוק את ההובלה, והחזר את ההגדרות הקודמות שלך."
+icon: "radio"
+---
+
+`failproofai otel` מגדיר דיווח OpenTelemetry אופציונלי ל-FailproofAI Cloud. קודם כל חבר את המכונה שלך עם `failproofai config`. תשקול OTEL פעיל תמיד ב-Cloud, ולכן אין החלפת ארגון להפעלה.
+
+ההתקנה האינטראקטיבית שואלת על OpenTelemetry לאחר שדה מפתח Cloud ובחירת סוכן. השלב האופציונלי מתחייב ל-No. בחר Yes כדי לבחור סוכני OTEL; אותו קוד הפעלה פועל לאחר כתיבת החיבור. Esc לפני ההתקנה לא מחיל שינויים. התקנה ללא התערבות, מפתח מסופק, מצב קוד פתוח, ושמירת חיבור שמור לא מצרפים אותך.
+
+## הפעל סוכן
+
+```bash
+failproofai otel enable claude
+failproofai otel enable codex --local
+failproofai otel enable codex --no-content
+failproofai otel enable copilot
+failproofai otel enable all --yes
+```
+
+הסוכנים הנתמכים הם `claude`, `codex`, ו-`copilot` (VS Code). התקנת Copilot דורשת קובץ הפעלה של VS Code או הרחבת Copilot מותקנת. ספרייה היתרה של הגדרות בלבד אינה מספיקה; ההתקנה דוללת Copilot כאשר כל אחד מהם לא נמצא.
+
+`--local` שולח ל-relay המקומי במקום ישירות ל-Cloud. Copilot משתמש ב-relay באופן אוטומטי מכיוון שההגדרות שלו לא יכולות לאחסן את כותרת ההזדהות.
+
+ה-relay מאזין רק על המכונה שלך. ה-daemon של FailproofAI המוגדר שלך מתקבל את השינוי תוך שניות; אתה לא צריך להפעיל מחדש. אם יישום אחר משלוט בפורט ה-relay, דוח ההצבה מדווח עליו כ-off ו-daemon ממשיך לפעול.
+
+<Warning>
+לכידת טקסט פועלת כברירת מחדל. הוסף `--no-content` כדי להשמיט הנחות וכלים. גרסאות סוכן יכולות להחשוף בקרי תוכן שונים; בדוק מה הסוכן שלך מייצא לפני השימוש בו עם נתונים רגישים.
+</Warning>
+
+Codex מייצא רישומי שיחה בלבד, לא עקבות או מדדים של זמן ריצה פנימיים. `log_user_prompt = false` מפורש בתצורת Codex שלך נשאר off; הפעלה מדפיסה הערה כאשר היא משמרת בחירה זו.
+
+### בחר נתיב דיווח אחד
+
+אם דיווח תמלול פועל עבור סוכן, ההתקנה שואלת:
+
+> failproofai כבר שולח Claude Code ישיבות ל-Cloud. שלח אותם עם OTEL במקום? העלאת תמלול עבור Claude Code עוצרת.
+
+ברירת המחדל היא No. `--yes` מקבל את המעבר ללא הנחיה. סוכנים אחרים והאכיפה של מדיניות לא מושפעים.
+
+ההתקנה של Codex מחכה לה-daemon לאשר את שינוי האספן לפני כתיבת הגדרות ה-exporter שלו. אם האישור פוג, ההתקנה מזהירה אותך להמתין לפני הפעלת Codex.
+
+Config v2 שומר את רשימת ה-tracing שזכורה ב-`agents.selected` (והיסטוריית גילוי ב-`agents.seen`). ההעדפה לכל סוכן עבור תמלול נשארת ב-`collector.agents.<agent>.sessions`, בעלות OTEL ב-`otel.agents`, והגדרות ה-relay ב-`collector.otlp.enabled` / `collector.otlp.port`. מפתחות נפרדים אלו שומרים על תצורות OTEL ישנות שניתן לקרוא: ההתקנה יכולה לשנות את רשימת ה-tracing ללא אובדן העדפת התחבורה או המצב הדרוש לשחזור הגדרות הסוכן שלך.
+
+## בדוק התקנה
+
+```bash
+failproofai otel status
+```
+
+הסטטוס מראה כל סוכן, האם ההגדרות שלו מנוהלות על ידי FailproofAI, היעד שלו, מתג הנקיעה של הארגון, מצב ה-relay, ותוצאת ההעלאה האחרונה של ה-relay.
+
+`unknown` עבור מתג הארגון פירושו שהשרת לא סיפק אותו או לא היה ניתן להגיע אליו. זה לא שגיאה ואינו מונע תצורה בגרסת Cloud ישנה יותר.
+
+אם Cloud עדיין לא תומך ב-OTEL, ה-relay שומר על ייצוא נדחה במקום לזרוק אותם. אם גרסה ישנה יותר של Cloud מדווחת על נקיעה של ארגון כ-off, `enable` לא כותב כלום ויוצא עם שגיאה.
+
+## הדפס תצורה עבור יישום
+
+```bash
+failproofai otel env --service my-agent
+failproofai otel env --service my-agent --local
+```
+
+הפלט הוא בלוק סביבת shell עבור exporter OTLP/HTTP. פלט Cloud מגדיר את `OTEL_EXPORTER_OTLP_ENDPOINT` לבסיס OTLP של Cloud, `https://<cloud>/otel`, והמייצא מוסיף `/v1/<signal>`; משתנה לכל אות כגון `OTEL_EXPORTER_OTLP_LOGS_ENDPOINT` צריך את המלא `https://<cloud>/otel/v1/logs`. פלט מקומי מצביע על ה-relay, `http://127.0.0.1:<port>`. פלט Cloud כולל את מפתח ה-API המוגדר; התייחס אליו כסוד. פלט מקומי משמיט את המפתח. כדי להשתמש בפלט מקומי, קודם כל הפעל סוכן מקומי כדי שה-relay פועל.
+
+## החזר הגדרות קודמות
+
+```bash
+failproofai otel disable claude
+failproofai otel disable all
+```
+
+Disable משחזר רק את ההגדרות שFailproofAI כתב, שומר על שינויים לא קשורים, ומשחזר את בחירת דיווח התמלול הקודמת של כל סוכן. כאשר הסוכן המקומי המנוהל האחרון מושבת, ה-relay מפסיק לקבל ייצוא.
+
+עבור Codex, disable גם מתעד את `collector.agents.codex.sessions_resume_after` (epoch milliseconds). בתים מחליפים קיימים מטופלים כמועברים כך שהסדרות שנתפסו עם OTEL לא יוחזרו שוב; לאחר מכן דחיפות עדיין זורמות דרך דיווח תמלול.
+
+כל פקודה תומכת ב-`--help`. ראה [OpenTelemetry ב-Cloud](/he/agenteye/opentelemetry) לקבלת דוגמאות ליישום וסוכני קוד.

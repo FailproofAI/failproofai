@@ -1,0 +1,91 @@
+---
+title: "Juízes LLM"
+description: "Avalie sessões em aspectos que o código não consegue medir — correção, tom, se o agente seguiu uma política — descrevendo o que é uma boa resposta e deixando um modelo ler a conversa."
+icon: "scale"
+---
+
+Uma avaliação Python hospedada pode contar e comparar: quantas chamadas de ferramentas, quantos erros, quanto tempo durou uma sessão. Ela não consegue dizer se uma resposta foi *correta*, se uma resposta foi rude ou se o agente verificou uma política antes de agir.
+
+Um **juíz LLM** consegue. Você descreve o que é uma boa resposta em linguagem natural, e um modelo lê a sessão e retorna uma pontuação de 0 a 1 com seu raciocínio.
+
+<Note>
+Um juíz consome uma chamada de modelo para cada sessão avaliada, enquanto uma avaliação de código não tem custo algum. Use um juíz apenas para perguntas que precisam que a conversa seja *compreendida* — e defina uma condição para que ele execute apenas nas sessões relevantes para a pergunta.
+</Note>
+
+## Qual devo usar?
+
+| Pergunta | Use |
+| --- | --- |
+| Ele chamou a mesma ferramenta duas vezes? | código |
+| Quantos erros ocorreram? | código |
+| A sessão durou menos de 30 segundos? | código |
+| O cliente expressou urgência? | [modelo de decisão](/pt-br/evaluations/jev) |
+| Quão frustrado estava o cliente? | [modelo de decisão](/pt-br/evaluations/jev) |
+| A resposta estava de fato correta? | **juíz** |
+| A resposta foi rude ou desdenhosa? | **juíz** |
+| Ele verificou a política de reembolso antes de prometer um reembolso? | **juíz** |
+
+A regra geral: **contável → código, respostas que você pode listar com antecedência → [modelo de decisão](/pt-br/evaluations/jev), precisa de uma explicação → juíz.** O juíz é o que escreve em prosa sobre o que observou; recorra a ele quando o número fizer alguém perguntar "por quê?".
+
+Você não precisa decidir de antemão. Descreva o que quer medir e o failproof escolhe, informando qual opção foi selecionada e por quê. Você pode alterar isso em **como deve pontuar?**.
+
+## Criar um juíz
+
+1. Vá em **analisar → verificações → nova avaliação** e escolha **llm como juíz** em **como deve pontuar?**.
+2. Descreva o que você quer que seja julgado.
+3. Em **revisão**, verifique os critérios (**o que o juíz procura**), o limiar (**aprovado a partir de**) e a **condição**, depois implante.
+
+### Critérios
+
+Uma ou duas frases, escritas como um requisito em vez de uma pergunta:
+
+> O assistente não deve prometer ou aprovar um reembolso sem antes verificar a política de reembolso.
+
+Seja específico sobre o que faria com que a sessão *reprovasse*. "A resposta foi boa?" gera um número sem significado; a frase acima gera um número sobre o qual você pode agir.
+
+### Limiar
+
+A pontuação a partir da qual a sessão é aprovada. `0.7` é um ponto de partida razoável. A pontuação completa de 0 a 1 é sempre armazenada, portanto o limiar só determina aprovação/reprovação — você pode ver a distribuição e ajustar.
+
+### Condição
+
+A mesma condição Python de qualquer outra avaliação, e ela importa muito mais aqui. Sem uma condição, o juíz executa em **todas** as sessões da sua organização, consumindo uma chamada de modelo por sessão:
+
+```python
+session.count("tool_use") > 0
+```
+
+```python
+session.agent_id == "support-bot" and session.count("error") > 0
+```
+
+O painel avisa se você implantar um juíz sem condição. Isso às vezes é intencional — um agente de baixo volume que você quer avaliar completamente — mas deve ser uma decisão, não um acidente.
+
+## O que o juíz vê
+
+A conversa, em turnos, do mais recente ao mais antigo quando a sessão é longa:
+
+- o que o usuário disse
+- o que o assistente respondeu
+- **cada ferramenta que o agente chamou e o que essa chamada retornou, em ordem**
+
+Essa última parte é o que torna a pergunta "ele fez X *antes* de Y" justa de se fazer. Uma chamada de ferramenta que falhou é exibida como falha, então "ele se recuperou adequadamente de um erro" também funciona.
+
+Sessões muito longas são truncadas para caber no contexto do modelo. Quando isso acontece, o raciocínio informa explicitamente — você nunca verá um julgamento feito sobre parte de uma sessão apresentado como se fosse sobre a sessão inteira.
+
+## Lendo os resultados
+
+Um juíz produz uma **pontuação** como qualquer outra avaliação pontuada, portanto ela aparece em gráficos, filtros e alertas da mesma forma. Junto ao número, o **raciocínio** do juíz é armazenado — o parágrafo explicando o que ele observou. Leia esse parágrafo primeiro quando uma pontuação te surpreender; normalmente é uma sessão genuinamente interessante ou um sinal de que os critérios precisam ser refinados.
+
+As pontuações são estáveis para casos claros, mas não são determinísticas bit a bit. Trate uma pontuação limítrofe isolada como um convite para ir ler a sessão, não como um veredicto.
+
+## Limitações
+
+- **Testes ainda não estão disponíveis.** Uma execução de teste não tem uma sessão atribuída, e essa atribuição é o que autoriza o gasto do seu orçamento de modelo — portanto não há nada que uma chamada de teste possa cobrar. Implante com uma condição restrita e leia os primeiros resultados.
+- **O preenchimento retroativo consome seu orçamento de modelo.** Preencher retroativamente uma avaliação de código é gratuito; pontuar sessões passadas com um juíz custa uma chamada de modelo por cada uma. Marque **pré-visualizar sessões passadas após implantar**, ou selecione **pontuar sessões passadas** na página da avaliação: contar o que falta é gratuito, e nada é pontuado até você confirmar. Mantenha a janela restrita.
+- **Editar os critérios publica uma nova versão.** Pontuações antigas e novas não são comparáveis, portanto são mantidas separadas em vez de misturadas em uma única linha de tendência.
+- **Um juíz sempre produz uma pontuação**, nunca uma métrica ou uma asserção.
+
+## Quando seu orçamento se esgotar
+
+Os juízes consomem o orçamento de modelo da sua organização. Quando ele se esgota, as avaliações de juíz param com uma razão clara em vez de falhar silenciosamente, e **as avaliações de código continuam funcionando normalmente**. Recarregue o orçamento e elas retomam na próxima sessão.

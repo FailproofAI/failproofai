@@ -1,0 +1,129 @@
+---
+title: "MCP server"
+description: "Claude, Cursor, Codex, या किसी अन्य MCP क्लाइंट को Failproof AI Cloud से कनेक्ट करें, अपनी स्वयं की अनुमतियों का उपयोग करते हुए।"
+icon: "plug"
+---
+
+एक AI टूल को Failproof AI Cloud से कनेक्ट करें और इससे अपने agents के डेटा के साथ काम करें। आपका टूल सेशन और events को query कर सकता है, read-only SQL चला सकता है, dashboards, alerts, insights, audits, और policies को read कर सकता है, और यदि आपके पास अनुमति है, तो alert बनाने या policy deploy करने जैसे परिवर्तन कर सकता है।
+
+हर कॉल **आपकी स्वयं की** अनुमतियों के साथ, **एक** संगठन में चलती है जिसे आप कनेक्ट करते समय चुनते हैं।
+
+सभी के लिए एक address है, hosted या self-hosted:
+
+```text
+https://gateway.befailproof.ai/mcp
+```
+
+## क्लाइंट कनेक्ट करें
+
+अपने क्लाइंट में address जोड़ें। पहली बार जब एक टूल का उपयोग किया जाता है, तो आपका browser खुलता है। चुनें कि आपका Failproof AI Cloud कहाँ है, sign in करें, एक संगठन चुनें, और **Allow** चुनें। **Cancel** कुछ भी कनेक्ट नहीं करता है।
+
+page, app का नाम और जहाँ यह return करता है, उसे दिखाता है। एक app जो अपने स्वयं के web address द्वारा identified नहीं है, **unverified app** के रूप में चिह्नित है, इसलिए केवल तभी जारी रखें यदि आपने अभी इसे अपने क्लाइंट से शुरू किया है।
+
+<Tabs>
+  <Tab title="Claude">
+    claude.ai या Claude Desktop में, **Settings → Connectors → Add custom connector** पर जाएं। इसका नाम `Failproof AI` रखें, address enter करें, **Add** चुनें, फिर **Connect**।
+
+    Team और Enterprise plans पर, एक owner पहले संगठन के लिए connector जोड़ता है। फिर हर व्यक्ति अपने स्वयं के account को कनेक्ट करता है।
+  </Tab>
+  <Tab title="Claude Code">
+    ```bash
+    claude mcp add --transport http failproofai https://gateway.befailproof.ai/mcp
+    ```
+
+    फिर Claude Code के अंदर `/mcp` चलाएं, `failproofai` चुनें, और **Authenticate** चुनें।
+  </Tab>
+  <Tab title="Cursor">
+    इसे `~/.cursor/mcp.json` में, या अपने project के `.cursor/mcp.json` में जोड़ें:
+
+    ```json
+    {
+      "mcpServers": {
+        "failproofai": { "url": "https://gateway.befailproof.ai/mcp" }
+      }
+    }
+    ```
+
+    Cursor server के बगल में **Needs login** दिखाता है। Sign in करने के लिए इसे चुनें।
+  </Tab>
+  <Tab title="Codex">
+    इसे `~/.codex/config.toml` में जोड़ें:
+
+    ```toml
+    [mcp_servers.failproofai]
+    url = "https://gateway.befailproof.ai/mcp"
+    ```
+
+    फिर `codex mcp login failproofai` चलाएं।
+  </Tab>
+  <Tab title="Other clients">
+    कोई भी क्लाइंट जो Streamable HTTP पर OAuth के साथ remote MCP servers को support करता है, काम करेगा। इसे ऊपर दिया गया address दें। कोई client ID या secret configure करने के लिए नहीं है।
+  </Tab>
+</Tabs>
+
+## प्रति कनेक्शन एक संगठन
+
+एक connection केवल उस संगठन में काम करता है जिसे आपने चुना है। दो संगठनों का उपयोग करने के लिए, server को अलग-अलग नामों के तहत दो बार जोड़ें, जैसे `failproofai-acme` और `failproofai-sandbox`, और प्रत्येक को अपने संगठन से कनेक्ट करें।
+
+Demo organizations connections को accept नहीं करते हैं। इसके बजाय अपना स्वयं का संगठन चुनें।
+
+## अनुमतियाँ
+
+एक connection वह कर सकता है जो आप संगठन में कर सकते हैं, नीचे दिए गए set के अंदर। यह आपकी वर्तमान अनुमतियों का पालन करता है: यदि एक admin आपको अधिक देता है, तो टूल को यह मिल जाता है, और यदि वे इसे हटा लेते हैं, तो टूल को यह अपनी अगली कॉल पर खो देता है।
+
+| अनुमति | टूल को क्या करने देती है |
+| --- | --- |
+| `events:read` | Events को list करें, एक session की overview को read करें, agents और environments को list करें |
+| `evaluations:read` | Sessions को list करें, और evaluation results और jobs को read और summarize करें |
+| `evaluations:trigger` | Evaluations बनाएं, नए versions को publish करें, उन्हें on या off करें, backfill करें, और एक session को re-evaluate करें |
+| `dashboards:read`, `dashboards:write` | Dashboards को read करें, या उन्हें बनाएं, rename करें, और queries जोड़ें |
+| `queries:read`, `queries:write` | Saved queries को read करें, या उन्हें save और edit करें |
+| `queries:run` | एक read-only SQL query चलाएं और query schema को read करें |
+| `alerts:read`, `alerts:write` | Alerts को read करें, या उन्हें बनाएं, edit करें, pause करें, delete करें, और test करें |
+| `issues:read` | Insights को read करें, उन्हें acknowledge करें, और उन पर comment करें |
+| `issues:create` | एक alert पर insight खोलें |
+| `issues:close` | Insights को resolve और close करें |
+| `audits:read`, `audits:write` | Audits, runs, और findings को read करें, या audits बनाएं और edit करें तथा run शुरू करें |
+| `code_fixes:read` | एक insight को कैसे fix करें यह देखें, और अपने स्वयं के agent को fix करने के लिए इसका context प्राप्त करें |
+| `code_fixes:write` | Failproof AI Cloud में एक fix शुरू करें, जो आपके GitHub पर एक pull request खोलता है |
+| `policies:read`, `policies:write` | Policies, machines, और deployments को read करें, या policies को publish, deploy, और rollback करें |
+
+कुछ टूलों को कोई अनुमति की आवश्यकता नहीं है क्योंकि वे कोई संगठन डेटा read नहीं करते हैं: session और event links बनाना, और इस documentation को search करना।
+
+एक AI टूल कभी भी API keys, users, settings, या organization administration को touch नहीं कर सकता है, और यह events नहीं भेज सकता है।
+
+## परिवर्तनों को मंजूरी देना
+
+Writes पहले आपसे पूछते हैं कि क्या आपका क्लाइंट prompt को show कर सकता है। आप देखते हैं कि क्या बदलेगा और आगे बढ़ने के लिए **Approve this change** चुनते हैं। यदि आप decline करते हैं या लगभग 4 मिनट में उत्तर नहीं देते हैं, तो कुछ नहीं बदलता है। कुछ क्लाइंट एक मिनट के बाद wait करना बंद कर देते हैं, इसलिए तुरंत उत्तर दें।
+
+<Warning>
+  एक क्लाइंट जो prompts को support नहीं करता है, को नहीं पूछा जाता है, और एक write क्लाइंट के कॉल करने के तुरंत बाद चलता है। वहाँ, आपके क्लाइंट की स्वयं की confirmation ही एकमात्र है, इसलिए write tools के लिए इसे on रखें।
+</Warning>
+
+## कनेक्टेड apps और रिवोक करना
+
+**settings → integrations → MCP** वर्तमान संगठन में आपके कनेक्टेड apps को उनकी अनुमतियों और अंतिम उपयोग के साथ list करता है। **Revoke** एक app को तुरंत cut off कर देता है। अपने क्लाइंट में server को remove करना भी connection को revoke कर देता है।
+
+आप प्रति संगठन 5 तक कनेक्टेड apps रख सकते हैं। एक ही app को फिर से कनेक्ट करना इसके पहले के connection को replace करता है।
+
+## Self-hosted deployments
+
+कनेक्ट करते समय **Self-hosted Failproof AI Cloud** चुनें, और वह address enter करें जहाँ आप sign in करते हैं। आपका deployment public HTTPS पर reachable होना चाहिए।
+
+Tool calls और उनके results hosted Failproof AI gateway के माध्यम से अपने AI tool और आपके deployment के बीच जाते हैं। gateway उन्हें store नहीं करता है।
+
+## आपके डेटा का क्या होता है
+
+Results उस AI tool को जाते हैं जिसे आपने कनेक्ट किया है, और उस tool का provider अपनी terms के तहत उन्हें handle करता है। हर tool call के लिए, Failproof AI tool का नाम, इसका outcome, यह कितने समय में लिया, और संगठन को log करता है, कभी arguments या results को नहीं। [privacy policy](https://befailproof.ai/privacy/) देखें।
+
+## समस्या निवारण
+
+| आप क्या देखते हैं | क्या करें |
+| --- | --- |
+| Started in another browser | उस browser में sign-in complete करें जो क्लाइंट ने खोला, cookies allowed के साथ, और क्लाइंट से फिर से शुरू करें |
+| **Allow** के बाद एक error | Link एक बार काम करता है और 10 मिनट के बाद expire हो जाता है, इसलिए क्लाइंट से फिर से शुरू करें |
+| एक टूल जिसकी आप expect करते थे, वह missing है | आपके पास इस संगठन में इसकी अनुमति नहीं है। एक admin से पूछें। एक बार जब आपके पास यह हो तो आपको reconnect करने की आवश्यकता नहीं है |
+| क्लाइंट आपसे sign in करने के लिए बार-बार पूछता रहता है | Connection को revoke किया गया, आप संगठन छोड़ गए, या यह 90 दिन तक unused रहा। फिर से कनेक्ट करें |
+| You have 5 connected apps | **settings → integrations → MCP** के तहत एक को revoke करें, फिर फिर से कनेक्ट करें |
+
+अभी भी stuck हैं? [support@befailproof.ai](mailto:support@befailproof.ai) को email करें।

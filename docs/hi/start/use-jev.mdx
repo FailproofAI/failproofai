@@ -1,0 +1,63 @@
+---
+title: "Jev का उपयोग करें"
+description: "समाप्त सत्रों के लिए Jev मूल्यांकन सेट करें या लाइव टूल-कॉल समीक्षा के लिए Jev नीतियां सेट करें।"
+icon: "sparkles"
+---
+
+Jev एजेंट रन के दो बिंदुओं पर सहायता करता है: एक समाप्त सत्र को ज्ञात उत्तरों के विरुद्ध स्कोर करें, या आपने एजेंट से जो करने को कहा है उसके संदर्भ में एक टूल कॉल की समीक्षा करें।
+
+<Tabs>
+  <Tab title="Jev evals">
+    Jev eval का उपयोग करें जब एक समाप्त सत्र को कुछ ज्ञात उत्तरों के साथ एक प्रश्न के विरुद्ध स्कोर किया जा सकता है, जैसे "क्या ग्राहक ने रिफंड के लिए पूछा है? हां या नहीं का उत्तर दें।" यह आपको सत्रों में पैटर्न खोजने में मदद करता है।
+
+    ## एक eval बनाएं
+
+    Cloud डैशबोर्ड में, **analyse → checks → new check** (या **new evaluation**) खोलें। एक निश्चित-उत्तर प्रश्न का वर्णन करें, जो नियम यह तैयार करता है उसकी समीक्षा करें, और जांचें कि **how it checks** **decision model** है — वह Jev है। इसे [real sessions पर test करें](/hi/evaluations/test), फिर इसे चालू करें।
+
+    ![साझा eval authoring फॉर्म जहां आप एक प्रश्न का वर्णन करते हैं, ड्राफ्ट की समीक्षा करते हैं, और इसे तैनात करते हैं। यह स्क्रीनशॉट एक कोड ड्राफ्ट दिखाता है; Jev के लिए निश्चित-उत्तर प्रश्न का उपयोग करें।](/images/dashboard/eval-authoring-draft.png)
+
+    ## स्कोर पढ़ें
+
+    एक नया सत्र पूरा होने के बाद, **analyse → checks → evals** खोलें और मूल्यांकन का चयन करें, या Cloud CLI का उपयोग करें:
+
+    ```bash
+    fp evals --since 7d
+    fp evals --aggregate --since 7d
+    ```
+
+    CLI स्कोर पढ़ता है; Jev eval बनाना वर्तमान में डैशबोर्ड का उपयोग करता है। प्रश्न प्रकार और उदाहरणों के लिए [Jev evaluations](/hi/evaluations/jev) देखें।
+  </Tab>
+  <Tab title="Jev policies">
+    Jev policy review का उपयोग करें जब एक string-matching नीति को यह तय करने के लिए आपके अनुरोध के संदर्भ की आवश्यकता होती है कि क्या एक टूल कॉल सुरक्षित है। **observe** मोड में शुरुआत करें ताकि आप Jev के उत्तरों का निरीक्षण कर सकें जबकि आपकी स्थापित नीतियां अभी भी प्रत्येक कॉल का फैसला करें।
+
+    Jev की जांचें एक पैक से आती हैं; Failproof AI कोई भी नहीं भेजता। जब तक आप उन्हें स्थापित नहीं करते, Jev कुछ भी नहीं पूछता, भले ही यह कॉन्फ़िगर किया गया हो:
+
+    ```bash
+    failproofai policies add FailproofAI/jev-policies
+    ```
+
+    ## Cloud Jev सेट करें
+
+    Cloud डैशबोर्ड में, **settings → api keys** खोलें और **new key** के तहत, **a machine running failproofai** चुनें। इसे [quickstart](/hi/start/quickstart) में दिखाए गए `failproofai config` के साथ उपयोग करें। बिना किसी मौजूदा Jev कॉन्फ़िगरेशन वाली मशीन पर, यह observe मोड में Cloud Jev को सक्षम करता है। इसके साथ कनेक्शन जांचें:
+
+    ```bash
+    failproofai jev status
+    failproofai jev test
+    ```
+
+    ## अपना स्वयं का endpoint उपयोग करें
+
+    स्थानीय डैशबोर्ड में, **Settings → Jev** खोलें। प्रदाता चुनें, इसका token पेस्ट करें, **observe** का चयन करें, और Jev को चालू करें।
+
+    ![स्थानीय Jev सेटिंग्स पैनल जिसमें एक प्रदाता, token फील्ड, और observe मोड चुना गया है।](/images/dashboard/jev-settings.png)
+
+    या अपने endpoint को एक टर्मिनल से कॉन्फ़िगर और test करें:
+
+    ```bash
+    failproofai jev --url https://api.typesafe.ai/v1 --mode observe --key-stdin < ~/typesafe.key
+    failproofai jev test
+    ```
+
+    एक hooked एजेंट को `README.md` पर अपने file-reading tool का उपयोग करने के लिए कहें। पुष्टि करें कि टूल कॉल सत्र में दिखाई दे, फिर स्थानीय डैशबोर्ड में **Policies → Activity** के तहत इसका निरीक्षण करें। एक बार observe परिणाम सही दिखें, तो [Jev policies](/hi/policies/jev) समझाता है कि कब लागू करें। प्रदाता विवरण और कॉन्फ़िगरेशन के लिए, [integration reference](/hi/reference/jev) देखें।
+  </Tab>
+</Tabs>

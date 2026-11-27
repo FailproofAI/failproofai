@@ -1,0 +1,28 @@
+---
+title: "Évaluations Jev"
+description: "Utilisez Jev pour noter une session terminée en fonction d'une question avec des réponses connues."
+icon: "list-checks"
+---
+
+Une évaluation Jev lit une **session terminée** et attribue un score de 0 à 1. Utilisez-la lorsque la réponse est connue à l'avance, par exemple « Le client a-t-il exprimé une urgence ? » ou « Quel était le niveau de frustration du client ? ». Elle vous aide à identifier des tendances entre plusieurs exécutions ; elle n'interrompt pas un appel d'outil. Pour les décisions prises **avant** l'exécution d'un outil, utilisez les [politiques Jev](/fr/policies/jev).
+
+## Créer une évaluation dans le tableau de bord
+
+1. Ouvrez **analyser → vérifications → nouvelle évaluation** et choisissez **modèle de décision** sous **comment doit-elle noter ?**.
+2. Décrivez une question et ses réponses possibles. Par exemple : « L'agent a-t-il promis un remboursement avant de consulter la politique de remboursement ? Répondez par oui ou non. » Dans l'étape **révision**, vérifiez la **question**, ce que signifie **oui** et ce que signifie **non** ; un modèle de décision attribue toujours un score.
+3. [Testez-la](/fr/evaluations/test) sur des sessions récentes, puis [déployez-la](/fr/evaluations/deploy). Les nouvelles sessions terminées sont notées ; [effectuez un remplissage rétroactif](/fr/evaluations/deploy#score-sessions-you-already-have) si vous avez également besoin de l'historique.
+
+![Le formulaire de création d'évaluation partagé, dans lequel vous décrivez une question à réponse fixe, révisez le brouillon et déployez après les tests. L'exemple montré est une évaluation de code ; une question Jev utilise le même flux de création.](/images/dashboard/eval-authoring-draft.png)
+
+Lors de l'ébauche, failproof peut choisir entre du **code**, un **modèle de décision** (Jev) et un [**juge basé sur un LLM**](/fr/evaluations/judge). Vérifiez son choix avant de déployer. Jev attribue un score sans raisonnement textuel ; choisissez un juge lorsque vous avez besoin d'une explication. Consultez la [référence des évaluations Jev](/fr/reference/jev-evaluations) pour les types de questions et les limites de score.
+
+## Lire les scores
+
+Ouvrez **analyser → vérifications → évals** et sélectionnez l'évaluation pour afficher les résultats par agent et par période. Depuis un terminal, le Cloud CLI peut lire les mêmes résultats :
+
+```bash
+fp evals --since 7d
+fp evals --aggregate --since 7d
+```
+
+Depuis un terminal, `fp evaluators` permet de créer et déployer des évaluations Jev, et `fp evals` lit leurs résultats. Consultez la [référence du Cloud CLI](/fr/reference/cloud-cli#evaluations) pour les deux commandes.

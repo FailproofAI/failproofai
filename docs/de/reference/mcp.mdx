@@ -1,0 +1,129 @@
+---
+title: "MCP-Server"
+description: "Verbinde Claude, Cursor, Codex oder einen anderen MCP-Client mit Failproof AI Cloud und nutze dabei deine eigenen Berechtigungen."
+icon: "plug"
+---
+
+Verbinde ein KI-Tool mit Failproof AI Cloud und arbeite damit mit den Daten deiner Agenten. Dein Tool kann Sitzungen und Events abfragen, schreibgeschütztes SQL ausführen, Dashboards, Alerts, Insights, Audits und Richtlinien lesen und – sofern du die entsprechende Berechtigung hast – Änderungen vornehmen, wie z. B. einen Alert erstellen oder eine Richtlinie deployen.
+
+Jeder Aufruf läuft mit **deinen eigenen** Berechtigungen, in **einer** Organisation, die du beim Verbinden auswählst.
+
+Es gibt eine einzige Adresse für alle – gehostet oder selbst gehostet:
+
+```text
+https://gateway.befailproof.ai/mcp
+```
+
+## Client verbinden
+
+Füge die Adresse in deinen Client ein. Beim ersten Einsatz eines Tools öffnet sich dein Browser. Wähle aus, wo sich deine Failproof AI Cloud befindet, melde dich an, wähle eine Organisation und klicke auf **Erlauben**. Mit **Abbrechen** wird keine Verbindung hergestellt.
+
+Die Seite zeigt den Namen der App und wohin sie zurückleitet. Eine App, die nicht durch ihre eigene Webadresse identifiziert wird, ist als **nicht verifizierte App** gekennzeichnet – fahre daher nur fort, wenn du dies gerade selbst von deinem Client aus gestartet hast.
+
+<Tabs>
+  <Tab title="Claude">
+    Gehe in claude.ai oder Claude Desktop zu **Einstellungen → Connectors → Benutzerdefinierten Connector hinzufügen**. Benenne ihn `Failproof AI`, gib die Adresse ein, wähle **Hinzufügen** und dann **Verbinden**.
+
+    Bei Team- und Enterprise-Plänen fügt ein Owner den Connector zuerst für die Organisation hinzu. Danach verbindet jede Person ihr eigenes Konto.
+  </Tab>
+  <Tab title="Claude Code">
+    ```bash
+    claude mcp add --transport http failproofai https://gateway.befailproof.ai/mcp
+    ```
+
+    Führe dann `/mcp` innerhalb von Claude Code aus, wähle `failproofai` und klicke auf **Authentifizieren**.
+  </Tab>
+  <Tab title="Cursor">
+    Füge Folgendes zu `~/.cursor/mcp.json` oder zur `.cursor/mcp.json` deines Projekts hinzu:
+
+    ```json
+    {
+      "mcpServers": {
+        "failproofai": { "url": "https://gateway.befailproof.ai/mcp" }
+      }
+    }
+    ```
+
+    Cursor zeigt neben dem Server **Anmeldung erforderlich** an. Wähle es aus, um dich anzumelden.
+  </Tab>
+  <Tab title="Codex">
+    Füge Folgendes zu `~/.codex/config.toml` hinzu:
+
+    ```toml
+    [mcp_servers.failproofai]
+    url = "https://gateway.befailproof.ai/mcp"
+    ```
+
+    Führe dann `codex mcp login failproofai` aus.
+  </Tab>
+  <Tab title="Andere Clients">
+    Jeder Client, der Remote-MCP-Server über Streamable HTTP mit OAuth unterstützt, funktioniert. Gib ihm die obige Adresse. Es gibt keine Client-ID oder kein Secret, das konfiguriert werden muss.
+  </Tab>
+</Tabs>
+
+## Eine Organisation pro Verbindung
+
+Eine Verbindung agiert nur in der von dir gewählten Organisation. Um zwei Organisationen zu nutzen, füge den Server zweimal unter verschiedenen Namen hinzu, z. B. `failproofai-acme` und `failproofai-sandbox`, und verbinde jede mit ihrer eigenen Organisation.
+
+Demo-Organisationen akzeptieren keine Verbindungen. Wähle stattdessen deine eigene Organisation.
+
+## Berechtigungen
+
+Eine Verbindung kann das tun, was du in der Organisation tun kannst – innerhalb des unten aufgeführten Rahmens. Sie folgt deinen aktuellen Berechtigungen: Wenn ein Admin dir mehr gibt, erhält das Tool sie, und wenn etwas entzogen wird, verliert das Tool es beim nächsten Aufruf.
+
+| Berechtigung | Erlaubt dem Tool |
+| --- | --- |
+| `events:read` | Events auflisten, die Übersicht einer Sitzung lesen, Agenten und Umgebungen auflisten |
+| `evaluations:read` | Sitzungen auflisten sowie Auswertungsergebnisse und -jobs lesen und zusammenfassen |
+| `evaluations:trigger` | Auswertungen erstellen, neue Versionen veröffentlichen, sie aktivieren oder deaktivieren, zurückfüllen und eine Sitzung neu auswerten |
+| `dashboards:read`, `dashboards:write` | Dashboards lesen oder sie erstellen, umbenennen und Abfragen hinzufügen |
+| `queries:read`, `queries:write` | Gespeicherte Abfragen lesen oder sie speichern und bearbeiten |
+| `queries:run` | Eine schreibgeschützte SQL-Abfrage ausführen und das Abfrageschema lesen |
+| `alerts:read`, `alerts:write` | Alerts lesen oder sie erstellen, bearbeiten, pausieren, löschen und testen |
+| `issues:read` | Insights lesen, bestätigen und kommentieren |
+| `issues:create` | Ein Insight zu einem Alert öffnen |
+| `issues:close` | Insights lösen und schließen |
+| `audits:read`, `audits:write` | Audits, Durchläufe und Findings lesen oder Audits erstellen und bearbeiten sowie einen Durchlauf starten |
+| `code_fixes:read` | Sehen, wie ein Insight behoben werden kann, und seinen Kontext für einen eigenen Agenten zur Behebung abrufen |
+| `code_fixes:write` | Eine Behebung in Failproof AI Cloud starten, wodurch ein Pull Request auf deinem GitHub geöffnet wird |
+| `policies:read`, `policies:write` | Richtlinien, Maschinen und Deployments lesen oder Richtlinien veröffentlichen, deployen und zurückrollen |
+
+Einige Tools benötigen keine Berechtigung, da sie keine Organisationsdaten lesen: das Erstellen von Sitzungs- und Event-Links sowie das Durchsuchen dieser Dokumentation.
+
+Ein KI-Tool kann niemals API-Schlüssel, Benutzer, Einstellungen oder die Organisationsverwaltung berühren und kann keine Events senden.
+
+## Änderungen genehmigen
+
+Bei Schreibvorgängen wirst du zuerst gefragt, sofern dein Client die Eingabeaufforderung anzeigen kann. Du siehst, was sich ändern wird, und wählst **Diese Änderung genehmigen**, um fortzufahren. Wenn du ablehnst oder nicht innerhalb von etwa 4 Minuten antwortest, ändert sich nichts. Einige Clients hören nach einer Minute auf zu warten, also antworte zügig.
+
+<Warning>
+  Ein Client, der keine Eingabeaufforderungen unterstützt, wird nicht gefragt, und ein Schreibvorgang wird ausgeführt, sobald der Client den Aufruf macht. Dort ist die eigene Bestätigung deines Clients die einzige – lasse sie daher für Schreib-Tools aktiviert.
+</Warning>
+
+## Verbundene Apps und Widerrufen
+
+**Einstellungen → Integrationen → MCP** listet deine verbundenen Apps in der aktuellen Organisation mit ihren Berechtigungen und der letzten Nutzung auf. **Widerrufen** trennt eine App sofort. Das Entfernen des Servers in deinem Client widerruft die Verbindung ebenfalls.
+
+Du kannst bis zu 5 verbundene Apps pro Organisation haben. Das erneute Verbinden derselben App ersetzt ihre frühere Verbindung.
+
+## Selbst gehostete Deployments
+
+Wähle beim Verbinden **Selbst gehostete Failproof AI Cloud** und gib die Adresse ein, unter der du dich anmeldest. Dein Deployment muss über öffentliches HTTPS erreichbar sein.
+
+Tool-Aufrufe und ihre Ergebnisse werden über das gehostete Failproof AI-Gateway zwischen deinem KI-Tool und deinem Deployment weitergeleitet. Das Gateway speichert sie nicht.
+
+## Was mit deinen Daten passiert
+
+Ergebnisse gehen an das von dir verbundene KI-Tool, und der Anbieter dieses Tools verarbeitet sie gemäß seinen eigenen Bedingungen. Für jeden Tool-Aufruf protokolliert Failproof AI den Namen des Tools, sein Ergebnis, die Dauer und die Organisation – niemals die Argumente oder Ergebnisse. Siehe die [Datenschutzrichtlinie](https://befailproof.ai/privacy/).
+
+## Fehlerbehebung
+
+| Was du siehst | Was zu tun ist |
+| --- | --- |
+| „In einem anderen Browser gestartet" | Schließe die Anmeldung im Browser ab, den der Client geöffnet hat (mit aktivierten Cookies), und starte erneut vom Client aus |
+| Ein Fehler nach **Erlauben** | Der Link funktioniert nur einmal und läuft nach 10 Minuten ab – starte daher erneut vom Client aus |
+| Ein erwartetes Tool fehlt | Du hast in dieser Organisation keine entsprechende Berechtigung. Wende dich an einen Admin. Du musst dich nicht erneut verbinden, sobald du sie hast |
+| Der Client fordert dich wiederholt zur Anmeldung auf | Die Verbindung wurde widerrufen, du hast die Organisation verlassen oder sie war 90 Tage lang ungenutzt. Verbinde dich erneut |
+| „Du hast 5 verbundene Apps" | Widerrufe eine unter **Einstellungen → Integrationen → MCP** und verbinde dich dann erneut |
+
+Immer noch nicht weiter? Schreib an [support@befailproof.ai](mailto:support@befailproof.ai).

@@ -1,0 +1,275 @@
+---
+title: "Jev sağlayıcılar ve kendi anahtarınız kurulumu"
+description: "Jev ilkelerinin canlı incelemesi için sağlayıcı uç noktaları, model kimlikleri, yapılandırma ve başarısızlık davranışı."
+icon: "key-round"
+---
+
+Bu, kendi anahtarınızla [Jev ilkeleri](/tr/policies/jev) için sağlayıcı ve yapılandırma referansıdır. Regex ilkeleri dizgeleri eşleştirirler. `rm -rf build/` komutunu istediğiniz ile `rm -rf ~` komutunu planı içinde kaçan arasındaki farkı anlayamazlar, bu yüzden bir yerde çok fazla, başka bir yerde çok az şeyi engeller. **Jev**, TypeSafe'ın sınıflandırıcısı, çağrıyı aslında istediğiniz şeye karşı okur ve bunu tek hızlı bir istekte bir dizi evet/hayır sorusunun cevapları verir.
+
+Kendi Jev uç noktanız ve anahtarınız yapılandırıldığında, Failproof AI her araç çağrısı hakkında Jev'e regex ilkeleri yerine **yanında** sorar:
+
+- **Sert** bir ilkenin reddi kesindir. Jev bunu temizleyemez. Her ilke açıkça incelenebilir olarak işaretlenmedikçe ve kapsadığı Jev kontrolleri adlandırmadıkça sert olur, bu nedenle hiçbir şey söylemeyen özel, paket veya Cloud ilkesi sert olur ve her zaman açık olan kendi kendini koruma koruması her zaman sertir.
+- **İncelenebilir** bir ilkenin reddi temizlenebilir, ancak yalnızca Jev'e o ilkenin kapsadığı tam endişe hakkında sorulduğunda ve "burada bir şey yok" veya "kullanıcı bunu istedi" yanıtını verdiğinde. Endişeyi gerçek bulan bir kontrol, kullanıcı çağrıyı istemediğinde reddi tuttuğu halde — kendi kararı yalnızca bir uyarı olsa bile, çünkü araç çağrısından önce uyarı aracıyı durdurmaz. Ve o kontrol inkar edebilen biriyse (gizli açıklama, kimlik bilgisi sızıntısı, yıkıcı silme, …), o çağrıda hiçbir şey temizlenmez.
+- Blok yine de **uyarı** haline gelebilir çağrı verdiğiniz görevin bir adımı olduğunda ve daha ileri gitmediğinde: Jev kendi reddisini uyarıya yumuşatır ve bu uyarı — çağrıyla tam olarak neyin yanlış olduğunu belirtir — ilkenin bloğunun yerini alır.
+- Jev ayrıca hiçbir regex'in açıklamadığı hasardan ötürü uyarabilir veya reddedebilir.
+- Jev cevap veremezse (zaman aşımı, hız sınırı, sunucu hatası, kredi yok, beklenmeyen model sürümü), bu çağrı regex sonucunu alır, tam olarak Jev olmadan olduğu gibi.
+- Jev, bütün çağrıyı okumadığı ve tam endişe hakkında sorulmadığı sürece çağrıyı ilkeleriniz tek başına olmasından daha izinli hale getirmez. Daha az bir şey — bütünlüğü içinde göndermek için çok büyük bir çağrı, şüpheli enjeksiyon — izinleri geri çeker ve her reddi tuttuğu.
+
+<Note>
+Jev config olmadan hiçbir şey değişmez: kancalar regex ilkelerini tam olarak her zaman olduğu gibi çalıştırırlar. Config tüm seçimliktir.
+</Note>
+
+<Tip>
+FailproofAI Cloud'da mı? Kendi anahtarınıza ihtiyacınız yok: `jev:evaluate` taşıyan bir anahtarla bağlı bir makine kuruluşunuzun planında Jev'i kullanabilir. [FailproofAI Cloud aracılığıyla Jev](/tr/reference/jev-cloud) bölümüne bakın.
+</Tip>
+
+## Başlamadan önce
+
+**failproofai 1.0.8-beta.0 veya sonrası** yükleyin ve aracısının çalıştığı makinede [desteklenen bir harness](/tr/reference/harnesses) üzerine kancalarını bağlayın. Bu yeni bir makineyse [hızlı başlangıç](/tr/start/quickstart) izleyin ya da Cloud kullanmıyorsanız [yerel zorlama ayarlayın](/tr/start/setup#enforce-locally). Yüklü CLI'yi `failproofai --version` ile kontrol edin.
+
+Aşağıdaki bir sağlayıcıdan API anahtarı alın ya da uyumlu bir uç nokta ve onun anahtarını hazır bulundurun. Jev adlandırılmış araç çağrılarını `PreToolUse` ya da `PermissionRequest` kapısında inceler. Kendi kararını verebilir, ancak mevcut ilke reddisini temizlemek ayrıca yüklü bir ilke gerekir [incelenebilir](/tr/policies/authority) olarak işaretlenir. Sert ilke redleri final kalır.
+
+## Sağlayıcı seçin
+
+Jev beş yolu aracılığıyla ulaşılabilir. Bunlardan herhangi biri için bir anahtar getirin.
+
+| Sağlayıcı | `--provider` | Uç Nokta | Varsayılan Model | Notlar |
+| --- | --- | --- | --- | --- |
+| TypeSafe | `typesafe` | `api.typesafe.ai/v1/systemone` | `jev-1.13.0` | Tam sürüm pini. |
+| OpenRouter | `openrouter` | `openrouter.ai/api/v1/systemone` | `typesafe/jev-1.13` | İstekler yalnızca sıfır veri saklama uç noktalarına yönlendirilir, başka bir sağlayıcıya geri dönüş olmaz. `typesafe/jev-1.13-20260917` gibi tarihli bir sürümü bildirir. |
+| Vercel AI Gateway | `vercel` | `ai-gateway.vercel.sh/typesafe/v1/systemone` | `typesafe-ai/jev` | Jev'i yalnızca bir takma ad ile adlandırır, bu nedenle cevap veren sürüm doğrulanmamış olarak kaydedilir. |
+| Cloudflare Workers AI | `cloudflare` | `api.cloudflare.com/client/v4/accounts/<id>/ai/run` | `typesafe/jev` | `--account-id` gerekir. HTTP 429 öncesi saniye başına yaklaşık altı çağrı ölçüldü. |
+| Kendi uç noktanız | `custom` | `<base-url>/systemone` | `jev-1.13.0` | TypeSafe'ın istek gövdesini kabul eden ve hangi modelin cevap verdiğini bildiren herhangi bir uç nokta. Yalnızca `https`; düz `http` loopback ana bilgisayarına (`localhost`, `127.0.0.1`, `::1`) yerel test için kabul edilir. |
+
+<Warning>
+Vercel'in kendi anahtarınızı getirin özelliğiyle başarısız bir istek sessizce Vercel'in kimlik bilgileriyle yeniden denenir. Her çağrının yalnızca kendi TypeSafe hesabınıza faturalandırıldığından ve görüldüğünden emin olmanız gerekiyorsa, TypeSafe'ı doğrudan kullanın.
+</Warning>
+
+## Ayarla
+
+Bir komut, uç nokta ve anahtar. Mevcut ilkeler çağrıları karar verirken Jev'in kararlarını inceleyebilmeniz için `observe` modunda başlayın:
+
+```bash
+failproofai jev --url https://api.typesafe.ai/v1 --mode observe --key-stdin < ~/typesafe.key
+```
+
+### URL sağlayıcıyı belirler
+
+Sağlayıcıyı adlandırmak zorunda değilsiniz: URL'nin **ana bilgisayarı** hangisidir.
+
+| URL Ana Bilgisayarı | Sağlayıcı | Ayrıca Gerekir |
+| --- | --- | --- |
+| `api.typesafe.ai` | `typesafe` | — |
+| `openrouter.ai` | `openrouter` | — |
+| `ai-gateway.vercel.sh` | `vercel` | — |
+| `api.cloudflare.com` | `cloudflare` | `--account-id <32-hex-account-id>` |
+| başka bir ana bilgisayar | `custom` | — verdiğiniz URL temel URL'dir |
+
+Bundan üç şey çıkar:
+
+- **Sağlayıcının kendi API'sine işaret eden URL geçersiz kıl yaz.** `--url https://api.typesafe.ai/v1` tam olarak `--provider typesafe` yapardığı config üretir. Bilinen bir sağlayıcıda farklı bir yol ya da ana bilgisayar verin ve temel URL olarak depolanır, `--base-url` depolardı gibi.
+- **`--provider` yine de çıkarımı geçersiz kılar**, bu, kendi ana bilgisayarından bir sağlayıcının API'sini konuşan bir proxy'ye nasıl ulaşıldığıdır: `--url https://jev-proxy.internal/v1 --provider typesafe`.
+- **Ana bilgisayarla çelişen bir `--provider` reddedilir**, tahmin edilmez. `--provider openrouter --url https://api.typesafe.ai/v1` hiçbir şey yazmaz ve neden söyler: iki yazım anahtarınızın nereye gönderileceği konusunda anlaşmazlık içindedir. Aynı çift `jev setup --base-url` ve panonun Jev ayarlarından reddedilir. (`--provider custom` çelişki değildir — "bu URL'yi kendisi olarak değerlendir" anlamına gelir — Cloudflare ana bilgisayarında hariç, özel yolun kişi başına uç noktaya ulaşamadığı).
+
+`--url` config dosyasındaki `baseUrl` tamamen doğrulanır ve aynı sözcüklerle reddedilir: `https` ya da düz `http` loopback ana bilgisayarına (`localhost`, `127.0.0.1`, `::1`) herhangi bir modda. Risk: hiçbir şey loopback sunucusunu kimliğini doğrulamaz, bu nedenle aşağıya indirilirken makinedeki başka bir yerel işlem portunu alabilir ve cevap verebilir; yerel test dışında `https` kullanın.
+
+### Anahtar
+
+`--key-stdin` ile aktarın ya da komutu bir terminalde çalıştırın ve anahtarı maskelenmiş bir istemde yapıştırın. Her iki şekilde de doğrudan config dosyasına gider ve asla geri yazdırılmaz.
+
+<Tabs>
+  <Tab title="TypeSafe">
+    ```bash
+    failproofai jev --url https://api.typesafe.ai/v1 --mode observe --key-stdin < ~/typesafe.key
+    ```
+  </Tab>
+  <Tab title="OpenRouter">
+    ```bash
+    failproofai jev --url https://openrouter.ai/api/v1 --mode observe --key-stdin < ~/openrouter.key
+    ```
+  </Tab>
+  <Tab title="Vercel">
+    ```bash
+    failproofai jev --url https://ai-gateway.vercel.sh/typesafe/v1 --mode observe \
+      --key-stdin < ~/vercel-gateway.key
+    ```
+  </Tab>
+  <Tab title="Cloudflare">
+    ```bash
+    failproofai jev --url https://api.cloudflare.com/client/v4 \
+      --account-id <32-hex-account-id> --mode observe --key-stdin < ~/cloudflare.token
+    ```
+  </Tab>
+  <Tab title="Özel">
+    ```bash
+    failproofai jev --url https://jev.internal.example.com/v1 --mode observe --key-stdin < ~/jev.key
+    ```
+  </Tab>
+</Tabs>
+
+`failproofai jev setup` aynı bayrakları alır ve tümü için uzun yazımdır: `setup --provider <kind>` URL'den ziyade sağlayıcıyı adlandırmayı tercih edersiniz.
+
+### `--token` ve maliyeti
+
+`--token <token>` anahtarı komut satırına koyar, bu makinei yapılandırmanın en hızlı yoludur ve anahtarı config dosyasından başka bir yerde bırakan tek yazımdır:
+
+```bash
+failproofai jev --url https://openrouter.ai/api/v1 --token <token>
+```
+
+<Warning>
+Komut satırı argümanı bundan sonra kabuk tarihçe dosyasında olur ve komut çalışırken işlem listesindedir — siz tarafından çalışan her şey tarafından `/proc` adresinden okunabilir. `setup` `--token` kullanıldığında her seferinde söyler. Makineyi paylaştığınız, kaydedilmiş bir oturumda ya da tarihçe dosyası senkronize edildiğinde `--key-stdin` tercih edin; bu şekilde geçirdiğiniz bir anahtarı döndürün eğer önemliyse.
+</Warning>
+
+`--token`, `--key-stdin` ve `--key-from-env` karşılıklı dışlayıcıdır: birini verin.
+
+Ardından anahtarı, uç noktayı ve Jev'in hangi cevap verdiğini kontrol etmek için tek bir küçük canlı istek gönderin:
+
+```bash
+failproofai jev test
+```
+
+```text
+  failproofai jev test                                            ok · 523 ms
+
+  provider      cloudflare
+  model asked   typesafe/jev
+  answered by   jev-1.13.0 (Jev 1.13 family — verified)
+  latency       523 ms — within the 3000 ms timeout
+```
+
+`jev test` çıkış 1'dir ve başlığında söyler, cevap zaman aşımından sonra gelirse (her kanca `timeout` olarak regex'e geri dönüşür) ya da kontrol sorusunun cevabı yanlışsa.
+
+Kancalar her araç çağrısında config okurlar, bu nedenle sonrakinden uygulanır. Daemon olmadan ya da olmadan yeniden başlatılacak bir şey yoktur.
+
+## Ne yaptığını kontrol et
+
+```bash
+failproofai jev status
+failproofai jev status --json
+```
+
+`status` sağlayıcı, uç nokta, model, mod, config dosyası ve izinlerini gösterir ve hiç anahtarı göstermez. Altında son etkinlik özetler: Jev kaç çağrı değerlendirdi, ne sıklıkla regex'e geri dönüştü ve neden, gecikme süresi ve incelenebilir ilkeleri hangi temizledişi gösterir.
+
+## Gerçek bir çağrıyı doğrulayın
+
+Kancalı aracıda yeni bir oturum başlatın. Dosya okuma aracısını `README.md` üzerinde kullanmasını ve başlığı bildirmesini isteyin. Oturumun bu araç çağrısını içerdiğini onaylayın, ardından `failproofai jev status` komutunu yeniden çalıştırın: son değerlendirilen çağrı sayısı artmalıdır. [Yerel panodan](/tr/reference/local-dashboard#review-policy-activity) **İlkeler → Etkinlik** açın çağrının Jev kararını ve modunu incelemek için. Gözlem modunda, ilke sonucu yine de çağrıyı karar verir. Temizlik yalnızca incelenebilir ilke eşleşirse ve Jev her adlandırılmış kontrolü temizlerse görünür; sıradan bir okuma temizlenecek ilkesi olmayabilir.
+
+## Gözlem modu
+
+`enforce` varsayılandır. Jev'i herhangi bir kararı değiştirmesine izin vermeden izlemek için `observe` öğesine geçin: Jev yine de sorulur ve kararları kaydedilir, ancak uygulanacak regex sonucudur.
+
+```bash
+failproofai jev setup --mode observe
+failproofai jev setup --mode enforce
+failproofai jev setup --mode off
+```
+
+`off` config'i tutar — uç nokta ve anahtar — ve Jev'e sormayı durdurur: kancalar regex ilkelerini config olmadan tamamen olduğu gibi çalıştırırlar ve `failproofai jev status` "off (switched off)" der. `--mode observe` ya da `--mode enforce` ile geri geçin.
+
+Aynı sağlayıcı için `setup` yeniden çalıştırmak depolanan anahtarı tutar, bu nedenle mod geçişi bir bayraktır. Sağlayıcı değiştirmek baştan başlar ve o sağlayıcının anahtarını sorar. Farklı bir ana bilgisayara istekleri taşıyan `--base-url` da öyle: depolanan anahtar yalnızca verildiği ana bilgisayara ya da sağlayıcının kendi API'sine gönderilir.
+
+## Config dosyası
+
+Her şey bir dosyada yaşar, `~/.failproofai/jev.json`, `setup` tarafından yazılır:
+
+```json
+{
+  "provider": "cloudflare",
+  "apiKey": "<your key>",
+  "accountId": "<32-hex-account-id>",
+  "mode": "enforce",
+  "timeoutMs": 3000
+}
+```
+
+| Alan | Anlam |
+| --- | --- |
+| `provider` | `typesafe`, `openrouter`, `vercel`, `cloudflare` ya da `custom` — ya da `failproofai`, anahtarı bu dosya yerine FailproofAI Cloud bağlantısından gelir ([FailproofAI Cloud aracılığıyla Jev](/tr/reference/jev-cloud) bölümüne bakın). |
+| `apiKey` | `Authorization: Bearer <key>` olarak gönderilir. |
+| `baseUrl` | `custom` için gereklidir; aksi halde sağlayıcının API tabanını değiştirir. `https` olmalıdır. Düz `http` loopback ana bilgisayarına (`localhost`, `127.0.0.1`, `::1`) yalnızca `mode: observe` ile kabul edilir: hiçbir şey loopback sunucusunu kimliğini doğrulamaz, bu nedenle proxy'niz aşağıya indirilirken makinedeki başka bir işlem, aracı da dahil, yerinde cevap verebilir. |
+| `accountId` | Yalnızca Cloudflare: 32 küçük heksadesimal karakter. |
+| `model` | Sağlayıcının varsayılan model kimliğini değiştirir. Sürümlü bir kimlik Jev 1.13'ü adlandırmalıdır. API anahtarı gibi şekilli bir değer reddedilir (ve geri tekrarlanmaz), bu nedenle `--model` içine yapıştırılan anahtar asla depolanmaz ya da model olarak gönderilmez. |
+| `timeoutMs` | Araç çağrısının regex sonucunu kullanmadan önce Jev'i beklemesi ne kadar. 100–10000, varsayılan 3000. |
+| `mode` | `enforce` (varsayılan), `observe` ya da `off` (config'i tut, Jev yok). |
+
+Üç kural bunu korur:
+
+- **Yalnızca sahip.** `0600` izinleriyle yazılır. Başka bir kullanıcı ya da grup tarafından okunabilen ya da yazılabilen kopya **reddedilir** ve kancalar `chmod 600 ~/.failproofai/jev.json` ya da `setup` yeniden çalıştırılıncaya kadar regex'e geri dönüşür. Dizin de kontrol edilir: `~/.failproofai` başka birisi tarafından **yazılabilir** olmamalıdır, çünkü orada yazmak kimse dosyayı kendi izinleri ne olursa olsun değiştirebilir. `setup` bulursa bu yazma bitlerini kaldırır. `failproofai jev status` config reddedildiğinde söyler ve dosyanın adı verdiği uç noktayı gösterir: başka biri onu değiştirmiş olabilir, bu nedenle `chmod` öncesinde sizin olduğundan emin olun. Böyle bir dosyada `setup` yeniden çalıştırmak depolanan anahtarı yalnızca sağlayıcının kendi API'sine taşır; adlandırdığı başka bir uç nokta anahtarı yeniden gerektirir (`--key-stdin`) ya da istekleri sağlayıcıya geri göndermek için `--base-url default`.
+- **Yalnızca global.** Depo Jev'i açamaz, başka bir uç noktaya işaret ettiremez ya da modelini seçemez: proje içindeki `.failproofai/jev.json` yoksayılır ve sağlayıcı, URL, model ve hesap kimliği yalnızca bu dosyadan okunur — hiç ortamdan değil, deponun aracı ayarları ayarlayabilir. (`FAILPROOFAI_HOME` bunun etrafında bir yol değildir: tüm failproofai dizinini, ilkelerinizi içinde taşır, yerine Jev kendi başına yönlendir.)
+- **Yalnızca anahtar ortamdan gelebilir.** Dosyada `apiKey` yoksa, `FAILPROOFAI_JEV_API_KEY` bu oturum için sağlar (`setup --key-from-env` böyle bir dosya yazar). Dosyanın tuttuğu anahtarı hiç değiştirmez ve dosya olmadan Jev'i açamaz. Değişken ayarlanmadığında Jev o kabuk için basitçe kapalıdır: `failproofai jev status` söyler, çıkış 0 ve config'i yalnız bırakır (`status --json` `"reason": "no-env-key"` ile `"status": "key-missing"` bildirir). `failproofaid` daemon kabuk ortamınızı görmez, bu nedenle `failproofai config` ile kurulu makinede anahtarı dosyada tutun.
+
+## Jev hangi cevap verir
+
+Failproof AI'ın karar eşikleri Jev 1.13 üzerinde kalibre edilmiştir, bu nedenle cevap yalnızca o ailkeden geldiğinde kullanılır: `jev-1.13.x` ya da OpenRouter'in `typesafe/jev-1.13-<date>`. Sağlayıcı Jev'i yalnızca takma adla adlandırdığında ve sürüm bildirmediğinde (Vercel ve Cloudflare bildirmediğinde), cevap kullanılır ve doğrulanmamış olarak kaydedilir. `custom` uç nokta cevap veren modeli bildirmelidir; tek istisna yapılandırdığınız sürümlü olmayan `--model` ad, geri döndürüldüğünde, aynı şekilde doğrulanmamış olarak kaydedilir. Diğer sürümü bildiren ya da `custom` hiçbir şey bildirmeyen cevap kullanılmaz: o çağrı regex'e `model-mismatch` nedeniyle geri dönüşür.
+
+## Jev cevap veremediğinde
+
+Bunların her biri o çağrı için regex sonucuna geri dönüşür ve nedeniyle kaydedilir, `failproofai jev status` toplar:
+
+| Neden | Sebep |
+| --- | --- |
+| `timeout` | `timeoutMs` içinde cevap yok. |
+| `http-429` | Sağlayıcı anahtarı hız sınırlandırması. |
+| `rate-limited` | Failproof AI'ın kendi sınırlayıcısı çağrıyı gönderme öncesi tuttu: 5 istek/saniye, 5 tarafından patlamalar ve sağlayıcı `429` cevap verdikten sonra bir an yoktur. Sağlayıcı değil. |
+| `http-500`, `http-502`, `http-503`, … | Sağlayıcıda sunucu hatası. Tam durum kaydedilir. |
+| `out-of-credits` | HTTP 402: sağlayıcı hesabında kredi kalmadı. |
+| `provider-refused` | Cloudflare'den HTTP 402, "Model execution failed (Payment error)": sağlayıcı bu istekte modeli çalıştırmayı reddetti. Genellikle faturalandırma değil, bu nedenle doldurma bunu hareket ettirmez. |
+| `http-401`, `http-403` | Anahtar reddedildi. |
+| `http-404` | `<base>/systemone` adresinde hiçbir şey sunulmadığı, bu nedenle temel URL yanlış — `/systemone` ona eklenir ve her sağlayıcı sürüm köküne hizmet eder. `failproofai jev models` uç noktanın ne sunduğunu gösterir. |
+| `network` | Uç noktaya ulaşılamadı. |
+| `http-301`, `http-302`, `http-307`, `http-308` | Uç nokta yeniden yönlendirme cevabı verdi. Yönlendirmeler hiçbir zaman takip edilmez, bu nedenle cevap yalnızca config'inizdeki URL'den gelir; `--base-url` son URL'ye ayarlayın. |
+| `malformed` | Uç nokta cevap verdi, ancak Jev cevabı ile değil — JSON olmayan gövde ya da içinde cevap olmayan. |
+| `cloudflare-error`, `cloudflare-incomplete` | Cloudflare'ın zarf başarısızlık bildirdi ya da tamamlanmamış iş. |
+| `model-mismatch` | Jev sürümü 1.13 dışında cevap verdi ya da `custom` uç nokta modelin hangi olduğunu söylemedi. |
+| `request-cut` | **Kesinti değil.** Jev cevap verdi; bütünün yalnızca kısmı gösterildi, bu nedenle cevap hiçbir şeyi temizlemedi. [Jev cevap verdiğinde, ancak bütün çağrıda değil](#when-jev-answered-but-not-on-the-whole-call) bölümüne bakın. |
+
+`failproofai jev status` `upstream-error` (cevap sağlayıcının kendi hatasını taşıdı) ya da `config` gibi birkaç nadire neden gösterebilir ve adlandıramadığı herhangi bir nedeni `other` olarak toplar.
+
+`request-cut` bu tablodadır çünkü `failproofai jev status` bunu geri kalanla toplar ve çünkü her reddi tutması da. Burada sağlayıcı hakkında hiçbir şey söylemeyen tek nedendir: istek ulaştı ve Jev cevap verdi. Üstündeki her satırın aksine, bu cevap yine sayılır — Jev'in kendi reddi ya da uyarısı regex sonucu üzerine uygulanır, yerine atılmak yerine. Bu nedenle onların çalışması çağrılar değerlendiriciye ulaştığı bütünlüğünü göndermek için çok büyük demek, uç noktanız iyi olmadığı demek değil ve kredi doldurma ya da URL değiştirme sayıyı hareket ettirmez.
+
+## Jev cevap verdiğinde, ancak bütün çağrıda değil
+
+İki şey daha olabilir ve hiçbiri Jev'in cevap vermeyişi değil. Her ikisi de çağrının ne kadarı ya da konuşmanın bir istek içine sığdığı hakkındadır.
+
+**Çağrının kendisinin bir kısmı sığmadı.** Araç çağrısı sabit bütçe içinde gönderilir ve çok büyük biri — çok büyük `Write`, muazzam MCP gövdesi, sınıra doldurulan komut — sığana göre gönderilir. Jev yine de cevap verir ve cevabı yine sayılır: kendi reddi ya da uyarısı her zamanki gibi geçerli olur. Yapamadığı **temizlemedir**, çünkü çağrının bir kısmında verilen karar çağrıya karar değildir. Bu nedenle her ilke reddi kalır ve çağrı `request-cut` nedeniyle geri dönüş olarak kaydedilir, `failproofai jev status` bunu üstteki nedenlerle toplar. Bunun size verdiği kural: çağrı daha büyük hale getirmek temizliğini kaybettirilebilir ve asla birini satın alamaz.
+
+**Bir mesaj sığmadı.** Yapıştırdığınız uzun istem, aracının son mesajı ya da bu değerlendiricinin kendi deposu zaten tasarladı. **Hiçbir şey değişmez**: çağrı tam olarak başka birisi gibi yargılanır, temizlenir ve kaydedilir ve geri dönüş olarak sayılmaz. Yazarken uzunluk hiçbir zaman karar vermeyi belirlemez ve kesilme rıza üretmez: istem zaten kapalı geldiğinde, "bunu istemediniz" bundan çıkarılabilen sonuç olmaktan çıkıp, olacak.
+
+İkisi arasında hat kim yazarsa yaztsın metni. Çağrı aracının ve uzunluğunun önem azalttığı kuralı aracının kullanabildiği bir kural olurdu; istemem sizin ve uzunluğunun sadece hiçbir zaman cezalandırılan bir sinyal olarak şekillendirdiğidir spek ya da stak izini yapıştırıyor.
+
+## Makineyi terk eden ne
+
+Her araç çağrısı Jev değerlendirilir için, bir istek sağlayıcıya gider, taşıyan:
+
+- araç çağrısı kendisi, API anahtarları, taşıyıcı belirteçleri ve `KEY=` atamalarından gizlilikleriyle kırmızılaştırılmış;
+- yazarken son istemiyor, aracı harness eklediği metin kaldırılmış;
+- aracının son mesajı en son isteminizden önce, aracı yazılı olarak etiketlendi;
+- yerel olarak hesaplanan gerçekler, örneğin yol proje içinde olup olmadığı — oturum ilk incelenen çağrısında bulunduğu, [oturum için sabitlenmiş](/tr/reference/jev-intent#the-project-root) — ve geçerli git dalı.
+
+Yalnızca config'inizdeki uç noktaya, anahtarınız altında gider.
+
+## Kapat
+
+```bash
+failproofai jev remove
+```
+
+Bu `~/.failproofai/jev.json` siler. Sonraki araç çağrısından, kancalar regex ilkelerini tam olarak önce olduğu gibi çalıştırırlar. `~/.failproofai/state/semantic/` adındaki oturum başına depolar (kayıtlı istekler `sessions/` adında, proje kökleri `roots/` adında) yerinde bırakılır ve yaşlanır. Jev'e sormayı durdurmak ancak config'i tutmak için `failproofai jev setup --mode off` kullanın.
+
+## Komut referansı
+
+| Komut | Sonuç |
+| --- | --- |
+| `failproofai jev --url <url> --key-stdin` | Bir komutda yapılandırın; sağlayıcı URL'nin ana bilgisayarından gelir |
+| `failproofai jev --url <url> --token <token>` | Aynısı, anahtarı komut satırında — tarihçeniz ve işlem listesi bunu görsün |
+| `failproofai jev setup --provider <kind> --key-stdin` | Config stdin'de aktarılan anahtardan yaz |
+| `failproofai jev setup --provider <kind>` | Aynısı, maskelenmiş istemde anahtarı sorma |
+| `failproofai jev setup --key-from-env` | Anahtar depolamayın; oturum başına `FAILPROOFAI_JEV_API_KEY` oku |
+| `failproofai jev setup --mode observe` | Mod geçir (`enforce`, `observe` ya da `off`), depolanan anahtarı tutma |
+| `failproofai jev setup --model <id>` / `--base-url <url>` | Model ya da API tabanını geçersiz kıl; `default` geçersiz kılma temizle |
+| `failproofai jev setup --timeout-ms <n>` | Çağrı başına bütçe değiştir |
+| `failproofai jev status [--json]` | Yapılandırma, izinler ve son etkinlik; hiç anahtar değil |
+| `failproofai jev test [--json]` | Bir canlı istek: gecikme ve cevap veren sürüm |
+| `failproofai jev models [--provider <kind>] [--url <base>] [--json]` | Uç noktanın `/models` bildirdiği model kimlikleri, yapılandırılan işareti |
+| `failproofai jev remove` | Config sil; Jev kapalı |

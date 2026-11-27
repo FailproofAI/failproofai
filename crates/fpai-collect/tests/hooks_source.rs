@@ -858,7 +858,7 @@ fn self_report_row(ts: i64) -> String {
         "timestamp": ts,
         "eventType": "PreToolUse",
         "integration": "claude",
-        "toolName": "mcp__failproofai__report",
+        "toolName": "mcp__failproofai_local__report",
         "toolCallId": "toolu_01",
         "decision": "allow",
         "durationMs": 1,

@@ -64,10 +64,14 @@ def test_tool_names():
     for name in lines("tool-names.golden.txt"):
         assert fp.is_self_report_tool(name), name
         assert fp.is_self_report_tool(name.upper()), name
-    assert fp.is_self_report_tool("report", "failproofai")
-    assert fp.is_self_report_tool("MCP:report", "failproofai")
+    assert fp.is_self_report_tool("report", "failproofai_local")
+    assert fp.is_self_report_tool("MCP:report", "failproofai_local")
     assert not fp.is_self_report_tool("report", "linear")
     assert not fp.is_self_report_tool("MCP:report")
+    # The Cloud gateway's server is `failproofai`: its tools are never ours.
+    assert not fp.is_self_report_tool("report", "failproofai")
+    for name in ("mcp__failproofai__report", "failproofai__report", "mcp_failproofai_report", "failproofai-report"):
+        assert not fp.is_self_report_tool(name), name
 
 
 def test_event_field_order():

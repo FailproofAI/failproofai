@@ -10,13 +10,15 @@
  */
 import { spawn } from "node:child_process";
 import { readdirSync, readFileSync } from "node:fs";
-import { join } from "node:path";
+import { basename, dirname, join } from "node:path";
 import { customAgentsEventsDir, hookActivityDir } from "./fp-home";
 import {
   SELF_REPORT_DEFAULT_CATEGORIES,
   SELF_REPORT_MCP_TOOL_NAME,
   SELF_REPORT_RESULT_TEXT,
+  SELF_REPORT_SERVER_NAME,
   SELF_REPORT_SERVER_RECORDS,
+  SELF_REPORT_TOOL_NAME,
   readEffectiveSelfReport,
   readLocalSelfReportConfig,
   resolveSelfReport,
@@ -31,6 +33,7 @@ import {
 } from "./self-report";
 import { INTEGRATION_TYPES } from "./types";
 import { daemonSocketPresent, isDaemonConfigured } from "./daemon-client";
+import { SELF_REPORT_RECEIPT_ENV, SELF_REPORT_RECEIPT_PREFIX } from "./self-report-mcp";
 import {
   SELF_REPORT_CURSOR_APPROVAL_HINT,
   probeSelfReportHttp,
@@ -82,10 +85,11 @@ function selfReportRunChild(
   stdin: string,
   timeoutMs: number,
   cwd?: string,
+  extraEnv: Record<string, string> = {},
 ): Promise<{ code: number | null; stdout: string; stderr: string }> {
   return new Promise((resolveRun) => {
     const [cmd, ...rest] = argv;
-    const child = spawn(cmd, rest, { cwd, stdio: ["pipe", "pipe", "pipe"], env: process.env });
+    const child = spawn(cmd, rest, { cwd, stdio: ["pipe", "pipe", "pipe"], env: { ...process.env, ...extraEnv } });
     let stdout = "";
     let stderr = "";
     const timer = setTimeout(() => child.kill("SIGKILL"), timeoutMs);
@@ -157,7 +161,7 @@ function selfReportRegistrationLines(
     ...hooked.map((r) => {
       let state: string;
       if (r.error) state = `unreadable (${r.error})`;
-      else if (r.conflict) state = "another failproofai MCP server is configured; left alone";
+      else if (r.conflict) state = `another "${SELF_REPORT_SERVER_NAME}" MCP server is configured; left alone`;
       else if (r.registered && r.transport === "http") {
         const port = selfReportUrlPort(r.endpoint);
         const ok = port !== null && health.get(port) === true;
@@ -198,8 +202,12 @@ async function selfReportStatus(deps: SelfReportCliDeps): Promise<SelfReportCliR
   const lines: string[] = [];
   if (!settings) {
     const missing = !file && !selfReportFileExists();
+    // This machine's own file, set aside while the org's setting is awaited.
+    const awaitingCloud = !!file && file.source !== "cloud" && selfReportCloudEnrolled();
     lines.push(
-      missing
+      awaitingCloud
+        ? "Self Reports: off (waiting for FailproofAI Cloud to send this machine's setting; this machine's own setting no longer applies)"
+        : missing
         ? selfReportCloudEnrolled()
           ? "Self Reports: off (waiting for FailproofAI Cloud to send this machine's setting)"
           : "Self Reports: off (turned off in config.json)"
@@ -225,6 +233,7 @@ async function selfReportStatus(deps: SelfReportCliDeps): Promise<SelfReportCliR
   );
   if (settings.updatedAt) lines.push(`Updated:    ${settings.updatedAt}`);
   lines.push(`Categories: ${settings.categories.map((c) => c.name).join(", ")}`);
+  lines.push(`MCP server: ${SELF_REPORT_SERVER_NAME} (tool \`${SELF_REPORT_TOOL_NAME}\`)`);
   if (settings.guidance) lines.push(`Guidance:   ${settings.guidance.length > 60 ? `${settings.guidance.slice(0, 57)}...` : settings.guidance}`);
   const readRows = deps.registrations ?? (() => selfReportRegistrationStatus());
   let rows = readRows();
@@ -378,7 +387,6 @@ async function selfReportTest(args: string[], deps: SelfReportCliDeps): Promise<
     // This agent's hooks do not see MCP calls: the MCP server records. Drive
     // the stdio server exactly as the agent would.
     const dir = customAgentsEventsDir();
-    const before = new Set(selfReportListDir(dir));
     const stdin = [
       { jsonrpc: "2.0", id: 1, method: "initialize", params: { protocolVersion: "2025-06-18", capabilities: {}, clientInfo: { name: "failproofai-self-report-test", version: "1" } } },
       { jsonrpc: "2.0", method: "notifications/initialized" },
@@ -386,32 +394,39 @@ async function selfReportTest(args: string[], deps: SelfReportCliDeps): Promise<
     ]
       .map((m) => JSON.stringify(m))
       .join("\n");
-    const run = await selfReportRunChild([...cli, "mcp", "--agent", agent], `${stdin}\n`, 20_000, cwd);
-    const answered = run.stdout.includes(SELF_REPORT_RESULT_TEXT);
-    const landed = selfReportListDir(dir).filter((f) => !before.has(f) && f.endsWith(".jsonl"));
-    const hit = landed.find((f) => {
-      try {
-        return readFileSync(join(dir, f), "utf8").includes(SELF_REPORT_TEST_DETAIL);
-      } catch {
-        return false;
-      }
+    const run = await selfReportRunChild([...cli, "mcp", "--agent", agent], `${stdin}\n`, 20_000, cwd, {
+      [SELF_REPORT_RECEIPT_ENV]: "1",
     });
-    if (!answered || !hit) {
+    const answered = run.stdout.includes(SELF_REPORT_RESULT_TEXT);
+    // The server's receipt names the batch it published. The batch itself may
+    // already be gone: a running collector uploads and deletes it, often
+    // before this child has exited, so its absence proves nothing.
+    const receipt = run.stderr
+      .split("\n")
+      .filter((l) => l.startsWith(SELF_REPORT_RECEIPT_PREFIX))
+      .map((l) => l.slice(SELF_REPORT_RECEIPT_PREFIX.length).trim())
+      .find((p) => dirname(p) === dir && p.endsWith(".jsonl"));
+    if (!answered || !receipt) {
+      const diagnostic = run.stderr
+        .split("\n")
+        .filter((l) => l.trim() && !l.startsWith(SELF_REPORT_RECEIPT_PREFIX))
+        .pop();
       return {
         exitCode: 1,
         lines: [
           `✕ The test report for ${agent} did not land.`,
-          `  MCP server ${answered ? "answered Recorded." : "did not answer"}${run.stderr.trim() ? `: ${run.stderr.trim().split("\n").pop()}` : ""}`,
+          `  MCP server ${answered ? "answered Recorded., but recorded nothing" : "did not answer"}${diagnostic ? `: ${diagnostic.trim()}` : ""}`,
         ],
       };
     }
-    // Possibly consumed by a running collector between write and read; the
-    // name is what we report.
+    const stillThere = selfReportListDir(dir).includes(basename(receipt));
     return {
       exitCode: 0,
       lines: [
         `✓ Test report from ${agent} recorded by the MCP server.`,
-        `  Event file: ${join(dir, hit)}`,
+        stillThere
+          ? `  Event file: ${receipt}`
+          : `  Event file: ${receipt} (already picked up by the collector)`,
         "  The collector uploads it to FailproofAI Cloud when this machine is connected.",
       ],
     };

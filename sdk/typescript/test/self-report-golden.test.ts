@@ -60,9 +60,14 @@ describe("Self Reports golden files (TypeScript SDK)", () => {
     for (const name of lines("tool-names.golden.txt")) expect(isSelfReportTool(name), name).toBe(true);
     expect(isSelfReportTool("report")).toBe(false);
     expect(isSelfReportTool("MCP:report")).toBe(false);
-    expect(isSelfReportTool("report", "failproofai")).toBe(true);
-    expect(isSelfReportTool("MCP:report", "failproofai")).toBe(true);
+    expect(isSelfReportTool("report", "failproofai_local")).toBe(true);
+    expect(isSelfReportTool("MCP:report", "failproofai_local")).toBe(true);
     expect(isSelfReportTool("report", "linear")).toBe(false);
+    // The Cloud gateway's server is `failproofai`: its tools are never ours.
+    expect(isSelfReportTool("report", "failproofai")).toBe(false);
+    for (const name of ["mcp__failproofai__report", "failproofai__report", "mcp_failproofai_report", "failproofai-report"]) {
+      expect(isSelfReportTool(name), name).toBe(false);
+    }
   });
 
   it("writes the golden event fields in wire order", () => {

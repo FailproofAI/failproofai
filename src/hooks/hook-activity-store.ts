@@ -183,7 +183,7 @@ export interface HookActivityEntry {
     reason: string | null;
   }>;
   /**
-   * Set only on a call to the Self Reports tool (`mcp__failproofai__report` and
+   * Set only on a call to the Self Reports tool (`mcp__failproofai_local__report` and
    * its per-agent spellings): what the agent reported. Such a row was allowed
    * before any policy ran and was never evaluated, so its decision is always
    * `allow` and it names no policy. The collector turns it into a

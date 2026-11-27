@@ -809,19 +809,19 @@ export async function evaluateHookEvent(
     // Cursor's MCP hook names our tool `report` and the server separately;
     // file it under the one name before anything else reads the tool name.
     // Cursor's preToolUse names one `MCP:report` with no server; only a payload
-    // that also names the server (`mcp_server_name: "failproofai"`) is ours.
+    // that also names the server (`mcp_server_name: "failproofai_local"`) is ours.
     //
     // For Cursor that server check is the ONLY way a call becomes ours: a
     // payload naming another server (or none) keeps its own tool name even
     // when that name is one of our qualified spellings, and never reaches the
     // short-circuit below. Otherwise another server's tool could be named
-    // `mcp__failproofai__report` and skip every policy.
+    // `mcp__failproofai_local__report` and skip every policy.
     const cursorSelfReport = cli === "cursor" && isSelfReportCursorCall(parsed);
     if (cursorSelfReport) {
       parsed.tool_name = SELF_REPORT_MCP_TOOL_NAME;
     }
     // Antigravity's lazy MCP path wraps the call in `call_mcp_tool`; unwrap it
-    // only when the wrapper names server `failproofai` and tool `report`.
+    // only when the wrapper names server `failproofai_local` and tool `report`.
     if (cli === "antigravity") {
       const wrapped = selfReportAntigravityWrappedArgs(parsed.tool_name, parsed.tool_input);
       if (wrapped) {

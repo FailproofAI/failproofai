@@ -42,6 +42,15 @@ import {
   selfReportInstructions,
 } from "./self-report";
 
+/**
+ * Set to `1` in the server's environment (by `self-report test`), it writes one
+ * receipt line to stderr for each report it published, naming the batch file:
+ * `[failproofai mcp] recorded: <path>`. The file itself is no proof: a running
+ * collector can upload and delete it before anyone looks.
+ */
+export const SELF_REPORT_RECEIPT_ENV = "FAILPROOFAI_SELF_REPORT_RECEIPT";
+export const SELF_REPORT_RECEIPT_PREFIX = "[failproofai mcp] recorded: ";
+
 /** How far back a hook-activity session may be and still own a report. */
 export const SELF_REPORT_SESSION_WINDOW_MS = 6 * 60 * 60 * 1000;
 const SELF_REPORT_DEFAULT_PROTOCOL = "2025-06-18";
@@ -300,13 +309,14 @@ export async function handleSelfReportRpc(
       if (agent && SELF_REPORT_SERVER_RECORDS.includes(agent) && readEnabledSelfReport()) {
         const { category, detail } = selfReportArgs(params.arguments ?? {});
         try {
-          await writeSelfReportEvent({
+          const { path } = await writeSelfReportEvent({
             integration: agent,
             category,
             detail,
             cwd: opts.cwd ?? process.cwd(),
             now: opts.now?.(),
           });
+          if (process.env[SELF_REPORT_RECEIPT_ENV] === "1") process.stderr.write(`${SELF_REPORT_RECEIPT_PREFIX}${path}\n`);
         } catch (err) {
           // The agent still hears "Recorded.": a report changes no decision,
           // and an error here would only make it retry.

@@ -62,7 +62,7 @@ function read(path: string): string {
   return readFileSync(path, "utf8");
 }
 
-/** The parsed `failproofai` entry, whatever the agent's format. */
+/** The parsed `failproofai_local` entry, whatever the agent's format. */
 function entryIn(agent: IntegrationType): Record<string, unknown> | undefined {
   const path = pathOf(agent);
   if (!existsSync(path)) return undefined;
@@ -71,7 +71,7 @@ function entryIn(agent: IntegrationType): Record<string, unknown> | undefined {
   const doc = (t.format === "toml" ? parseToml(text) : t.format === "yaml" ? parseYaml(text) ?? {} : parseJsonc(text)) as Record<string, unknown>;
   const container = t.container(doc);
   let v: unknown = doc;
-  for (const k of [...container, "failproofai"]) v = (v as Record<string, unknown> | undefined)?.[k];
+  for (const k of [...container, "failproofai_local"]) v = (v as Record<string, unknown> | undefined)?.[k];
   return v as Record<string, unknown> | undefined;
 }
 
@@ -172,7 +172,7 @@ describe("transport choice", () => {
   });
 
   it("moves a server-recorded agent's older HTTP entry to stdio", async () => {
-    put(pathOf("copilot"), JSON.stringify({ mcpServers: { failproofai: { type: "http", url: "http://127.0.0.1:4319/mcp?agent=copilot", tools: ["*"] } } }));
+    put(pathOf("copilot"), JSON.stringify({ mcpServers: { failproofai_local: { type: "http", url: "http://127.0.0.1:4319/mcp?agent=copilot", tools: ["*"] } } }));
     const r = await syncSelfReportMcp(enabledOpts({ agents: ["copilot"] }, true));
     expect(r[0]).toMatchObject({ action: "updated", transport: "stdio" });
     expect(entryIn("copilot")).toEqual({ type: "local", command: CLI, args: ["mcp", "--agent", "copilot"], tools: ["*"] });
@@ -191,7 +191,7 @@ describe("transport choice", () => {
     expect(entryIn("pi")).toEqual({ command: CLI, args: ["mcp", "--agent", "pi"], exposure: "direct" });
     // An older HTTP entry, written before `exposure` was set, is ours: it is
     // moved to stdio (Pi is server-recorded) with exposure set.
-    put(pathOf("pi"), JSON.stringify({ mcpServers: { failproofai: { url: "http://127.0.0.1:4319/mcp?agent=pi" } } }));
+    put(pathOf("pi"), JSON.stringify({ mcpServers: { failproofai_local: { url: "http://127.0.0.1:4319/mcp?agent=pi" } } }));
     const r = await syncSelfReportMcp(enabledOpts({ agents: ["pi"] }, true));
     expect(r[0]).toMatchObject({ action: "updated", transport: "stdio" });
     expect(entryIn("pi")).toEqual({ command: CLI, args: ["mcp", "--agent", "pi"], exposure: "direct" });
@@ -200,7 +200,7 @@ describe("transport choice", () => {
   it("tells the user how cursor-agent approves the server when Cursor's entry is written", async () => {
     const { selfReportSyncLines } = await import("../../src/hooks/self-report-install");
     const lines = selfReportSyncLines(await syncSelfReportMcp(enabledOpts({ agents: ["cursor", "claude"] })));
-    expect(lines.filter((l) => l.includes("cursor-agent mcp enable failproofai"))).toHaveLength(1);
+    expect(lines.filter((l) => l.includes("cursor-agent mcp enable failproofai_local"))).toHaveLength(1);
     expect(lines.findIndex((l) => l.includes("cursor-agent mcp enable"))).toBe(
       lines.findIndex((l) => l.includes("Cursor")) + 1,
     );
@@ -211,7 +211,7 @@ describe("transport choice", () => {
     const r = await syncSelfReportMcp(enabledOpts({ agents: ["codex"] }, true));
     expect(r[0]).toMatchObject({ action: "updated", transport: "http" });
     const text = read(pathOf("codex"));
-    expect(text.match(/\[mcp_servers\.failproofai\]/g)).toHaveLength(1);
+    expect(text.match(/\[mcp_servers\.failproofai_local\]/g)).toHaveLength(1);
     expect(entryIn("codex")).toEqual({ url: "http://127.0.0.1:4319/mcp?agent=codex" });
   });
 
@@ -249,9 +249,9 @@ describe("transport choice", () => {
 });
 
 describe("ownership", () => {
-  it("never touches a failproofai entry it did not write (e.g. the Cloud MCP gateway)", async () => {
+  it("never touches a failproofai_local entry it did not write, and reports it as a conflict", async () => {
     const path = pathOf("claude");
-    const foreign = { mcpServers: { failproofai: { type: "http", url: "https://gateway.example.com/mcp" } } };
+    const foreign = { mcpServers: { failproofai_local: { type: "http", url: "https://elsewhere.example.com/mcp" } } };
     put(path, JSON.stringify(foreign, null, 2) + "\n");
     const before = read(path);
     expect((await syncSelfReportMcp(enabledOpts({ agents: ["claude"] })))[0]).toMatchObject({ status: "conflict", action: "skipped" });
@@ -259,12 +259,57 @@ describe("ownership", () => {
     expect(read(path)).toBe(before);
   });
 
-  it("treats a hand-written codex [mcp_servers.failproofai] outside our markers as foreign", async () => {
+  it("treats a hand-written codex [mcp_servers.failproofai_local] outside our markers as foreign", async () => {
     const path = pathOf("codex");
-    put(path, '[mcp_servers.failproofai]\nurl = "http://127.0.0.1:4319/mcp?agent=codex"\n');
+    put(path, '[mcp_servers.failproofai_local]\nurl = "http://127.0.0.1:4319/mcp?agent=codex"\n');
     const before = read(path);
     expect((await syncSelfReportMcp(enabledOpts({ agents: ["codex"] })))[0].status).toBe("conflict");
     expect(read(path)).toBe(before);
+  });
+
+  // The Cloud MCP gateway is registered as `failproofai`. Ours is
+  // `failproofai_local`, so the gateway's entry is never read, changed,
+  // removed or reported, in any format, even one shaped exactly like ours.
+  const GATEWAY_URL = "https://gateway.befailproof.ai/mcp";
+  const gatewayFixtures: Array<[IntegrationType, string, (text: string) => unknown]> = [
+    ["claude", JSON.stringify({ mcpServers: { failproofai: { type: "http", url: GATEWAY_URL } } }, null, 2) + "\n",
+      (t) => (JSON.parse(t) as { mcpServers: Record<string, unknown> }).mcpServers.failproofai],
+    ["cursor", JSON.stringify({ mcpServers: { failproofai: { url: GATEWAY_URL } } }, null, 2) + "\n",
+      (t) => (JSON.parse(t) as { mcpServers: Record<string, unknown> }).mcpServers.failproofai],
+    ["opencode", JSON.stringify({ mcp: { failproofai: { type: "remote", url: GATEWAY_URL, enabled: true } } }, null, 2) + "\n",
+      (t) => (JSON.parse(t) as { mcp: Record<string, unknown> }).mcp.failproofai],
+    ["codex", `[mcp_servers.failproofai]\nurl = "${GATEWAY_URL}"\n`,
+      (t) => (parseToml(t) as { mcp_servers: Record<string, unknown> }).mcp_servers.failproofai],
+    ["hermes", `mcp_servers:\n  failproofai:\n    url: ${GATEWAY_URL}\n`,
+      (t) => (parseYaml(t) as { mcp_servers: Record<string, unknown> }).mcp_servers.failproofai],
+    ["goose", `extensions:\n  failproofai:\n    name: failproofai\n    type: streamable_http\n    enabled: true\n    uri: ${GATEWAY_URL}\n`,
+      (t) => (parseYaml(t) as { extensions: Record<string, unknown> }).extensions.failproofai],
+  ];
+  for (const [agent, text, gatewayOf] of gatewayFixtures) {
+    it(`${agent}: leaves a Cloud gateway entry named failproofai untouched next to ours`, async () => {
+      if (agent === "hermes") put(resolve(home, ".hermes", "config.yaml"), text);
+      else put(pathOf(agent), text);
+      const path = pathOf(agent);
+      const gateway = gatewayOf(read(path));
+      const added = await syncSelfReportMcp(enabledOpts({ agents: [agent] }));
+      expect(added.map((r) => [r.action, r.status])).toEqual([["added", "ok"]]);
+      expect(isOurMcpEntry(entryIn(agent))).toBe(true);
+      expect(gatewayOf(read(path))).toEqual(gateway);
+      const status = selfReportRegistrationStatus({ agents: [agent], hooksInstalled: () => true });
+      expect(status.map((r) => [r.registered, r.conflict])).toEqual([[true, false]]);
+      // Disable and uninstall take out ours only.
+      expect(removeSelfReportMcp({ agents: [agent], quiet: true }).map((r) => r.action)).toEqual(["removed"]);
+      expect(entryIn(agent)).toBeUndefined();
+      expect(gatewayOf(read(path))).toEqual(gateway);
+    });
+  }
+
+  it("leaves a failproofai entry alone even when it is shaped like ours", async () => {
+    const path = pathOf("claude");
+    put(path, JSON.stringify({ mcpServers: { failproofai: { type: "http", url: "http://127.0.0.1:4319/mcp?agent=claude" } } }, null, 2) + "\n");
+    await syncSelfReportMcp(enabledOpts({ agents: ["claude"] }));
+    removeSelfReportMcp({ agents: ["claude"], quiet: true });
+    expect(JSON.parse(read(path)).mcpServers.failproofai).toEqual({ type: "http", url: "http://127.0.0.1:4319/mcp?agent=claude" });
   });
 
   it("refuses a codex config whose inline mcp_servers table would collide, leaving it as is", async () => {
@@ -342,8 +387,8 @@ describe("which agents", () => {
     const r = await syncSelfReportMcp(enabledOpts({ agents: ["hermes"] }));
     expect(r.map((x) => x.action)).toEqual(["added", "added"]);
     for (const p of [resolve(home, ".hermes", "config.yaml"), resolve(home, ".hermes", "profiles", "work", "config.yaml")]) {
-      const doc = parseYaml(read(p)) as { mcp_servers: { failproofai: unknown } };
-      expect(doc.mcp_servers.failproofai).toEqual({ command: CLI, args: ["mcp", "--agent", "hermes"] });
+      const doc = parseYaml(read(p)) as { mcp_servers: { failproofai_local: unknown } };
+      expect(doc.mcp_servers.failproofai_local).toEqual({ command: CLI, args: ["mcp", "--agent", "hermes"] });
       expect(read(p)).toContain("failproofai self-report MCP server");
     }
   });
@@ -361,8 +406,8 @@ describe("which agents", () => {
     put(pathOf("opencode"), JSON.stringify({ mcp: { servers: { mine: { type: "local", command: ["node"] } } } }));
     await syncSelfReportMcp(enabledOpts({ agents: ["opencode"] }));
     const doc = JSON.parse(read(pathOf("opencode")));
-    expect(doc.mcp.servers.failproofai).toEqual({ type: "local", command: [CLI, "mcp", "--agent", "opencode"] });
-    expect(doc.mcp.failproofai).toBeUndefined();
+    expect(doc.mcp.servers.failproofai_local).toEqual({ type: "local", command: [CLI, "mcp", "--agent", "opencode"] });
+    expect(doc.mcp.failproofai_local).toBeUndefined();
   });
 
   it("keeps a backup of the file it changed", async () => {
@@ -396,7 +441,7 @@ function fakeDaemon(path: string, answer = true, selfReport?: { instanceId: stri
 }
 
 /** A fake MCP endpoint on an ephemeral loopback port. */
-function fakeMcp(serverName = "failproofai", instanceId: string | null = "inst-1"): Promise<{ server: HttpServer; port: number }> {
+function fakeMcp(serverName = "failproofai_local", instanceId: string | null = "inst-1"): Promise<{ server: HttpServer; port: number }> {
   const server = createHttpServer((req, res) => {
     let body = "";
     req.on("data", (c) => (body += c));
@@ -480,7 +525,7 @@ describe("live transport check", () => {
     vi.stubEnv("FAILPROOFAI_DAEMON_SOCKET", socket());
     // Another daemon (another home) holds the port; this one's bind failed, so
     // its pong names no MCP server: stdio, even though the port answers.
-    const { server, port } = await fakeMcp("failproofai", "other-daemon");
+    const { server, port } = await fakeMcp("failproofai_local", "other-daemon");
     track(server);
     const daemon = track(await fakeDaemon(socket()));
     expect(await probeSelfReportHttpInstance(port)).toBe("other-daemon");
@@ -500,13 +545,13 @@ describe("live transport check", () => {
 
   it("a pong naming another port, or an endpoint with no instance id, is stdio", async () => {
     vi.stubEnv("FAILPROOFAI_DAEMON_SOCKET", socket());
-    const { server, port } = await fakeMcp("failproofai", "inst-1");
+    const { server, port } = await fakeMcp("failproofai_local", "inst-1");
     track(server);
     const daemon = track(await fakeDaemon(socket(), true, { instanceId: "inst-1", port: port + 1 }));
     expect(await selfReportDaemonLive(port)).toBe(false);
     await new Promise((ok) => daemon.close(ok));
     closeAll.pop();
-    const old = await fakeMcp("failproofai", null);
+    const old = await fakeMcp("failproofai_local", null);
     track(old.server);
     expect(await probeSelfReportHttpInstance(old.port)).toBe("");
     track(await fakeDaemon(socket(), true, { instanceId: "inst-1", port: old.port }));
@@ -536,7 +581,7 @@ describe("live transport check", () => {
 describe("selfReportRegistrationStatus", () => {
   it("reports registered, transport, conflict and hooked per file without writing", async () => {
     await syncSelfReportMcp(enabledOpts({ agents: ["claude"] }, false));
-    put(pathOf("cursor"), JSON.stringify({ mcpServers: { failproofai: { url: "https://elsewhere" } } }));
+    put(pathOf("cursor"), JSON.stringify({ mcpServers: { failproofai_local: { url: "https://elsewhere" } } }));
     const s = selfReportRegistrationStatus({ agents: ["claude", "cursor", "factory"], hooksInstalled: (a) => a === "claude" });
     expect(s).toEqual([
       expect.objectContaining({ agent: "claude", hooked: true, registered: true, transport: "stdio", endpoint: CLI, conflict: false }),

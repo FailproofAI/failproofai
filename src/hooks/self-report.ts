@@ -332,8 +332,10 @@ export function readEffectiveSelfReport(path: string = selfReportSettingsFile())
  * default. Identical to the daemon's `effective_settings`
  * (crates/fpai-collect/src/self_report.rs):
  *
- * - the file, when it is there and parses;
- * - an unparsable file: `null`, off (fail safe: a half-written or hand-broken
+ * - the file, when it is there and parses, except a local-source file on a
+ *   Cloud-enrolled machine: `null`, off until the daemon writes the org's
+ *   setting (enrolling must not leave this machine's own switch in charge);
+ * - an unparsable file, or one in another version: `null`, off (fail safe: a half-written or hand-broken
  *   file must not turn recording on);
  * - a missing file on a Cloud-enrolled machine: `null`, off until the daemon
  *   writes it from the org's setting;
@@ -345,8 +347,15 @@ export function resolveSelfReport(
   enrolled: () => boolean = selfReportCloudEnrolled,
 ): SelfReportEffective | null {
   const presence = selfReportFilePresence(path);
-  // Present: the file decides. Unreadable is a broken file: off.
-  if (presence === "present") return readEffectiveSelfReport(path);
+  // Present: the file decides, except that this machine's own (local) file
+  // does not on a Cloud-enrolled machine, where the organization decides: off
+  // until the daemon writes the org's setting, as with no file. Unreadable is
+  // a broken file: off.
+  if (presence === "present") {
+    const file = readEffectiveSelfReport(path);
+    if (file && file.source !== "cloud" && enrolled()) return null;
+    return file;
+  }
   if (presence === "unreadable") return null;
   if (enrolled() || selfReportLocalConfigOff()) return null;
   return selfReportDefaultSettings();

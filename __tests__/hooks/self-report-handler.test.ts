@@ -47,7 +47,7 @@ function payload(toolName: string, toolInput: unknown, extra: Record<string, unk
   return JSON.stringify({ session_id: SESSION, cwd: "/tmp/project", tool_name: toolName, tool_input: toolInput, ...extra });
 }
 const report = (extra: Record<string, unknown> = {}) =>
-  payload("mcp__failproofai__report", { category: "invalid_tool_or_credential", detail: "tracker rejected its API key" }, extra);
+  payload("mcp__failproofai_local__report", { category: "invalid_tool_or_credential", detail: "tracker rejected its API key" }, extra);
 const bash = () => payload("Bash", { command: "echo hi" });
 
 function rows(): Array<Record<string, unknown>> {
@@ -109,7 +109,7 @@ describe("Self Reports short-circuit", () => {
     expect(row).toMatchObject({
       eventType: "PreToolUse",
       integration: "claude",
-      toolName: "mcp__failproofai__report",
+      toolName: "mcp__failproofai_local__report",
       decision: "allow",
       policyName: null,
       sessionId: SESSION,
@@ -173,7 +173,7 @@ describe("Self Reports short-circuit", () => {
 
   it("cuts detail at 2000 code points, never through a surrogate pair", async () => {
     const detail = `${"a".repeat(1999)}\u{1F600} and more text`;
-    await evaluateHookEvent("PreToolUse", "claude", payload("mcp__failproofai__report", { category: "looping", detail }));
+    await evaluateHookEvent("PreToolUse", "claude", payload("mcp__failproofai_local__report", { category: "looping", detail }));
     const line = readFileSync(join(home, "hook-activity", "current.jsonl"), "utf8").trim().split("\n").pop()!;
     // The row is valid UTF-8 JSON with no lone surrogate escape, which the
     // Rust collector would reject along with every hook event on the row.
@@ -242,9 +242,9 @@ describe("Self Reports short-circuit", () => {
   });
 
   it("files another agent's spelling under the canonical name", async () => {
-    const out = await evaluateHookEvent("PreToolUse", "claude", payload("failproofai__report", { category: "looping", detail: "x" }));
+    const out = await evaluateHookEvent("PreToolUse", "claude", payload("failproofai_local__report", { category: "looping", detail: "x" }));
     expect(out.evaluation?.decision).toBe("allow");
-    expect(rows().pop()!.toolName).toBe("mcp__failproofai__report");
+    expect(rows().pop()!.toolName).toBe("mcp__failproofai_local__report");
   });
 
   it("for an agent whose MCP server records, allows but leaves the report to the server", async () => {
@@ -256,9 +256,9 @@ describe("Self Reports short-circuit", () => {
   });
 
   it("records an unknown category as-is, a missing detail as empty, and cuts detail at 2000", async () => {
-    await evaluateHookEvent("PreToolUse", "claude", payload("mcp__failproofai__report", { category: "made_up" }));
+    await evaluateHookEvent("PreToolUse", "claude", payload("mcp__failproofai_local__report", { category: "made_up" }));
     expect(rows().pop()!.selfReport).toEqual({ category: "made_up", detail: "", source: "mcp" });
-    await evaluateHookEvent("PreToolUse", "claude", payload("mcp__failproofai__report", { category: "looping", detail: "y".repeat(5000) }));
+    await evaluateHookEvent("PreToolUse", "claude", payload("mcp__failproofai_local__report", { category: "looping", detail: "y".repeat(5000) }));
     expect((rows().pop()!.selfReport as { detail: string }).detail).toHaveLength(2000);
   });
 
@@ -268,16 +268,16 @@ describe("Self Reports short-circuit", () => {
   });
 
   it.each([
-    ["factory", "failproofai___report"],
-    ["hermes", "mcp_failproofai_report"],
-    ["antigravity", "mcp_failproofai_report"],
-    ["opencode", "failproofai_report"],
-    ["openclaw", "failproofai__report"],
-    ["goose", "failproofai__report"],
-    ["pi", "mcp__failproofai__report"],
-    ["devin", "mcp__failproofai__report"],
-    ["copilot", "failproofai-report"],
-    ["copilot", "failproofai/report"],
+    ["factory", "failproofai_local___report"],
+    ["hermes", "mcp_failproofai_local_report"],
+    ["antigravity", "mcp_failproofai_local_report"],
+    ["opencode", "failproofai_local_report"],
+    ["openclaw", "failproofai_local__report"],
+    ["goose", "failproofai_local__report"],
+    ["pi", "mcp__failproofai_local__report"],
+    ["devin", "mcp__failproofai_local__report"],
+    ["copilot", "failproofai_local-report"],
+    ["copilot", "failproofai_local/report"],
   ] as const)("allows %s's spelling %s past a deny-everything policy", async (cli, name) => {
     const out = await evaluateHookEvent(
       "PreToolUse",
@@ -288,12 +288,48 @@ describe("Self Reports short-circuit", () => {
     expect(loadAllCustomHooks).not.toHaveBeenCalled();
   });
 
-  it("allows Cursor's beforeMCPExecution for the failproofai server, with a schema-valid answer, leaving the report to the server", async () => {
+  it.each([
+    ["claude", "mcp__failproofai__report"],
+    ["codex", "mcp__failproofai__report"],
+    ["factory", "failproofai___report"],
+    ["hermes", "mcp_failproofai_report"],
+    ["openclaw", "failproofai__report"],
+    ["goose", "failproofai__report"],
+    ["copilot", "failproofai-report"],
+    ["claude", "mcp__linear__report"],
+    ["opencode", "linear_report"],
+  ] as const)("keeps another server's report tool on the policy path: %s %s", async (cli, name) => {
+    // `failproofai` is the Cloud gateway's server name, not ours: its tools,
+    // and any other server's `report`, go through the policies like any call.
+    const out = await evaluateHookEvent("PreToolUse", cli, payload(name, { category: "looping", detail: "x" }));
+    expect(out.evaluation?.decision).toBe("deny");
+    expect(loadAllCustomHooks).toHaveBeenCalled();
+    expect(rows().some((r) => r.selfReport !== undefined)).toBe(false);
+  });
+
+  it("does not early-allow Cursor or Antigravity calls naming the Cloud gateway's server failproofai", async () => {
+    for (const event of ["preToolUse", "beforeMCPExecution"]) {
+      const out = await evaluateHookEvent(event, "cursor", payload("report", { category: "looping", detail: "x" }, { mcp_server_name: "failproofai" }));
+      expect(out.evaluation?.decision, event).toBe("deny");
+    }
+    const agy = await evaluateHookEvent(
+      "PreToolUse",
+      "antigravity",
+      JSON.stringify({
+        conversationId: SESSION,
+        workspacePaths: ["/tmp/project"],
+        toolCall: { name: "call_mcp_tool", args: { ServerName: "failproofai", ToolName: "report", Arguments: {} } },
+      }),
+    );
+    expect(agy.evaluation?.decision).toBe("deny");
+  });
+
+  it("allows Cursor's beforeMCPExecution for the failproofai_local server, with a schema-valid answer, leaving the report to the server", async () => {
     const out = await evaluateHookEvent(
       "beforeMCPExecution",
       "cursor",
       payload("report", JSON.stringify({ category: "missing_context", detail: "no repo access" }), {
-        mcp_server_name: "failproofai",
+        mcp_server_name: "failproofai_local",
         url: "http://127.0.0.1:4319/mcp?agent=cursor",
       }),
     );
@@ -303,7 +339,7 @@ describe("Self Reports short-circuit", () => {
     const [row] = rows();
     // Cursor is server-recorded: the MCP server writes the report, so the
     // hook row must not carry a second one.
-    expect(row).toMatchObject({ eventType: "PreToolUse", integration: "cursor", toolName: "mcp__failproofai__report" });
+    expect(row).toMatchObject({ eventType: "PreToolUse", integration: "cursor", toolName: "mcp__failproofai_local__report" });
     expect(row.selfReport).toBeUndefined();
   });
 
@@ -312,11 +348,11 @@ describe("Self Reports short-circuit", () => {
     expect(out.evaluation?.decision).toBe("deny");
   });
 
-  it("early-allows Cursor's preToolUse MCP:report only when the payload names server failproofai", async () => {
+  it("early-allows Cursor's preToolUse MCP:report only when the payload names server failproofai_local", async () => {
     const ours = await evaluateHookEvent(
       "preToolUse",
       "cursor",
-      payload("MCP:report", { category: "looping", detail: "x" }, { mcp_server_name: "failproofai" }),
+      payload("MCP:report", { category: "looping", detail: "x" }, { mcp_server_name: "failproofai_local" }),
     );
     expect(ours.evaluation?.decision).toBe("allow");
     expect(rows().pop()!.selfReport).toBeUndefined();
@@ -331,7 +367,7 @@ describe("Self Reports short-circuit", () => {
   it("never lets a Cursor call that fails the server check through by its name alone", async () => {
     // Another server's tool, or one with no server named, spelled like ours:
     // it keeps its own name, is not recorded as a report, and the policies run.
-    for (const name of ["mcp__failproofai__report", "failproofai__report", "failproofai-report", "mcp_failproofai_report"]) {
+    for (const name of ["mcp__failproofai_local__report", "failproofai_local__report", "failproofai_local-report", "mcp_failproofai_local_report"]) {
       for (const extra of [{ mcp_server_name: "linear" }, {}]) {
         vi.mocked(loadAllCustomHooks).mockClear();
         for (const event of ["preToolUse", "beforeMCPExecution"]) {
@@ -346,7 +382,7 @@ describe("Self Reports short-circuit", () => {
     // The same spelling WITH our server is still ours.
     const ours = await evaluateHookEvent(
       "preToolUse", "cursor",
-      payload("mcp__failproofai__report", { category: "looping", detail: "x" }, { mcp_server_name: "failproofai" }),
+      payload("mcp__failproofai_local__report", { category: "looping", detail: "x" }, { mcp_server_name: "failproofai_local" }),
     );
     expect(ours.evaluation?.decision).toBe("allow");
   });
@@ -355,16 +391,16 @@ describe("Self Reports short-circuit", () => {
     const agy = (args: Record<string, unknown>) =>
       JSON.stringify({ conversationId: SESSION, workspacePaths: ["/tmp/project"], toolCall: { name: "call_mcp_tool", args } });
 
-    it("early-allows the wrapper when it names server failproofai and tool report", async () => {
+    it("early-allows the wrapper when it names server failproofai_local and tool report", async () => {
       const out = await evaluateHookEvent(
         "PreToolUse",
         "antigravity",
-        agy({ ServerName: "failproofai", ToolName: "report", Arguments: { category: "looping", detail: "again" } }),
+        agy({ ServerName: "failproofai_local", ToolName: "report", Arguments: { category: "looping", detail: "again" } }),
       );
       expect(out.evaluation?.decision).toBe("allow");
       expect(loadAllCustomHooks).not.toHaveBeenCalled();
       const row = rows().pop()!;
-      expect(row).toMatchObject({ integration: "antigravity", toolName: "mcp__failproofai__report", sessionId: SESSION });
+      expect(row).toMatchObject({ integration: "antigravity", toolName: "mcp__failproofai_local__report", sessionId: SESSION });
       // Antigravity is server-recorded: the MCP server writes the report.
       expect(row.selfReport).toBeUndefined();
     });
@@ -373,14 +409,14 @@ describe("Self Reports short-circuit", () => {
       const out = await evaluateHookEvent(
         "PreToolUse",
         "antigravity",
-        agy({ ServerName: "failproofai", ToolName: "report", Arguments: JSON.stringify({ category: "looping", detail: "x" }) }),
+        agy({ ServerName: "failproofai_local", ToolName: "report", Arguments: JSON.stringify({ category: "looping", detail: "x" }) }),
       );
       expect(out.evaluation?.decision).toBe("allow");
     });
 
     it.each([
       [{ ServerName: "linear", ToolName: "report", Arguments: {} }],
-      [{ ServerName: "failproofai", ToolName: "search", Arguments: {} }],
+      [{ ServerName: "failproofai_local", ToolName: "search", Arguments: {} }],
       [{ ToolName: "report", Arguments: {} }],
       [{ ServerName: "failproofai-evil", ToolName: "report" }],
     ])("keeps any other wrapped call on the policy path: %j", async (args) => {
@@ -392,7 +428,7 @@ describe("Self Reports short-circuit", () => {
       const out = await evaluateHookEvent(
         "PreToolUse",
         "claude",
-        payload("call_mcp_tool", { ServerName: "failproofai", ToolName: "report", Arguments: {} }),
+        payload("call_mcp_tool", { ServerName: "failproofai_local", ToolName: "report", Arguments: {} }),
       );
       expect(out.evaluation?.decision).toBe("deny");
     });

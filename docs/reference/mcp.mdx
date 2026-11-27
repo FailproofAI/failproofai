@@ -15,7 +15,7 @@ https://gateway.befailproof.ai/mcp
 ```
 
 <Note>
-  This page is about the **Cloud MCP gateway**, which lets you query Failproof AI Cloud from an AI tool. It is not the local `failproofai` MCP server that [Self Reports](#the-local-self-reports-server) adds to your agents.
+  This page is about the **Cloud MCP gateway**, which lets you query Failproof AI Cloud from an AI tool. It is not the local `failproofai_local` MCP server that [Self Reports](#the-local-self-reports-server) adds to your agents.
 </Note>
 
 ## Connect a client
@@ -122,7 +122,7 @@ Results go to the AI tool you connected, and that tool's provider handles them u
 
 ## The local Self Reports server
 
-[Self Reports](/self-reports) registers a different MCP server in your agents, also named `failproofai`. It runs on your machine, serves one tool, `report`, and needs no sign-in:
+[Self Reports](/self-reports) registers a different MCP server in your agents, named `failproofai_local`. It runs on your machine, serves one tool, `report`, and needs no sign-in:
 
 | | Cloud MCP gateway | Local Self Reports server |
 | --- | --- | --- |
@@ -131,7 +131,7 @@ Results go to the AI tool you connected, and that tool's provider handles them u
 | What it offers | Your organization's data, with your permissions | One `report` tool an agent calls when it is stuck |
 | Sign-in | OAuth, one organization per connection | None. It answers only on `127.0.0.1` and refuses requests from web pages |
 
-Both use the name `failproofai`. If you added the gateway under that name in an agent failproofai hooks, failproofai leaves your entry alone and `failproofai self-report status` reports a conflict. To use both, rename the gateway entry, for example to `failproofai-cloud`, and run `failproofai self-report sync`.
+The two have different names, so they coexist in the same agent: add the gateway as `failproofai` and failproofai adds `failproofai_local` beside it. failproofai never changes, removes or reports an entry named `failproofai`, and a call to one of the gateway's tools goes through your policies like any other tool call.
 
 ## Troubleshooting
 

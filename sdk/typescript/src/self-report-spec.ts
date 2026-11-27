@@ -161,29 +161,32 @@ export function toAnthropicTool(spec: SelfReportSpec): AnthropicTool {
 
 /**
  * Every spelling an agent gives the report tool (case-insensitive, exact):
- * `failproofai_report` (the SDKs, OpenCode), `mcp__failproofai__report`
- * (Claude Code, Codex, Pi, Factory, Devin), `failproofai___report` (Factory's
- * matcher form), `mcp_failproofai_report` (Hermes, Antigravity),
- * `failproofai__report` (OpenClaw, Goose), `failproofai-report` (Copilot CLI,
- * likely), and other server-qualified forms.
+ * `failproofai_report` (the SDKs), and the MCP tool `report` on server
+ * `failproofai_local`: `mcp__failproofai_local__report` (Claude Code, Codex,
+ * Pi, Factory, Devin), `failproofai_local___report` (Factory's matcher form),
+ * `failproofai_local_report` (OpenCode), `mcp_failproofai_local_report`
+ * (Hermes, Antigravity), `failproofai_local__report` (OpenClaw, Goose),
+ * `failproofai_local-report` (Copilot CLI, likely), and other
+ * server-qualified forms.
  *
  * Mirrors `isSelfReportToolName` in the CLI's `src/hooks/self-report-names.ts`;
  * this package cannot import that, so both are tested against the same golden
  * list (`test-fixtures/self-report/tool-names.golden.txt` in the repo).
  */
 export const SELF_REPORT_TOOL_SPELLINGS: ReadonlyArray<string> = Object.freeze([
-  "mcp__failproofai__report",
-  "failproofai___report",
-  "failproofai__report",
+  "mcp__failproofai_local__report",
+  "failproofai_local___report",
+  "failproofai_local__report",
   "failproofai_report",
-  "failproofai.report",
-  "failproofai/report",
-  "failproofai:report",
-  "mcp_failproofai_report",
-  "mcp__failproofai_report",
-  "mcp:failproofai:report",
-  "mcp:failproofai/report",
-  "failproofai-report",
+  "failproofai_local_report",
+  "failproofai_local.report",
+  "failproofai_local/report",
+  "failproofai_local:report",
+  "mcp_failproofai_local_report",
+  "mcp__failproofai_local_report",
+  "mcp:failproofai_local:report",
+  "mcp:failproofai_local/report",
+  "failproofai_local-report",
 ]);
 
 const SPELLINGS = new Set(SELF_REPORT_TOOL_SPELLINGS);
@@ -191,14 +194,14 @@ const SPELLINGS = new Set(SELF_REPORT_TOOL_SPELLINGS);
 /**
  * Whether a tool is the report tool. `server` is for hosts that name an MCP
  * tool and its server separately (Cursor's `tool_name` + `mcp_server_name`):
- * a bare `report` matches only when the server is `failproofai`.
+ * a bare `report` matches only when the server is `failproofai_local`.
  */
 export function isSelfReportTool(name: unknown, server?: unknown): boolean {
   if (typeof name !== "string") return false;
   const lower = name.toLowerCase();
   if (SPELLINGS.has(lower)) return true;
   return (
-    typeof server === "string" && server.toLowerCase() === "failproofai" && (lower === "report" || lower === "mcp:report")
+    typeof server === "string" && server.toLowerCase() === "failproofai_local" && (lower === "report" || lower === "mcp:report")
   );
 }
 

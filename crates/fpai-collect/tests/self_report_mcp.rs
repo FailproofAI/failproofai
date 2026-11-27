@@ -145,7 +145,7 @@ async fn initialize_list_and_call_the_report_tool() {
     let reply = reply.unwrap();
     assert_eq!(reply["id"], 1);
     assert_eq!(reply["result"]["protocolVersion"], "2025-06-18");
-    assert_eq!(reply["result"]["serverInfo"]["name"], "failproofai");
+    assert_eq!(reply["result"]["serverInfo"]["name"], "failproofai_local");
     assert!(reply["result"]["capabilities"]["tools"].is_object());
     // The instructions Claude Code puts in the system prompt (its tools are
     // deferred behind tool search, so the description alone is never seen).
@@ -478,5 +478,45 @@ fn spawn_reports_whether_it_is_listening() {
 
     stop.store(true, std::sync::atomic::Ordering::Relaxed);
     handle.join().unwrap();
+    fs::remove_dir_all(&home).ok();
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn http_hides_the_tool_for_a_local_file_while_enrolled_and_for_another_version() {
+    let home = tmpdir("gate");
+    // Enrolled, with this machine's own file on: the org decides, and it has
+    // not been written yet, so the HTTP server agrees with the CLI: off.
+    write_settings(&home, true, self_report::default_categories());
+    let enrolled = Running::start_enrolled(&home, true).await;
+    assert_eq!(
+        list(&enrolled).await,
+        json!([]),
+        "enrolled, local file: off"
+    );
+    enrolled.stop().await;
+    let open = Running::start(&home).await;
+    assert_eq!(
+        list(&open).await[0]["name"],
+        "report",
+        "not enrolled, local file: on"
+    );
+    open.stop().await;
+
+    // A complete enabled file in a version this build does not know: off, as
+    // the CLI's reader and the stdio server read it.
+    let path = self_report::settings_path(&home);
+    let mut raw: Value = serde_json::from_str(&fs::read_to_string(&path).unwrap()).unwrap();
+    raw["version"] = json!(2);
+    raw["source"] = json!("cloud");
+    fs::write(&path, serde_json::to_string(&raw).unwrap()).unwrap();
+    for enrolled in [false, true] {
+        let server = Running::start_enrolled(&home, enrolled).await;
+        assert_eq!(
+            list(&server).await,
+            json!([]),
+            "version 2, enrolled={enrolled}: off"
+        );
+        server.stop().await;
+    }
     fs::remove_dir_all(&home).ok();
 }

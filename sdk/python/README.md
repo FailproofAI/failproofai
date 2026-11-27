@@ -135,7 +135,7 @@ failproofai_sdk.self_report("invalid_tool_or_credential", "The search API reject
   agent loop at all.
 - **Hiding it.** `failproofai_sdk.is_self_report_tool(name)` is true for
   `failproofai_report` and the coding-agent MCP spellings
-  (`mcp__failproofai__report`, `failproofai__report`, ...).
+  (`mcp__failproofai_local__report`, `failproofai_local__report`, ...).
 
 ## OpenTelemetry (opt in)
 

@@ -100,11 +100,11 @@ describe("tool text and schema (contract §3)", () => {
 });
 
 describe("tool-name matching (contract §1)", () => {
-  it.each(["mcp__failproofai__report", "failproofai__report", "failproofai_report", "failproofai.report", "failproofai/report", "MCP__FAILPROOFAI__REPORT"])(
+  it.each(["mcp__failproofai_local__report", "failproofai_local__report", "failproofai_report", "failproofai_local.report", "failproofai_local/report", "MCP__FAILPROOFAI_LOCAL__REPORT"])(
     "matches %s",
     (name) => expect(isSelfReportToolName(name)).toBe(true),
   );
-  it.each(["report", "mcp__other__report", "mcp__failproofai__report2", "xfailproofai_report", "Bash", "", undefined, 7])(
+  it.each(["report", "mcp__other__report", "mcp__failproofai__report", "failproofai__report", "mcp__failproofai_local__report2", "xfailproofai_report", "Bash", "", undefined, 7])(
     "does not match %s",
     (name) => expect(isSelfReportToolName(name)).toBe(false),
   );
@@ -192,6 +192,41 @@ describe("resolveSelfReport: on by default (contract §4)", () => {
     writeFileSync(join(home, "self-report.json"), "{not json");
     expect(resolveSelfReport(undefined, oss)).toBeNull();
     expect(resolveSelfReport(undefined, enrolled)).toBeNull();
+  });
+});
+
+describe("settings-cases.golden.json: the same on/off as the daemon's readers", () => {
+  const fixture = JSON.parse(
+    readFileSync(resolve(__dirname, "..", "..", "test-fixtures", "self-report", "settings-cases.golden.json"), "utf8"),
+  ) as { cases: { name: string; file?: unknown; text?: string; enrolled: boolean; on: boolean }[] };
+  for (const c of fixture.cases) {
+    it(c.name, () => {
+      const path = join(home, "self-report.json");
+      if (c.text !== undefined) writeFileSync(path, c.text);
+      else if (c.file !== null && c.file !== undefined) writeFileSync(path, JSON.stringify(c.file, null, 2));
+      expect(resolveSelfReport(path, () => c.enrolled)?.enabled === true).toBe(c.on);
+    });
+  }
+});
+
+describe("enrolling with a local settings file in place", () => {
+  it("sets this machine's own file aside until the daemon writes the org's setting", async () => {
+    writeEffectiveSelfReport({ enabled: true });
+    expect(resolveSelfReport()?.enabled).toBe(true);
+    // Enrolled now; the daemon's first poll has not been applied yet.
+    process.env.FAILPROOFAI_CLOUD_URL = "https://cloud.example.invalid";
+    expect(resolveSelfReport()).toBeNull();
+    // Every reader agrees: the stdio server hides the tool, the hook records nothing.
+    const listed = await handleSelfReportRpc({ jsonrpc: "2.0", id: 1, method: "tools/list" });
+    expect((listed as { result: { tools: unknown[] } }).result.tools).toEqual([]);
+    const status = await runSelfReportCommand(["status"], { registrations: () => [], probeEndpoint: async () => false, daemonExpected: () => false });
+    expect(status.lines[0]).toContain("off (waiting for FailproofAI Cloud");
+    // The org's setting arrives (the daemon writes a cloud file): it decides.
+    const cloud = { ...JSON.parse(readFileSync(join(home, "self-report.json"), "utf8")), source: "cloud", enabled: true };
+    writeFileSync(join(home, "self-report.json"), JSON.stringify(cloud));
+    expect(resolveSelfReport()?.enabled).toBe(true);
+    writeFileSync(join(home, "self-report.json"), JSON.stringify({ ...cloud, enabled: false }));
+    expect(resolveSelfReport()?.enabled).toBe(false);
   });
 });
 
@@ -411,7 +446,7 @@ describe("failproofai mcp (stdio, spawned)", () => {
     const { replies, code } = await runMcp([], [INIT, INITIALIZED, LIST, PING], home);
     expect(code).toBe(0);
     expect(replies.map((r) => r.id)).toEqual([1, 2, 4]);
-    expect(replies[0]).toMatchObject({ result: { protocolVersion: "2025-06-18", capabilities: { tools: {} }, serverInfo: { name: "failproofai" } } });
+    expect(replies[0]).toMatchObject({ result: { protocolVersion: "2025-06-18", capabilities: { tools: {} }, serverInfo: { name: "failproofai_local" } } });
     expect((replies[0].result as Record<string, unknown>)).not.toHaveProperty("instructions");
     expect(replies[1]).toEqual({ jsonrpc: "2.0", id: 2, result: { tools: [] } });
     expect(replies[2]).toEqual({ jsonrpc: "2.0", id: 4, result: {} });
@@ -766,11 +801,33 @@ describe("failproofai self-report enable | disable | status", () => {
     expect(r.lines.join("\n")).toContain(join(dir, readdirSync(dir)[0]));
   }, 30_000);
 
+  it("test --agent pi passes when a collector consumes the batch before the check", async () => {
+    // The wrapper runs the real CLI, then deletes every published batch the way
+    // a running collector does after uploading it, before the command looks.
+    writeEffectiveSelfReport({ enabled: true });
+    const consume = `bun "${BINARY}" "$@"; code=$?; rm -f "$FAILPROOFAI_HOME"/custom-agents/events/*.jsonl; exit $code`;
+    const r = await runSelfReportCommand(["test", "--agent", "pi"], { ...deps, cliCommand: ["sh", "-c", consume, "sh"], cwd: home });
+    expect(r.lines.join("\n")).toContain("recorded by the MCP server");
+    expect(r.lines.join("\n")).toContain("already picked up by the collector");
+    expect(r.exitCode).toBe(0);
+    expect(readdirSync(join(home, "custom-agents", "events")).filter((f) => f.endsWith(".jsonl"))).toEqual([]);
+  }, 30_000);
+
+  it("test --agent pi still fails when the server recorded nothing", async () => {
+    writeEffectiveSelfReport({ enabled: true });
+    // The server answers Recorded. but cannot write (the spool is a file).
+    mkdirSync(join(home, "custom-agents"), { recursive: true });
+    writeFileSync(join(home, "custom-agents", "events"), "not a directory");
+    const r = await runSelfReportCommand(["test", "--agent", "pi"], { ...deps, cliCommand: ["bun", BINARY], cwd: home });
+    expect(r.exitCode).toBe(1);
+    expect(r.lines[0]).toContain("did not land");
+  }, 30_000);
+
   it("test --agent claude goes through --hook and lands in hook activity", async () => {
     writeEffectiveSelfReport({ enabled: true });
     const r = await runSelfReportCommand(["test", "--agent", "claude"], { ...deps, cliCommand: ["bun", BINARY], cwd: home });
     expect(r.exitCode).toBe(0);
     const rows = readFileSync(join(home, "hook-activity", "current.jsonl"), "utf8").trim().split("\n").map((l) => JSON.parse(l));
-    expect(rows.pop()).toMatchObject({ toolName: "mcp__failproofai__report", decision: "allow", selfReport: { source: "mcp" } });
+    expect(rows.pop()).toMatchObject({ toolName: "mcp__failproofai_local__report", decision: "allow", selfReport: { source: "mcp" } });
   }, 30_000);
 });

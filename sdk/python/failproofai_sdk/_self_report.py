@@ -88,27 +88,29 @@ _MAX_DESCRIPTION = 500
 _MAX_GUIDANCE = 2000
 
 #: Every spelling the report tool reaches a host under (case-insensitive,
-#: exact): the SDK name (also OpenCode's), and the MCP tool `report` on server
-#: `failproofai` as each agent prefixes it: Claude Code, Codex, Pi, Factory and
-#: Devin `mcp__failproofai__report`, Factory's matcher form
-#: `failproofai___report`, Hermes and Antigravity `mcp_failproofai_report`,
-#: OpenClaw and Goose `failproofai__report`, Copilot CLI (likely, unverified)
-#: `failproofai-report` / `failproofai/report`, plus other server-qualified forms.
-#: The CLI and the TypeScript SDK test the same list against the repository's
-#: test-fixtures/self-report/tool-names.golden.txt.
+#: exact): the SDK name, and the MCP tool `report` on server
+#: `failproofai_local` as each agent prefixes it: Claude Code, Codex, Pi,
+#: Factory and Devin `mcp__failproofai_local__report`, Factory's matcher form
+#: `failproofai_local___report`, OpenCode `failproofai_local_report`, Hermes
+#: and Antigravity `mcp_failproofai_local_report`, OpenClaw and Goose
+#: `failproofai_local__report`, Copilot CLI (likely, unverified)
+#: `failproofai_local-report` / `failproofai_local/report`, plus other
+#: server-qualified forms. The CLI and the TypeScript SDK test the same list
+#: against the repository's test-fixtures/self-report/tool-names.golden.txt.
 TOOL_SPELLINGS: tuple[str, ...] = (
-    "mcp__failproofai__report",
-    "failproofai___report",
-    "failproofai__report",
+    "mcp__failproofai_local__report",
+    "failproofai_local___report",
+    "failproofai_local__report",
     "failproofai_report",
-    "failproofai.report",
-    "failproofai/report",
-    "failproofai:report",
-    "mcp_failproofai_report",
-    "mcp__failproofai_report",
-    "mcp:failproofai:report",
-    "mcp:failproofai/report",
-    "failproofai-report",
+    "failproofai_local_report",
+    "failproofai_local.report",
+    "failproofai_local/report",
+    "failproofai_local:report",
+    "mcp_failproofai_local_report",
+    "mcp__failproofai_local_report",
+    "mcp:failproofai_local:report",
+    "mcp:failproofai_local/report",
+    "failproofai_local-report",
 )
 _TOOL_NAMES = frozenset(TOOL_SPELLINGS)
 
@@ -294,11 +296,12 @@ def is_self_report_tool(name: Any, server: Any = None) -> bool:
     """True for the report tool under any of its names.
 
     Use it to hide the call from your UI or transcript: `failproofai_report`
-    (this SDK), and the MCP tool as agents spell it (`mcp__failproofai__report`,
-    `mcp_failproofai_report`, `failproofai__report`, ...). `server` is for
+    (this SDK), and the MCP tool as agents spell it
+    (`mcp__failproofai_local__report`, `mcp_failproofai_local_report`,
+    `failproofai_local__report`, ...). `server` is for
     hosts that name an MCP tool and its server separately (Cursor's
     `tool_name` + `mcp_server_name`): a bare `report` matches only when the
-    server is `failproofai`.
+    server is `failproofai_local`.
     """
     if not isinstance(name, str):
         return False
@@ -307,7 +310,7 @@ def is_self_report_tool(name: Any, server: Any = None) -> bool:
         return True
     return (
         isinstance(server, str)
-        and server.strip().lower() == "failproofai"
+        and server.strip().lower() == "failproofai_local"
         and lower in ("report", "mcp:report")
     )
 

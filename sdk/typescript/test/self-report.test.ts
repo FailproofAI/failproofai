@@ -436,10 +436,10 @@ describe("the raw tool helpers", () => {
 
   it.each([
     ["failproofai_report", true],
-    ["mcp__failproofai__report", true],
-    ["failproofai__report", true],
-    ["failproofai.report", true],
-    ["failproofai/report", true],
+    ["mcp__failproofai_local__report", true],
+    ["failproofai_local__report", true],
+    ["failproofai_local.report", true],
+    ["failproofai_local/report", true],
     ["report", false],
     ["failproofai_report_x", false],
     ["mcp__other__report", false],
@@ -477,7 +477,7 @@ describe("the raw tool helpers", () => {
   it("never throws: unreadable arguments are recorded empty, a bad field is logged", async () => {
     const warn = quietLogger();
     await session({ sessionId: "s1" }, () => {
-      expect(failproofai.handleToolCall("mcp__failproofai__report", "{oops")).toBe("Recorded.");
+      expect(failproofai.handleToolCall("mcp__failproofai_local__report", "{oops")).toBe("Recorded.");
       expect(failproofai.handleToolCall("failproofai_report", { category: "looping" }, { timestamp: "x" })).toBe(
         "Recorded.",
       );

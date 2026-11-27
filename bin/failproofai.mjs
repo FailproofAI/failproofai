@@ -805,7 +805,7 @@ async function runCli() {
     if (subArgs.includes("--help") || subArgs.includes("-h")) {
       await printHelp({
         name: "self-report sync",
-        usage: [["failproofai self-report sync [--quiet]", "Register or remove the Self Reports MCP server in each hooked agent"]],
+        usage: [["failproofai self-report sync [--quiet]", "Register or remove the Self Reports MCP server (failproofai_local) in each hooked agent"]],
         options: [["--quiet", "Print nothing; the exit code says whether every agent succeeded"]],
         optionsCol: 12,
       });
@@ -1085,7 +1085,7 @@ async function runCli() {
           ["failproofai self-report enable [options]", "Turn it back on for this machine, or change its categories"],
           ["failproofai self-report disable", "Turn it off: removes the MCP entries and stops recording"],
           ["failproofai self-report test --agent <agent>", "Send one test report end to end"],
-          ["failproofai self-report sync [--quiet]", "Update each hooked agent's MCP entry (the daemon runs this)"],
+          ["failproofai self-report sync [--quiet]", "Update each hooked agent's failproofai_local MCP entry (the daemon runs this)"],
         ],
         options: [
           ["--categories-file <f>", "JSON list of {name, description}; replaces the defaults"],

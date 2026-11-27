@@ -2,7 +2,9 @@
  * Self Reports: register failproofai's `report` MCP server in every agent that
  * has failproofai hooks, and take it out again.
  *
- * The server is named `failproofai` everywhere (CONTRACT §1). Which transport
+ * The server is named `failproofai_local` everywhere (CONTRACT §1), so it
+ * never clashes with the FailproofAI Cloud gateway MCP server, which users
+ * register as `failproofai`; the two coexist. Which transport
  * an agent gets depends on who records its reports (CONTRACT §7, §8):
  *
  * - Hook-recorded agents (claude, codex: not in `SELF_REPORT_SERVER_RECORDS`)
@@ -24,23 +26,23 @@
  *
  * Sources are each agent's current official docs (and source where the docs
  * are silent). "Hook sees MCP" is whether the hook failproofai installs fires
- * for an MCP tool call, and the name it carries for server `failproofai`,
+ * for an MCP tool call, and the name it carries for server `failproofai_local`,
  * tool `report`.
  *
  * | Agent       | File (profile/env)                                   | Key                        | HTTP entry                                   | stdio entry                         | Hook sees MCP / name |
  * |-------------|------------------------------------------------------|----------------------------|----------------------------------------------|-------------------------------------|----------------------|
- * | claude      | `$CLAUDE_CONFIG_DIR/.claude.json`, else `~/.claude.json` | `mcpServers`           | `{type:"http", url}`                         | `{type:"stdio", command, args}`     | yes, PreToolUse `mcp__failproofai__report` |
- * | codex       | `$CODEX_HOME/config.toml` (TOML)                     | `[mcp_servers.failproofai]`| `url = "…"`                                  | `command`, `args`                   | yes, PreToolUse `mcp__failproofai__report` |
- * | copilot     | `$COPILOT_HOME/mcp-config.json`, else `~/.copilot/`  | `mcpServers`               | `{type:"http", url, tools:["*"]}`            | `{type:"local", command, args, tools:["*"]}` | not documented; likely `failproofai-report` (exempt, with `failproofai/report`) |
+ * | claude      | `$CLAUDE_CONFIG_DIR/.claude.json`, else `~/.claude.json` | `mcpServers`           | `{type:"http", url}`                         | `{type:"stdio", command, args}`     | yes, PreToolUse `mcp__failproofai_local__report` |
+ * | codex       | `$CODEX_HOME/config.toml` (TOML)                     | `[mcp_servers.failproofai_local]`| `url = "…"`                                  | `command`, `args`                   | yes, PreToolUse `mcp__failproofai_local__report` |
+ * | copilot     | `$COPILOT_HOME/mcp-config.json`, else `~/.copilot/`  | `mcpServers`               | `{type:"http", url, tools:["*"]}`            | `{type:"local", command, args, tools:["*"]}` | not documented; likely `failproofai_local-report` (exempt, with `failproofai_local/report`) |
  * | cursor      | `~/.cursor/mcp.json` (editor and cursor-agent)       | `mcpServers`               | `{url}`                                      | `{type:"stdio", command, args}`     | `beforeMCPExecution` (tool_name `report` + mcp_server_name; not installed) and preToolUse `MCP:report` with no server, so the server records |
- * | opencode    | `~/.config/opencode/opencode.json` (as the hooks)    | v1 `mcp.<n>`; v2 `mcp.servers.<n>` | `{type:"remote", url, enabled:true}` (v2: no `enabled`) | `{type:"local", command:[…]}` | yes, plugin `tool.execute.before` `failproofai_report` |
- * | pi          | `$PI_CODING_AGENT_DIR/mcp.json`, else `~/.pi/agent/` | `mcpServers`               | `{url, exposure:"direct"}`                   | `{command, args, exposure:"direct"}` | yes per docs, `tool_call` `mcp__failproofai__report` |
- * | hermes      | every profile's `config.yaml` (YAML, HERMES_HOME)    | `mcp_servers`              | `{url}`                                      | `{command, args}`                   | yes per source, `pre_tool_call` `mcp_failproofai_report` |
- * | openclaw    | every profile's `openclaw.json`                      | `mcp.servers`              | `{url, transport:"streamable-http"}`         | `{command, args}`                   | likely (source only), `before_tool_call` `failproofai__report` |
- * | factory     | `~/.factory/mcp.json`                                | `mcpServers`               | `{type:"http", url}`                         | `{type:"stdio", command, args}`     | yes, `mcp__failproofai__report` (regex sees `failproofai___report`) |
- * | devin       | `~/.config/devin/mcp_config.json`                    | `mcpServers`               | `{url, transport:"http"}`                    | `{command, args}`                   | yes, `mcp__failproofai__report` |
- * | antigravity | `~/.gemini/config/mcp_config.json`                   | `mcpServers`               | `{serverUrl}`                                | `{command, args}`                   | not documented; eager tools `mcp_failproofai_report`, lazy (default) via `call_mcp_tool` |
- * | goose       | `$GOOSE_PATH_ROOT/config/config.yaml`, else `~/.config/goose/config.yaml` (YAML) | `extensions` | `{type:"streamable_http", name, enabled, uri, …}` | `{type:"stdio", name, enabled, cmd, args, …}` | not documented; would be `failproofai__report` |
+ * | opencode    | `~/.config/opencode/opencode.json` (as the hooks)    | v1 `mcp.<n>`; v2 `mcp.servers.<n>` | `{type:"remote", url, enabled:true}` (v2: no `enabled`) | `{type:"local", command:[…]}` | yes, plugin `tool.execute.before` `failproofai_local_report` |
+ * | pi          | `$PI_CODING_AGENT_DIR/mcp.json`, else `~/.pi/agent/` | `mcpServers`               | `{url, exposure:"direct"}`                   | `{command, args, exposure:"direct"}` | yes per docs, `tool_call` `mcp__failproofai_local__report` |
+ * | hermes      | every profile's `config.yaml` (YAML, HERMES_HOME)    | `mcp_servers`              | `{url}`                                      | `{command, args}`                   | yes per source, `pre_tool_call` `mcp_failproofai_local_report` |
+ * | openclaw    | every profile's `openclaw.json`                      | `mcp.servers`              | `{url, transport:"streamable-http"}`         | `{command, args}`                   | likely (source only), `before_tool_call` `failproofai_local__report` |
+ * | factory     | `~/.factory/mcp.json`                                | `mcpServers`               | `{type:"http", url}`                         | `{type:"stdio", command, args}`     | yes, `mcp__failproofai_local__report` (regex sees `failproofai_local___report`) |
+ * | devin       | `~/.config/devin/mcp_config.json`                    | `mcpServers`               | `{url, transport:"http"}`                    | `{command, args}`                   | yes, `mcp__failproofai_local__report` |
+ * | antigravity | `~/.gemini/config/mcp_config.json`                   | `mcpServers`               | `{serverUrl}`                                | `{command, args}`                   | not documented; eager tools `mcp_failproofai_local_report`, lazy (default) via `call_mcp_tool` |
+ * | goose       | `$GOOSE_PATH_ROOT/config/config.yaml`, else `~/.config/goose/config.yaml` (YAML) | `extensions` | `{type:"streamable_http", name, enabled, uri, …}` | `{type:"stdio", name, enabled, cmd, args, …}` | not documented; would be `failproofai_local__report` |
  *
  * Cursor approval (cursor-agent 2026.11): servers from a *project*
  * `.cursor/mcp.json` load only once approved; approvals live per project root
@@ -49,7 +51,7 @@
  * when cursor-agent runs with the home directory as its project, where it is
  * also the project file. That key changes with every project and transport, so
  * failproofai writes no approval; sync and status point at
- * `cursor-agent mcp enable failproofai` instead.
+ * `cursor-agent mcp enable failproofai_local` instead.
  *
  * Deferred tools: Pi's entry sets `exposure: "direct"` (its default `codemode`
  * shows the model only the server's name). Hermes (`tools.tool_search`) and
@@ -65,14 +67,15 @@
  *
  * ## Ownership
  *
- * An entry is ours when it is named `failproofai` AND has our shape: a URL
+ * An entry is ours when it is named `failproofai_local` AND has our shape: a URL
  * `http://127.0.0.1:<port>/mcp?agent=<id>`, or a command whose file name
  * contains `failproofai` run with `mcp --agent <id>`. That shape is the marker:
  * the JSON agents validate their server schema and an extra marker key could
  * make one reject the whole file. Codex's entry also sits between two marker
- * comments; Hermes' and Goose's carry a marker comment. A `failproofai` entry of
- * any other shape (for example the Cloud MCP gateway) is the user's: it is never
- * changed and is reported as a conflict.
+ * comments; Hermes' and Goose's carry a marker comment. A `failproofai_local`
+ * entry of any other shape is the user's: it is never changed and is reported
+ * as a conflict. An entry named `failproofai` (the Cloud MCP gateway, or
+ * anything else) is not ours by name and is never read, changed or reported.
  */
 import { accessSync, constants as fsConstants, existsSync, readFileSync, realpathSync } from "node:fs";
 import { execSync } from "node:child_process";
@@ -614,7 +617,7 @@ export type SelfReportMcpStatus =
   | "ok"
   /** Enabled, but this agent has no failproofai hooks; nothing written. */
   | "not-hooked"
-  /** A `failproofai` server that is not ours is there; left alone. */
+  /** A `failproofai_local` server that is not ours is there; left alone. */
   | "conflict"
   /** The file could not be read or written; left as it was. */
   | "error"
@@ -686,7 +689,7 @@ function defaultHooksInstalled(agent: IntegrationType): boolean {
 }
 
 /**
- * Add (enabled) or remove (disabled) our `failproofai` MCP server in every
+ * Add (enabled) or remove (disabled) our `failproofai_local` MCP server in every
  * agent. Enabled: only agents with failproofai hooks get it, and agents without
  * hooks are left as they are; HTTP for a hook-recorded agent when this home's
  * daemon is serving the port right now (see `selfReportDaemonLive`), stdio
@@ -852,7 +855,7 @@ function errText(err: unknown): string {
 
 /** What to do when cursor-agent has not loaded the server yet. */
 export const SELF_REPORT_CURSOR_APPROVAL_HINT =
-  "cursor-agent: if `cursor-agent mcp list` shows failproofai as needing approval, run `cursor-agent mcp enable failproofai`";
+  "cursor-agent: if `cursor-agent mcp list` shows failproofai_local as needing approval, run `cursor-agent mcp enable failproofai_local`";
 
 /** One line per change, conflict or error; nothing for an agent left as it was. */
 export function selfReportSyncLines(results: readonly SelfReportMcpResult[]): string[] {
@@ -891,7 +894,7 @@ export interface SelfReportRegistration {
   transport: "http" | "stdio" | null;
   /** The URL (http) or command (stdio) our entry points at. */
   endpoint: string | null;
-  /** A `failproofai` server that is not ours is there. */
+  /** A `failproofai_local` server that is not ours is there. */
   conflict: boolean;
   /** The file could not be read. */
   error?: string;

@@ -49,7 +49,7 @@ pub const DEFAULT_PORT: u16 = 4319;
 /// Overrides [`DEFAULT_PORT`]; read by the daemon at start.
 pub const PORT_ENV: &str = "FAILPROOFAI_SELF_REPORT_PORT";
 /// MCP server name, as registered in each agent.
-pub const SERVER_NAME: &str = "failproofai";
+pub const SERVER_NAME: &str = "failproofai_local";
 /// The tool's name inside the MCP server.
 pub const TOOL_NAME: &str = "report";
 /// The one thing a call ever returns.
@@ -235,12 +235,29 @@ pub fn settings_path(home: &Path) -> PathBuf {
     home.join(SETTINGS_FILE)
 }
 
-/// The file, or `None` when it is missing or does not parse. Readers that
-/// decide whether the feature is on use [`effective_settings`], which tells
-/// the two apart.
+/// The file, or `None` when it is missing, does not parse, or is not
+/// [`SETTINGS_VERSION`] (the CLI's `readEffectiveSelfReport` refuses any other
+/// version too, so every transport agrees on such a file). Readers that decide
+/// whether the feature is on use [`effective_settings`], which tells a missing
+/// file from a broken one.
 pub fn read_settings(path: &Path) -> Option<Settings> {
     let text = fs::read_to_string(path).ok()?;
-    serde_json::from_str(&text).ok()
+    parse_settings(&text)
+}
+
+/// `self-report.json`'s text as [`Settings`], only in the supported version.
+pub fn parse_settings(text: &str) -> Option<Settings> {
+    serde_json::from_str::<Settings>(text)
+        .ok()
+        .filter(|s| s.version == SETTINGS_VERSION)
+}
+
+/// Whether a file that parsed may decide anything. A file this machine wrote
+/// itself (`source` anything but `cloud`) does not while it is Cloud enrolled:
+/// there the organization decides, so until the daemon writes the org's
+/// setting the feature is off, exactly as with no file at all.
+fn authoritative(settings: Settings, enrolled: &dyn Fn() -> bool) -> Option<Settings> {
+    (settings.source == "cloud" || !enrolled()).then_some(settings)
 }
 
 /// Is this machine Cloud enrolled? Asked only when `self-report.json` is
@@ -266,16 +283,18 @@ pub fn enrolment_check() -> EnrolmentCheck {
 /// The settings a reader acts on (CONTRACT §4), identical to the TypeScript
 /// `resolveSelfReport` in src/hooks/self-report.ts:
 ///
-/// - the file, when it is there and parses;
-/// - an unparsable or unreadable file: `None`, off (fail safe: a half-written
-///   or hand-broken file must not turn recording on);
+/// - the file, when it is there and parses as version [`SETTINGS_VERSION`],
+///   except a local-source file on a Cloud-enrolled machine: `None`, off until
+///   the daemon writes the organization's setting;
+/// - an unparsable, unreadable or other-version file: `None`, off (fail safe:
+///   a half-written or hand-broken file must not turn recording on);
 /// - a missing file on a Cloud-enrolled machine: `None`, off until the daemon
 ///   writes it from the org's setting;
 /// - a missing file otherwise: on with the default categories, unless
 ///   `config.json`'s `selfReport.enabled` is `false` (an explicit off wins).
 pub fn effective_settings(home: &Path, enrolled: &dyn Fn() -> bool) -> Option<Settings> {
     match fs::read_to_string(settings_path(home)) {
-        Ok(text) => serde_json::from_str(&text).ok(),
+        Ok(text) => authoritative(parse_settings(&text)?, enrolled),
         Err(err) if err.kind() == io::ErrorKind::NotFound => missing_file_settings(home, enrolled),
         Err(_) => None,
     }
@@ -482,15 +501,22 @@ impl SettingsCache {
             *state = None;
             return None;
         };
-        if let Some((cached_mtime, cached_len, settings)) = state.as_ref()
-            && *cached_mtime == mtime
-            && *cached_len == len
-        {
-            return settings.clone();
-        }
-        let settings = read_settings(&self.path);
-        *state = Some((mtime, len, settings.clone()));
-        settings
+        let settings = match state.as_ref() {
+            Some((cached_mtime, cached_len, settings))
+                if *cached_mtime == mtime && *cached_len == len =>
+            {
+                settings.clone()
+            }
+            _ => {
+                let settings = read_settings(&self.path);
+                *state = Some((mtime, len, settings.clone()));
+                settings
+            }
+        };
+        drop(state);
+        // Asked on every call, not cached: an enrolment must take effect on
+        // the next request, even with the file unchanged.
+        authoritative(settings?, &*self.enrolled)
     }
 }
 
@@ -1304,9 +1330,11 @@ mod tests {
         // Enrolled: a missing file is off until the daemon writes it.
         let cache = SettingsCache::new(&home, Arc::new(|| true));
         assert!(cache.current().is_none());
-        write_settings(&path, &enabled(default_categories(), None)).unwrap();
+        let mut on = enabled(default_categories(), None);
+        on.source = "cloud".into();
+        write_settings(&path, &on).unwrap();
         assert!(cache.current().unwrap().enabled);
-        let mut off = enabled(default_categories(), None);
+        let mut off = on.clone();
         off.enabled = false;
         off.guidance = Some("a longer file so the size changes too".into());
         write_settings(&path, &off).unwrap();
@@ -1590,6 +1618,12 @@ mod tests {
         let home = temp_home("http-enabled");
         let server = server_for(&home);
         let path = settings_path(&home);
+        // This server is enrolled, so the file that decides is the one the
+        // daemon writes from the org's setting.
+        let org = |mut s: Settings| {
+            s.source = "cloud".into();
+            s
+        };
         // Missing settings: answered, not recorded.
         let reply = call_report(&server, "copilot");
         assert_eq!(reply["result"]["content"][0]["text"], RESULT_TEXT);
@@ -1599,14 +1633,18 @@ mod tests {
         call_report(&server, "copilot");
         assert_eq!(event_files(&home), 0, "malformed settings");
         // Disabled.
-        let mut off = enabled(default_categories(), None);
+        let mut off = org(enabled(default_categories(), None));
         off.enabled = false;
         write_settings(&path, &off).unwrap();
         let reply = call_report(&server, "copilot");
         assert_eq!(reply["result"]["isError"], false);
         assert_eq!(event_files(&home), 0, "disabled settings");
-        // Enabled: one event.
+        // This machine's own file, on, while enrolled: not the org's, so off.
         write_settings(&path, &enabled(default_categories(), None)).unwrap();
+        call_report(&server, "copilot");
+        assert_eq!(event_files(&home), 0, "local file while enrolled");
+        // Enabled: one event.
+        write_settings(&path, &org(enabled(default_categories(), None))).unwrap();
         call_report(&server, "copilot");
         assert_eq!(event_files(&home), 1, "enabled settings");
         // Disabled again, with the cache primed by the enabled read: honoured
@@ -1616,7 +1654,7 @@ mod tests {
         call_report(&server, "copilot");
         assert_eq!(event_files(&home), 1, "disabled after enabled");
         // A hook-recorded agent is never recorded here.
-        write_settings(&path, &enabled(default_categories(), None)).unwrap();
+        write_settings(&path, &org(enabled(default_categories(), None))).unwrap();
         call_report(&server, "claude");
         assert_eq!(event_files(&home), 1, "claude is recorded by its hook");
         let _ = fs::remove_dir_all(home);
@@ -1834,6 +1872,73 @@ mod tests {
             .collect()
     }
 
+    /// The same on/off as the CLI's `resolveSelfReport` for every case in
+    /// settings-cases.golden.json, through the reader the record path uses
+    /// and through the cache behind `initialize` and `tools/list`.
+    #[test]
+    fn golden_settings_cases_agree_with_the_cli() {
+        let fixture: Value = serde_json::from_str(&golden("settings-cases.golden.json")).unwrap();
+        for (i, case) in fixture["cases"].as_array().unwrap().iter().enumerate() {
+            let name = case["name"].as_str().unwrap();
+            let home = temp_home(&format!("settings-case-{i}"));
+            let path = settings_path(&home);
+            if let Some(text) = case["text"].as_str() {
+                fs::write(&path, text).unwrap();
+            } else if !case["file"].is_null() {
+                fs::write(&path, serde_json::to_string_pretty(&case["file"]).unwrap()).unwrap();
+            }
+            let enrolled = case["enrolled"].as_bool().unwrap();
+            let want = case["on"].as_bool().unwrap();
+            let read = effective_settings(&home, &|| enrolled).is_some_and(|s| s.enabled);
+            assert_eq!(read, want, "effective_settings: {name}");
+            let cache = SettingsCache::new(&home, Arc::new(move || enrolled));
+            assert_eq!(
+                cache.current().is_some_and(|s| s.enabled),
+                want,
+                "cache: {name}"
+            );
+            assert_eq!(
+                tool_definition(cache.current().as_ref()).is_some(),
+                want,
+                "tools/list: {name}"
+            );
+            let _ = fs::remove_dir_all(home);
+        }
+    }
+
+    /// Enrolling with a local file in place: the cache stops serving it on
+    /// the next call, with the file unchanged, and serves the org's file once
+    /// the daemon writes it.
+    #[test]
+    fn enrolling_ignores_a_local_file_until_the_org_setting_is_written() {
+        let home = temp_home("enrol-transition");
+        let path = settings_path(&home);
+        write_settings(&path, &enabled(default_categories(), None)).unwrap();
+        let flag = Arc::new(std::sync::atomic::AtomicBool::new(false));
+        let check = {
+            let flag = flag.clone();
+            Arc::new(move || flag.load(std::sync::atomic::Ordering::SeqCst))
+        };
+        let cache = SettingsCache::new(&home, check);
+        assert!(cache.current().unwrap().enabled);
+        flag.store(true, std::sync::atomic::Ordering::SeqCst);
+        assert!(
+            cache.current().is_none(),
+            "enrolled: the local file no longer decides"
+        );
+        assert!(effective_settings(&home, &|| true).is_none());
+        let mut org = enabled(default_categories(), None);
+        org.source = "cloud".into();
+        org.enabled = false;
+        org.guidance = Some("the org's own file, so the size changes".into());
+        write_settings(&path, &org).unwrap();
+        assert!(!cache.current().unwrap().enabled);
+        org.enabled = true;
+        write_settings(&path, &org).unwrap();
+        assert!(cache.current().unwrap().enabled);
+        let _ = fs::remove_dir_all(home);
+    }
+
     #[test]
     fn golden_truncation_counts_code_points() {
         let fixture: Value = serde_json::from_str(&golden("truncation.golden.json")).unwrap();
@@ -1959,7 +2064,7 @@ mod tests {
             "sessionId": "s1",
             "integration": "claude",
             "eventType": "PreToolUse",
-            "toolName": "mcp__failproofai__report",
+            "toolName": "mcp__failproofai_local__report",
             "decision": "allow",
             "toolCallId": "toolu_1",
             "selfReport": {"category": "looping", "detail": "again", "source": "mcp"}

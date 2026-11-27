@@ -435,11 +435,11 @@ def test_anthropic_tool_shape(home):
     "name",
     [
         "failproofai_report",
-        "mcp__failproofai__report",
-        "failproofai__report",
-        "failproofai.report",
-        "failproofai/report",
-        "failproofai-report",
+        "mcp__failproofai_local__report",
+        "failproofai_local__report",
+        "failproofai_local.report",
+        "failproofai_local/report",
+        "failproofai_local-report",
     ],
 )
 def test_is_self_report_tool_accepts_every_spelling(name):
@@ -466,7 +466,7 @@ def test_handle_tool_call_with_a_json_string(recorded):
 
 def test_handle_tool_call_with_a_dict_and_explicit_identity(recorded):
     out = fp.handle_tool_call(
-        "mcp__failproofai__report", {"category": "x", "detail": "y"}, session_id="s", agent_id="a"
+        "mcp__failproofai_local__report", {"category": "x", "detail": "y"}, session_id="s", agent_id="a"
     )
     assert out == "Recorded."
     assert (recorded[0]["session_id"], recorded[0]["agent_id"]) == ("s", "a")

@@ -11,12 +11,16 @@
  * Re-exported from self-report.ts; import from there everywhere else.
  */
 
-/** MCP server name every installer registers. */
-export const SELF_REPORT_SERVER_NAME = "failproofai";
+/**
+ * MCP server name every installer registers. Not `failproofai`: that is the name
+ * users give the FailproofAI Cloud gateway MCP server, and the two coexist. An
+ * underscore, not a hyphen, because some agents rewrite hyphens in tool names.
+ */
+export const SELF_REPORT_SERVER_NAME = "failproofai_local";
 /** The MCP tool's own name. */
 export const SELF_REPORT_TOOL_NAME = "report";
 /** How Claude Code and Codex spell it: `mcp__<server>__<tool>`. */
-export const SELF_REPORT_MCP_TOOL_NAME = "mcp__failproofai__report";
+export const SELF_REPORT_MCP_TOOL_NAME = "mcp__failproofai_local__report";
 /** The SDK tool's name. */
 export const SELF_REPORT_SDK_TOOL_NAME = "failproofai_report";
 /** Detail is truncated to this many characters (contract §3). */
@@ -52,36 +56,38 @@ export function selfReportClip(text: string, max: number = SELF_REPORT_DETAIL_MA
  * one thing that skips them all.
  *
  * Per agent (installer research, 2026-11-25; see self-report-install.ts):
- * - `mcp__failproofai__report`: Claude Code, Codex, Pi, Factory, Devin.
- * - `failproofai___report`: Factory's matcher-regex form of the same name.
- * - `mcp_failproofai_report`: Hermes, and Antigravity's eager tools.
- * - `failproofai_report`: OpenCode (and the SDK tool).
- * - `failproofai__report`: OpenClaw and Goose (`<server>__<tool>`).
+ * - `mcp__failproofai_local__report`: Claude Code, Codex, Pi, Factory, Devin.
+ * - `failproofai_local___report`: Factory's matcher-regex form of the same name.
+ * - `mcp_failproofai_local_report`: Hermes, and Antigravity's eager tools.
+ * - `failproofai_local_report`: OpenCode (`<server>_<tool>`).
+ * - `failproofai_report`: the SDK tool.
+ * - `failproofai_local__report`: OpenClaw and Goose (`<server>__<tool>`).
  * - Cursor: see `isSelfReportCursorCall`; its preToolUse name `MCP:report`
  *   carries no server, so it is never matched by name alone.
  * - Antigravity's lazy path, `call_mcp_tool`: see
  *   `selfReportAntigravityWrappedArgs`; matched only on its server and tool.
- * - `failproofai-report` (`<server>-<tool>`) and `failproofai/report`: Copilot
+ * - `failproofai_local-report` (`<server>-<tool>`) and `failproofai_local/report`: Copilot
  *   CLI's likely forms. Its hook spelling of an MCP tool is not documented and
  *   could not be observed without a signed-in run, so both are exempt.
- * - `failproofai.report`, `failproofai/report`, `failproofai:report`,
- *   `mcp__failproofai_report`, `mcp:failproofai:report`,
- *   `mcp:failproofai/report`: other server-qualified forms, kept so a
+ * - `failproofai_local.report`, `failproofai_local/report`, `failproofai_local:report`,
+ *   `mcp__failproofai_local_report`, `mcp:failproofai_local:report`,
+ *   `mcp:failproofai_local/report`: other server-qualified forms, kept so a
  *   spelling change in an agent cannot route a report through the policies.
  */
 const SELF_REPORT_TOOL_SPELLINGS: ReadonlySet<string> = new Set([
   SELF_REPORT_MCP_TOOL_NAME,
-  "failproofai___report",
-  "failproofai__report",
+  "failproofai_local___report",
+  "failproofai_local__report",
   SELF_REPORT_SDK_TOOL_NAME,
-  "failproofai.report",
-  "failproofai/report",
-  "failproofai:report",
-  "mcp_failproofai_report",
-  "mcp__failproofai_report",
-  "mcp:failproofai:report",
-  "mcp:failproofai/report",
-  "failproofai-report",
+  "failproofai_local_report",
+  "failproofai_local.report",
+  "failproofai_local/report",
+  "failproofai_local:report",
+  "mcp_failproofai_local_report",
+  "mcp__failproofai_local_report",
+  "mcp:failproofai_local:report",
+  "mcp:failproofai_local/report",
+  "failproofai_local-report",
 ]);
 
 /** True for the report tool under any agent's spelling of it (contract §1). */
@@ -109,7 +115,7 @@ export function isSelfReportCursorCall(payload: unknown): boolean {
  * `call_mcp_tool` wrapper with `{ServerName, ToolName, Arguments}` (agy 1.5's
  * own description says to judge it by ServerName + ToolName). Returns the
  * wrapped call's arguments when, and only when, the wrapper names server
- * `failproofai` and tool `report`; `undefined` for any other server or tool,
+ * `failproofai_local` and tool `report`; `undefined` for any other server or tool,
  * whose calls keep going through the policies.
  */
 export function selfReportAntigravityWrappedArgs(toolName: unknown, toolInput: unknown): { args: unknown } | undefined {

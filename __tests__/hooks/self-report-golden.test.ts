@@ -93,18 +93,21 @@ describe("Self Reports golden files (CLI)", () => {
       expect(isSelfReportToolName(name), name).toBe(true);
       expect(isSelfReportToolName(name.toUpperCase()), name).toBe(true);
     }
-    for (const name of ["report", "MCP:report", "mcp__other__report", "failproofai_report_x", "xfailproofai__report", "failproofai"]) {
+    // The Cloud gateway's server is `failproofai`; its tools are never ours.
+    const gateway = ["mcp__failproofai__report", "failproofai__report", "failproofai___report", "mcp_failproofai_report", "failproofai-report", "failproofai/report"];
+    for (const name of ["report", "MCP:report", "mcp__other__report", "failproofai_report_x", "xfailproofai_local__report", "failproofai", "failproofai_local", ...gateway]) {
       expect(isSelfReportToolName(name), name).toBe(false);
     }
   });
 
-  it("recognises Cursor's MCP hook only with the failproofai server name", () => {
-    expect(isSelfReportCursorCall({ tool_name: "report", mcp_server_name: "failproofai" })).toBe(true);
-    expect(isSelfReportCursorCall({ tool_name: "MCP:report", mcp_server_name: "failproofai" })).toBe(true);
+  it("recognises Cursor's MCP hook only with the failproofai_local server name", () => {
+    expect(isSelfReportCursorCall({ tool_name: "report", mcp_server_name: "failproofai" })).toBe(false);
+    expect(isSelfReportCursorCall({ tool_name: "report", mcp_server_name: "failproofai_local" })).toBe(true);
+    expect(isSelfReportCursorCall({ tool_name: "MCP:report", mcp_server_name: "failproofai_local" })).toBe(true);
     expect(isSelfReportCursorCall({ tool_name: "report", mcp_server_name: "linear" })).toBe(false);
     expect(isSelfReportCursorCall({ tool_name: "report" })).toBe(false);
     expect(isSelfReportCursorCall({ tool_name: "MCP:report" })).toBe(false);
-    expect(isSelfReportCursorCall({ tool_name: "search", mcp_server_name: "failproofai" })).toBe(false);
+    expect(isSelfReportCursorCall({ tool_name: "search", mcp_server_name: "failproofai_local" })).toBe(false);
   });
 
   it("keeps the TypeScript SDK's tool-name list equal to the golden list", () => {

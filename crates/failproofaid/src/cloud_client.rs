@@ -847,7 +847,7 @@ impl CloudClient {
         &self,
         applied: Option<u64>,
         policy_errors: Option<&str>,
-    ) -> Result<(DesiredState, Option<crate::self_report::Desired>), PollFailure> {
+    ) -> Result<(DesiredState, CloudSettings), PollFailure> {
         let mut url = self
             .base_url
             .join("enforcement/v1/desired-state")
@@ -886,25 +886,21 @@ impl CloudClient {
             .json::<serde_json::Value>()
             .map_err(|err| PollFailure::payload(format!("invalid desired-state response: {err}")))
             .and_then(|raw| {
-                // Applied only once the whole response is known good: a response
-                // this daemon refuses (an unknown schemaVersion, a payload that
-                // does not decode) must not turn troubleshooting back on or start
-                // an upload, so the last valid answer keeps standing.
+                // Nothing is applied here. A response this daemon refuses to
+                // decode (an unknown schemaVersion, a payload that does not
+                // decode) carries no settings at all, and one that decodes can
+                // still be refused by the reconcile (a deployment rollback, a
+                // withdrawn enrolment). The caller applies `selfReport`,
+                // `machineLogs` and `logRequest` once it knows which
+                // (`reconcile_and_apply_settings`).
                 let (desired, consent, self_report) = decode_desired_state(raw)?;
-                // `selfReport` is NOT noted here: the reconcile can still refuse
-                // this response (a deployment rollback, a withdrawn enrolment),
-                // and a refused response must not flip the feature. The caller
-                // notes it once the reconcile accepted the deployment
-                // (`reconcile_and_note_self_report`).
-                // The org's troubleshooting switch: `machineLogs: false` means
-                // send no daemon log (logship.rs). Absent, from a Cloud with it
-                // on or one that predates the key, means send.
-                crate::logship::set_cloud_allows(consent.machine_logs != Some(false));
-                // An operator asked for this machine's logs (logship.rs).
-                if let Some(id) = consent.log_request {
-                    crate::logship::note_request(&id);
-                }
-                Ok((desired, self_report))
+                Ok((
+                    desired,
+                    CloudSettings {
+                        consent,
+                        self_report,
+                    },
+                ))
             })
     }
 
@@ -1346,10 +1342,20 @@ fn report_and_reclaim(cloud: &CloudClient, path: &Path, home: &Path, roster: &Ag
 }
 
 /// The log-shipping fields of a desired-state response (logship.rs).
-#[derive(Debug, Default, PartialEq, Eq)]
+#[derive(Debug, Default, Clone, PartialEq, Eq)]
 struct LogConsent {
     machine_logs: Option<bool>,
     log_request: Option<String>,
+}
+
+/// The machine settings a desired-state response carries beside its policies,
+/// applied by `reconcile_and_apply_settings` only from a response the reconcile
+/// accepted.
+#[derive(Debug, Default, Clone, PartialEq, Eq)]
+struct CloudSettings {
+    consent: LogConsent,
+    /// `None`: absent, which means Self Reports are off.
+    self_report: Option<crate::self_report::Desired>,
 }
 
 /// Validates a desired-state response and decodes it. The log-shipping fields
@@ -1451,7 +1457,7 @@ fn poll_once_guarded(
     )
     .map(|errors| encode_policy_errors(&errors));
     match cloud.poll_desired_state(applied, report.as_deref()) {
-        Ok((desired, self_report)) => {
+        Ok((desired, settings)) => {
             // The GET created/checked-in the machine row the PUT requires.
             // Do not let a roster network outage interrupt local enforcement.
             if let Ok(path) = agent_roster::roster_path()
@@ -1460,10 +1466,10 @@ fn poll_once_guarded(
             {
                 report_and_reclaim(cloud, &path, Path::new(&home), &roster);
             }
-            match reconcile_and_note_self_report(
+            match reconcile_and_apply_settings(
                 store,
                 &desired,
-                self_report,
+                settings,
                 &|policy: &DesiredPolicy| cloud.artifact(policy),
                 withdrawn,
             ) {
@@ -1517,33 +1523,56 @@ fn poll_once_guarded(
     }
 }
 
-/// Reconcile `desired`, then hand its `selfReport` block to the maintenance
-/// lane only when the reconcile accepted the response.
+/// Reconcile `desired`, then apply the settings beside it: `selfReport` (to
+/// the maintenance lane), `machineLogs` and `logRequest` (to logship.rs), only
+/// when the reconcile accepted the response.
 ///
 /// Refused means: the response itself failed validation (an unknown shape, a
 /// deployment below the rollback floor — both `InvalidDesiredState`), or the
 /// machine was disconnected while the poll was in flight (`Withdrawn`). Such a
-/// response is not the server's current answer for this machine, so its
-/// `selfReport` must not change anything: an out-of-order deployment 99 that
-/// says "on" after deployment 100 said "off" leaves the feature off.
+/// response is not an answer this machine acts on, so its settings must not
+/// change anything: an out-of-order deployment 99 that says "on" after
+/// deployment 100 said "off" leaves the feature off, and troubleshooting off.
 ///
 /// An artifact failure (fetch, hash, I/O) is not a refusal: the response passed
 /// the rollback guard and is the server's newest answer, and an org toggle must
 /// not wait on an unrelated policy download that may keep failing.
-fn reconcile_and_note_self_report(
+///
+/// `machineLogs` keeps its rules: `false` means send no daemon log, absent
+/// (a Cloud with it on, or one that predates the key) means send. A refused
+/// response leaves the last accepted answer standing either way.
+fn reconcile_and_apply_settings(
     store: &PolicyStore,
     desired: &DesiredState,
-    self_report: Option<crate::self_report::Desired>,
+    settings: CloudSettings,
     fetcher: &impl crate::cloud_policies::ArtifactFetcher,
     withdrawn: &dyn Fn() -> bool,
 ) -> Result<crate::cloud_policies::ReconcileOutcome, ReconcileError> {
     let result = store.reconcile_unless(desired, fetcher, withdrawn);
-    let refused = matches!(
-        result,
-        Err(ReconcileError::InvalidDesiredState(_) | ReconcileError::Withdrawn)
-    );
-    if !refused && !withdrawn() {
-        crate::self_report::note_desired(self_report);
+    if matches!(result, Err(ReconcileError::Withdrawn)) || withdrawn() {
+        // Disconnected: this response is not Cloud's to act on any more, and
+        // a log request would only queue an upload for a machine that left.
+        return result;
+    }
+    let accepted = !matches!(result, Err(ReconcileError::InvalidDesiredState(_)));
+    if accepted {
+        crate::self_report::note_desired(settings.self_report);
+        // Before the request: turning troubleshooting off drops an open one.
+        crate::logship::set_cloud_allows(settings.consent.machine_logs != Some(false));
+    }
+    // `logRequest` is the one exception, and only for a response that is not
+    // stale. A deployment this daemon cannot validate (a newer server's policy
+    // shape, a jevMode or authority this version does not know) is refused on
+    // every poll until the daemon is upgraded, and that machine is the one
+    // support needs logs from: a request is how they pull them. Out-of-order
+    // responses (below the rollback floor) are still ignored, and the upload
+    // stays bound by the org's switch as last accepted, since `note_request`
+    // queues nothing while troubleshooting is off. For an accepted response
+    // the floor is its own deployment, so this is every accepted response too.
+    if let Some(id) = &settings.consent.log_request
+        && desired.deployment >= store.server_high_water()
+    {
+        crate::logship::note_request(id);
     }
     result
 }
@@ -2354,6 +2383,39 @@ mod tests {
         })
     }
 
+    /// The settings beside the policies, as a desired-state response carries
+    /// them.
+    fn settings(
+        self_report: Option<crate::self_report::Desired>,
+        machine_logs: Option<bool>,
+        log_request: Option<&str>,
+    ) -> CloudSettings {
+        CloudSettings {
+            consent: LogConsent {
+                machine_logs,
+                log_request: log_request.map(str::to_owned),
+            },
+            self_report,
+        }
+    }
+
+    /// Every test below drives logship.rs's process-wide state; this holds its
+    /// lock and starts from troubleshooting on with nothing requested.
+    fn lock_logship() -> std::sync::MutexGuard<'static, ()> {
+        let guard = crate::logship::TEST_LOCK
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        crate::logship::reset_for_test(true);
+        guard
+    }
+
+    /// A response this daemon cannot validate: a `jevMode` it does not know.
+    fn unvalidatable_state(deployment: u64) -> DesiredState {
+        let mut desired = jev_state(deployment);
+        desired.jev_mode = Some("from-a-newer-server".into());
+        desired
+    }
+
     /// The review's replay: deployment 100 switched Self Reports off, then an
     /// out-of-order deployment 99 said on. The rollback is refused, and its
     /// `selfReport` must be refused with it: nothing is queued for the lane, so
@@ -2361,13 +2423,14 @@ mod tests {
     #[test]
     fn a_rolled_back_response_does_not_change_self_reports() {
         let _env = lock_env();
+        let _logs = lock_logship();
         let _ = crate::self_report::take_pending();
         let store = temp_store("self-report-rollback");
 
-        reconcile_and_note_self_report(
+        reconcile_and_apply_settings(
             &store,
             &jev_state(100),
-            self_report_on(false),
+            settings(self_report_on(false), None, None),
             &serve,
             &|| false,
         )
@@ -2378,10 +2441,10 @@ mod tests {
             "an accepted response queues its setting"
         );
 
-        let refused = reconcile_and_note_self_report(
+        let refused = reconcile_and_apply_settings(
             &store,
             &jev_state(99),
-            self_report_on(true),
+            settings(self_report_on(true), None, None),
             &serve,
             &|| false,
         );
@@ -2398,7 +2461,13 @@ mod tests {
 
         // Absent `selfReport` on a rolled-back response is refused the same way:
         // it must not switch an enabled machine off either.
-        let _ = reconcile_and_note_self_report(&store, &jev_state(98), None, &serve, &|| false);
+        let _ = reconcile_and_apply_settings(
+            &store,
+            &jev_state(98),
+            CloudSettings::default(),
+            &serve,
+            &|| false,
+        );
         assert_eq!(crate::self_report::take_pending(), None);
         fs::remove_dir_all(store.root()).ok();
     }
@@ -2408,12 +2477,13 @@ mod tests {
     #[test]
     fn a_withdrawn_response_does_not_change_self_reports() {
         let _env = lock_env();
+        let _logs = lock_logship();
         let _ = crate::self_report::take_pending();
         let store = temp_store("self-report-withdrawn");
-        let result = reconcile_and_note_self_report(
+        let result = reconcile_and_apply_settings(
             &store,
             &jev_state(5),
-            self_report_on(true),
+            settings(self_report_on(true), None, None),
             &serve,
             &|| true,
         );
@@ -2431,12 +2501,13 @@ mod tests {
     #[test]
     fn an_accepted_response_with_a_failed_artifact_still_applies_self_reports() {
         let _env = lock_env();
+        let _logs = lock_logship();
         let _ = crate::self_report::take_pending();
         let store = temp_store("self-report-fetch-fail");
-        let result = reconcile_and_note_self_report(
+        let result = reconcile_and_apply_settings(
             &store,
             &jev_state(5),
-            self_report_on(true),
+            settings(self_report_on(true), None, None),
             &|_: &DesiredPolicy| Err::<Vec<u8>, String>("offline".into()),
             &|| false,
         );
@@ -2448,6 +2519,206 @@ mod tests {
             crate::self_report::take_pending(),
             Some(self_report_on(true))
         );
+        fs::remove_dir_all(store.root()).ok();
+    }
+
+    /// The same replay for troubleshooting: an out-of-order deployment 99 must
+    /// neither turn it back on (absent `machineLogs` means on) nor off, and its
+    /// `logRequest` must not start an upload.
+    #[test]
+    fn a_rolled_back_response_does_not_change_troubleshooting() {
+        let _env = lock_env();
+        let _logs = lock_logship();
+        let store = temp_store("logs-rollback");
+
+        // 100 turned troubleshooting off; 99 has no key (on) and a request.
+        reconcile_and_apply_settings(
+            &store,
+            &jev_state(100),
+            settings(None, Some(false), None),
+            &serve,
+            &|| false,
+        )
+        .unwrap();
+        assert_eq!(crate::logship::consent_for_test(), (false, None));
+        let refused = reconcile_and_apply_settings(
+            &store,
+            &jev_state(99),
+            settings(None, None, Some("req-99")),
+            &serve,
+            &|| false,
+        );
+        assert!(
+            matches!(&refused, Err(ReconcileError::InvalidDesiredState(m)) if m.contains("rollback")),
+            "{refused:?}"
+        );
+        assert_eq!(
+            crate::logship::consent_for_test(),
+            (false, None),
+            "a rolled-back response must not turn troubleshooting back on"
+        );
+
+        // 101 turned it on; 98 says off and asks for logs.
+        reconcile_and_apply_settings(
+            &store,
+            &jev_state(101),
+            settings(None, Some(true), None),
+            &serve,
+            &|| false,
+        )
+        .unwrap();
+        assert_eq!(crate::logship::consent_for_test(), (true, None));
+        let _ = reconcile_and_apply_settings(
+            &store,
+            &jev_state(98),
+            settings(None, Some(false), Some("req-98")),
+            &serve,
+            &|| false,
+        );
+        assert_eq!(
+            crate::logship::consent_for_test(),
+            (true, None),
+            "a rolled-back response must neither turn troubleshooting off nor request logs"
+        );
+        assert_eq!(store.read_active().unwrap().unwrap().deployment, 101);
+        fs::remove_dir_all(store.root()).ok();
+    }
+
+    /// A response discarded by `config --disconnect` changes neither the switch
+    /// nor queues its request.
+    #[test]
+    fn a_withdrawn_response_does_not_change_troubleshooting() {
+        let _env = lock_env();
+        let _logs = lock_logship();
+        let store = temp_store("logs-withdrawn");
+        let result = reconcile_and_apply_settings(
+            &store,
+            &jev_state(5),
+            settings(None, Some(false), Some("req-5")),
+            &serve,
+            &|| true,
+        );
+        assert!(
+            matches!(result, Err(ReconcileError::Withdrawn)),
+            "{result:?}"
+        );
+        assert_eq!(crate::logship::consent_for_test(), (true, None));
+        fs::remove_dir_all(store.root()).ok();
+    }
+
+    /// An accepted response whose artifact failed still applies both: `false`
+    /// turns troubleshooting off, and a request on a later one is queued.
+    #[test]
+    fn an_accepted_response_with_a_failed_artifact_still_applies_troubleshooting() {
+        let _env = lock_env();
+        let _logs = lock_logship();
+        let store = temp_store("logs-fetch-fail");
+        let offline = |_: &DesiredPolicy| Err::<Vec<u8>, String>("offline".into());
+
+        let result = reconcile_and_apply_settings(
+            &store,
+            &jev_state(5),
+            settings(None, Some(false), Some("req-5")),
+            &offline,
+            &|| false,
+        );
+        assert!(
+            matches!(result, Err(ReconcileError::Fetch { .. })),
+            "{result:?}"
+        );
+        assert_eq!(
+            crate::logship::consent_for_test(),
+            (false, None),
+            "off applies, and drops the request that came with it"
+        );
+
+        let result = reconcile_and_apply_settings(
+            &store,
+            &jev_state(6),
+            settings(None, None, Some("req-6")),
+            &offline,
+            &|| false,
+        );
+        assert!(
+            matches!(result, Err(ReconcileError::Fetch { .. })),
+            "{result:?}"
+        );
+        assert_eq!(
+            crate::logship::consent_for_test(),
+            (true, Some("req-6".to_string())),
+            "absent means on, and the request is queued"
+        );
+        fs::remove_dir_all(store.root()).ok();
+    }
+
+    /// The one exception: a current response this daemon refuses only because it
+    /// cannot validate it (a newer server's policy shape) still delivers its
+    /// `logRequest`, since that refusal repeats every poll and support needs
+    /// that machine's logs. Its `machineLogs` and `selfReport` are not applied,
+    /// and a request is still bound by the switch as last accepted.
+    #[test]
+    fn an_unvalidatable_current_response_still_delivers_its_log_request() {
+        let _env = lock_env();
+        let _logs = lock_logship();
+        let _ = crate::self_report::take_pending();
+        let store = temp_store("logs-unvalidatable");
+        reconcile_and_apply_settings(
+            &store,
+            &jev_state(100),
+            settings(None, Some(true), None),
+            &serve,
+            &|| false,
+        )
+        .unwrap();
+        let _ = crate::self_report::take_pending();
+
+        let refused = reconcile_and_apply_settings(
+            &store,
+            &unvalidatable_state(101),
+            settings(self_report_on(true), Some(false), Some("req-101")),
+            &serve,
+            &|| false,
+        );
+        assert!(
+            matches!(&refused, Err(ReconcileError::InvalidDesiredState(m)) if m.contains("jevMode")),
+            "{refused:?}"
+        );
+        assert_eq!(
+            crate::logship::consent_for_test(),
+            (true, Some("req-101".to_string())),
+            "the request is queued; the refused response's `false` is not applied"
+        );
+        assert_eq!(crate::self_report::take_pending(), None);
+        assert_eq!(store.read_active().unwrap().unwrap().deployment, 100);
+
+        // An unvalidatable response that is also stale is ignored entirely.
+        crate::logship::reset_for_test(true);
+        let _ = reconcile_and_apply_settings(
+            &store,
+            &unvalidatable_state(99),
+            settings(None, None, Some("req-99")),
+            &serve,
+            &|| false,
+        );
+        assert_eq!(crate::logship::consent_for_test(), (true, None));
+
+        // With troubleshooting off (as last accepted), the request queues nothing.
+        reconcile_and_apply_settings(
+            &store,
+            &jev_state(102),
+            settings(None, Some(false), None),
+            &serve,
+            &|| false,
+        )
+        .unwrap();
+        let _ = reconcile_and_apply_settings(
+            &store,
+            &unvalidatable_state(103),
+            settings(None, Some(true), Some("req-103")),
+            &serve,
+            &|| false,
+        );
+        assert_eq!(crate::logship::consent_for_test(), (false, None));
         fs::remove_dir_all(store.root()).ok();
     }
 

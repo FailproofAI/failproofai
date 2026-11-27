@@ -16,7 +16,7 @@
 import { tryRequire } from "../node-require.js";
 import { recordToolCall, selfReportSpec } from "../self-report.js";
 import { SELF_REPORT_TOOL_NAME } from "../self-report-spec.js";
-import { versionTuple } from "./compat.js";
+import { FailproofAICompatError, parseVersion, versionString, versionTuple } from "./compat.js";
 
 /** Identity to record reports under, when the tool runs outside any scope. */
 export interface SelfReportToolOptions {
@@ -126,13 +126,44 @@ export interface LangChainSelfReportToolOptions extends SelfReportToolOptions {
 }
 
 /**
- * The report tool for LangChain / LangGraph (`@langchain/core` ≥0.3), a
+ * The first `@langchain/core` whose tools take a JSON Schema. Before it, a
+ * tool's schema was read only as zod, so a JSON Schema reached the model as an
+ * empty one: the model saw a tool with no arguments. The `/langchain` tracer
+ * needs no such thing and keeps the peer range's 0.3.0 floor.
+ */
+const LANGCHAIN_SELF_REPORT_MIN_CORE = "0.3.44";
+
+/** Refuse an `@langchain/core` older than the tool needs, by name and version. */
+function requireJsonSchemaTools(found: string | null): void {
+  if (found === null) return;
+  const [major = 0, minor = 0, patch = 0] = parseVersion(found);
+  const [needMajor = 0, needMinor = 0, needPatch = 0] = parseVersion(LANGCHAIN_SELF_REPORT_MIN_CORE);
+  const older =
+    major !== needMajor ? major < needMajor : minor !== needMinor ? minor < needMinor : patch < needPatch;
+  if (!older) return;
+  throw new FailproofAICompatError(
+    `selfReportTool() needs @langchain/core ${LANGCHAIN_SELF_REPORT_MIN_CORE} or later, and this ` +
+      `application has ${found}: older releases read a tool's schema only as zod, so the model ` +
+      `would be offered failproofai_report with no arguments. Upgrade it ` +
+      `(\`npm install @langchain/core@^${LANGCHAIN_SELF_REPORT_MIN_CORE}\`). The LangChain tracer ` +
+      `(instrument("langchain"), langchainHandler()) works on ${found} as it is.`,
+  );
+}
+
+/**
+ * The report tool for LangChain / LangGraph (`@langchain/core` ≥0.3.44), a
  * structured tool with a JSON Schema — bind it with the rest:
  *
  *     const model = chat.bindTools([selfReportTool(), ...tools]);
  *     createReactAgent({ llm, tools: [selfReportTool(), ...tools] });
+ *
+ * Throws `FailproofAICompatError` when the application's `@langchain/core` is
+ * older than 0.3.44, rather than hand the model a tool with an empty schema. A
+ * `module` passed in is another copy whose version cannot be read, so it is
+ * taken as it is.
  */
 export function langchainSelfReportTool<T = unknown>(options: LangChainSelfReportToolOptions = {}): T {
+  if (options.module === undefined) requireJsonSchemaTools(versionString("@langchain/core"));
   const tools = options.module ?? tryRequire<LangChainToolsModule>("@langchain/core/tools");
   const spec = selfReportSpec();
   const identity = identityOf(options);

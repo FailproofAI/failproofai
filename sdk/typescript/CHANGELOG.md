@@ -34,7 +34,12 @@ section is missing or empty is refused before anything is built.
 
 ### Fixes
 
-- _Nothing yet._
+- **The `/langchain` report tool refuses an `@langchain/core` older than 0.3.44.**
+  Before 0.3.44 a tool's schema is read only as zod, so the model was offered
+  `failproofai_report` with an empty schema. `selfReportTool()` now throws a
+  `FailproofAICompatError` naming the version found and the upgrade. The peer
+  range stays `>=0.3.0 <2`: the tracer records the same trace on 0.3.0, 0.3.43
+  and 0.3.44. A `module` passed in is not version-checked.
 
 ## 0.0.1-beta.2 — 2026-10-16
 

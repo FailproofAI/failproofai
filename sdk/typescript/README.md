@@ -506,7 +506,9 @@ other tool format.
   `jsonSchema()` object itself. The LangChain, Mastra and LlamaIndex tools return
   `unknown` unless you name the type, as above.
 - **LangChain needs `@langchain/core` 0.3.44 or later for this tool**: older
-  0.3 releases read a tool's schema only as zod and send the model an empty one.
+  0.3 releases read a tool's schema only as zod and send the model an empty one,
+  so on them `selfReportTool()` throws a `FailproofAICompatError` that says so
+  (the tracer still works from 0.3.0). A `module` you pass in is not checked.
 - **Edge builds** offer the same spec and tools, which answer `Recorded.` and
   record nothing. The Edge LangChain tool is a real LangChain tool when you pass
   `{ module: await import("@langchain/core/tools") }`; without it, it is a plain

@@ -4,25 +4,25 @@ description: "Jev を使って、既知の回答がある質問に対して完�
 icon: "list-checks"
 ---
 
-Jev evaluation は**完了済みセッション**を読み取り、0 から 1 のスコアを返します。「顧客は緊急性を示しましたか？」や「顧客はどの程度不満を感じていましたか？」のように、答えが事前にわかっている場合に使用します。複数の実行にわたるパターンを発見するのに役立ちますが、ツール呼び出しを停止するものではありません。ツールが実行される**前**に判断を行う場合は、[Jev policies](/ja/policies/jev) を使用してください。
+Jev evaluation は**完了済みセッション**を読み取り、0 から 1 のスコアを返します。「顧客は緊急性を表明しましたか？」や「顧客はどの程度不満を感じていましたか？」など、回答が事前にわかっている場合に使用します。複数の実行にわたるパターンを見つけるのに役立ちますが、ツール呼び出しを停止するものではありません。ツールが実行される**前**の判断には、[Jev policies](/ja/policies/jev) を使用してください。
 
 ## ダッシュボードで作成する
 
 1. **analyse → checks → new evaluation** を開き、**how should it score?** の下にある **decision model** を選択します。
-2. 質問とその選択肢を 1 つ記述します。例：「エージェントは払い戻しポリシーを確認する前に払い戻しを約束しましたか？はいまたはいいえで答えてください。」**review** で、**question**、**yes means**、**no means** の内容を確認してください。decision model は常にスコアを返します。
-3. 最近のセッションで[試し](/ja/evaluations/test)、次に[デプロイ](/ja/evaluations/deploy)します。新たに完了したセッションが採点されます。過去のデータも必要な場合は[バックフィル](/ja/evaluations/deploy#score-sessions-you-already-have)を実行してください。
+2. 1 つの質問とその回答候補を記述します。例：「エージェントは返金ポリシーを確認する前に返金を約束しましたか？はいまたはいいえで答えてください。」**review** では、**question**、**yes means**、**no means** を確認してください。decision model は常にスコアを返します。
+3. 最近のセッションで[テストし](/ja/evaluations/test)、その後[デプロイします](/ja/evaluations/deploy)。新しく完了したセッションが採点されます。履歴も必要な場合は[バックフィル](/ja/evaluations/deploy#score-sessions-you-already-have)を行ってください。
 
-![共有の eval 作成フォーム。固定回答の質問を記述し、下書きを確認してテスト後にデプロイします。表示例はコード evaluation ですが、Jev の質問も同じ作成フローを使用します。](/images/dashboard/eval-authoring-draft.png)
+![共有の eval 作成フォーム。固定回答の質問を記述し、下書きを確認し、テスト後にデプロイします。表示されている例はコード評価ですが、Jev の質問も同じ作成フローを使用します。](/images/dashboard/eval-authoring-draft.png)
 
-下書き作成時、failproofai は **code**、**decision model**（Jev）、および [**llm as judge**](/ja/evaluations/judge) の中から選択できます。デプロイ前にその選択を確認してください。Jev は散文による推論なしにスコアを返します。説明が必要な場合は judge を選択してください。質問の種類やスコアの制限については、[Jev evaluation リファレンス](/ja/reference/jev-evaluations)を参照してください。
+下書き時に failproof は **code**、**decision model**（Jev）、[**llm as judge**](/ja/evaluations/judge) のいずれかを選択できます。デプロイ前にその選択を確認してください。Jev は散文による理由なしにスコアを返します。説明が必要な場合は judge を選択してください。質問の種類とスコアの上限については、[Jev evaluation リファレンス](/ja/reference/jev-evaluations)を参照してください。
 
 ## スコアを確認する
 
-**analyse → checks → evals** を開き、evaluation を選択すると、エージェントおよび時間ごとの結果がグラフで表示されます。ターミナルからは、Cloud CLI で同じ結果を参照できます：
+**analyse → checks → evals** を開いて evaluation を選択すると、エージェントと時間ごとに結果をグラフで確認できます。ターミナルから Cloud CLI を使って同じ結果を取得することもできます：
 
 ```bash
 fp evals --since 7d
 fp evals --aggregate --since 7d
 ```
 
-ターミナルからは、`fp evaluators` で Jev evaluation の作成とデプロイを行い、`fp evals` でその結果を参照できます。両方の詳細については、[Cloud CLI リファレンス](/ja/reference/cloud-cli#evaluations)を参照してください。
+ターミナルでは、`fp evaluators` が Jev evaluation の作成とデプロイを行い、`fp evals` がその結果を取得します。両方の詳細については、[Cloud CLI リファレンス](/ja/reference/cloud-cli#evaluations)を参照してください。

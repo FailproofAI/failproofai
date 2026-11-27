@@ -1,16 +1,16 @@
 ---
 title: "OpenTelemetry"
-description: "Failproof AI Cloud'a OTLP kullanarak kodlama aracı ve uygulama telemetrisini gönderin."
+description: "FailproofAI Cloud'a OTLP kullanarak kodlama aracı ve uygulama telemetrisi gönderin."
 icon: "radio"
 ---
 
-OpenTelemetry, standart OTLP/HTTP protokolünü kullanarak aracı izleri, günlükleri ve metriklerini FailproofAI Cloud'a göndermenizi sağlar. Bu isteğe bağlıdır. Mevcut FailproofAI entegrasyonlarınız etkinleştirmeden çalışmaya devam eder.
+OpenTelemetry, standart OTLP/HTTP protokolünü kullanarak aracı izlerini, günlükleri ve metriklerini FailproofAI Cloud'a göndermenizi sağlar. Bu isteğe bağlıdır. Mevcut FailproofAI entegrasyonlarınız etkinleştirmeden çalışmaya devam eder.
 
 ## Anahtar alın
 
-OTLP alımı her kuruluş için her zaman açıktır; etkinleştirmek için bir şey yapılması gerekmez. `events:add` iznine sahip bir Cloud API anahtarı kullanın, bu izin aracı raporlaması için kullanılan izinle aynıdır.
+OTLP alımı her kuruluş için her zaman açıktır; etkinleştirilecek bir şey yoktur. `events:add` izni olan bir Cloud API anahtarı kullanın, bu izin aracı raporlaması için kullanılan izinle aynıdır.
 
-Panoda, **home → first-run setup** kısmında bir **connect with OpenTelemetry** kartı vardır: **create collector key** bir `events:add` anahtarı oluşturur, bunu bir kez dışa aktarıcı değişkenleriyle gösterir ve bağlantı durumunu gösterir. Ayrıca **settings → api keys** bölümünde **new key** seçeneğinin altından **sending logs only** seçeneğini belirleyerek bir tane oluşturabilirsiniz.
+Panoda, **home → first-run setup** kısmında **connect with OpenTelemetry** kartı bulunur: **create collector key** bir `events:add` anahtarı oluşturur, bunu bir kere dışa aktarıcı değişkenleriyle gösterir ve bağlantı durumunu gösterir. Ayrıca **settings → api keys** altında **new key** seçerek ve **sending logs only** seçeneğini belirleyerek bir tane oluşturabilirsiniz.
 
 ## Kodlama aracını bağlayın
 
@@ -22,9 +22,9 @@ failproofai otel enable codex
 failproofai otel enable copilot
 ```
 
-Kurulum komutu Claude Code, Codex ve Copilot'u destekler ve uygun şekilde Cloud'u veya yerel kimlik doğrulamalı geçişi seçer. Copilot yerel geçişi otomatik olarak kullanır. Geçişi kullanmadan önce yapılandırılmış FailproofAI daemon'unu başlatın.
+Kurulum komutu Claude Code, Codex ve Copilot'u destekler ve uygun şekilde Cloud veya yerel kimlik doğrulamalı geçişi seçer. Copilot yerel geçişi otomatik olarak kullanır. Geçişi kullanmadan önce yapılandırılmış FailproofAI daemon'ınızı başlatın.
 
-FailproofAI zaten bir aracının oturum transkriptlerini gönderiyorsa, kurulum bu aracıyı OTEL'e geçirip geçirmeyeceğinizi sorar. Varsayılan Hayır'dır. Kabul edilen işlem, o aracı için transkript yüklemelerini durdurur; bu, diğer aracılardan ilke uygulama veya raporlamayı değiştirmez.
+FailproofAI zaten bir aracının oturum transkripsiyonlarını gönderiyorsa, kurulum bu aracıyı OTEL'e geçirip geçirmeyeceğinizi sorar. Varsayılan değer Hayır'dır. Kabul etmek, o aracının transkripsiyonları yüklemeyi durdurur; bu, ilke zorlama veya diğer aracılardan raporlamayı değiştirmez.
 
 ## Bir uygulamayı bağlayın
 
@@ -37,18 +37,18 @@ export OTEL_EXPORTER_OTLP_HEADERS='Authorization=Bearer%20<key>'
 export OTEL_SERVICE_NAME=my-agent
 ```
 
-Uç nokta Cloud'un OTLP tabanıdır, `https://app.befailproof.ai/otel`; dışa aktarıcınız `/v1/traces`, `/v1/logs` veya `/v1/metrics` öğesini kendisi ekler. `OTEL_EXPORTER_OTLP_LOGS_ENDPOINT` gibi sinyal başına değişkenler olduğu gibi kullanılır, bu nedenle tam yol gerekir, örneğin `https://app.befailproof.ai/otel/v1/logs`.
+Uç nokta Cloud'un OTLP tabanıdır, `https://app.befailproof.ai/otel`; dışa aktarıcınız `/v1/traces`, `/v1/logs` veya `/v1/metrics` öğesini kendisi ekler. `OTEL_EXPORTER_OTLP_LOGS_ENDPOINT` gibi sinyal başına değişkenler olduğu gibi kullanılır, bu nedenle tam yolu gerektirirler, örneğin `https://app.befailproof.ai/otel/v1/logs`.
 
-`<key>` değerini API anahtarınızla değiştirin. Gizli anahtarı kabuk geçmişinden, ekran kayıtlarından ve taahhüt edilen konfigürasyondan uzak tutun. Yapılandırılmış bir makine için, `failproofai otel env --service my-agent` bloğu mevcut anahtarıyla yazdırır. Çıktısı bir kimlik bilgisi içerir.
+`<key>` yerine API anahtarınızı yazın. Gizli anahtarı shell geçmişi, ekran kayıtları ve taahhüt edilen konfigürasyondan uzak tutun. Yapılandırılmış bir makine için, `failproofai otel env --service my-agent` bloğu mevcut anahtarıyla yazdırır. Çıktısı bir kimlik bilgisi içerir.
 
 Cloud, protobuf veya JSON olarak, gzip sıkıştırılmış istekler de dahil olmak üzere izler, günlükler ve metrikler için OTLP/HTTP dışa aktarımlarını kabul eder. OTLP/gRPC'yi kabul etmez.
 
-Metrikler dışa aktarıcı uyumluluğu için onaylanır ancak depolanmaz veya görüntülenmez. Desteklenen aracı izleri ve kodlama aracısı günlükleri oturumlara dönüşür; aracının dışa aktarmadığı alanlar mevcut değildir.
+Metrikler dışa aktarıcı uyumluluğu için onaylanır ancak depolanmaz veya gösterilmez. Desteklenen aracı izleri ve kodlama aracısı günlükleri oturumlar haline gelir; aracının dışa aktarmadığı alanlar mevcut olmaz.
 
 ## İstem metnini yakala
 
 <Warning>
-Metin yakalaması, istemler, araç argümanları ve diğer hassas içeriği içerebilir. `failproofai otel enable` bunu açar. İstem ve araç ayrıntısı yakalamayı kapalı tutmak için `--no-content` ekleyin.
+Metin yakalaması, istemler, araç argümanları ve diğer hassas içerikleri içerebilir. `failproofai otel enable` bunu açar. İstem ve araç ayrıntısı yakalamayı kapalı tutmak için `--no-content` ekleyin.
 </Warning>
 
 ```bash
@@ -56,11 +56,11 @@ failproofai otel enable claude --no-content
 failproofai otel enable codex --no-content
 ```
 
-Bir aracıyı manuel olarak yapılandırırsanız, kendi içerik yakalaması kontrollerini kullanın:
+Bir aracıyı manuel olarak yapılandırıyorsanız, kendi içerik yakalama denetimlerini kullanın:
 
 <Tabs>
   <Tab title="Claude Code">
-    Bu değişkenleri aracınızın ortamına yukarıdaki uygulama bloğunun yanına ekleyin:
+    Bu değişkenleri aracınızın ortamına yukarıdaki uygulama bloğunun yanında ekleyin:
 
     ```bash
     export CLAUDE_CODE_ENABLE_TELEMETRY=1
@@ -81,10 +81,10 @@ Bir aracıyı manuel olarak yapılandırırsanız, kendi içerik yakalaması kon
     exporter = { otlp-http = { endpoint = "https://app.befailproof.ai/otel/v1/logs", protocol = "json", headers = { Authorization = "Bearer <key>" } } }
     ```
 
-    Codex konuşma içeriği günlüklerdedir; dahili çalışma zamanı izleri ve metriklerini devre dışı bırakın. Codex sağladığınız tam uç noktayı kullanır. İstemler dışında bırakmak için `log_user_prompt` öğesini `false` olarak ayarlayın; kurulum komutu açık `false` öğesini korur.
+    Codex konuşma içeriği günlüklerdedir; dahili çalışma zamanı izleri ve metriklerini devre dışı bırakın. Codex sağladığınız tam uç noktayı kullanır. İstemler dışarıda bırakmak için `log_user_prompt` öğesini `false` olarak ayarlayın; kurulum komutu açık `false` değerini korur.
   </Tab>
   <Tab title="Gemini CLI">
-    Gemini'nin telemetri ayarlarını yerel geçişle kullanın:
+    Yerel geçişle Gemini'nin telemetri ayarlarını kullanın:
 
     ```json
     {
@@ -99,7 +99,7 @@ Bir aracıyı manuel olarak yapılandırırsanız, kendi içerik yakalaması kon
     }
     ```
 
-    Gemini CLI, `failproofai otel enable` tarafından desteklenmez. Kendi kimlik doğrulama yapan bir toplayıcı ile manuel olarak yapılandırın. İstem yakalamayı kapalı tutmak için `logPrompts` öğesini `false` olarak ayarlayın.
+    Gemini CLI, `failproofai otel enable` tarafından desteklenmez. Kendi kimlik doğrulamalı toplayıcınızla manuel olarak yapılandırın. İstem yakalaması için `logPrompts` öğesini `false` olarak ayarlayın.
   </Tab>
   <Tab title="Copilot in VS Code">
     Bu VS Code kullanıcı ayarlarını kullanın:
@@ -113,22 +113,22 @@ Bir aracıyı manuel olarak yapılandırırsanız, kendi içerik yakalaması kon
     }
     ```
 
-    Kimlik doğrulamalı geçişi etkinleştirmek için `failproofai otel enable copilot` öğesini çalıştırın. İçeriği dışarıda tutmak için `captureContent` öğesini `false` olarak ayarlayın.
+    Kimlik doğrulamalı geçişi etkinleştirmek için `failproofai otel enable copilot` komutunu çalıştırın. İçeriği hariç tutmak için `captureContent` öğesini `false` olarak ayarlayın.
   </Tab>
 </Tabs>
 
 ## Kurulumu kontrol edin veya geri alın
 
-Geçiş, geçici ağ ve sunucu arızalarında telemetriyi korur ve kurtarma sonrasında yeniden dener. Kalıcı `400` reddi, depolanması çok büyük olan bir olay dahil olmak üzere, yükü düzeltme gerektirir. Geçiş, reddedilen topluişlemi onu tekrar gönderme yerine inceleme için tutar.
+Geçiş, telemetriyi geçici ağ ve sunucu arızaları boyunca saklar ve kurtarıldıktan sonra yeniden dener. `400` kalıcı reddi, depolanacak kadar büyük olan bir olayı da içerir ve yüküne düzeltme gerektirir. Geçiş, reddedilen toplu işlemi tekrar tekrar göndermek yerine inceleme için tutar.
 
-`401` veya `403` sonrasında, kimlik bilgisini aynı kuruluş için `events:add` izni veren bir anahtarla değiştirin. Yeniden bağlanma, kimlik bilgileri için reddedilen kalıcı OTLP dışa aktarımlarını otomatik olarak yeniden göndermez; bu topluişleri kurtarmak için operatörünüzden isteyin. Bunları orijinal kuruluşlarında tutun.
+`401` veya `403` sonrasında, kimlik bilgisini aynı kuruluş için `events:add` veren bir anahtar ile değiştirin. Yeniden bağlantı, kimlik bilgileri için reddedilen tutulan OTLP dışa aktarımlarını otomatik olarak yeniden göndermez; bu toplu işleri kurtarmak için operatörünüze sorun. Bunları orijinal kuruluşlarında tutun.
 
 ```bash
 failproofai otel status
 failproofai otel disable all
 ```
 
-Durum, FailproofAI tarafından yönetilen ayarları başka yerlerde yapılandırdığınız telemetriden ayırt eder. Devre dışı bırak, önceki yönetilen ayarları ve aracının önceki transkript yükleme seçimini geri yükler.
+Durum, FailproofAI tarafından yönetilen ayarları başka yerlerde yapılandırdığınız telemetriden ayırt eder. Devre dışı bırak önceki yönetilen ayarları ve aracının önceki transkripsiyonu yükleme seçimini geri yükler.
 
 <Card title="OpenTelemetry CLI" href="/tr/reference/otel" icon="terminal">
   Komut seçenekleri, yerel geçiş kurulumu ve sorun giderme.

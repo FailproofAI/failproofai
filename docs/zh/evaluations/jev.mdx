@@ -1,28 +1,28 @@
 ---
 title: "Jev 评估"
-description: "使用 Jev 对已完成的会话进行评分，适用于有已知答案的问题。"
+description: "使用 Jev 对已完成的会话按已知答案的问题进行评分。"
 icon: "list-checks"
 ---
 
-Jev 评估会读取**已完成的会话**，并给出 0 到 1 之间的分数。当答案已知时使用它，例如"客户是否表达了紧迫感？"或"客户的沮丧程度如何？"它帮助你发现多次运行中的规律；它不会阻止工具调用。对于在工具运行**之前**做出的决策，请使用 [Jev 策略](/zh/policies/jev)。
+Jev 评估读取**已完成的会话**，并给出 0 到 1 之间的分数。当答案已提前知晓时使用它，例如"客户是否表达了紧迫性？"或"客户的沮丧程度如何？"它帮助你发现多次运行之间的规律；它不会阻止工具调用。对于**工具运行前**做出的决策，请使用 [Jev policies](/zh/policies/jev)。
 
-## 在仪表板中创建
+## 在控制台中创建
 
 1. 打开 **analyse → checks → new evaluation**，在 **how should it score?** 下选择 **decision model**。
-2. 描述一个问题及其可能的答案。例如："在检查退款政策之前，客服是否承诺了退款？请回答是或否。"在 **review** 页面，检查**问题**以及 **yes means** 和 **no means** 的含义；decision model 始终会给出分数。
-3. 在近期会话上[试用](/zh/evaluations/test)，然后[部署](/zh/evaluations/deploy)。新完成的会话将被评分；如果还需要历史数据，请[回填](/zh/evaluations/deploy#score-sessions-you-already-have)。
+2. 描述一个问题及其可能的答案。例如："在检查退款政策之前，客服代理是否承诺了退款？请回答是或否。"在 **review** 中，检查**问题**以及 **yes means** 和 **no means** 的含义；决策模型始终会给出分数。
+3. 在最近的会话上[试用](/zh/evaluations/test)，然后[部署](/zh/evaluations/deploy)。新完成的会话将被评分；如果还需要历史数据，请[回填](/zh/evaluations/deploy#score-sessions-you-already-have)。
 
-![共享评估创作表单，你可以在其中描述一个固定答案的问题，预览草稿，并在测试后部署。示例展示的是代码评估；Jev 问题使用相同的创作流程。](/images/dashboard/eval-authoring-draft.png)
+![共享评估创作表单，你可以在其中描述一个固定答案的问题、审阅草稿，并在测试后部署。示例展示的是代码评估；Jev 问题使用相同的创作流程。](/images/dashboard/eval-authoring-draft.png)
 
-在起草时，failproofai 可以在**代码**、**decision model**（Jev）和 [**llm as judge**](/zh/evaluations/judge) 之间进行选择。在部署之前请检查其选择。Jev 给出分数但不提供文字说明；当需要解释时，请选择 judge。有关问题类型和分数限制，请参阅 [Jev 评估参考文档](/zh/reference/jev-evaluations)。
+起草时，failproof 可以在**代码**、**决策模型**（Jev）和 [**llm as judge**](/zh/evaluations/judge) 之间进行选择。部署前请检查其选择。Jev 给出分数但不提供文字推理说明；当需要解释时请选择 judge。有关问题类型和分数限制，请参阅 [Jev 评估参考文档](/zh/reference/jev-evaluations)。
 
-## 读取分数
+## 查看分数
 
-打开 **analyse → checks → evals** 并选择评估，以按代理和时间维度查看结果图表。在终端中，Cloud CLI 可以读取相同的结果：
+打开 **analyse → checks → evals** 并选择评估，以按代理和时间图表化结果。在终端中，Cloud CLI 可以读取相同的结果：
 
 ```bash
 fp evals --since 7d
 fp evals --aggregate --since 7d
 ```
 
-在终端中，`fp evaluators` 用于创作和部署 Jev 评估，`fp evals` 用于读取其结果。两者的详细说明请参阅 [Cloud CLI 参考文档](/zh/reference/cloud-cli#evaluations)。
+在终端中，`fp evaluators` 用于创作和部署 Jev 评估，`fp evals` 用于读取其结果。两者的详细信息请参阅 [Cloud CLI 参考文档](/zh/reference/cloud-cli#evaluations)。

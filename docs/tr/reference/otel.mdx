@@ -1,14 +1,14 @@
 ---
 title: "OpenTelemetry CLI"
-description: "Coding ajanları için OTEL'i etkinleştirin, teslimatı inceleyin ve önceki ayarlarınızı geri yükleyin."
+description: "Coding agentları için OTEL'e katılın, teslimatı inceleyin ve önceki ayarlarınızı geri yükleyin."
 icon: "radio"
 ---
 
-`failproofai otel`, FailproofAI Cloud'a isteğe bağlı OpenTelemetry raporlaması yapılandırır. Önce makinenizi `failproofai config` ile bağlayın. OpenTelemetry alımı Cloud'da her zaman açıktır, bu nedenle açmak için bir kuruluş anahtarı bulunmaz.
+`failproofai otel`, FailproofAI Cloud'a isteğe bağlı OpenTelemetry raporlamasını yapılandırır. Önce makinenizi `failproofai config` ile bağlayın. OpenTelemetry alımı Cloud'da her zaman etkindir, bu nedenle açmak için bir kuruluş anahtarı yoktur.
 
-Etkileşimli kurulum, Cloud anahtar alanı ve ajan seçicisinden sonra OpenTelemetry hakkında sorar. İsteğe bağlı adım varsayılan olarak Hayır'dır. OTEL ajanlarını seçmek için Evet'i seçin; bağlantı yazıldıktan sonra aynı etkinleştirme kodu çalışır. Kurulumdan önce Esc tuşuna basmak hiçbir değişiklik uygulamaz. Katılımsız kurulum, sağlanan bir anahtar, açık kaynak modu ve kaydedilmiş bir bağlantıyı tutmak sizi etkinleştirmez.
+İnteraktif kurulum, Cloud anahtar alanından ve ajan seçicisinden sonra OpenTelemetry hakkında sorar. İsteğe bağlı adım varsayılan olarak Hayır'dır. OTEL ajanlarını seçmek için Evet'i seçin; bağlantı yazıldıktan sonra aynı etkinleştirme kodu çalışır. Kurulumdan önce Esc tuşuna basılırsa hiçbir değişiklik uygulanmaz. Katılımsız kurulum, sağlanan bir anahtar, açık kaynak modu ve kaydedilen bir bağlantıyı tutmak sizi katılıma dahil etmez.
 
-## Bir ajanı etkinleştirin
+## Bir ajjanı etkinleştirin
 
 ```bash
 failproofai otel enable claude
@@ -18,29 +18,29 @@ failproofai otel enable copilot
 failproofai otel enable all --yes
 ```
 
-Desteklenen ajanlar `claude`, `codex` ve `copilot` (VS Code) olarak belirtilmiştir. Copilot kurulumu bir VS Code yürütülebilir dosyası veya yüklü bir Copilot uzantısı gerektirir. Kalan bir ayarlar dizini tek başına yeterli değildir; kurulum, hiçbiri bulunmadığında Copilot'u atlar.
+Desteklenen ajanlar `claude`, `codex` ve `copilot` (VS Code) olarak belirlenmiştir. Copilot kurulumu bir VS Code yürütülebilir dosyası veya yüklü bir Copilot uzantısı gerektirir. Kalan bir ayarlar dizini tek başına yeterli değildir; kurulum ikisi de bulunamadığında Copilot'u atlar.
 
-`--local`, doğrudan Cloud yerine yerel röleye gönderir. Copilot, ayarları kimlik doğrulama başlığını depolayamadığı için röleyi otomatik olarak kullanır.
+`--local`, doğrudan Cloud yerine yerel röleniye gönderir. Copilot, ayarları kimlik doğrulama başlığını depolayamadığı için röleyi otomatik olarak kullanır.
 
-Rölesi yalnızca makinenizde dinler. Yapılandırılan FailproofAI daemon değişikliği saniyeler içinde alır; bunu yeniden başlatmanız gerekmez. Başka bir uygulama rölö bağlantı noktasına sahipse, durum bunu kapalı olarak bildirir ve daemon çalışmaya devam eder.
+Rölesi yalnızca makinenizde dinler. Yapılandırılmış FailproofAI daemon değişikliği saniyeler içinde alır; bunu yeniden başlatmanız gerekmez. Başka bir uygulama rölesi portuna sahipse, durum bunu kapalı olarak raporlar ve daemon çalışmaya devam eder.
 
 <Warning>
-Metin yakalama varsayılan olarak açıktır. İstemleri ve araç ayrıntılarını atlamak için `--no-content` ekleyin. Ajan sürümleri farklı içerik denetimlerini açığa çıkarabilir; hassas verilerle kullanmadan önce ajanınızın ne dışa aktardığını gözden geçirin.
+Metin yakalama varsayılan olarak açıktır. İstemler ve araç ayrıntılarını atlamak için `--no-content` ekleyin. Ajan sürümleri farklı içerik denetimlerini açığa çıkarabilir; hassas verilerle kullanmadan önce ajanınızın ne dışa aktarıldığını gözden geçirin.
 </Warning>
 
-Codex yalnızca konuşma günlüklerini dışa aktarır, iç çalışma zamanı izleri veya ölçümleri değil. Codex yapılandırmanızda açık bir `log_user_prompt = false` kapalı kalır; etkinleştir, bu seçimi koruduğunda bir not yazdırır.
+Codex yalnızca konuşma günlükleri dışa aktarır, iç çalışma zamanı izlemeleri veya metrikler değil. Codex yapılandırmanızda açık bir `log_user_prompt = false` kapalı kalır; etkinleştir, bu seçimi koruduğunda bir not yazdırır.
 
-### Bir raporlama yolu seçin
+### Bir raporlama yolunu seçin
 
-Bir ajan için transkrip raporlaması açıksa, kurulum şu soruyu sorar:
+Bir ajan için transkript raporlaması açıksa, kurulum şunu sorar:
 
-> failproofai zaten Claude Code oturumlarını Cloud'a gönderiyor. Bunları bunun yerine OTEL ile gönder? Claude Code için transkrip yüklemesi durur.
+> failproofai zaten Claude Code oturumlarını Cloud'a gönderiyor. Bunları OTEL ile gönder? Claude Code için transkript yüklemesi durur.
 
-Varsayılan Hayır'dır. `--yes` istem olmadan anahtarı kabul eder. Diğer ajanlar ve politika uygulaması etkilenmez.
+Varsayılan Hayır'dır. `--yes` istem olmadan anahtarı kabul eder. Diğer ajanlar ve politika yürütmesi etkilenmez.
 
-Codex kurulumu, toplayıcı değişikliğini daemon tarafından onaylaması beklemeye alır ve dışa aktarıcı ayarlarını yazar. Onay zaman aşımına uğrarsa, kurulum Codex başlatmadan önce beklemeniz konusunda sizi uyarır.
+Codex kurulumu, Codex dışa aktarıcı ayarlarını yazmadan önce daemon'un toplayıcı değişikliğini onaylamasını bekler. Onay zaman aşımına uğrarsa, kurulum Codex başlatmadan önce beklemeniz konusunda sizi uyarır.
 
-Config v2, hatırlanan izleme listesini `agents.selected` adresinde tutar (ve algılama geçmişini `agents.seen` adresinde). Ajan başına transkrip tercihi `collector.agents.<agent>.sessions` adresinde kalır, OTEL sahipliği `otel.agents` adresinde ve rölö ayarları `collector.otlp.enabled` / `collector.otlp.port` adresında. Bu ayrı anahtarlar eski OTEL yapılandırmalarını okunabilir tutar: kurulum, izleme listesini değiştirirken taşıma tercihini veya ajan ayarlarınızı geri yüklemek için gereken durumu kaybetmez.
+Config v2, hatırlanan izleme listesini `agents.selected` adresinde tutar (ve algılama geçmişi `agents.seen` adresinde). Ajan başına transkript tercihi `collector.agents.<agent>.sessions` adresinde kalır, OTEL mülkiyeti `otel.agents` adresinde ve rölesi ayarları `collector.otlp.enabled` / `collector.otlp.port` adresinde. Bu ayrı anahtarlar eski OTEL yapılandırmalarını okunabilir tutar: kurulum, taşıma tercihini veya ajanları ayarlarınızı geri yüklemek için gereken durumu kaybetmeden izleme listesini değiştirebilir.
 
 ## Kurulumu inceleyin
 
@@ -48,20 +48,20 @@ Config v2, hatırlanan izleme listesini `agents.selected` adresinde tutar (ve al
 failproofai otel status
 ```
 
-Durum, her ajanı, ayarlarının FailproofAI tarafından yönetilip yönetilmediğini, varış yerini, kuruluşun alım anahtarını, rölö durumunu ve son rölö yükleme sonucunu gösterir.
+Durum her ajjanı, ayarlarının FailproofAI tarafından yönetilip yönetilmediğini, hedefini, kuruluşun alım anahtarını, rölesi durumunu ve son rölesi yükleme sonucunu gösterir.
 
-Kuruluş anahtarı için `unknown`, sunucunun onu sağlamadığı veya erişilemediği anlamına gelir. Bu bir hata değildir ve eski bir Cloud sürümünde yapılandırmayı engellenmez.
+Kuruluş anahtarı için `unknown`, sunucunun bunu sağlamadığı veya erişilemediği anlamına gelir. Bu bir hata değildir ve eski bir Cloud sürümünde yapılandırmayı önlemez.
 
-Cloud henüz OTEL'i desteklemiyorsa, rölö reddedilen dışa aktarımları atmak yerine tutar. Daha eski bir Cloud sürümü kuruluş alımını kapalı olarak bildirir ise, `enable` hiçbir şey yazmaz ve bir hata ile çıkar.
+Cloud henüz OTEL'i desteklemiyorsa, rölesi reddedilen dışa aktarımları atmak yerine tutar. Daha eski bir Cloud sürümü kuruluş alımını kapalı olarak raporlarsa, `enable` hiçbir şey yazmaz ve bir hatayla çıkar.
 
-## Bir uygulama için yapılandırmayı yazdır
+## Bir uygulama için yapılandırmayı yazdırın
 
 ```bash
 failproofai otel env --service my-agent
 failproofai otel env --service my-agent --local
 ```
 
-Çıkış, bir OTLP/HTTP dışa aktarıcı için bir kabuk ortamı bloğudur. Cloud çıkışı, `OTEL_EXPORTER_OTLP_ENDPOINT` öğesini Cloud'un OTLP tabanı olan `https://<cloud>/otel` olarak ayarlar ve dışa aktarıcı `/v1/<signal>` ekler; `OTEL_EXPORTER_OTLP_LOGS_ENDPOINT` gibi sinyal başına değişken tam `https://<cloud>/otel/v1/logs` gerektirir. Yerel çıkış röleye işaret eder, `http://127.0.0.1:<port>`. Cloud çıkışı yapılandırılan API anahtarını içerir; bunu bir sır olarak değerlendirin. Yerel çıkış anahtarı atlar. Yerel çıkışı kullanmak için, önce yerel bir ajanı etkinleştirin, böylece rölö çalışır.
+Çıktı, bir OTLP/HTTP dışa aktarıcı için bir kabuk ortam bloğudur. Cloud çıktısı `OTEL_EXPORTER_OTLP_ENDPOINT` öğesini Cloud'un OTLP tabanı olan `https://<cloud>/otel` öğesine ayarlar ve dışa aktarıcı `/v1/<signal>` ekler; `OTEL_EXPORTER_OTLP_LOGS_ENDPOINT` gibi sinyal başına değişken tam `https://<cloud>/otel/v1/logs` gerektirir. Yerel çıktı röleyi işaret eder, `http://127.0.0.1:<port>`. Cloud çıktısı yapılandırılmış API anahtarını içerir; bunu bir gizli dizi olarak ele alın. Yerel çıktı anahtarı atlar. Yerel çıktıyı kullanmak için, önce yerel bir ajjanı etkinleştirin, böylece rölesi çalışıyor olur.
 
 ## Önceki ayarları geri yükleyin
 
@@ -70,8 +70,8 @@ failproofai otel disable claude
 failproofai otel disable all
 ```
 
-Devre dışı bırak yalnızca FailproofAI'nin yazdığı ayarları geri yükler, ilgisiz değişiklikleri tutar ve her ajanın önceki transkrip raporlaması seçimini geri yükler. Son yönetilen yerel ajan devre dışı bırakıldığında, rölö dışa aktarımları kabul etmeyi durdurur.
+Devre dışı bırak, yalnızca FailproofAI'ın yazdığı ayarları geri yükler, ilgisiz değişiklikleri tutar ve her ajanın önceki transkript raporlaması seçimini geri yükler. Son yönetilen yerel ajan devre dışı bırakıldığında, rölesi dışa aktarımları kabul etmeyi durdurur.
 
-Codex için, devre dışı bırak `collector.agents.codex.sessions_resume_after` (epoch milisaniye) de kaydeder. Mevcut dağıtım baytları teslim edilmiş olarak kabul edilir, bu nedenle OTEL ile yakalanan oturumlar tekrar yüklenmez; sonraki ekler yine de transkrip raporlaması aracılığıyla akar.
+Codex için devre dışı bırak ayrıca `collector.agents.codex.sessions_resume_after` (epoch milisaniye) kaydeder. Mevcut dağıtım baytları teslim edildi olarak kabul edilir, bu nedenle OTEL ile yakalanan oturumlar tekrar yüklenmez; daha sonraki ekler hala transkript raporlaması aracılığıyla akar.
 
-Her komut `--help` seçeneğini destekler. Uygulama ve coding-ajan örnekleri için [Cloud'da OpenTelemetry](/tr/agenteye/opentelemetry) sayfasına bakın.
+Her komut `--help` öğesini destekler. Uygulama ve coding-agent örnekleri için [Cloud'da OpenTelemetry](/tr/agenteye/opentelemetry) bölümünü inceleyin.

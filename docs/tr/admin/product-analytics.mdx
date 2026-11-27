@@ -1,14 +1,14 @@
 ---
 title: "Ürün analitikleri"
-description: "Failproof AI Cloud'un kendisi hakkında gönderdiği kullanım telemetrisi, hiçbir zaman toplanmayan veriler ve bunu kapatma."
+description: "Failproof AI Cloud'un kendisi hakkında gönderdiği kullanım telemetrisi, hiçbir zaman toplanmayan veriler ve bunu nasıl devre dışı bırakacağınız."
 icon: "chart-no-axes-column"
 ---
 
-Failproof AI Cloud, yazılımın kendisi hakkında kullanım telemetrisi **yazılımın bakımcılarına** gönderir. Hiçbir zaman aracılarınızın verilerini içermez. Kendi barındırılan bir kurulumda varsayılan olarak açıktır ve bunu kapatabilirsiniz.
+Failproof AI Cloud, **yazılımın kendisi hakkında** kullanım telemetrisi verilerini bakımcılarına gönderir. Hiçbir zaman aracılarınızın verilerini içermez. Kendi kendine barındırılan bir kurulumda varsayılan olarak açıktır ve bunu devre dışı bırakabilirsiniz.
 
 ## Neler toplanır
 
-Her olay beş boyut taşır ve hiçbir şey bir kişiyi tanımlamaz:
+Her olay beş boyut taşır ve bir kişiyi tanımlayan hiçbir şey içermez:
 
 | Boyut | Örnek | Nedir |
 | --- | --- | --- |
@@ -16,46 +16,46 @@ Her olay beş boyut taşır ve hiçbir şey bir kişiyi tanımlamaz:
 | `component` | `dashboard`, `server`, `cli` | Ürünün hangi bölümü gönderdi |
 | `app_version` | `0.0.1-beta.81` | Çalıştırdığınız yapı |
 | `deployment_kind` | `self_hosted` | Bunun müşteri kurulumu, demo, QA veya geliştirici makinesi olup olmadığı |
-| `org_id` | bir UUID | İşlemin gerçekleştiği organizasyon, opak bir tanımlayıcı olarak |
+| `org_id` | bir UUID | İşlemin gerçekleştiği kuruluş, opak bir tanımlayıcı olarak |
 
-Bunlara ek olarak, olaylar **ne kullanıldığını kaydeder, hiçbir zaman içinde ne olduğunu değil**: hangi sayfanın görüntülendiği (rota deseni olarak `/:org/sessions/:id` gibi, gerçek URL asla değil), kaç tane ve hangi türde filtrelerin uygulandığı, bir işlemin başarılı olup olmadığı ve ne kadar sürdüğü.
+Bunlara ek olarak, olaylar **neyin kullanıldığını kaydeder, hiçbir zaman içinde ne olduğunu değil**: hangi sayfanın görüntülendiği (rota deseni olarak `/:org/sessions/:id` gibi, gerçek URL asla değil), hangi türde kaç filtrenin uygulandığı, bir işlemin başarılı olup olmadığı ve ne kadar sürdüğü.
 
-Slack uygulaması çalışma alanı bağlantılarını ve bağlantı kesilmelerini, hesap bağlantılarını, sorulan soruları, paylaşılan grafikleri, onay kararlarını ve sabit bir kategoriye göre başarısızlıkları kaydeder. Hiçbir zaman Slack çalışma alanı, kullanıcı veya kanal kimliklerini, e-postayı, soruları, cevapları, SQL veya jetonları içermez.
+Slack uygulaması çalışma alanı bağlantıları ve bağlantı kesmeleri, hesap bağlantıları, sorulan sorular, gönderilen grafikler, onay kararları ve sabit bir kategoriye göre başarısızlıkları kaydeder. Hiçbir zaman Slack çalışma alanı, kullanıcı veya kanal kimliklerini, e-postayı, soruları, yanıtları, SQL veya belirteçleri içermez.
 
 ### Kuruluşunuzun adı
 
-Opak `org_id` ile birlikte, kuruluşunuzun adını, URL slug'ını ve pano adresini bir kez bir kuruluş kaydında kaydederiz, her olay üzerinde değil. Bu, benimseme konusundaki bir deseni veya bildirdiğiniz bir sorunu araştırdığımızda hangi hesabın bir desene ait olduğunu söylemek için bize izin verir. Bu, ürünün sizin hakkınızda gönderdiği tek tanımlayıcı bilgidir.
+Opak `org_id` ile birlikte, kuruluşunuzun adını, URL slug'ını ve pano adresini bir kez, her olay yerine bir kuruluş kaydında kaydederiz. Bu, benimseme konularına veya bildirdiğiniz bir sorunu araştırırken bir deseni hangi hesaba ait olduğunu söylemek için bize yardımcı olur. Bu, ürünün sizi hakkında gönderdği tek tanımlayıcı bilgidir.
 
 ### Kullanım toplamlarınız
 
-Sunucu, her kuruluşun kullanılan metered kullanım toplamlarını, Kullanım sayfasında gördüğünüz aynı numaraları bildirir. Bunlar sadece sayılardır: olaylar, oturumlar, aracılar, ortamlar, değerlendirme çalışmaları, puanlar, denetim çalışmaları, kaydedilen sorgular, panolar, uyarılar, sorunlar, API anahtarları ve üyeler, artı ölçüm penceresinin tarihleri. Hiçbir tanımlayıcı, ad veya sorgu metni içermez ve birinin oturum açıp açmadığına bakılmaksızın gelir.
+Sunucu, her kuruluşun ölçülen kullanım toplamlarını, Kullanım sayfasında gördüğünüz aynı numaraları bildirir. Bunlar sadece sayılardır: olaylar, oturumlar, aracılar, ortamlar, değerlendirme çalışmaları, puanlar, denetim çalışmaları, kayıtlı sorgular, panolar, uyarılar, sorunlar, API anahtarları ve üyeler, artı ölçüm penceresinin tarihleri. İçinde hiçbir tanımlayıcı, ad veya sorgu metni yoktur ve birinin oturum açıp açmadığına bakılmaksızın gelirler.
 
 ## Hiçbir zaman toplanmayan veriler
 
-- **İstem, model yanıtları veya olay içeriği yok**, metin, önek veya hash olarak değil
-- **Oturum, aracı veya izleme tanımlayıcıları yok**
-- **Değerlendiricinin puan adları yok**
-- **Hata mesajları, istisna metni veya yanıt gövdeleri yok**, yalnızca bir durum kodu ve sabit bir listeden bir kategori
-- **Araç argümanları, SQL veya sorgu metni yok**
-- **Bağlı uygulama detayları yok.** Bir MCP istemcisini bağlamak veya iptal etmek en fazla bir izin sayısı gönderir, asla uygulamanın adı veya herhangi bir jeton değil
-- **E-posta adresleri yok**
-- **Yönlendiren URL'ler veya sorgu dizeleri yok**
-- **Ekran kaydı, DOM yakalama veya tıklama ve imleç izleme yok**
+- **Hiçbir istem, model yanıtı veya olay içeriği**, metin, ön ek veya hash olarak değil
+- **Hiçbir oturum, aracı veya iz tanımlayıcısı**
+- **Hiçbir değerlendirici puan adı**
+- **Hiçbir hata mesajı, özel durum metni veya yanıt gövdesi**, yalnızca bir durum kodu ve sabit bir listeden kategori
+- **Hiçbir araç argümanı, SQL veya sorgu metni**
+- **Bağlı uygulama ayrıntıları yok.** Bir MCP istemcisini bağlamak veya iptal etmek en fazla bir izin sayısı gönderir, asla uygulamanın adı veya herhangi bir belirteç değil
+- **Hiçbir e-posta adresi**
+- **Hiçbir yönlendiren URL veya sorgu dizesi**
+- **Hiçbir ekran kaydı, DOM yakalama veya tıklama ve imleç izlemesi**
 
-## Kendi barındırılan kurulumda kapatın
+## Kendi kendine barındırılan kurulumda devre dışı bırakın
 
-Her iki pano ve sunucuda `DO_NOT_TRACK=1` ayarlayın. Ayrı ayrı karar verirler, bu nedenle bunu sadece birinde ayarlamak diğerini raporlamaya bırakır. Değişikliğin uygulanması için sunucuyu yeniden başlatın.
+Pano ve sunucu üzerinde `DO_NOT_TRACK=1` ayarlayın. Ayrı ayrı karar verirler, bu nedenle bunu yalnızca birinde ayarlamak diğerinin raporlama yapmasına neden olur. Değişikliğin uygulanması için sunucuyu yeniden başlatın.
 
-Yayın README'niz diğer çıkma ayarlarını ve telemetrinin kapalı olduğunu nasıl doğrulayacağınızı açıklar.
+Yayın README'niz diğer vazgeçme ayarlarını ve telemetrinin kapatıldığını nasıl doğrulayacağınızı açıklar.
 
-## Çıktığınızda bir ping
+## Vazgeçtikten sonra bir ping
 
-`DO_NOT_TRACK` yerine bir ürün ayarı ile çıkarsanız, pano **bir anonim ping** gönderebilir; bunu işlem başına %1'de 1 olasılıkla kaydetme. Bu bize kaç operatörün telemetriyi kapattığını söyler. Hiçbir tanımlayıcı içermez: kuruluş, kullanıcı, ana bilgisayar adı, URL veya IP yok, yalnızca ürün, bileşen, sürüm, dağıtım türü ve neden. Çıkmış bir sunucu hiçbir şey göndermez.
+Bir ürün ayarı ile `DO_NOT_TRACK` yerine vazgeçerseniz, pano **bir anonim ping** gönderebilir ve bunu proses başına 1000'de 1 olasılıkla kaydettirir. Bu bize kaç operatörün telemetriyi kapattığını söyler. İçinde tanımlayıcı yoktur: hiçbir kuruluş, kullanıcı, ana bilgisayar adı, URL veya IP, yalnızca ürün, bileşen, sürüm, dağıtım türü ve neden. Vazgeçilmiş bir sunucu hiçbir şey göndermez.
 
-`DO_NOT_TRACK` kullandığınızda hiçbir zaman gönderilmez, bu yüzden politikanız herhangi bir giden telemetriyi yasaklıyorsa bu ayarı kullanmanız gerekir.
+`DO_NOT_TRACK` kullandığınızda hiçbir zaman gönderilmez, bu yüzden politikanız herhangi bir giden telemetriyi yasaklıyorsa bu kullanılması gereken ayardır.
 
 ## Nereye gidiyor
 
-PostHog'a (`us.i.posthog.com`) port 443'te TLS üzerinden. Bu tek bir ana bilgisayar adıdır, bu nedenle bunu tek bir çıkış kuralıyla da engelleyebilirsiniz.
+PostHog'a (`us.i.posthog.com`) TLS üzerinden 443 numaralı bağlantı noktasında. Tek bir ana bilgisayar adıdır, bu nedenle bunu tek bir çıkış kuralı ile de engelleyebilirsiniz.
 
-Kişisel bilgileri daha geniş anlamda nasıl ele aldığımız hakkında bilgi için [gizlilik politikası](https://befailproof.ai/privacy/)'ne bakın.
+Kişisel bilgileri daha geniş kapsamda nasıl işlediğimiz hakkında [gizlilik politikası](https://befailproof.ai/privacy/) bölümüne bakın.

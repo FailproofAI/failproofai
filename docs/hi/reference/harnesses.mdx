@@ -1,114 +1,92 @@
 ---
-title: "Agent harnesses"
-description: "Capture sessions and enforce policies across all 12 supported agent harnesses."
+title: "एजेंट हार्नेस"
+description: "सभी 12 समर्थित एजेंट हार्नेस में सेशन कैप्चर करें और नीतियां लागू करें।"
 icon: "plug-zap"
 ---
 
-हार्नेस वह है जिसमें आपका agent वास्तव में चलता है। Failproof AI इसके बारह को सपोर्ट करता है, दो क्लासेज में:
+एक हार्नेस वह है जिसमें आपका एजेंट वास्तव में चलता है। Failproof AI इनमें से बारह को समर्थन करता है, दो श्रेणियों में:
 
-- **Coding CLIs** (10) — Claude Code, Codex, GitHub Copilot CLI, Cursor, OpenCode, Pi, Factory Droid, Devin CLI, Antigravity CLI, Goose
-- **Chat और assistant gateways** (2) — Hermes (Slack, Telegram, cron), OpenClaw (self-hosted assistant)
+- **कोडिंग CLIs** (10) — Claude Code, Codex, GitHub Copilot CLI, Cursor, OpenCode, Pi, Factory Droid, Devin CLI, Antigravity CLI, Goose
+- **चैट और असिस्टेंट गेटवे** (2) — Hermes (Slack, Telegram, cron), OpenClaw (स्व-होस्टेड असिस्टेंट)
 
-समान policies और समान session history किसी भी हार्नेस में लागू होते हैं जहां agent चलता है। एक adapter layer प्रत्येक हार्नेस के native event names, tool names, और tool-input fields को 29 canonical events पर मैप करता है, कोई भी policy चलने से पहले।
+एक ही नीतियां और एक ही सेशन हिस्ट्री लागू होती हैं चाहे एजेंट किसी भी हार्नेस में चले। एक एडेप्टर लेयर प्रत्येक हार्नेस के नेटिव ईवेंट नामों, टूल नामों और टूल-इनपुट फील्ड्स को 29 कैनोनिकल ईवेंट्स में मैप करता है, इससे पहले कि कोई नीति चले।
 
-एक agent जो इन बारह में से **किसी में भी नहीं** चलता है, वह सीधे [Python SDK](/hi/reference/custom-agents) के साथ instrumented है। यह एक अलग contract है, और इसे स्पष्ट रूप से कहना महत्वपूर्ण है: SDK tracing, sessions, evaluations और audits प्रदान करता है — **यह अपने आप पर policies को enforce नहीं करता।** किसी असुरक्षित action को इसके execute होने से पहले block करने के लिए आपके runtime के tool boundary पर एक enforcement hook की जरूरत है; [हमसे संपर्क करें](mailto:support@befailproof.ai) और हम इसे मैप कर देंगे।
+एक एजेंट जो बारह में से **किसी में भी** नहीं चलता, वह सीधे [Python SDK](/hi/reference/custom-agents) के साथ इंस्ट्रुमेंटेड होता है। यह एक अलग कॉन्ट्रैक्ट है, और स्पष्ट रूप से कहा जाना चाहिए: SDK ट्रेसिंग, सेशन, मूल्यांकन और ऑडिट प्रदान करता है — **यह अपने आप में नीतियां लागू नहीं करता।** किसी असुरक्षित कार्य को निष्पादन से पहले ब्लॉक करने के लिए आपके रनटाइम की टूल सीमा पर एक एनफोर्समेंट हुक की जरूरत है; [हमसे संपर्क करें](mailto:support@befailproof.ai) और हम इसे मैप करेंगे।
 
-| Harness | समर्थित hook scopes |
+| हार्नेस | समर्थित हुक स्कोप |
 | --- | --- |
 | Claude Code | User, project, local |
 | Codex, GitHub Copilot CLI, Cursor, OpenCode, Pi | User, project |
 | Factory Droid, Devin CLI, Antigravity CLI, Goose | User, project |
 | Hermes, OpenClaw | User |
 
-प्रत्येक integration अपने native hook event names, tool names, और tool-input fields को normalize करता है policies चलने से पहले। एक policy केवल उन events पर कार्य कर सकता है जो हार्नेस expose करता है; end-of-turn और instruction behavior को उसी exact harness और version पर test करें जो आप deploy करते हैं।
+प्रत्येक इंटीग्रेशन अपने नेटिव हुक ईवेंट नामों, टूल नामों और टूल-इनपुट फील्ड्स को सामान्यीकृत करता है इससे पहले कि नीतियां चलें। एक नीति केवल उन ईवेंट्स पर कार्य कर सकती है जो हार्नेस उजागर करता है; आप जो सटीक हार्नेस और संस्करण तैनात करते हैं उस पर टर्न-एंड और निर्देश व्यवहार का परीक्षण करें।
 
-## Enforcement capability
+## एनफोर्समेंट क्षमता
 
-"Block" का अर्थ है कि current adapter का returned verdict नामित हार्नेस द्वारा consumed है। Post-tool blocking परिणाम को model के सामने दिखाया जाने वाला बदल सकता है लेकिन tool side effect को undo नहीं कर सकता जो पहले से ही हुआ है।
+"ब्लॉक" का मतलब है कि वर्तमान एडेप्टर की रिटर्न की गई निर्णय का नाम दिए गए हार्नेस द्वारा उपभोग किया जाता है। पोस्ट-टूल ब्लॉकिंग मॉडल को दिखाए गए परिणाम को बदल सकती है लेकिन एक टूल साइड इफेक्ट को पूर्ववत नहीं कर सकती जो पहले से ही हुई हो।
 
-| Harness | सत्यापित blocking events | Observe-only या non-blocking caveats |
+| हार्नेस | सत्यापित ब्लॉकिंग ईवेंट्स | केवल-अवलोकन या गैर-ब्लॉकिंग सावधानियां |
 | --- | --- | --- |
-| Claude Code | `PreToolUse`, `UserPromptSubmit`, `PermissionRequest`, `Stop`, `SubagentStop`, `PreCompact`, और कई task/config events | `PostToolUse`, session lifecycle, notifications, और post-failure events observational हैं। |
-| Codex | `PreToolUse`, `PermissionRequest`, `UserPromptSubmit`, `Stop`, `SubagentStop`, `PostToolUse` | Post-tool blocking execution के बाद result को बदलता है; session-start और compact events current adapter में observational हैं। |
-| GitHub Copilot CLI | `PreToolUse`, `UserPromptSubmit`, `PermissionRequest`, `Stop`, `SubagentStop`, `PostToolUse` | Post-tool blocking execution के बाद result को बदलता है; session और notification events observational हैं। |
-| Cursor | `PreToolUse`, `UserPromptSubmit`, `Stop` | `PostToolUse` और session events observational हैं। |
-| OpenCode | `PreToolUse` | Post-tool और lifecycle events observational हैं; current stop handling later turn के लिए guidance है न कि verified gate। |
-| Pi | `PreToolUse`, `UserPromptSubmit` | Post-tool और lifecycle events observational हैं; stop guidance later turn को लागू होता है। |
-| Hermes | `PreToolUse` | `deny()` block करता है। `instruct()` call को रोकता नहीं है: यह चलता है, और guidance इसके result की शुरुआत में रखी जाती है। Post-tool, session, और subagent-stop verdicts gates नहीं हैं। |
-| OpenClaw | `PreToolUse`, `UserPromptSubmit`, `Stop` | Post-tool, session, subagent-stop, और compaction events observational हैं। |
-| Factory Droid | `PreToolUse`, `UserPromptSubmit`, `Stop`, `PreCompact` | Post-tool और subagent-stop verdicts observational हैं। |
-| Devin CLI | `PreToolUse`, `UserPromptSubmit`, `Stop`, conditional `PermissionRequest` | Permission hooks हर permission mode में नहीं चलते; post-tool और session events observational हैं। |
-| Antigravity CLI | `PreToolUse`, `Stop` | User-prompt और post-tool verdicts observational हैं; prompt instructions अभी भी injected की जा सकती हैं। |
-| Goose | `PreToolUse` | User-prompt, post-tool, और session events observational हैं। एक native blocking stop hook upstream में exists है लेकिन current adapter द्वारा installed नहीं है। |
+| Claude Code | `PreToolUse`, `UserPromptSubmit`, `PermissionRequest`, `Stop`, `SubagentStop`, `PreCompact`, और कई कार्य/कॉन्फ़िग ईवेंट्स | `PostToolUse`, सेशन लाइफसाइकल, नोटिफिकेशन, और पोस्ट-विफलता ईवेंट्स अवलोकनात्मक हैं। |
+| Codex | `PreToolUse`, `PermissionRequest`, `UserPromptSubmit`, `Stop`, `SubagentStop`, `PostToolUse` | पोस्ट-टूल ब्लॉकिंग निष्पादन के बाद परिणाम को बदलती है; सेशन-स्टार्ट और कॉम्पैक्ट ईवेंट्स वर्तमान एडेप्टर में अवलोकनात्मक हैं। |
+| GitHub Copilot CLI | `PreToolUse`, `UserPromptSubmit`, `PermissionRequest`, `Stop`, `SubagentStop`, `PostToolUse` | पोस्ट-टूल ब्लॉकिंग निष्पादन के बाद परिणाम को बदलती है; सेशन और नोटिफिकेशन ईवेंट्स अवलोकनात्मक हैं। |
+| Cursor | `PreToolUse`, `UserPromptSubmit`, `Stop` | `PostToolUse` और सेशन ईवेंट्स अवलोकनात्मक हैं। |
+| OpenCode | `PreToolUse` | पोस्ट-टूल और लाइफसाइकल ईवेंट्स अवलोकनात्मक हैं; वर्तमान स्टॉप हैंडलिंग एक सत्यापित गेट के बजाय बाद के टर्न के लिए मार्गदर्शन है। |
+| Pi | `PreToolUse`, `UserPromptSubmit` | पोस्ट-टूल और लाइफसाइकल ईवेंट्स अवलोकनात्मक हैं; स्टॉप मार्गदर्शन बाद के टर्न पर लागू होती है। |
+| Hermes | `PreToolUse` | एक नेटिव प्लगइन `instruct()` को एक बंधित, मॉडल-दृश्यमान बाधा के रूप में प्रदान करता है इससे पहले कि एक बाद की API पुनरावृत्ति की अनुमति दें। पोस्ट-टूल, सेशन, और सबएजेंट-स्टॉप निर्णय गेट नहीं हैं। |
+| OpenClaw | `PreToolUse`, `UserPromptSubmit`, `Stop` | पोस्ट-टूल, सेशन, सबएजेंट-स्टॉप, और कॉम्पैक्शन ईवेंट्स अवलोकनात्मक हैं। |
+| Factory Droid | `PreToolUse`, `UserPromptSubmit`, `Stop`, `PreCompact` | पोस्ट-टूल और सबएजेंट-स्टॉप निर्णय अवलोकनात्मक हैं। |
+| Devin CLI | `PreToolUse`, `UserPromptSubmit`, `Stop`, सशर्त `PermissionRequest` | अनुमति हुक हर अनुमति मोड में नहीं चलते; पोस्ट-टूल और सेशन ईवेंट्स अवलोकनात्मक हैं। |
+| Antigravity CLI | `PreToolUse`, `Stop` | उपयोगकर्ता-प्रॉम्प्ट और पोस्ट-टूल निर्णय अवलोकनात्मक हैं; प्रॉम्प्ट निर्देश अभी भी इंजेक्ट किए जा सकते हैं। |
+| Goose | `PreToolUse` | उपयोगकर्ता-प्रॉम्प्ट, पोस्ट-टूल, और सेशन ईवेंट्स अवलोकनात्मक हैं। एक नेटिव ब्लॉकिंग स्टॉप हुक अपस्ट्रीम मौजूद है लेकिन वर्तमान एडेप्टर द्वारा इंस्टॉल नहीं किया गया है। |
 
-Capabilities version-sensitive हैं। Agent CLI को upgrade करने के बाद re-test करें, खासकर जब एक policy prompt, stop, permission, या post-tool behavior पर निर्भर हो rather than common pre-tool gate पर।
+क्षमताएं संस्करण-संवेदनशील हैं। एजेंट CLI को अपग्रेड करने के बाद फिर से परीक्षण करें, विशेषकर जब कोई नीति प्रॉम्प्ट, स्टॉप, अनुमति, या पोस्ट-टूल व्यवहार पर निर्भर हो, सामान्य पूर्व-टूल गेट के बजाय।
 
-### Hermes native plugin
+### Hermes नेटिव प्लगइन
 
-Hermes एक shell command की जगह एक profile-local native plugin के माध्यम से integrated है। Installation हर default और named Hermes profile के `plugins/failproofai` को npm package में shipped plugin से link करता है (एक copy जहां एक symlink create नहीं हो सकता), इसे उस profile के `config.yaml` में enable करता है, और केवल legacy FailproofAI shell-hook entries को migrate करता है। चूंकि plugin linked है, `npm install -g failproofai@latest` इसे बिना reinstall के update करता है। यह हर hook पर process spawn से बचाता है। Plugin Hermes 0.20.0 और बाद में को support करता है।
+Hermes को शेल कमांड के बजाय एक प्रोफाइल-स्थानीय नेटिव प्लगइन के माध्यम से एकीकृत किया गया है। स्थापना प्लगइन को हर डिफ़ॉल्ट और नामित Hermes प्रोफाइल में कॉपी करता है, इसे उस प्रोफाइल के `config.yaml` में सक्षम करता है, और केवल विरासत FailproofAI शेल-हुक प्रविष्टियों को माइग्रेट करता है। यह प्रत्येक हुक पर प्रक्रिया स्पॉन से बचता है और `instruct()` को Hermes के नेटिव ब्लॉक-टूल परिणाम के माध्यम से मॉडल तक पहुंचने देता है।
 
-Legacy shell hooks (1.0.5 और earlier द्वारा installed) Hermes cron jobs को **check नहीं** करते: हर cron run अपना खुद का hook scope बनाता है, जो native plugin join करता है और `config.yaml` shell hooks नहीं करते। `failproofai update` हर profile को migrate करता है जो पहले से ही FailproofAI use करता है linked plugin में। अगर running daemon plugin को serve नहीं कर सकता, `update` shell hooks को जगह पर छोड़ता है और non-zero exit करता है; `failproofai config` को daemon को update करने के लिए चलाएं, फिर `failproofai update` को फिर से चलाएं। Cron jobs अपने अगले run पर plugin को load करते हैं; running gateways और interactive sessions को इसे load करने के लिए restart करें।
+पहला मिलान वाला निर्देश लंबित कॉल को ब्लॉक करता है। एक ही API अनुरोध ब्लॉक रहता है; एक बाद की मॉडल पुनरावृत्ति पुनः प्रयास कर सकती है। एक स्थायी, प्रोफाइल-स्कोप्ड लेजर और एक प्रति-टर्न कैप एक सलाह निर्देश को एक अंतहीन लूप बनने से रोकता है। `deny()` एक कठिन ब्लॉक रहता है। एक अक्षम, अपूर्ण, डुप्लिकेट, या नई अनकॉन्फ़िगर्ड प्रोफाइल का पता लगाने के लिए `failproofai config --status` चलाएं।
 
-Hermes पर, `deny()` call को block करता है और `instruct()` नहीं: call चलता है, और guidance इसके result की शुरुआत में रखी जाती है — एक JSON result के रूप में पहली key, `failproof_policy_reminder`, या एक leading `[FailproofAI policy reminder (...)]` line — तो model इसे output के साथ पढ़ता है, और scripts जो result को parse करते हैं काम करते रहते हैं। एक policy का reminder एक turn में एक बार दिखाया जाता है, और एक बड़े result पर short रखा जाता है। `deny()` का उपयोग करें जब एक action बिल्कुल नहीं होना चाहिए: `instruct()` अब पहले action को stop नहीं करता। `execute_code` script से किए गए tool calls अपने reminder को `execute_code` result पर रखते हैं जो model पढ़ता है; script की अपनी copy result के बिना रखी जाती है। Model को कभी भी अपने replies में एक reminder को quote न करने के लिए कहा जाता है।
-
-एक Hermes build plugin middleware के बिना matching call को एक बार "FailproofAI policy guidance" के साथ hold करने के लिए fallback करता है; अगला model response इसे repeat कर सकता है, या बिना फिर से hold किए same work दूसरे tool के साथ कर सकता है।
-
-Tool names को Hermes versions में match किया जाता है: `process_manage`, `cronjob_manage`, और `todo_list` (Hermes 0.21) को `process`, `cronjob`, और `todo` (Hermes 0.20) की तरह treat किया जाता है। हर बार जब Hermes plugin को load करता है तो `heartbeat.json` को profile के `plugin-data/agent-plugin-failproofai-5296f299/` directory में लिखता है, Hermes version, plugin का path और version, और hooks जो Hermes ने accept किए, record करते हुए। `failproofai config --status` को एक disabled, incomplete, duplicated, या newly unconfigured profile का पता लगाने के लिए चलाएं, या एक जो अभी भी legacy shell hooks पर है (रिपोर्ट किया जाता है "Hermes cron jobs are not checked")।
-
-### OpenClaw plugin
-
-OpenClaw FailproofAI को एक in-process gateway plugin के रूप में load करता है, हर profile के `openclaw.json` में registered। Hermes plugin की तरह, यह हर verdict के लिए local `failproofaid` daemon से इसके socket पर पूछता है, तो इसे एक running daemon की जरूरत है: installation बिना एक के refuse करता है, और अगर daemon answer नहीं दे सकता, tool calls और prompts block होते हैं और reason gateway log में written होता है। `npm install -g failproofai@latest` के बाद, OpenClaw gateway को restart करें ताकि यह updated plugin को load करे।
-
-### Codex hook trust
-
-Codex 0.129 और बाद में `~/.codex/hooks.json` से एक hook केवल तभी चलाता है जब आप इसे interactive `codex` ("Review hooks") में approve करते हैं; तब तक, हर Codex session — headless `codex exec` सहित — इसे skip करता है। Codex के system config में hooks, `/etc/codex/config.toml` Linux और macOS पर, बिना उस approval के चलते हैं।
-
-तो जब `failproofai config` (या `policies --install --cli codex` user scope पर) sudo use कर सकता है, यह Codex hooks को `/etc/codex/config.toml` में, `# >>> failproofai managed hooks >>>` और `# <<< failproofai managed hooks <<<` के बीच लिखता है, और बाकी file को जैसा था वैसा छोड़ता है।
-
-वह file machine के हर account पर लागू होता है, तो इसमें हर hook `/opt/failproofai-codex/codex-hook` चलाता है, एक short script जो root के स्वामित्व में है। Script event को हर account के अपने failproofai को hand करता है जिसने hooks को वहां setup किया है, और किसी other account के लिए कुछ नहीं करता। एक अन्य account जो failproofai के Codex hooks चाहता है उन्हें अपने लिए setup करता है।
-
-Block को लिखने से पहले, और हर `failproofai update` पर, failproofai check करता है कि `/etc/codex/config.toml` self, script, उन के ऊपर हर directory, और `sh`, `id` और `cat` जो यह चलाता है, root के हैं और कोई और लिख नहीं सकता, और कि हर account का failproofai उस account या root के हैं। Install पर, जब वह check fail होता है, आपके hooks `~/.codex/hooks.json` में रहते हैं। Update पर, एक script जो इसे fail करता है block को बाहर निकालता है, और एक account जिसका failproofai fail करता है block से निकाला जाता है; एक बार fixed होने पर `failproofai config` को फिर से चलाएं। `failproofai update` एक earlier version द्वारा written block को भी rewrite करता है script use करने के लिए, जिसे sudo की जरूरत है।
-
-Sudo के बिना, और Windows पर, hooks `~/.codex/hooks.json` में रहते हैं। `failproofai config` और `failproofai config --status` तब Codex को enforce करने के रूप में count नहीं करते जब तक hooks approve नहीं होते, और कैसे fix करें कहते हैं: `failproofai config` को फिर से चलाएं और sudo allow करें, या `codex` को एक बार खोलें और hooks को approve करें।
-
-## Install capture और policy hooks
+## कैप्चर और नीति हुक इंस्टॉल करें
 
 <Tabs>
   <Tab title="Dashboard">
-    1. **settings → api keys** खोलें और `events:add` और `policies:pull` के साथ एक key create करें, machine या environment के लिए नाम दिया।
-    2. Target machine पर, local CLI को displayed key के साथ connect करें और harness hooks को install करें।
-    3. एक नया agent session शुरू करें, फिर **trace → live events** के तहत इसके hook और session events को confirm करें।
-    4. उसी time window के लिए **fix → activity** खोलें और confirm करें कि एक policy decision machine को attributed है।
+    1. **Administration → Keys** खोलें और `events:add` और `policies:pull` के साथ एक कुंजी बनाएं, मशीन या वातावरण के लिए नामित।
+    2. लक्ष्य मशीन पर, प्रदर्शित कुंजी के साथ स्थानीय CLI को कनेक्ट करें और हार्नेस हुक इंस्टॉल करें।
+    3. एक नया एजेंट सेशन शुरू करें, फिर **Observe → Events** के तहत इसके हुक और सेशन ईवेंट्स की पुष्टि करें।
+    4. एक ही समय विंडो के लिए **Observe → policy** खोलें और पुष्टि करें कि एक नीति निर्णय मशीन को जिम्मेदार है।
 
-    Connection एक machine key के साथ शुरू होता है। Confirm करें कि इसमें अपनी secret को copy करने से पहले ingestion और policy-delivery दोनों permissions शामिल हैं।
+    कनेक्शन एक मशीन कुंजी के साथ शुरू होता है। इससे पहले कि इसका गुप्त कॉपी करें, पुष्टि करें कि इसमें इनजेशन और नीति-डिलीवरी दोनों अनुमतियां शामिल हैं।
 
-    ![नई API key drawer जो event ingestion और policy delivery permissions grant करने के लिए उपयोग की जाती है।](/images/dashboard/key-create.png)
+    ![इवेंट इनजेशन और नीति डिलीवरी अनुमतियां देने के लिए उपयोग की जाने वाली नई API कुंजी ड्रॉयर।](/images/dashboard/key-create.png)
 
-    Hooks को install करने के बाद, Events stream को machine और environment से नई events दिखानी चाहिए जिसे आपने connect किया।
+    हुक इंस्टॉल करने के बाद, इवेंट्स स्ट्रीम को मशीन और वातावरण से नई ईवेंट्स दिखानी चाहिए जिससे आपने कनेक्ट किया है।
 
-    ![Live Events stream जो एक नए install किए गए harness की reporting confirm करने के लिए उपयोग की जाती है।](/images/dashboard/events-stream.png)
+    ![नई इंस्टॉल की गई हार्नेस की रिपोर्टिंग की पुष्टि करने के लिए उपयोग की जाने वाली लाइव इवेंट्स स्ट्रीम।](/images/dashboard/events-stream.png)
 
-    अंत में, verify करें कि policy decisions उसी machine को attributed हैं। यह confirm करता है कि harness trace events के साथ-साथ policy activity की भी reporting कर रहा है।
+    अंत में, सत्यापित करें कि नीति निर्णय एक ही मशीन को जिम्मेदार हैं। यह पुष्टि करता है कि हार्नेस ट्रेस ईवेंट्स के साथ-साथ नीति गतिविधि की रिपोर्ट कर रहा है।
 
-    ![Policy page जो नए connected harness से policy decisions को verify करने के लिए उपयोग की जाती है।](/images/dashboard/policy-observe.png)
+    ![नई कनेक्ट की गई हार्नेस से नीति निर्णयों को सत्यापित करने के लिए उपयोग किया जाने वाला नीति पृष्ठ।](/images/dashboard/policy-observe.png)
   </Tab>
   <Tab title="CLI">
-    Machine key को shell में पढ़ें। `read -s` इसे एक prompt पर लेता है जो echo नहीं करता, तो यह कभी भी command या shell history में नहीं दिखता:
+    मशीन कुंजी को शेल में पढ़ें। `read -s` इसे एक प्रॉम्प्ट पर लेता है जो ईको नहीं करता, इसलिए यह कभी कमांड में या शेल हिस्ट्री में नहीं दिखता:
 
     ```bash
     read -rs FAILPROOFAI_CLOUD_TOKEN && export FAILPROOFAI_CLOUD_TOKEN
     ```
 
-    फिर machine को setup करें — यह हर detected harness के लिए hooks wire करता है, daemon को install करता है, और Cloud से connect करता है:
+    फिर मशीन को सेटअप करें — यह हर पाई गई हार्नेस के लिए हुक वायर करता है, डेमन इंस्टॉल करता है, और Cloud से कनेक्ट करता है:
 
     ```bash
     failproofai config
     failproofai policies add FailproofAI/policies
     ```
 
-    Setup अपने आप कोई policy enable नहीं करता, जो दूसरी command के लिए है।
+    सेटअप अपने आप में कोई नीति सक्षम नहीं करता है, जो दूसरी कमांड के लिए है।
 
-    या named harnesses और एक configuration scope को target करें:
+    या नामित हार्नेस और एक कॉन्फ़िगरेशन स्कोप को लक्षित करें:
 
     ```bash
     failproofai policies --install \
@@ -116,9 +94,9 @@ Sudo के बिना, और Windows पर, hooks `~/.codex/hooks.json` म
       --scope user
     ```
 
-    Project scope hook configuration को एक repository के साथ रखता है। User scope repositories में काम को cover करता है। Claude Code local scope को भी support करता है; support harness के अनुसार अलग-अलग है और CLI unsupported combinations को reject करता है।
+    प्रोजेक्ट स्कोप हुक कॉन्फ़िगरेशन को एक रिपॉजिटरी के साथ रखता है। उपयोगकर्ता स्कोप रिपॉजिटरी में काम को कवर करता है। Claude Code स्थानीय स्कोप को भी समर्थन करता है; समर्थन हार्नेस के अनुसार भिन्न होता है और CLI असमर्थित संयोजनों को अस्वीकार करता है।
 
-    Machine और इसके events को verify करें:
+    मशीन और इसकी ईवेंट्स को सत्यापित करें:
 
     ```bash
     failproofai config --status
@@ -128,16 +106,16 @@ Sudo के बिना, और Windows पर, hooks `~/.codex/hooks.json` म
   </Tab>
 </Tabs>
 
-## एक non-default session path जोड़ें
+## एक गैर-डिफ़ॉल्ट सेशन पथ जोड़ें
 
 <Tabs>
   <Tab title="Dashboard">
-    Extra paths machine पर register होते हैं, Cloud में नहीं। एक जोड़ने के बाद, **trace → sessions** खोलें, machine के environment के लिए filter करें, और confirm करें कि नए path से sessions दिखाई देते हैं। एक session खोलें और इसे audit में rely करने से पहले agent, harness, और event timestamps को check करें।
+    अतिरिक्त पथ मशीन पर पंजीकृत होते हैं, Cloud में नहीं। एक को जोड़ने के बाद, **Observe → Sessions** खोलें, मशीन के वातावरण को फ़िल्टर करें, और नई पथ से सेशन दिखाई देने की पुष्टि करें। एक सेशन खोलें और इसे ऑडिट में पूरी तरह भरोसे से पहले एजेंट, हार्नेस, और ईवेंट टाइमस्टैम्प जांचें।
 
-    ![Sessions list machine के environment के लिए filter किया गया जो additional capture path से data receive कर रहा है।](/images/dashboard/sessions-list.png)
+    ![अतिरिक्त कैप्चर पथ से डेटा प्राप्त करने वाले पर्यावरण के लिए फ़िल्टर किया गया सेशन सूची।](/images/dashboard/sessions-list.png)
   </Tab>
   <Tab title="CLI">
-    एक optional label के साथ एक path जोड़ें, फिर configured paths को inspect करें:
+    एक वैकल्पिक लेबल के साथ एक पथ जोड़ें, फिर कॉन्फ़िगर किए गए पथों का निरीक्षण करें:
 
     ```bash
     failproofai harness add-path claude checkout=/srv/checkout/.claude
@@ -146,10 +124,10 @@ Sudo के बिना, और Windows पर, hooks `~/.codex/hooks.json` म
     failproofai backfill --since 7d
     ```
 
-    `failproofai harness remove-path claude checkout` के साथ एक path को हटाएं।
+    `failproofai harness remove-path claude checkout` के साथ एक पथ हटाएं।
   </Tab>
 </Tabs>
 
 <Tip>
-  Installation के बाद एक नया session चलाएं। Rollout को expand करने से पहले live event stream और एक actual policy decision दोनों को verify करें।
+  स्थापना के बाद एक नया सेशन चलाएं। विस्तार रोलआउट से पहले लाइव ईवेंट स्ट्रीम और एक वास्तविक नीति निर्णय दोनों को सत्यापित करें।
 </Tip>

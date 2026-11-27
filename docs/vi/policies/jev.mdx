@@ -1,40 +1,40 @@
 ---
-title: "Chính sách Jev"
-description: "Thêm đánh giá trực tiếp của Jev vào các cuộc gọi công cụ có kiểm soát, sau đó kiểm tra trước khi thực thi các quyết định của nó."
+title: "Jev policies"
+description: "Thêm bài kiểm tra trực tiếp của Jev vào các lệnh công cụ được kiểm soát, sau đó kiểm tra nó trước khi thực thi các quyết định của nó."
 icon: "shield-check"
 ---
 
-Jev đọc một cuộc gọi công cụ so với những gì người dùng yêu cầu agent làm. Sử dụng nó khi chính sách so khớp chuỗi chặn công việc hợp lệ hoặc bỏ qua một hành động rủi ro cần bối cảnh. Nó trả lời cùng với các chính sách của bạn ở cổng `PreToolUse` hoặc `PermissionRequest`. Để lấy điểm **sau** khi một phiên kết thúc, hãy sử dụng [đánh giá Jev](/vi/evaluations/jev).
+Jev đọc một lệnh công cụ so với những gì người dùng yêu cầu agent thực hiện. Sử dụng nó khi chính sách so khớp chuỗi chặn công việc hợp lệ hoặc bỏ sót một hành động rủi ro cần có ngữ cảnh. Nó trả lời cùng với các chính sách của bạn tại cổng `PreToolUse` hoặc `PermissionRequest`. Để có điểm số **sau** khi phiên kết thúc, hãy sử dụng [đánh giá Jev](/vi/evaluations/jev).
 
 ## Bắt đầu ở chế độ quan sát
 
-Cài đặt Failproof AI và gắn các hook vào một [harness được hỗ trợ](/vi/reference/harnesses). Sử dụng failproofai 1.0.8-beta.0 hoặc phiên bản mới hơn.
+Cài đặt Failproof AI và gắn kèm hook vào một [harness được hỗ trợ](/vi/reference/harnesses). Sử dụng failproofai 1.0.8-beta.0 hoặc mới hơn.
 
-Failproof AI không có sẵn bất kỳ bài kiểm tra Jev nào. Cài đặt chúng dưới dạng một gói, nếu không Jev không có gì để hỏi và sẽ không bao giờ được gọi:
+Failproof AI không có kiểm tra Jev. Cài đặt chúng như một gói, nếu không Jev sẽ không có gì để hỏi và không bao giờ được gọi:
 
 ```bash
 failproofai policies add FailproofAI/jev-policies
 ```
 
-Sau đó chọn cách các yêu cầu được gửi đến Jev:
+Sau đó chọn cách các yêu cầu đến Jev:
 
 | Tuyến đường | Bước đầu tiên |
 | --- | --- |
-| FailproofAI Cloud | Kết nối với khóa **machine** mang `jev:evaluate`. Trên một máy không có cấu hình Jev, `failproofai config` bật Jev ở chế độ quan sát. |
-| Nhà cung cấp của riêng bạn | Trong bảng điều khiển cục bộ, mở **Settings → Jev**, chọn nhà cung cấp, dán mã thông báo của nó và chọn **observe**. Hoặc chạy `failproofai jev --url https://api.typesafe.ai/v1 --mode observe --key-stdin < ~/typesafe.key`. |
+| FailproofAI Cloud | Kết nối với khóa **machine** mang `jev:evaluate`. Trên máy không có cấu hình Jev, `failproofai config` bật Jev ở chế độ quan sát. |
+| Nhà cung cấp của riêng bạn | Trong bảng điều khiển cục bộ, mở **Settings → Jev**, chọn nhà cung cấp, dán token của nó và chọn **observe**. Hoặc chạy `failproofai jev --url https://api.typesafe.ai/v1 --mode observe --key-stdin < ~/typesafe.key`. |
 
-![Cài đặt Jev của bảng điều khiển cục bộ: nhà cung cấp, điểm cuối, mã thông báo và chế độ quan sát trước khi bật Jev.](/images/dashboard/jev-settings.png)
+![Cài đặt Jev của bảng điều khiển cục bộ: nhà cung cấp, endpoint, token và chế độ quan sát trước khi bật Jev.](/images/dashboard/jev-settings.png)
 
 ```bash
 failproofai jev status
 failproofai jev test
 ```
 
-`test` kiểm tra điểm cuối. Để kiểm tra đường dẫn hook, yêu cầu một agent được hook sử dụng công cụ đọc tệp của nó trên `README.md`. Xác nhận rằng cuộc gọi công cụ đó xuất hiện trong phiên, sau đó kiểm tra **Policies → Activity** trong [bảng điều khiển cục bộ](/vi/reference/local-dashboard#review-policy-activity). Số lượng Jev trong `status` sẽ tăng. Chế độ quan sát ghi lại những gì Jev sẽ quyết định trong khi kết quả chính sách hiện tại của bạn vẫn áp dụng.
+`test` kiểm tra endpoint. Để kiểm tra đường dẫn hook, yêu cầu agent được gắn kèm hook sử dụng công cụ đọc tệp của nó trên `README.md`. Xác nhận rằng lệnh công cụ đó xuất hiện trong phiên, sau đó kiểm tra **Policies → Activity** trong [bảng điều khiển cục bộ](/vi/reference/local-dashboard#review-policy-activity). Số lượng Jev trong `status` sẽ tăng lên. Chế độ quan sát ghi lại những gì Jev sẽ quyết định trong khi kết quả chính sách hiện tại của bạn vẫn áp dụng.
 
-## Quyết định khi nào cần thực thi
+## Quyết định khi nào bắt buộc thực thi
 
-Một chính sách **hard** luôn có quyết định cuối cùng. Jev chỉ có thể xóa một lệnh từ chối từ một chính sách được đánh dấu rõ ràng là **reviewable** và chỉ khi nó kiểm tra được mối quan tâm được đặt tên của chính sách đó. Xem [quyền hạn chính sách](/vi/policies/authority) trước khi dựa vào một quyết định cho phép. Jev cũng có thể cảnh báo hoặc từ chối riêng. Nếu nó không thể trả lời, kết quả chính sách quyết định cuộc gọi đó.
+Chính sách **hard** luôn có quyền quyết định cuối cùng. Jev chỉ có thể xóa quyết định từ chính sách được đánh dấu rõ ràng là **reviewable** và chỉ khi nó đã kiểm tra mối quan tâm được đặt tên của chính sách đó. Xem [policy authority](/vi/policies/authority) trước khi dựa vào quyết định cho phép. Jev cũng có thể cảnh báo hoặc từ chối tự mình. Nếu nó không thể trả lời, kết quả chính sách quyết định lệnh gọi đó.
 
 Khi kết quả quan sát trông ổn, chuyển sang chế độ thực thi trong **Settings → Jev** hoặc chạy:
 
@@ -42,4 +42,4 @@ Khi kết quả quan sát trông ổn, chuyển sang chế độ thực thi tron
 failproofai jev setup --mode enforce
 ```
 
-Để xem các URL nhà cung cấp, khóa Cloud, cấu hình, dự phòng và dữ liệu được gửi với mỗi yêu cầu, hãy xem [tài liệu tham khảo tích hợp Jev](/vi/reference/jev).
+Để biết các URL nhà cung cấp, khóa Cloud, cấu hình, dự phòng và dữ liệu được gửi với mỗi yêu cầu, xem [tài liệu tham khảo tích hợp Jev](/vi/reference/jev).

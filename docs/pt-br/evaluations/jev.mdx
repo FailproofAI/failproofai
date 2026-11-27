@@ -1,28 +1,28 @@
 ---
 title: "Avaliações Jev"
-description: "Use o Jev para pontuar uma sessão finalizada com base em uma pergunta de respostas conhecidas."
+description: "Use Jev para pontuar uma sessão finalizada com base em uma pergunta de respostas conhecidas."
 icon: "list-checks"
 ---
 
-Uma avaliação Jev lê uma **sessão finalizada** e atribui uma pontuação de 0 a 1. Use-a quando a resposta é conhecida com antecedência, como "O cliente expressou urgência?" ou "Qual o nível de frustração do cliente?" Ela ajuda a identificar padrões entre execuções; não interrompe uma chamada de ferramenta. Para decisões tomadas **antes** de uma ferramenta ser executada, use as [políticas Jev](/pt-br/policies/jev).
+Uma avaliação Jev lê uma **sessão finalizada** e atribui uma pontuação de 0 a 1. Use-a quando a resposta é conhecida com antecedência, como "O cliente demonstrou urgência?" ou "Qual foi o nível de frustração do cliente?". Ela ajuda a identificar padrões entre execuções; não interrompe chamadas de ferramentas. Para decisões tomadas **antes** de uma ferramenta ser executada, use [políticas Jev](/pt-br/policies/jev).
 
-## Crie uma no dashboard
+## Criar no dashboard
 
 1. Abra **analyse → checks → new evaluation** e escolha **decision model** em **how should it score?**.
-2. Descreva uma pergunta e suas possíveis respostas. Por exemplo: "O agente prometeu um reembolso antes de verificar a política de reembolsos? Responda sim ou não." Em **review**, confira a **question**, o que **yes means** e o que **no means**; um modelo de decisão sempre fornece uma pontuação.
-3. [Teste](/pt-br/evaluations/test) em sessões recentes e, em seguida, [publique](/pt-br/evaluations/deploy). Novas sessões concluídas serão pontuadas; use o [backfill](/pt-br/evaluations/deploy#score-sessions-you-already-have) caso precise incluir o histórico anterior.
+2. Descreva uma pergunta e suas possíveis respostas. Por exemplo: "O agente prometeu reembolso antes de verificar a política de reembolso? Responda sim ou não." Em **review**, verifique a **question**, o que **yes means** e o que **no means**; um decision model sempre gera uma pontuação.
+3. [Teste-a](/pt-br/evaluations/test) em sessões recentes e, em seguida, [publique-a](/pt-br/evaluations/deploy). Novas sessões concluídas serão pontuadas; utilize o [backfill](/pt-br/evaluations/deploy#score-sessions-you-already-have) caso precise incluir o histórico anterior.
 
-![O formulário compartilhado de criação de avaliação, onde você descreve uma pergunta de resposta fixa, revisa o rascunho e publica após os testes. O exemplo exibido é uma avaliação de código; uma pergunta Jev usa o mesmo fluxo de criação.](/images/dashboard/eval-authoring-draft.png)
+![O formulário compartilhado de criação de avaliações, onde você descreve uma pergunta de resposta fixa, revisa o rascunho e publica após os testes. O exemplo exibido é uma avaliação de código; uma pergunta Jev utiliza o mesmo fluxo de criação.](/images/dashboard/eval-authoring-draft.png)
 
-Ao rascunhar, o failproof pode escolher entre **code**, um **decision model** (Jev) e um [**llm as judge**](/pt-br/evaluations/judge). Verifique a escolha feita antes de publicar. O Jev fornece uma pontuação sem raciocínio em texto; escolha um judge quando precisar de uma explicação. Consulte a [referência de avaliações Jev](/pt-br/reference/jev-evaluations) para tipos de perguntas e limites de pontuação.
+Ao criar o rascunho, o failproof pode escolher entre **code**, um **decision model** (Jev) e um [**llm as judge**](/pt-br/evaluations/judge). Verifique a escolha antes de publicar. Jev gera uma pontuação sem explicações em prosa; escolha um judge quando precisar de uma justificativa. Consulte a [referência de avaliações Jev](/pt-br/reference/jev-evaluations) para ver os tipos de perguntas e limites de pontuação.
 
-## Leia as pontuações
+## Ler as pontuações
 
-Abra **analyse → checks → evals** e selecione a avaliação para visualizar os resultados por agente e período. Pelo terminal, o Cloud CLI pode acessar os mesmos resultados:
+Abra **analyse → checks → evals** e selecione a avaliação para visualizar os resultados em gráfico por agente e período. No terminal, o Cloud CLI permite acessar os mesmos resultados:
 
 ```bash
 fp evals --since 7d
 fp evals --aggregate --since 7d
 ```
 
-Pelo terminal, `fp evaluators` cria e publica avaliações Jev, e `fp evals` lê seus resultados. Consulte a [referência do Cloud CLI](/pt-br/reference/cloud-cli#evaluations) para ambos.
+No terminal, `fp evaluators` cria e publica avaliações Jev, enquanto `fp evals` lê seus resultados. Consulte a [referência do Cloud CLI](/pt-br/reference/cloud-cli#evaluations) para ambos.

@@ -1,15 +1,15 @@
 ---
-title: "LLM judges"
-description: "Avalie sessões com base em aspectos que o código não consegue medir — correção, tom, se o agente seguiu uma política — descrevendo o que é uma boa resposta e deixando um modelo ler a conversa."
+title: "Juízes LLM"
+description: "Avalie sessões em aspectos que o código não consegue medir — correção, tom, se o agente seguiu uma política — descrevendo o que é uma boa resposta e deixando um modelo ler a conversa."
 icon: "scale"
 ---
 
-Uma avaliação Python hospedada consegue contar e comparar: quantas chamadas de ferramenta ocorreram, quantos erros, quanto tempo durou uma sessão. Ela não consegue dizer se uma resposta foi *correta*, se uma resposta foi rude ou se o agente verificou uma política antes de agir.
+Uma avaliação Python hospedada pode contar e comparar: quantas chamadas de ferramentas, quantos erros, quanto tempo durou uma sessão. Ela não consegue dizer se uma resposta foi *correta*, se uma resposta foi rude ou se o agente verificou uma política antes de agir.
 
-Um **LLM judge** consegue. Você descreve o que é uma boa resposta em linguagem natural, e um modelo lê a sessão e retorna uma pontuação de 0 a 1 com seu raciocínio.
+Um **juíz LLM** consegue. Você descreve o que é uma boa resposta em linguagem natural, e um modelo lê a sessão e retorna uma pontuação de 0 a 1 com seu raciocínio.
 
 <Note>
-Um judge custa uma chamada de modelo para cada sessão em que é executado, enquanto uma avaliação por código não custa nada. Use um judge apenas para perguntas que exigem que a conversa seja *compreendida* — e defina uma condição para que ele rode apenas nas sessões que a pergunta realmente abrange.
+Um juíz consome uma chamada de modelo para cada sessão avaliada, enquanto uma avaliação de código não tem custo algum. Use um juíz apenas para perguntas que precisam que a conversa seja *compreendida* — e defina uma condição para que ele execute apenas nas sessões relevantes para a pergunta.
 </Note>
 
 ## Qual devo usar?
@@ -21,35 +21,35 @@ Um judge custa uma chamada de modelo para cada sessão em que é executado, enqu
 | A sessão durou menos de 30 segundos? | código |
 | O cliente expressou urgência? | [modelo de decisão](/pt-br/evaluations/jev) |
 | Quão frustrado estava o cliente? | [modelo de decisão](/pt-br/evaluations/jev) |
-| A resposta estava realmente correta? | **judge** |
-| A resposta foi rude ou dismissiva? | **judge** |
-| Ele verificou a política de reembolso antes de prometer um reembolso? | **judge** |
+| A resposta estava de fato correta? | **juíz** |
+| A resposta foi rude ou desdenhosa? | **juíz** |
+| Ele verificou a política de reembolso antes de prometer um reembolso? | **juíz** |
 
-A regra prática é: **contável → código, respostas que você pode listar com antecedência → [modelo de decisão](/pt-br/evaluations/jev), precisa de uma explicação → judge.** O judge é o que escreve um texto sobre o que observou; recorra a ele quando o número fizer alguém perguntar "por quê?".
+A regra geral: **contável → código, respostas que você pode listar com antecedência → [modelo de decisão](/pt-br/evaluations/jev), precisa de uma explicação → juíz.** O juíz é o que escreve em prosa sobre o que observou; recorra a ele quando o número fizer alguém perguntar "por quê?".
 
-Você não precisa decidir de antemão. Descreva o que quer medir e o failproof escolhe e informa qual foi escolhido e por quê. Você pode alterar isso em **how should it score?**.
+Você não precisa decidir de antemão. Descreva o que quer medir e o failproof escolhe, informando qual opção foi selecionada e por quê. Você pode alterar isso em **como deve pontuar?**.
 
-## Criar um judge
+## Criar um juíz
 
-1. Acesse **analyse → checks → new evaluation** e escolha **llm as judge** em **how should it score?**.
+1. Vá em **analisar → verificações → nova avaliação** e escolha **llm como juíz** em **como deve pontuar?**.
 2. Descreva o que você quer que seja julgado.
-3. Em **review**, verifique os critérios (**what the judge looks for**), o limite (**passes at or above**) e a **condition**, depois faça o deploy.
+3. Em **revisão**, verifique os critérios (**o que o juíz procura**), o limiar (**aprovado a partir de**) e a **condição**, depois implante.
 
 ### Critérios
 
 Uma ou duas frases, escritas como um requisito em vez de uma pergunta:
 
-> O assistente não deve prometer nem aprovar um reembolso sem antes verificar a política de reembolso.
+> O assistente não deve prometer ou aprovar um reembolso sem antes verificar a política de reembolso.
 
-Seja específico sobre o que faria com que a sessão *falhasse*. "A resposta foi boa?" gera um número que não significa nada; a frase acima gera um número sobre o qual você pode agir.
+Seja específico sobre o que faria com que a sessão *reprovasse*. "A resposta foi boa?" gera um número sem significado; a frase acima gera um número sobre o qual você pode agir.
 
-### Limite (threshold)
+### Limiar
 
-A pontuação a partir da qual a sessão passa. `0.7` é um bom ponto de partida. A pontuação completa de 0 a 1 é sempre armazenada, então o limite apenas determina aprovação/reprovação — você pode ver a distribuição e ajustar.
+A pontuação a partir da qual a sessão é aprovada. `0.7` é um ponto de partida razoável. A pontuação completa de 0 a 1 é sempre armazenada, portanto o limiar só determina aprovação/reprovação — você pode ver a distribuição e ajustar.
 
 ### Condição
 
-A mesma condição Python de qualquer outra avaliação, e aqui ela importa muito mais. Sem uma condição, o judge roda em **todas** as sessões da sua organização, com uma chamada de modelo para cada uma:
+A mesma condição Python de qualquer outra avaliação, e ela importa muito mais aqui. Sem uma condição, o juíz executa em **todas** as sessões da sua organização, consumindo uma chamada de modelo por sessão:
 
 ```python
 session.count("tool_use") > 0
@@ -59,33 +59,33 @@ session.count("tool_use") > 0
 session.agent_id == "support-bot" and session.count("error") > 0
 ```
 
-O dashboard avisa se você fizer o deploy de um judge sem condição. Às vezes isso faz sentido — um agente de baixo volume que você quer julgar por completo — mas deve ser uma decisão consciente, não um acidente.
+O painel avisa se você implantar um juíz sem condição. Isso às vezes é intencional — um agente de baixo volume que você quer avaliar completamente — mas deve ser uma decisão, não um acidente.
 
-## O que o judge vê
+## O que o juíz vê
 
-A conversa, como turnos, do mais recente ao mais antigo quando a sessão for longa:
+A conversa, em turnos, do mais recente ao mais antigo quando a sessão é longa:
 
 - o que o usuário disse
 - o que o assistente respondeu
 - **cada ferramenta que o agente chamou e o que essa chamada retornou, em ordem**
 
-Esta última parte é o que torna "ele fez X *antes* de Y" uma pergunta justa de se fazer. Uma chamada de ferramenta que falhou é exibida como falha, então "ele se recuperou adequadamente de um erro" também funciona.
+Essa última parte é o que torna a pergunta "ele fez X *antes* de Y" justa de se fazer. Uma chamada de ferramenta que falhou é exibida como falha, então "ele se recuperou adequadamente de um erro" também funciona.
 
-Sessões muito longas são truncadas para caber no contexto do modelo. Quando isso acontece, o raciocínio informa explicitamente — você nunca verá um julgamento feito sobre uma parte da sessão apresentado como se fosse feito sobre ela inteira.
+Sessões muito longas são truncadas para caber no contexto do modelo. Quando isso acontece, o raciocínio informa explicitamente — você nunca verá um julgamento feito sobre parte de uma sessão apresentado como se fosse sobre a sessão inteira.
 
 ## Lendo os resultados
 
-Um judge produz uma **pontuação** como qualquer outra avaliação pontuada, então aparece em gráficos, filtros e acionamento de alertas da mesma forma. Junto ao número, ele armazena o **raciocínio** do judge — o parágrafo que explica o que foi observado. Leia isso primeiro quando uma pontuação te surpreender; geralmente é ou uma sessão genuinamente interessante ou um sinal de que os critérios precisam ser refinados.
+Um juíz produz uma **pontuação** como qualquer outra avaliação pontuada, portanto ela aparece em gráficos, filtros e alertas da mesma forma. Junto ao número, o **raciocínio** do juíz é armazenado — o parágrafo explicando o que ele observou. Leia esse parágrafo primeiro quando uma pontuação te surpreender; normalmente é uma sessão genuinamente interessante ou um sinal de que os critérios precisam ser refinados.
 
-As pontuações são estáveis para casos claros, mas não são determinísticas bit a bit. Trate uma pontuação limítrofe isolada como um convite para ler a sessão, não como um veredicto.
+As pontuações são estáveis para casos claros, mas não são determinísticas bit a bit. Trate uma pontuação limítrofe isolada como um convite para ir ler a sessão, não como um veredicto.
 
 ## Limitações
 
-- **Testes ainda não estão disponíveis.** Uma execução de teste não tem uma sessão associada, e essa associação é o que autoriza o gasto do seu orçamento de modelo — portanto, não há nada para uma chamada de teste cobrar. Faça o deploy com uma condição restrita e leia os primeiros resultados.
-- **O backfill gasta seu orçamento de modelo.** Fazer backfill de uma avaliação por código é gratuito; pontuar sessões passadas com um judge custa uma chamada de modelo para cada uma. Marque **preview past sessions after deploy** ou selecione **score past sessions** na página dele: contar o que está faltando é gratuito, e nada é pontuado até você confirmar. Mantenha a janela restrita.
-- **Editar os critérios publica uma nova versão.** Pontuações antigas e novas não são comparáveis, por isso são mantidas separadas em vez de misturadas em uma única linha de tendência.
-- **Um judge sempre produz uma pontuação**, nunca uma métrica ou uma asserção.
+- **Testes ainda não estão disponíveis.** Uma execução de teste não tem uma sessão atribuída, e essa atribuição é o que autoriza o gasto do seu orçamento de modelo — portanto não há nada que uma chamada de teste possa cobrar. Implante com uma condição restrita e leia os primeiros resultados.
+- **O preenchimento retroativo consome seu orçamento de modelo.** Preencher retroativamente uma avaliação de código é gratuito; pontuar sessões passadas com um juíz custa uma chamada de modelo por cada uma. Marque **pré-visualizar sessões passadas após implantar**, ou selecione **pontuar sessões passadas** na página da avaliação: contar o que falta é gratuito, e nada é pontuado até você confirmar. Mantenha a janela restrita.
+- **Editar os critérios publica uma nova versão.** Pontuações antigas e novas não são comparáveis, portanto são mantidas separadas em vez de misturadas em uma única linha de tendência.
+- **Um juíz sempre produz uma pontuação**, nunca uma métrica ou uma asserção.
 
-## Quando seu orçamento acabar
+## Quando seu orçamento se esgotar
 
-Os judges gastam o orçamento de modelo da sua organização. Quando ele se esgota, as avaliações de judge param com um motivo claro em vez de falhar silenciosamente, e **as avaliações por código continuam rodando normalmente**. Recarregue o orçamento e elas reiniciam na próxima sessão.
+Os juízes consomem o orçamento de modelo da sua organização. Quando ele se esgota, as avaliações de juíz param com uma razão clara em vez de falhar silenciosamente, e **as avaliações de código continuam funcionando normalmente**. Recarregue o orçamento e elas retomam na próxima sessão.

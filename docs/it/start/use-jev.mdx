@@ -1,20 +1,20 @@
 ---
 title: "Usa Jev"
-description: "Configura le valutazioni Jev per sessioni completate o i criteri Jev per la revisione live delle chiamate tool."
+description: "Configura le valutazioni Jev per le sessioni completate o le policy Jev per la revisione dei tool call in tempo reale."
 icon: "sparkles"
 ---
 
-Jev aiuta in due punti durante l'esecuzione di un agente: valutare una sessione completata rispetto a risposte note, oppure revisionare una chiamata tool nel contesto di ciò che hai chiesto all'agente di fare.
+Jev aiuta in due punti durante l'esecuzione di un agente: valutare una sessione completata rispetto a risposte note, oppure revisionare un tool call nel contesto di ciò che hai chiesto all'agente di fare.
 
 <Tabs>
   <Tab title="Jev evals">
-    Usa una valutazione Jev quando una sessione completata può essere valutata rispetto a una domanda con alcune risposte note, ad esempio "Il cliente ha chiesto un rimborso? Rispondi sì o no." Ti aiuta a trovare pattern tra le sessioni.
+    Usa una Jev eval quando una sessione completata può essere valutata rispetto a una domanda con alcune risposte note, ad esempio "Il cliente ha chiesto un rimborso? Rispondi sì o no." Ti aiuta a trovare pattern tra le sessioni.
 
-    ## Creare una valutazione
+    ## Creare una eval
 
-    Nel dashboard Cloud, apri **analyse → checks → new check** (oppure **new evaluation**). Descrivi una domanda con risposta fissa, rivedi la regola che genera, e verifica che **how it checks** sia il **decision model** — cioè Jev. [Testala](/it/evaluations/test) su sessioni reali, quindi attivala.
+    Nel dashboard Cloud, apri **analyse → checks → new check** (oppure **new evaluation**). Descrivi una domanda con risposta fissa, rivedi la regola che viene proposta e verifica che **how it checks** sia il **decision model** — cioè Jev. [Testala](/it/evaluations/test) su sessioni reali, quindi attivala.
 
-    ![Il modulo di authoring della valutazione condivisa dove descrivi una domanda, rivedi la bozza e la distribuisci. Questo screenshot mostra una bozza di codice; usa una domanda con risposta fissa per Jev.](/images/dashboard/eval-authoring-draft.png)
+    ![Il modulo di creazione della eval condivisa dove descrivi una domanda, rivedi la bozza e la distribuisci. Questo screenshot mostra una bozza di codice; usa una domanda a risposta fissa per Jev.](/images/dashboard/eval-authoring-draft.png)
 
     ## Leggi i punteggi
 
@@ -25,12 +25,12 @@ Jev aiuta in due punti durante l'esecuzione di un agente: valutare una sessione 
     fp evals --aggregate --since 7d
     ```
 
-    La CLI legge i punteggi; la creazione di una valutazione Jev attualmente utilizza il dashboard. Vedi [Jev evaluations](/it/evaluations/jev) per i tipi di domande e gli esempi.
+    La CLI legge i punteggi; la creazione di una Jev eval attualmente utilizza il dashboard. Vedi [Jev evaluations](/it/evaluations/jev) per i tipi di domande e gli esempi.
   </Tab>
   <Tab title="Jev policies">
-    Usa la revisione dei criteri Jev quando un criterio basato su corrispondenza di stringhe ha bisogno del contesto della tua richiesta per decidere se una chiamata tool è sicura. Inizia in modalità **observe** così puoi ispezionare le risposte di Jev mentre i tuoi criteri installati decidono ancora ogni chiamata.
+    Usa la revisione della policy Jev quando una policy basata su corrispondenza di stringhe ha bisogno del contesto della tua richiesta per decidere se un tool call è sicuro. Inizia in modalità **observe** così potrai ispezionare le risposte di Jev mentre le tue policy installate decidono ancora ogni call.
 
-    I controlli di Jev provengono da un pacchetto; Failproof AI non ne spedisce nessuno. Finché non li installi, Jev non chiede nulla, anche se è configurato:
+    I controlli di Jev provengono da un pack; Failproof AI non ne spedisce nessuno. Finché non li installi, Jev non chiede nulla, anche quando è configurato:
 
     ```bash
     failproofai policies add FailproofAI/jev-policies
@@ -38,7 +38,7 @@ Jev aiuta in due punti durante l'esecuzione di un agente: valutare una sessione 
 
     ## Configura Cloud Jev
 
-    Nel dashboard Cloud, apri **settings → api keys** e, sotto **new key**, scegli **a machine running failproofai**. Usalo con `failproofai config` come mostrato nella [quickstart](/it/start/quickstart). Su una macchina senza una configurazione Jev esistente, questo abilita Cloud Jev in modalità observe. Verifica la connessione con:
+    Nel dashboard Cloud, apri **settings → api keys** e, sotto **new key**, scegli **a machine running failproofai**. Usalo con `failproofai config` come mostrato nella [quickstart](/it/start/quickstart). Su una macchina senza una configurazione Jev esistente, questo abilita Cloud Jev in modalità observe. Controlla la connessione con:
 
     ```bash
     failproofai jev status
@@ -47,9 +47,9 @@ Jev aiuta in due punti durante l'esecuzione di un agente: valutare una sessione 
 
     ## Usa il tuo endpoint
 
-    Nel dashboard locale, apri **Settings → Jev**. Scegli il provider, incolla il suo token, seleziona **observe**, e attiva Jev.
+    Nel dashboard locale, apri **Settings → Jev**. Scegli il provider, incolla il suo token, seleziona **observe** e attiva Jev.
 
-    ![Il pannello impostazioni Jev locale con un provider, un campo token e la modalità observe selezionata.](/images/dashboard/jev-settings.png)
+    ![Il pannello delle impostazioni Jev locale con un provider, un campo token e la modalità observe selezionata.](/images/dashboard/jev-settings.png)
 
     Oppure configura e testa il tuo endpoint da un terminale:
 
@@ -58,6 +58,6 @@ Jev aiuta in due punti durante l'esecuzione di un agente: valutare una sessione 
     failproofai jev test
     ```
 
-    Chiedi a un agente con hook di utilizzare il suo tool di lettura file su `README.md`. Conferma che la chiamata tool appaia nella sessione, quindi ispezionala sotto **Policies → Activity** nel dashboard locale. Una volta che i risultati dell'observe sembrano corretti, [Jev policies](/it/policies/jev) spiega quando applicare. Per i dettagli del provider e la configurazione, vedi la [integration reference](/it/reference/jev).
+    Chiedi a un agente hooked di usare il suo tool di lettura file su `README.md`. Conferma che il tool call appaia nella sessione, quindi ispezionalo sotto **Policies → Activity** nel dashboard locale. Una volta che i risultati di observe sembrano corretti, [Jev policies](/it/policies/jev) spiega quando applicare. Per i dettagli del provider e la configurazione, vedi il [reference di integrazione](/it/reference/jev).
   </Tab>
 </Tabs>

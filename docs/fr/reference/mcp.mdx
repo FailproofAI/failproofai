@@ -4,7 +4,7 @@ description: "Connectez Claude, Cursor, Codex ou un autre client MCP à Failproo
 icon: "plug"
 ---
 
-Connectez un outil d'IA à Failproof AI Cloud et travaillez avec les données de vos agents depuis celui-ci. Votre outil peut interroger les sessions et les événements, exécuter des requêtes SQL en lecture seule, consulter les tableaux de bord, les alertes, les insights, les audits et les politiques, et, si vous disposez de la permission nécessaire, effectuer des modifications telles que la création d'une alerte ou le déploiement d'une politique.
+Connectez un outil d'IA à Failproof AI Cloud et travaillez avec les données de vos agents depuis celui-ci. Votre outil peut interroger des sessions et des événements, exécuter des requêtes SQL en lecture seule, lire des tableaux de bord, des alertes, des insights, des audits et des politiques, et, si vous disposez des permissions nécessaires, effectuer des modifications telles que la création d'une alerte ou le déploiement d'une politique.
 
 Chaque appel s'exécute avec **vos propres** permissions, dans **une seule** organisation que vous choisissez lors de la connexion.
 
@@ -16,25 +16,25 @@ https://gateway.befailproof.ai/mcp
 
 ## Connecter un client
 
-Ajoutez l'adresse à votre client. La première fois qu'un outil est utilisé, votre navigateur s'ouvre. Indiquez où se trouve votre Failproof AI Cloud, connectez-vous, choisissez une organisation, puis sélectionnez **Autoriser**. **Annuler** ne connecte rien.
+Ajoutez l'adresse à votre client. La première fois qu'un outil est utilisé, votre navigateur s'ouvre. Choisissez l'emplacement de votre Failproof AI Cloud, connectez-vous, sélectionnez une organisation, puis cliquez sur **Autoriser**. **Annuler** ne connecte rien.
 
-La page indique le nom de l'application et l'adresse vers laquelle elle redirige. Une application non identifiée par sa propre adresse web est marquée **application non vérifiée** ; ne continuez que si vous venez de lancer cette connexion depuis votre propre client.
+La page indique le nom de l'application et l'adresse vers laquelle elle redirige. Une application non identifiée par sa propre adresse web est signalée comme **application non vérifiée** ; ne continuez que si vous venez de démarrer cela depuis votre propre client.
 
 <Tabs>
   <Tab title="Claude">
-    Dans claude.ai ou Claude Desktop, accédez à **Paramètres → Connecteurs → Ajouter un connecteur personnalisé**. Nommez-le `Failproof AI`, saisissez l'adresse, sélectionnez **Ajouter**, puis **Connecter**.
+    Dans claude.ai ou Claude Desktop, allez dans **Paramètres → Connecteurs → Ajouter un connecteur personnalisé**. Nommez-le `Failproof AI`, entrez l'adresse, sélectionnez **Ajouter**, puis **Connecter**.
 
-    Sur les formules Team et Enterprise, un propriétaire doit d'abord ajouter le connecteur pour l'organisation. Chaque membre connecte ensuite son propre compte.
+    Pour les plans Team et Enterprise, un propriétaire ajoute d'abord le connecteur pour l'organisation. Chaque membre connecte ensuite son propre compte.
   </Tab>
   <Tab title="Claude Code">
     ```bash
     claude mcp add --transport http failproofai https://gateway.befailproof.ai/mcp
     ```
 
-    Exécutez ensuite `/mcp` dans Claude Code, sélectionnez `failproofai`, puis choisissez **S'authentifier**.
+    Puis exécutez `/mcp` dans Claude Code, sélectionnez `failproofai` et choisissez **Authentifier**.
   </Tab>
   <Tab title="Cursor">
-    Ajoutez ceci dans `~/.cursor/mcp.json`, ou dans le fichier `.cursor/mcp.json` de votre projet :
+    Ajoutez ceci à `~/.cursor/mcp.json`, ou au fichier `.cursor/mcp.json` de votre projet :
 
     ```json
     {
@@ -47,14 +47,14 @@ La page indique le nom de l'application et l'adresse vers laquelle elle redirige
     Cursor affiche **Connexion requise** à côté du serveur. Sélectionnez-le pour vous connecter.
   </Tab>
   <Tab title="Codex">
-    Ajoutez ceci dans `~/.codex/config.toml` :
+    Ajoutez ceci à `~/.codex/config.toml` :
 
     ```toml
     [mcp_servers.failproofai]
     url = "https://gateway.befailproof.ai/mcp"
     ```
 
-    Exécutez ensuite `codex mcp login failproofai`.
+    Puis exécutez `codex mcp login failproofai`.
   </Tab>
   <Tab title="Autres clients">
     Tout client prenant en charge les serveurs MCP distants via Streamable HTTP avec OAuth fonctionne. Fournissez-lui l'adresse ci-dessus. Aucun identifiant client ni secret n'est à configurer.
@@ -65,36 +65,36 @@ La page indique le nom de l'application et l'adresse vers laquelle elle redirige
 
 Une connexion agit uniquement dans l'organisation que vous avez choisie. Pour utiliser deux organisations, ajoutez le serveur deux fois sous des noms différents, par exemple `failproofai-acme` et `failproofai-sandbox`, et connectez chacun à son organisation respective.
 
-Les organisations de démonstration n'acceptent pas les connexions. Choisissez votre propre organisation à la place.
+Les organisations de démonstration n'acceptent pas les connexions. Choisissez plutôt votre propre organisation.
 
 ## Permissions
 
-Une connexion peut effectuer ce que vous pouvez faire dans l'organisation, dans le cadre des permissions ci-dessous. Elle suit vos permissions actuelles : si un administrateur vous en accorde davantage, l'outil en bénéficie ; s'il vous en retire, l'outil les perd lors de son prochain appel.
+Une connexion peut effectuer ce que vous pouvez faire dans l'organisation, dans les limites de l'ensemble ci-dessous. Elle suit vos permissions actuelles : si un administrateur vous en accorde davantage, l'outil en bénéficie ; s'il vous en retire, l'outil les perd lors de son prochain appel.
 
 | Permission | Permet à l'outil de |
 | --- | --- |
-| `events:read` | Lister les événements, consulter le récapitulatif d'une session, lister les agents et les environnements |
-| `evaluations:read` | Lister les sessions, et lire et résumer les résultats et les tâches d'évaluation |
+| `events:read` | Lister les événements, lire le résumé d'une session, lister les agents et les environnements |
+| `evaluations:read` | Lister les sessions, et lire et résumer les résultats et les jobs d'évaluation |
 | `evaluations:trigger` | Créer des évaluations, publier de nouvelles versions, les activer ou les désactiver, effectuer un backfill et réévaluer une session |
-| `dashboards:read`, `dashboards:write` | Lire les tableaux de bord, ou en créer, les renommer et y ajouter des requêtes |
-| `queries:read`, `queries:write` | Lire les requêtes enregistrées, ou les sauvegarder et les modifier |
+| `dashboards:read`, `dashboards:write` | Lire des tableaux de bord, ou en créer, les renommer et y ajouter des requêtes |
+| `queries:read`, `queries:write` | Lire les requêtes sauvegardées, ou les sauvegarder et les modifier |
 | `queries:run` | Exécuter une requête SQL en lecture seule et lire le schéma de requête |
 | `alerts:read`, `alerts:write` | Lire les alertes, ou en créer, modifier, mettre en pause, supprimer et tester |
-| `issues:read` | Lire les insights, les acquitter et les commenter |
+| `issues:read` | Lire les insights, les acquitter et commenter dessus |
 | `issues:create` | Ouvrir un insight sur une alerte |
 | `issues:close` | Résoudre et fermer des insights |
 | `audits:read`, `audits:write` | Lire les audits, les exécutions et les résultats, ou créer et modifier des audits et démarrer une exécution |
-| `code_fixes:read` | Voir comment corriger un insight et obtenir son contexte pour que votre propre agent le corrige |
-| `code_fixes:write` | Lancer une correction dans Failproof AI Cloud, ce qui ouvre une pull request sur votre GitHub |
+| `code_fixes:read` | Voir comment corriger un insight et obtenir son contexte pour le faire corriger par votre propre agent |
+| `code_fixes:write` | Démarrer une correction dans Failproof AI Cloud, ce qui ouvre une pull request sur votre GitHub |
 | `policies:read`, `policies:write` | Lire les politiques, les machines et les déploiements, ou publier, déployer et annuler des politiques |
 
-Quelques outils ne nécessitent aucune permission car ils n'accèdent à aucune donnée d'organisation : la construction de liens vers des sessions et des événements, et la recherche dans cette documentation.
+Quelques outils ne nécessitent aucune permission car ils ne lisent aucune donnée d'organisation : la construction de liens vers des sessions et des événements, ainsi que la recherche dans cette documentation.
 
-Un outil d'IA ne peut jamais accéder aux clés API, aux utilisateurs, aux paramètres ou à l'administration de l'organisation, et ne peut pas envoyer d'événements.
+Un outil d'IA ne peut jamais accéder aux clés API, aux utilisateurs, aux paramètres ou à l'administration de l'organisation, et il ne peut pas envoyer d'événements.
 
 ## Approbation des modifications
 
-Les opérations d'écriture vous demandent confirmation si votre client peut afficher l'invite. Vous voyez ce qui va changer et sélectionnez **Approuver cette modification** pour continuer. Si vous refusez ou ne répondez pas dans un délai d'environ 4 minutes, rien ne change. Certains clients cessent d'attendre après une minute, répondez donc rapidement.
+Les écritures vous demandent confirmation au préalable si votre client peut afficher l'invite. Vous voyez ce qui va changer et sélectionnez **Approuver cette modification** pour confirmer. Si vous refusez ou ne répondez pas dans un délai d'environ 4 minutes, rien ne change. Certains clients cessent d'attendre au bout d'une minute, répondez donc rapidement.
 
 <Warning>
   Un client qui ne prend pas en charge les invites n'est pas interrogé, et une écriture s'exécute dès que le client effectue l'appel. Dans ce cas, la confirmation de votre client est la seule existante ; conservez-la donc activée pour les outils d'écriture.
@@ -102,28 +102,28 @@ Les opérations d'écriture vous demandent confirmation si votre client peut aff
 
 ## Applications connectées et révocation
 
-**paramètres → intégrations → MCP** liste vos applications connectées dans l'organisation actuelle, avec leurs permissions et leur dernière utilisation. **Révoquer** coupe immédiatement l'accès d'une application. Supprimer le serveur dans votre client révoque également la connexion.
+**Paramètres → Intégrations → MCP** liste vos applications connectées dans l'organisation actuelle, avec leurs permissions et leur dernière utilisation. **Révoquer** déconnecte immédiatement une application. Supprimer le serveur dans votre client révoque également la connexion.
 
 Vous pouvez avoir jusqu'à 5 applications connectées par organisation. Reconnecter la même application remplace sa connexion précédente.
 
 ## Déploiements auto-hébergés
 
-Choisissez **Failproof AI Cloud auto-hébergé** lors de la connexion, et saisissez l'adresse à laquelle vous vous connectez. Votre déploiement doit être accessible via HTTPS public.
+Choisissez **Self-hosted Failproof AI Cloud** lors de la connexion et entrez l'adresse à laquelle vous vous connectez. Votre déploiement doit être accessible via HTTPS public.
 
 Les appels d'outils et leurs résultats transitent par la passerelle Failproof AI hébergée entre votre outil d'IA et votre déploiement. La passerelle ne les stocke pas.
 
 ## Ce qui arrive à vos données
 
-Les résultats sont transmis à l'outil d'IA que vous avez connecté, et le fournisseur de cet outil les traite conformément à ses propres conditions. Pour chaque appel d'outil, Failproof AI enregistre le nom de l'outil, son résultat, sa durée d'exécution et l'organisation — jamais les arguments ni les résultats. Consultez la [politique de confidentialité](https://befailproof.ai/privacy/).
+Les résultats sont transmis à l'outil d'IA que vous avez connecté, et le fournisseur de cet outil les gère selon ses propres conditions. Pour chaque appel d'outil, Failproof AI enregistre le nom de l'outil, son résultat, sa durée et l'organisation — jamais les arguments ni les résultats. Consultez la [politique de confidentialité](https://befailproof.ai/privacy/).
 
 ## Dépannage
 
 | Ce que vous voyez | Que faire |
 | --- | --- |
 | « Démarré dans un autre navigateur » | Terminez la connexion dans le navigateur ouvert par le client, avec les cookies activés, puis recommencez depuis le client |
-| Une erreur après **Autoriser** | Le lien ne fonctionne qu'une seule fois et expire après 10 minutes ; recommencez depuis le client |
+| Une erreur après **Autoriser** | Le lien ne fonctionne qu'une seule fois et expire au bout de 10 minutes ; recommencez depuis le client |
 | Un outil attendu est absent | Vous ne disposez pas de sa permission dans cette organisation. Contactez un administrateur. Vous n'avez pas besoin de vous reconnecter une fois que vous l'avez |
-| Le client vous demande continuellement de vous connecter | La connexion a été révoquée, vous avez quitté l'organisation, ou elle n'a pas été utilisée pendant 90 jours. Reconnectez-vous |
-| « Vous avez 5 applications connectées » | Révoquez-en une sous **paramètres → intégrations → MCP**, puis reconnectez-vous |
+| Le client vous demande constamment de vous connecter | La connexion a été révoquée, vous avez quitté l'organisation, ou elle n'a pas été utilisée pendant 90 jours. Reconnectez-vous |
+| « Vous avez 5 applications connectées » | Révoquez-en une sous **Paramètres → Intégrations → MCP**, puis reconnectez-vous |
 
 Toujours bloqué ? Envoyez un e-mail à [support@befailproof.ai](mailto:support@befailproof.ai).

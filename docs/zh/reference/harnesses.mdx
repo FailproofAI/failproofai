@@ -1,116 +1,92 @@
 ---
-title: "Agent 执行环境"
-description: "跨所有 12 种支持的 agent 执行环境捕获会话并执行策略。"
+title: "Agent harnesses"
+description: "捕获会话并在所有 12 个受支持的 agent harness 上执行策略。"
 icon: "plug-zap"
 ---
 
-执行环境（harness）是指 agent 实际运行所在的框架。Failproof AI 支持十二种，分为两类：
+harness 是指你的 agent 实际运行所在的环境。Failproof AI 支持十二种，分为两类：
 
-- **编程 CLI**（10 种）—— Claude Code、Codex、GitHub Copilot CLI、Cursor、OpenCode、Pi、Factory Droid、Devin CLI、Antigravity CLI、Goose
+- **编码 CLI**（10 种）—— Claude Code、Codex、GitHub Copilot CLI、Cursor、OpenCode、Pi、Factory Droid、Devin CLI、Antigravity CLI、Goose
 - **聊天与助手网关**（2 种）—— Hermes（Slack、Telegram、cron）、OpenClaw（自托管助手）
 
-无论 agent 在哪个执行环境中运行，均使用相同的策略和相同的会话历史。一个适配层会将每个执行环境的原生事件名、工具名和工具输入字段统一映射到 29 个规范事件，然后再执行任何策略。
+无论 agent 在哪个 harness 中运行，策略和会话历史记录均保持一致。一个适配器层会在策略执行之前，将每个 harness 的原生事件名称、工具名称和工具输入字段映射到 29 个标准事件上。
 
-如果 agent **不在**上述十二种环境中运行，则可直接使用 [Python SDK](/zh/reference/custom-agents) 进行接入。这是一种不同的接入方式，需要明确说明：SDK 提供追踪、会话、评估和审计功能——**但其自身不执行策略。** 若要在工具执行前阻断不安全操作，需要在运行时的工具边界处设置执行钩子；请[联系我们](mailto:support@befailproof.ai)，我们将为您进行映射。
+如果 agent 不在上述十二种 harness 中运行，则需直接通过 [Python SDK](/zh/reference/custom-agents) 进行埋点。这是一种不同的契约，值得明确说明：SDK 提供追踪、会话、评估和审计功能，**但本身不执行策略。** 若要在不安全操作执行前将其拦截，需要在运行时的工具边界处设置执行钩子；请[联系我们](mailto:support@befailproof.ai)，我们将为你完成映射。
 
-| 执行环境 | 支持的钩子作用域 |
+| Harness | 支持的钩子作用域 |
 | --- | --- |
-| Claude Code | 用户、项目、本地 |
-| Codex、GitHub Copilot CLI、Cursor、OpenCode、Pi | 用户、项目 |
-| Factory Droid、Devin CLI、Antigravity CLI、Goose | 用户、项目 |
-| Hermes、OpenClaw | 用户 |
+| Claude Code | User、project、local |
+| Codex、GitHub Copilot CLI、Cursor、OpenCode、Pi | User、project |
+| Factory Droid、Devin CLI、Antigravity CLI、Goose | User、project |
+| Hermes、OpenClaw | User |
 
-每个集成在策略运行前均会对原生钩子事件名、工具名和工具输入字段进行规范化处理。策略只能作用于执行环境所暴露的事件；请在实际部署的执行环境和版本上测试轮次结束和指令行为。
+每个集成在策略运行之前都会对其原生钩子事件名称、工具名称和工具输入字段进行规范化处理。策略只能作用于 harness 暴露的事件；请在你实际部署的 harness 及其版本上测试轮末和指令行为。
 
 ## 执行能力
 
-"阻断"指当前适配器返回的裁决被目标执行环境消费。工具后阻断可以替换展示给模型的结果，但无法撤销已发生的工具副作用。
+"拦截"表示当前适配器返回的裁决由指定 harness 消费。工具后拦截可能会替换展示给模型的结果，但无法撤销已发生的工具副作用。
 
-| 执行环境 | 已验证的阻断事件 | 仅观察或不可阻断的说明 |
+| Harness | 已验证的拦截事件 | 仅观测或不可拦截的说明 |
 | --- | --- | --- |
-| Claude Code | `PreToolUse`、`UserPromptSubmit`、`PermissionRequest`、`Stop`、`SubagentStop`、`PreCompact` 及若干任务/配置事件 | `PostToolUse`、会话生命周期、通知及失败后事件为观察性。 |
-| Codex | `PreToolUse`、`PermissionRequest`、`UserPromptSubmit`、`Stop`、`SubagentStop`、`PostToolUse` | 工具后阻断在执行后替换结果；会话启动和压缩事件在当前适配器中为观察性。 |
-| GitHub Copilot CLI | `PreToolUse`、`UserPromptSubmit`、`PermissionRequest`、`Stop`、`SubagentStop`、`PostToolUse` | 工具后阻断在执行后替换结果；会话和通知事件为观察性。 |
-| Cursor | `PreToolUse`、`UserPromptSubmit`、`Stop` | `PostToolUse` 和会话事件为观察性。 |
-| OpenCode | `PreToolUse` | 工具后和生命周期事件为观察性；当前停止处理为后续轮次的指导，而非已验证的阻断点。 |
-| Pi | `PreToolUse`、`UserPromptSubmit` | 工具后和生命周期事件为观察性；停止指导适用于后续轮次。 |
-| Hermes | `PreToolUse` | `deny()` 可阻断。`instruct()` 不会阻止调用：调用会正常执行，指导内容放置在结果开头。工具后、会话和子 agent 停止裁决不作为阻断点。 |
-| OpenClaw | `PreToolUse`、`UserPromptSubmit`、`Stop` | 工具后、会话、子 agent 停止和压缩事件为观察性。 |
-| Factory Droid | `PreToolUse`、`UserPromptSubmit`、`Stop`、`PreCompact` | 工具后和子 agent 停止裁决为观察性。 |
-| Devin CLI | `PreToolUse`、`UserPromptSubmit`、`Stop`、条件性 `PermissionRequest` | 权限钩子并非在所有权限模式下都运行；工具后和会话事件为观察性。 |
-| Antigravity CLI | `PreToolUse`、`Stop` | 用户提示和工具后裁决为观察性；但仍可注入提示指令。 |
-| Goose | `PreToolUse` | 用户提示、工具后和会话事件为观察性。上游存在原生阻断停止钩子，但当前适配器未安装。 |
+| Claude Code | `PreToolUse`、`UserPromptSubmit`、`PermissionRequest`、`Stop`、`SubagentStop`、`PreCompact` 及若干任务/配置事件 | `PostToolUse`、会话生命周期、通知和故障后事件均为观测性。 |
+| Codex | `PreToolUse`、`PermissionRequest`、`UserPromptSubmit`、`Stop`、`SubagentStop`、`PostToolUse` | 工具后拦截在执行后替换结果；会话启动和压缩事件在当前适配器中为观测性。 |
+| GitHub Copilot CLI | `PreToolUse`、`UserPromptSubmit`、`PermissionRequest`、`Stop`、`SubagentStop`、`PostToolUse` | 工具后拦截在执行后替换结果；会话和通知事件为观测性。 |
+| Cursor | `PreToolUse`、`UserPromptSubmit`、`Stop` | `PostToolUse` 和会话事件为观测性。 |
+| OpenCode | `PreToolUse` | 工具后和生命周期事件为观测性；当前的停止处理是对后续轮次的引导，而非已验证的门控。 |
+| Pi | `PreToolUse`、`UserPromptSubmit` | 工具后和生命周期事件为观测性；停止引导适用于后续轮次。 |
+| Hermes | `PreToolUse` | 原生插件在允许后续 API 迭代之前，以一次有界的、模型可见的中断形式传递 `instruct()`。工具后、会话和 subagent-stop 裁决不作为门控。 |
+| OpenClaw | `PreToolUse`、`UserPromptSubmit`、`Stop` | 工具后、会话、subagent-stop 和压缩事件为观测性。 |
+| Factory Droid | `PreToolUse`、`UserPromptSubmit`、`Stop`、`PreCompact` | 工具后和 subagent-stop 裁决为观测性。 |
+| Devin CLI | `PreToolUse`、`UserPromptSubmit`、`Stop`、条件性 `PermissionRequest` | 权限钩子并非在所有权限模式下都运行；工具后和会话事件为观测性。 |
+| Antigravity CLI | `PreToolUse`、`Stop` | 用户提示和工具后裁决为观测性；仍可注入提示指令。 |
+| Goose | `PreToolUse` | 用户提示、工具后和会话事件为观测性。上游存在原生的阻塞性停止钩子，但当前适配器未安装。 |
 
-能力对版本敏感。升级 agent CLI 后请重新测试，尤其当策略依赖提示、停止、权限或工具后行为，而非常见的工具前阻断点时。
+能力与版本相关。升级 agent CLI 后请重新测试，尤其是当策略依赖提示、停止、权限或工具后行为而非通用的工具前门控时。
 
 ### Hermes 原生插件
 
-Hermes 通过配置文件本地原生插件而非 shell 命令进行集成。安装过程会将每个默认及命名 Hermes 配置文件的 `plugins/failproofai` 链接到 npm 包附带的插件（无法创建符号链接时则复制），在该配置文件的 `config.yaml` 中启用它，并仅迁移旧版 FailproofAI shell 钩子条目。由于插件使用链接，`npm install -g failproofai@latest` 无需重新安装即可更新。这避免了每次钩子触发时产生进程开销。该插件支持 Hermes 0.20.0 及更高版本。
+Hermes 通过 profile 本地原生插件而非 shell 命令集成。安装过程会将插件复制到每个默认和具名 Hermes profile 中，在该 profile 的 `config.yaml` 中启用它，并仅迁移遗留的 FailproofAI shell 钩子条目。这样可以避免每次钩子触发时产生进程开销，并让 `instruct()` 通过 Hermes 的原生阻塞工具结果传达给模型。
 
-旧版 shell 钩子（由 1.0.5 及更早版本安装）**不会**检查 Hermes cron 任务：每次 cron 运行都会建立自己的钩子作用域，原生插件会加入其中，而 `config.yaml` 中的 shell 钩子则不会。`failproofai update` 会将所有已使用 FailproofAI 的配置文件迁移到链接插件。如果正在运行的守护进程无法为插件提供服务，`update` 会保留 shell 钩子并以非零状态退出；请先运行 `failproofai config` 更新守护进程，然后再次运行 `failproofai update`。Cron 任务在下次运行时加载插件；正在运行的网关和交互式会话需重启后才能加载。
+第一个匹配的指令会阻止待处理的调用。同一个 API 请求保持阻塞状态；后续模型迭代可能会重试。一个持久化的、profile 级别的账本和每轮次上限可防止建议性指令演变为无限循环。`deny()` 仍为硬性拦截。运行 `failproofai config --status` 可检测已禁用、不完整、重复或新增的未配置 profile。
 
-在 Hermes 上，`deny()` 会阻断调用，而 `instruct()` 不会：调用会正常执行，指导内容放置在结果开头——对于 JSON 结果，作为第一个键 `failproof_policy_reminder`；对于普通结果，作为前导行 `[FailproofAI policy reminder (...)]`——这样模型可以在读取输出时看到它，解析结果的脚本也能继续正常工作。每个轮次每条策略的提醒只显示一次，且在结果较大时会保持简短。当某个操作完全不应发生时，请使用 `deny()`：`instruct()` 不再会首先阻止操作。从 `execute_code` 脚本中发出的工具调用，其提醒会附在模型读取的 `execute_code` 结果上；脚本自身的结果副本保持不变。模型被告知不得在回复中引用提醒内容。
-
-不带插件中间件的 Hermes 构建会回退到以"FailproofAI policy guidance"保留匹配调用一次；后续模型响应可能会重复该调用，或在不再被保留的情况下使用另一工具完成相同工作。
-
-工具名称跨 Hermes 版本进行匹配：`process_manage`、`cronjob_manage` 和 `todo_list`（Hermes 0.21）被视同 `process`、`cronjob` 和 `todo`（Hermes 0.20）处理。每次 Hermes 加载插件时，会在配置文件的 `plugin-data/agent-plugin-failproofai-5296f299/` 目录中写入 `heartbeat.json`，记录 Hermes 版本、插件路径和版本，以及 Hermes 接受的钩子。运行 `failproofai config --status` 可检测已禁用、不完整、重复或新增未配置的配置文件，或仍在使用旧版 shell 钩子的配置文件（报告为"Hermes cron jobs are not checked"）。
-
-### OpenClaw 插件
-
-OpenClaw 以进程内网关插件方式加载 FailproofAI，注册在每个配置文件的 `openclaw.json` 中。与 Hermes 插件类似，它通过套接字向本地 `failproofaid` 守护进程请求每次裁决，因此需要守护进程处于运行状态：没有守护进程时安装将拒绝执行；若守护进程无法响应，工具调用和提示将被阻断，原因写入网关日志。执行 `npm install -g failproofai@latest` 后，请重启 OpenClaw 网关以加载更新后的插件。
-
-### Codex 钩子信任
-
-Codex 0.129 及更高版本仅在您在交互式 `codex` 中批准（"Review hooks"）后，才会运行 `~/.codex/hooks.json` 中的钩子；在此之前，每个 Codex 会话——包括无头模式 `codex exec`——都会跳过它。Codex 系统配置文件（Linux 和 macOS 上为 `/etc/codex/config.toml`）中的钩子无需该批准即可运行。
-
-因此，当 `failproofai config`（或在用户作用域下执行 `policies --install --cli codex`）可以使用 sudo 时，它会将 Codex 钩子写入 `/etc/codex/config.toml`，位于 `# >>> failproofai managed hooks >>>` 和 `# <<< failproofai managed hooks <<<` 之间，文件其余部分保持不变。
-
-该文件适用于机器上的每个账户，因此其中每个钩子都会运行 `/opt/failproofai-codex/codex-hook`，这是一个由 root 拥有的简短脚本。该脚本将事件传递给每个已在此设置钩子的账户自己的 failproofai，对其他账户不做任何处理。其他想要 failproofai Codex 钩子的账户需为自己单独设置。
-
-在写入块之前以及每次 `failproofai update` 时，failproofai 都会检查 `/etc/codex/config.toml` 本身、脚本、其上级所有目录，以及它运行的 `sh`、`id` 和 `cat` 均属于 root 且不可被其他人写入，同时每个账户的 failproofai 属于该账户或 root。安装时，若检查失败，钩子将保留在 `~/.codex/hooks.json`。更新时，检查失败的脚本会被从块中移除，failproofai 检查失败的账户也会从脚本中移除；修复后请重新运行 `failproofai config`。`failproofai update` 还会将旧版本写入的块重写为使用该脚本的形式，这需要 sudo。
-
-`failproofai uninstall` 和在 `failproofai config` 中取消勾选 Codex 会将您的账户移除，当没有账户剩余时块也随之移除。
-
-未使用 sudo 时以及在 Windows 上，钩子会保留在 `~/.codex/hooks.json`。此时 `failproofai config` 和 `failproofai config --status` 不会将 Codex 计为已执行状态（直到钩子被批准），并说明修复方法：重新运行 `failproofai config` 并允许 sudo，或打开 `codex` 一次并批准钩子。
-
-## 安装捕获与策略钩子
+## 安装捕获和策略钩子
 
 <Tabs>
-  <Tab title="控制台">
-    1. 打开 **settings → api keys**，创建一个具有 `events:add` 和 `policies:pull` 权限的密钥，以机器或环境命名。
-    2. 在目标机器上，使用显示的密钥连接本地 CLI 并安装执行环境钩子。
-    3. 启动一个新的 agent 会话，然后在 **trace → live events** 下确认其钩子和会话事件。
-    4. 打开 **fix → activity** 查看相同时间窗口，并确认策略决策已归属到该机器。
+  <Tab title="仪表板">
+    1. 打开 **Administration → Keys**，创建一个具有 `events:add` 和 `policies:pull` 权限的密钥，并以机器或环境命名。
+    2. 在目标机器上，使用显示的密钥连接本地 CLI 并安装 harness 钩子。
+    3. 启动一个新的 agent 会话，然后在 **Observe → Events** 下确认其钩子和会话事件。
+    4. 打开同一时间窗口下的 **Observe → policy**，确认策略决策已归因于该机器。
 
-    连接从机器密钥开始。在复制密钥前，请确认其包含数据摄取和策略下发两项权限。
+    连接从机器密钥开始。在复制其 secret 之前，请确认它同时包含数据采集和策略分发权限。
 
-    ![用于授予事件摄取和策略下发权限的新 API 密钥面板。](/images/dashboard/key-create.png)
+    ![用于授予事件采集和策略分发权限的新 API 密钥抽屉。](/images/dashboard/key-create.png)
 
-    安装钩子后，Events 流应显示来自您所连接的机器和环境的新事件。
+    安装钩子后，Events 流应显示来自你所连接机器和环境的新事件。
 
-    ![用于确认新安装的执行环境正在上报的实时 Events 流。](/images/dashboard/events-stream.png)
+    ![用于确认新安装的 harness 正在上报数据的实时 Events 流。](/images/dashboard/events-stream.png)
 
-    最后，验证策略决策已归属到同一台机器。这确认了执行环境正在同时上报策略活动和追踪事件。
+    最后，验证策略决策是否归因于同一台机器。这可确认 harness 正在同时上报策略活动和追踪事件。
 
-    ![用于验证新连接执行环境策略决策的 Policy 页面。](/images/dashboard/policy-observe.png)
+    ![用于验证新连接 harness 策略决策的 Policy 页面。](/images/dashboard/policy-observe.png)
   </Tab>
   <Tab title="CLI">
-    将机器密钥读入 shell。`read -s` 通过不回显的提示符获取密钥，使其不会出现在命令或 shell 历史记录中：
+    将机器密钥读入 shell。`read -s` 会在不回显的提示符处接收输入，因此它不会出现在命令或 shell 历史记录中：
 
     ```bash
     read -rs FAILPROOFAI_CLOUD_TOKEN && export FAILPROOFAI_CLOUD_TOKEN
     ```
 
-    然后配置机器——这将为所有检测到的执行环境连接钩子、安装守护进程并连接到 Cloud：
+    然后配置机器——这将为所有检测到的 harness 连接钩子、安装守护进程并连接到 Cloud：
 
     ```bash
     failproofai config
     failproofai policies add FailproofAI/policies
     ```
 
-    配置本身不会启用任何策略，第二条命令正是为此而设。
+    初始设置本身不启用任何策略，这正是第二条命令的用途。
 
-    或者指定特定执行环境和配置作用域：
+    或者指定具名 harness 和配置作用域：
 
     ```bash
     failproofai policies --install \
@@ -118,7 +94,7 @@ Codex 0.129 及更高版本仅在您在交互式 `codex` 中批准（"Review hoo
       --scope user
     ```
 
-    项目作用域将钩子配置保存在代码库中。用户作用域覆盖跨代码库的工作。Claude Code 还支持本地作用域；具体支持情况因执行环境而异，CLI 会拒绝不支持的组合。
+    project 作用域将钩子配置保存在仓库中。user 作用域覆盖跨仓库的工作。Claude Code 还支持 local 作用域；支持情况因 harness 而异，CLI 会拒绝不支持的组合。
 
     验证机器及其事件：
 
@@ -133,13 +109,13 @@ Codex 0.129 及更高版本仅在您在交互式 `codex` 中批准（"Review hoo
 ## 添加非默认会话路径
 
 <Tabs>
-  <Tab title="控制台">
-    额外路径在机器上注册，而非在 Cloud 中。添加后，打开 **trace → sessions**，筛选到该机器的环境，并确认来自新路径的会话出现。打开一个会话，在用于审计之前检查 agent、执行环境和事件时间戳。
+  <Tab title="仪表板">
+    额外路径在机器上注册，而非在 Cloud 中注册。添加路径后，打开 **Observe → Sessions**，筛选到该机器的环境，并确认来自新路径的会话已出现。打开一个会话，在将其用于审计之前检查 agent、harness 和事件时间戳。
 
-    ![已筛选到接收来自额外捕获路径数据的环境的 Sessions 列表。](/images/dashboard/sessions-list.png)
+    ![Sessions 列表，已筛选到接收额外捕获路径数据的环境。](/images/dashboard/sessions-list.png)
   </Tab>
   <Tab title="CLI">
-    添加一个带可选标签的路径，然后检查已配置的路径：
+    添加一个路径（可附带可选标签），然后查看已配置的路径：
 
     ```bash
     failproofai harness add-path claude checkout=/srv/checkout/.claude
@@ -148,10 +124,10 @@ Codex 0.129 及更高版本仅在您在交互式 `codex` 中批准（"Review hoo
     failproofai backfill --since 7d
     ```
 
-    使用 `failproofai harness remove-path claude checkout` 移除路径。
+    使用 `failproofai harness remove-path claude checkout` 删除路径。
   </Tab>
 </Tabs>
 
 <Tip>
-  安装后运行一个新会话。在扩大部署范围之前，验证实时事件流和实际策略决策均正常工作。
+  安装后运行一个新会话。在扩大推广范围之前，先验证实时事件流和实际的策略决策。
 </Tip>

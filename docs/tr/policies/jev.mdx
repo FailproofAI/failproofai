@@ -1,16 +1,16 @@
 ---
 title: "Jev politikaları"
-description: "Kapılı araç çağrılarına Jev'in canlı incelemesini ekleyin, ardından kararlarını uygulamadan önce inceleyin."
+description: "Jev'in canlı incelemesini kapılı araç çağrılarına ekleyin, ardından kararlarını uygulamadan önce inceleyin."
 icon: "shield-check"
 ---
 
-Jev, bir araç çağrısını kişinin aracı yapması için verdiği talimatla karşılaştırarak okur. String eşleştirme politikası geçerli bir işi engellediğinde veya bağlam gerektiren riskli bir işlemi kaçırdığında kullanın. `PreToolUse` veya `PermissionRequest` kapısında politikalarınızın yanında yanıt verir. Bir oturum bittikten **sonra** bir puan için [Jev değerlendirmelerini](/tr/evaluations/jev) kullanın.
+Jev, bir araç çağrısını kişinin aracıya yapmasını istediği işe karşı okur. String eşleştirme politikası geçerli işi engellediğinde veya bağlam gerektiren riskli bir işi kaçırdığında kullanın. `PreToolUse` veya `PermissionRequest` kapısında politikalarınızın yanında yanıt verir. Bir oturum bittikten **sonra** bir puan için [Jev değerlendirmelerini](/tr/evaluations/jev) kullanın.
 
 ## Gözlem modunda başlayın
 
-Failproof AI'ı yükleyin ve kancaları [desteklenen bir sisteme](/tr/reference/harnesses) ekleyin. Failproof AI 1.0.8-beta.0 veya sonrası kullanın.
+Failproof AI'ı yükleyin ve kancaları bir [desteklenen sisteme](/tr/reference/harnesses) ekleyin. Failproof AI 1.0.8-beta.0 veya daha yeni bir sürümü kullanın.
 
-Failproof AI hiçbir Jev kontrolü içermez. Bunları bir paket olarak yükleyin, yoksa Jev'in soracak bir şeyi olmaz ve asla çağrılmaz:
+Failproof AI Jev kontrolleri olmadan gönderilir. Bunları bir paket olarak yükleyin, aksi takdirde Jev sormak için hiçbir şeyi olmaz ve asla çağrılmaz:
 
 ```bash
 failproofai policies add FailproofAI/jev-policies
@@ -20,26 +20,26 @@ Ardından isteklerin Jev'e nasıl ulaştığını seçin:
 
 | Rota | İlk adım |
 | --- | --- |
-| FailproofAI Cloud | `jev:evaluate` taşıyan bir **makine** anahtarıyla bağlanın. Jev yapılandırması olmayan bir makinede, `failproofai config` Jev'i gözlem modunda açar. |
-| Kendi sağlayıcınız | Yerel kontrol panelinde **Ayarlar → Jev**'i açın, sağlayıcıyı seçin, belirtecini yapıştırın ve **gözlem**'i seçin. Veya `failproofai jev --url https://api.typesafe.ai/v1 --mode observe --key-stdin < ~/typesafe.key` komutunu çalıştırın. |
+| FailproofAI Cloud | `jev:evaluate` taşıyan bir **machine** anahtarı ile bağlanın. Jev yapılandırması olmayan bir makinede, `failproofai config` Jev'i gözlem modunda açar. |
+| Kendi sağlayıcınız | Yerel kontrol panelinde **Ayarlar → Jev** öğesini açın, sağlayıcıyı seçin, belirtecini yapıştırın ve **gözlem**'i seçin. Veya `failproofai jev --url https://api.typesafe.ai/v1 --mode observe --key-stdin < ~/typesafe.key` komutunu çalıştırın. |
 
-![Yerel kontrol panelinin Jev ayarları: sağlayıcı, uç nokta, belirteç ve Jev açılmadan önceki gözlem modu.](/images/dashboard/jev-settings.png)
+![Yerel kontrol panelinin Jev ayarları: sağlayıcı, uç nokta, belirteç ve Jev açılmadan önce gözlem modu.](/images/dashboard/jev-settings.png)
 
 ```bash
 failproofai jev status
 failproofai jev test
 ```
 
-`test` uç noktayı kontrol eder. Kanca yolunu kontrol etmek için, kancalı bir aracıdan `README.md` üzerinde dosya okuma aracını kullanmasını isteyin. Bu araç çağrısının oturumda göründüğünü doğrulayın, ardından [yerel kontrol panelinde](/tr/reference/local-dashboard#review-policy-activity) **Politikalar → Etkinlik**'i inceleyin. `status` içindeki Jev sayısı artmalıdır. Gözlem modu, Jev'in ne karar vermiş olacağını kaydederken mevcut politika sonucu yine de geçerli olur.
+`test` uç noktayı kontrol eder. Kanca yolunu kontrol etmek için, kancalı bir aracıya `README.md` üzerinde dosya okuma aracını kullanmasını isteyin. Bu araç çağrısının oturumda göründüğünü doğrulayın, ardından [yerel kontrol panelinde](/tr/reference/local-dashboard#review-policy-activity) **Politikalar → Etkinlik** öğesini inceleyin. `status` içindeki Jev sayısı artmalıdır. Gözlem modu, mevcut politika sonucunuz hala geçerli olsa da Jev'in neyi karar vereceğini kaydeder.
 
-## Uygulamaya ne zaman başlayacağına karar verin
+## Uygulamaya geçmek istediğinizi belirleyin
 
-**Sert** bir politika her zaman son söze sahiptir. Jev, yalnızca açıkça **gözden geçirilebilir** olarak işaretlenen bir politikadan bir reddi temizleyebilir ve yalnızca bu politikanın adlandırılmış endişesini kontrol ettiğinde. Bir izne bağlı olmadan önce [politika yetkisine](/tr/policies/authority) bakın. Jev ayrıca kendi başına uyarabilir veya reddedebilir. Yanıt veremezse, politika sonucu bu çağrıyı belirler.
+Bir **hard** politika her zaman son söze sahiptir. Jev, ancak açıkça **incelenebilir** olarak işaretlenmiş bir politikadan bir reddedişi kaldırabilir ve ancak o politikanın adlandırılmış endişesini kontrol ettiğinde. Bir izin vermeden önce [politika yetkilendirmesine](/tr/policies/authority) bakın. Jev ayrıca kendi başına uyarabilir veya reddedebilir. Yanıt veremezse, politika sonucu bu çağrıya karar verir.
 
-Gözlem sonuçları doğru göründüğünde, **Ayarlar → Jev**'de uygulama moduna geçin veya şunu çalıştırın:
+Gözlem sonuçları doğru göründüğünde, **Ayarlar → Jev** öğesinde uygulamaya geç moduna veya şu komutu çalıştırın:
 
 ```bash
 failproofai jev setup --mode enforce
 ```
 
-Sağlayıcı URL'leri, Cloud anahtarları, yapılandırma, geri dönüşler ve her istekle gönderilen veriler için [Jev entegrasyon başvurusuna](/tr/reference/jev) bakın.
+Sağlayıcı URL'leri, Cloud anahtarları, yapılandırma, geri dönüşler ve her istek ile gönderilen veriler için [Jev entegrasyon başvurusuna](/tr/reference/jev) bakın.

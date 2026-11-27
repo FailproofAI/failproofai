@@ -1,20 +1,20 @@
 ---
 title: "使用 Jev"
-description: "为已完成的会话配置 Jev 评估，或为实时工具调用审查配置 Jev 策略。"
+description: "为已完成的会话设置 Jev 评估，或为实时工具调用审查设置 Jev 策略。"
 icon: "sparkles"
 ---
 
-Jev 在智能体运行的两个阶段发挥作用：对已完成的会话按已知答案进行评分，或在你向智能体发出请求的上下文中审查工具调用。
+Jev 在智能体运行的两个阶段发挥作用：对已完成的会话按已知答案打分，或在您向智能体下达指令的上下文中审查工具调用。
 
 <Tabs>
   <Tab title="Jev 评估">
-    当已完成的会话可以针对几个已知答案的问题进行评分时，使用 Jev 评估，例如"客户是否要求退款？请回答是或否。"这有助于你发现跨会话的规律。
+    当一个已完成的会话可以针对少数已知答案的问题进行打分时，请使用 Jev 评估，例如"客户是否要求退款？请回答是或否。"它可以帮助您在会话间发现规律。
 
     ## 创建评估
 
     在 Cloud 控制台中，打开 **analyse → checks → new check**（或 **new evaluation**）。描述一个固定答案的问题，审查其生成的规则，并确认 **how it checks** 为 **decision model**——即 Jev。在真实会话上[测试](/zh/evaluations/test)，然后启用它。
 
-    ![共享评估编写表单，你可在此描述问题、审查草稿并部署。截图显示的是代码草稿；使用 Jev 时请选择固定答案问题。](/images/dashboard/eval-authoring-draft.png)
+    ![共享评估编写表单，您可以在此描述问题、审查草稿并部署。此截图展示的是代码草稿；Jev 请使用固定答案问题。](/images/dashboard/eval-authoring-draft.png)
 
     ## 查看评分
 
@@ -25,20 +25,20 @@ Jev 在智能体运行的两个阶段发挥作用：对已完成的会话按已�
     fp evals --aggregate --since 7d
     ```
 
-    CLI 用于读取评分；目前创建 Jev 评估需通过控制台进行。问题类型和示例请参阅 [Jev 评估](/zh/evaluations/jev)。
+    CLI 用于读取评分；创建 Jev 评估目前需通过控制台完成。问题类型和示例请参阅 [Jev 评估](/zh/evaluations/jev)。
   </Tab>
   <Tab title="Jev 策略">
-    当字符串匹配策略需要结合你请求的上下文来判断工具调用是否安全时，使用 Jev 策略审查。先以 **observe** 模式启动，这样你可以查看 Jev 的判断结果，同时让已安装的策略继续处理每次调用。
+    当字符串匹配策略需要结合请求上下文来判断工具调用是否安全时，请使用 Jev 策略审查。先以 **observe** 模式启动，这样您可以在已安装策略仍负责决策的同时查看 Jev 的结果。
 
-    Jev 的检查来自策略包；Failproof AI 不预置任何策略包。在你安装之前，即使已配置 Jev，它也不会进行任何检查：
+    Jev 的检查来自策略包；Failproof AI 不预置任何包。在您安装之前，即使已完成配置，Jev 也不会进行任何检查：
 
     ```bash
     failproofai policies add FailproofAI/jev-policies
     ```
 
-    ## 配置 Cloud Jev
+    ## 设置 Cloud Jev
 
-    在 Cloud 控制台中，打开 **settings → api keys**，在 **new key** 下选择 **a machine running failproofai**。按[快速开始](/zh/start/quickstart)中的说明配合 `failproofai config` 使用。在没有现有 Jev 配置的机器上，这将以 observe 模式启用 Cloud Jev。通过以下命令检查连接状态：
+    在 Cloud 控制台中，打开 **settings → api keys**，在 **new key** 下选择 **a machine running failproofai**。按[快速开始](/zh/start/quickstart)中的说明配合 `failproofai config` 使用。在未配置 Jev 的机器上，此操作会以 observe 模式启用 Cloud Jev。通过以下命令检查连接状态：
 
     ```bash
     failproofai jev status
@@ -49,15 +49,15 @@ Jev 在智能体运行的两个阶段发挥作用：对已完成的会话按已�
 
     在本地控制台中，打开 **Settings → Jev**。选择提供商，粘贴其令牌，选择 **observe**，然后开启 Jev。
 
-    ![本地 Jev 设置面板，其中显示了提供商、令牌字段以及已选中的 observe 模式。](/images/dashboard/jev-settings.png)
+    ![本地 Jev 设置面板，包含提供商选择、令牌输入框和已选中的 observe 模式。](/images/dashboard/jev-settings.png)
 
-    或者在终端中配置并测试你的端点：
+    或通过终端配置并测试您的端点：
 
     ```bash
     failproofai jev --url https://api.typesafe.ai/v1 --mode observe --key-stdin < ~/typesafe.key
     failproofai jev test
     ```
 
-    让一个已挂钩的智能体对 `README.md` 使用其文件读取工具。确认该工具调用出现在会话中，然后在本地控制台的 **Policies → Activity** 下检查它。当 observe 结果符合预期后，请参阅 [Jev 策略](/zh/policies/jev)了解何时进行强制执行。有关提供商详情和配置说明，请参阅[集成参考](/zh/reference/jev)。
+    让一个已挂载 hook 的智能体对 `README.md` 使用其文件读取工具。确认该工具调用出现在会话中，然后在本地控制台的 **Policies → Activity** 下检查它。一旦 observe 结果符合预期，请参阅 [Jev 策略](/zh/policies/jev)了解何时启用强制执行。有关提供商详情和配置说明，请参阅[集成参考](/zh/reference/jev)。
   </Tab>
 </Tabs>

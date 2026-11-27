@@ -38,6 +38,21 @@ import {
   antigravityPathGuard,
   antigravityPathGuardActive,
 } from "./antigravity-path-guard";
+import {
+  TYPED_INPUT_GUARD_DESCRIPTION,
+  TYPED_INPUT_GUARD_MATCH,
+  TYPED_INPUT_GUARD_NAME,
+  typedInputGuardActive,
+  typedInputGuardFor,
+  typedShellInput,
+} from "./typed-shell-input";
+import {
+  CODEX_SESSION_GUARD_DESCRIPTION,
+  CODEX_SESSION_GUARD_MATCH,
+  CODEX_SESSION_GUARD_NAME,
+  codexCallOpensSession,
+  codexSessionGuardFor,
+} from "./codex-interactive-session";
 import { evaluatePolicies } from "./policy-evaluator";
 // Types only: the semantic (Jev) modules are loaded with a dynamic import, and
 // only once a Jev config exists, so an unconfigured machine never loads them.
@@ -727,6 +742,19 @@ export async function evaluateHookEvent(
     if (canonicalInput !== rawInput) {
       parsed.tool_input = canonicalInput;
     }
+    // Text typed into a running shell (Codex `write_stdin`, Copilot
+    // `write_bash`) arrives outside `command`, the field every shell policy
+    // reads: moved there as the lines it runs, or refused below when it cannot
+    // be read as whole lines. See typed-shell-input.ts.
+    const typedInput = typedShellInput(cli, rawToolName, canonicalToolName, parsed.tool_input);
+    if (typedInput?.kind === "command") {
+      parsed.tool_input = { ...(parsed.tool_input as Record<string, unknown>), command: typedInput.command };
+    }
+    const unreadableTypedInput = typedInput?.kind === "unreadable" ? typedInput.why : undefined;
+    // Codex runs no hooks for what is typed into a shell it keeps open, so a
+    // Codex command that opens one is refused. See codex-interactive-session.ts.
+    const codexSession =
+      cli === "codex" ? codexCallOpensSession(canonicalEventType, canonicalToolName, parsed.tool_input) : null;
 
     // Extract session metadata from payload
     const sessionId = parsed.session_id as string | undefined;
@@ -890,6 +918,28 @@ export async function evaluateHookEvent(
           ANTIGRAVITY_PATH_GUARD_DESCRIPTION,
           antigravityPathGuard,
           ANTIGRAVITY_PATH_GUARD_MATCH,
+        );
+      }
+      // Typed text no shell policy could read is refused, outside the enabled
+      // set for the same reason, and only for the call that carries it.
+      if (
+        unreadableTypedInput !== undefined &&
+        canonicalEventType === "PreToolUse" &&
+        typedInputGuardActive(Boolean(activePause), cloudManagedPolicies)
+      ) {
+        registerPolicy(
+          TYPED_INPUT_GUARD_NAME,
+          TYPED_INPUT_GUARD_DESCRIPTION,
+          typedInputGuardFor(unreadableTypedInput),
+          TYPED_INPUT_GUARD_MATCH,
+        );
+      }
+      if (codexSession !== null && typedInputGuardActive(Boolean(activePause), cloudManagedPolicies)) {
+        registerPolicy(
+          CODEX_SESSION_GUARD_NAME,
+          CODEX_SESSION_GUARD_DESCRIPTION,
+          codexSessionGuardFor(codexSession),
+          CODEX_SESSION_GUARD_MATCH,
         );
       }
       // Recorded on every row once a machine is managed, whether or not a cloud

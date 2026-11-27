@@ -240,10 +240,12 @@ export const POLICY_CATALOG: PolicyCatalogEntry[] = [
     // through this guard unguarded: the agent never needs a shell to overwrite
     // `~/.failproofai/policies-config.json` with `{"enabledPolicies":[]}` — it
     // just writes the file. Every CLI canonicalizes its own file tool's path
-    // key to `file_path`, so one branch covers all of them.
+    // key to `file_path`, so one branch covers all of them. `apply_patch` is
+    // OpenClaw's native patch tool, which reaches policies under its own name
+    // (FailproofAI/failproofai#1058).
     match: {
       events: ["PreToolUse", "PermissionRequest"],
-      toolNames: ["Bash", "Write", "Edit", "NotebookEdit"],
+      toolNames: ["Bash", "Write", "Edit", "NotebookEdit", "apply_patch"],
     },
     defaultEnabled: true,
     alwaysOn: true,

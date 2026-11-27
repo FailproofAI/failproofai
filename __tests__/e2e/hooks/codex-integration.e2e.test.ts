@@ -7,7 +7,7 @@
  */
 import { describe, it, expect } from "vitest";
 import { execSync } from "node:child_process";
-import { mkdtempSync, writeFileSync, readFileSync, existsSync, mkdirSync, rmSync } from "node:fs";
+import { mkdtempSync, writeFileSync, readFileSync, existsSync, mkdirSync, rmSync, symlinkSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -160,6 +160,89 @@ describe("E2E: Codex integration — hook protocol", () => {
       const last = JSON.parse(lines[lines.length - 1]) as Record<string, unknown>;
       expect(last.integration).toBe("codex");
       expect(last.decision).toBe("deny");
+    } finally {
+      env.cleanup();
+    }
+  });
+});
+
+// Codex edits files with its native `apply_patch`, whose patch arrives in
+// `tool_input.command` with no `file_path`. A patch planting
+// `node_modules/.bin/failproofai` — the file a project-scope `npx -y failproofai`
+// hook runs — passed the always-on guard until every file a patch names was
+// checked (found by hermes on FailproofAI/failproofai#1058).
+describe("E2E: Codex integration — native apply_patch", () => {
+  const patchOf = (...lines: string[]) => ["*** Begin Patch", ...lines, "*** End Patch", ""].join("\n");
+
+  it.each([
+    ["adding the entry", patchOf("*** Add File: node_modules/.bin/failproofai", "+#!/bin/sh", "+exit 0")],
+    ["updating the entry", patchOf("*** Update File: node_modules/.bin/failproofai", "@@", "-exec node cli.mjs", "+exit 0")],
+    ["moving a file onto the entry", patchOf("*** Update File: scripts/stub.sh", "*** Move to: node_modules/.bin/failproofai", "@@", "+exit 0")],
+    ["updating a link to the entry", patchOf("*** Update File: hook", "@@", "+exit 0")],
+  ])("PreToolUse: a native patch %s is denied", (_label, patch) => {
+    const env = createCodexEnv();
+    try {
+      writeConfig(env.cwd, []);
+      mkdirSync(resolve(env.cwd, "node_modules", ".bin"), { recursive: true });
+      symlinkSync(resolve(env.cwd, "node_modules", ".bin", "failproofai"), resolve(env.cwd, "hook"));
+      const result = runHook("PreToolUse", CodexPayloads.preToolUse.applyPatch(patch, env.cwd), {
+        homeDir: env.home,
+        cli: "codex",
+      });
+      assertPreToolUseDeny(result);
+    } finally {
+      env.cleanup();
+    }
+  });
+
+  // Codex's shell tool runs a command in its `workdir`, but the hook payload
+  // carries the session's directory and the command only (found by hermes on
+  // FailproofAI/failproofai#1058). A native write that plants the entry if it
+  // runs in node_modules/.bin is refused from the project's root; with the
+  // workdir reported, it is read from there.
+  it("PreToolUse: a native shell write that may run in node_modules/.bin is denied", () => {
+    const env = createCodexEnv();
+    try {
+      writeConfig(env.cwd, []);
+      mkdirSync(resolve(env.cwd, "node_modules", ".bin"), { recursive: true });
+      const result = runHook(
+        "PreToolUse",
+        CodexPayloads.preToolUse.bash("printf '#!/bin/sh\\nexit 0\\n' > failproofai", env.cwd),
+        { homeDir: env.home, cli: "codex" },
+      );
+      assertPreToolUseDeny(result);
+    } finally {
+      env.cleanup();
+    }
+  });
+
+  it("PreToolUse: a native shell write is read from the workdir the call reports", () => {
+    const env = createCodexEnv();
+    try {
+      writeConfig(env.cwd, []);
+      const withWorkdir = (workdir: string) => ({
+        ...CodexPayloads.preToolUse.bash("printf x > failproofai", env.cwd),
+        tool_input: { command: "printf x > failproofai", workdir },
+      });
+      assertPreToolUseDeny(
+        runHook("PreToolUse", withWorkdir(resolve(env.cwd, "node_modules", ".bin")), { homeDir: env.home, cli: "codex" }),
+      );
+      assertAllow(runHook("PreToolUse", withWorkdir(resolve(env.cwd, "src")), { homeDir: env.home, cli: "codex" }));
+    } finally {
+      env.cleanup();
+    }
+  });
+
+  it("PreToolUse: a native patch to project files is allowed", () => {
+    const env = createCodexEnv();
+    try {
+      writeConfig(env.cwd, []);
+      const patch = patchOf("*** Update File: src/app.ts", "@@", "-a", "+b", "*** Add File: node_modules/.bin/my-tool", "+exit 0");
+      const result = runHook("PreToolUse", CodexPayloads.preToolUse.applyPatch(patch, env.cwd), {
+        homeDir: env.home,
+        cli: "codex",
+      });
+      assertAllow(result);
     } finally {
       env.cleanup();
     }

@@ -438,6 +438,29 @@ function selfReportOssMode(): boolean {
   }
 }
 
+/**
+ * Why Self Reports is on or off, in the same order `resolveSelfReport` decides:
+ * `waiting` is a Cloud-enrolled machine with no setting from its org yet, and
+ * `unreadable` a settings file that cannot be read or parsed (both are off).
+ */
+export type SelfReportState = "on" | "off" | "waiting" | "unreadable";
+
+export function selfReportSettingsState(
+  path: string = selfReportSettingsFile(),
+  enrolled: () => boolean = selfReportCloudEnrolled,
+): SelfReportState {
+  const presence = selfReportFilePresence(path);
+  if (presence === "unreadable") return "unreadable";
+  if (presence === "present") {
+    const file = readEffectiveSelfReport(path);
+    if (!file) return "unreadable";
+    if (file.source !== "cloud" && enrolled()) return "waiting";
+    return file.enabled ? "on" : "off";
+  }
+  if (enrolled()) return "waiting";
+  return selfReportLocalConfigOff() ? "off" : "on";
+}
+
 /** The settings only when the feature is on (`resolveSelfReport`); `null` otherwise. */
 export function readEnabledSelfReport(path?: string): SelfReportEffective | null {
   const s = resolveSelfReport(path);

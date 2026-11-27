@@ -219,7 +219,7 @@ describe("enrolling with a local settings file in place", () => {
     // Every reader agrees: the stdio server hides the tool, the hook records nothing.
     const listed = await handleSelfReportRpc({ jsonrpc: "2.0", id: 1, method: "tools/list" });
     expect((listed as { result: { tools: unknown[] } }).result.tools).toEqual([]);
-    const status = await runSelfReportCommand(["status"], { registrations: () => [], probeEndpoint: async () => false, daemonExpected: () => false });
+    const status = await runSelfReportCommand(["status", "--verbose"], { registrations: () => [], probeEndpoint: async () => false, daemonExpected: () => false });
     expect(status.lines[0]).toContain("off (waiting for FailproofAI Cloud");
     // The org's setting arrives (the daemon writes a cloud file): it decides.
     const cloud = { ...JSON.parse(readFileSync(join(home, "self-report.json"), "utf8")), source: "cloud", enabled: true };
@@ -585,7 +585,7 @@ describe("failproofai self-report enable | disable | status", () => {
     expect(config.unrelated).toEqual({ keep: true });
     expect(readEffectiveSelfReport()).toMatchObject({ enabled: true, source: "local", guidance: "say what tool", categories: DEFAULT_CATEGORIES });
 
-    const status = await runSelfReportCommand(["status"], deps);
+    const status = await runSelfReportCommand(["status", "--verbose"], deps);
     expect(status.exitCode).toBe(0);
     const text = status.lines.join("\n");
     expect(text).toContain("Self Reports: on");
@@ -643,7 +643,7 @@ describe("failproofai self-report enable | disable | status", () => {
     writeEffectiveSelfReport({ enabled: true });
     const runnable = join(home, "failproofai");
     writeFileSync(runnable, "#!/bin/sh\n", { mode: 0o755 });
-    const r = await runSelfReportCommand(["status"], {
+    const r = await runSelfReportCommand(["status", "--verbose"], {
       skipSync: true,
       probeEndpoint: async (_url, port) => port === 4319,
       daemonLive: async (port) => port === 4319,
@@ -671,7 +671,7 @@ describe("failproofai self-report enable | disable | status", () => {
   it("status says the daemon is not running, not \"not answering\", when there is no daemon", async () => {
     writeEffectiveSelfReport({ enabled: true });
     const status = (expected: boolean) =>
-      runSelfReportCommand(["status"], {
+      runSelfReportCommand(["status", "--verbose"], {
         skipSync: true,
         probeEndpoint: async () => false,
         daemonExpected: () => expected,
@@ -688,7 +688,7 @@ describe("failproofai self-report enable | disable | status", () => {
   it("status expects a daemon when setup configured one or its socket file is there", async () => {
     writeEffectiveSelfReport({ enabled: true });
     const status = async () =>
-      (await runSelfReportCommand(["status"], {
+      (await runSelfReportCommand(["status", "--verbose"], {
         skipSync: true,
         probeEndpoint: async () => false,
         registrations: () => [],
@@ -710,7 +710,7 @@ describe("failproofai self-report enable | disable | status", () => {
     writeEffectiveSelfReport({ enabled: true });
     let synced = 0;
     let rows = [row({ transport: "http", endpoint: "http://127.0.0.1:4319/mcp?agent=claude" })];
-    const r = await runSelfReportCommand(["status"], {
+    const r = await runSelfReportCommand(["status", "--verbose"], {
       probeEndpoint: async () => false,
       registrations: () => rows,
       sync: async () => {
@@ -728,10 +728,10 @@ describe("failproofai self-report enable | disable | status", () => {
     // Healthy, or skipSync: no write.
     synced = 0;
     rows = [row({ transport: "http", endpoint: "http://127.0.0.1:4319/mcp?agent=claude" })];
-    await runSelfReportCommand(["status"], {
+    await runSelfReportCommand(["status", "--verbose"], {
       probeEndpoint: async () => true, daemonLive: async () => true, registrations: () => rows, sync: async () => (synced++, []),
     });
-    await runSelfReportCommand(["status"], { skipSync: true, probeEndpoint: async () => false, registrations: () => rows, sync: async () => (synced++, []) });
+    await runSelfReportCommand(["status", "--verbose"], { skipSync: true, probeEndpoint: async () => false, registrations: () => rows, sync: async () => (synced++, []) });
     expect(synced).toBe(0);
   });
 
@@ -739,7 +739,7 @@ describe("failproofai self-report enable | disable | status", () => {
     writeEffectiveSelfReport({ enabled: true });
     let synced = 0;
     const http = [row({ transport: "http", endpoint: "http://127.0.0.1:4319/mcp?agent=claude" })];
-    const seen = await runSelfReportCommand(["status"], {
+    const seen = await runSelfReportCommand(["status", "--verbose"], {
       skipSync: true,
       probeEndpoint: async () => true,
       daemonLive: async () => false,
@@ -747,7 +747,7 @@ describe("failproofai self-report enable | disable | status", () => {
     });
     expect(seen.lines.join("\n")).toMatch(/claude +http +\S+ \(answering, but NOT this home's daemon\)/);
     let rows = http;
-    const r = await runSelfReportCommand(["status"], {
+    const r = await runSelfReportCommand(["status", "--verbose"], {
       probeEndpoint: async () => true,
       daemonLive: async () => false,
       registrations: () => rows,
@@ -765,7 +765,7 @@ describe("failproofai self-report enable | disable | status", () => {
     writeEffectiveSelfReport({ enabled: true });
     let synced = 0;
     let rows = [row({ agent: "copilot", transport: "http", endpoint: "http://127.0.0.1:4319/mcp?agent=copilot" })];
-    const r = await runSelfReportCommand(["status"], {
+    const r = await runSelfReportCommand(["status", "--verbose"], {
       probeEndpoint: async () => true,
       registrations: () => rows,
       sync: async () => {
@@ -778,20 +778,76 @@ describe("failproofai self-report enable | disable | status", () => {
     expect(r.lines.join("\n")).toContain("Repaired:");
   });
 
-  it("enable says \"Agents updated.\" only when a sync changed something", async () => {
-    const quiet = await runSelfReportCommand(["enable"], { probeEndpoint: async () => false, sync: async () => [{ agent: "claude", path: "/x", action: "unchanged", transport: "http", status: "ok" }] });
-    expect(quiet.lines.join("\n")).not.toContain("Agents updated.");
-    const changed = await runSelfReportCommand(["enable"], { probeEndpoint: async () => false, sync: async () => [{ agent: "claude", path: "/x", action: "added", transport: "http", status: "ok" }] });
-    expect(changed.lines.join("\n")).toContain("Agents updated.");
-    const off = await runSelfReportCommand(["disable"], { sync: async () => [] });
-    expect(off.lines).toEqual([
-      "✓ Self Reports is off. Agents lose the report tool and nothing is recorded.",
-      "  Turn it back on with `failproofai self-report enable`.",
+  it("enable and disable print one line, naming only agents that could not be updated", async () => {
+    const ok = (agent: string, action: string) => ({ agent, path: `/${agent}`, action, transport: "stdio", status: "ok" }) as never;
+    const on = await runSelfReportCommand(["enable"], { probeEndpoint: async () => false, sync: async () => [ok("claude", "unchanged"), ok("cursor", "added")] });
+    expect(on.lines).toEqual(["✓ Self Reports: on for 2 agents"]);
+    const partly = await runSelfReportCommand(["enable"], {
+      probeEndpoint: async () => false,
+      sync: async () => [ok("claude", "added"), { agent: "codex", path: "/c", action: "skipped", transport: null, status: "error", detail: "EACCES" }],
+    });
+    expect(partly.lines).toEqual(["▲ Self Reports: on for 1 agent; not updated for OpenAI Codex  ·  `failproofai self-report sync`"]);
+    const off = await runSelfReportCommand(["disable"], { sync: async () => [ok("claude", "removed")] });
+    expect(off.lines).toEqual(["✓ Self Reports: off"]);
+    expect((await runSelfReportCommand(["enable"], { skipSync: true })).lines).toEqual(["✓ Self Reports: on"]);
+  });
+
+  it("status is one header, the healthy agents in one line, and a line per agent with a problem", async () => {
+    writeEffectiveSelfReport({ enabled: true });
+    const runnable = join(home, "failproofai");
+    writeFileSync(runnable, "#!/bin/sh\n", { mode: 0o755 });
+    const r = await runSelfReportCommand(["status"], {
+      skipSync: true,
+      probeEndpoint: async (_url, port) => port === 4319,
+      daemonLive: async (port) => port === 4319,
+      registrations: () => [
+        row({ agent: "claude", transport: "http", endpoint: "http://127.0.0.1:4319/mcp?agent=claude" }),
+        row({ agent: "cursor", transport: "stdio", endpoint: runnable }),
+        row({ agent: "copilot", transport: "stdio", endpoint: runnable }),
+        row({ agent: "factory", transport: "stdio", endpoint: join(home, "missing", "failproofai") }),
+        row({ agent: "goose", registered: false, transport: null }),
+        row({ agent: "devin", hooked: false, registered: false, transport: null }),
+      ],
+    });
+    expect(r.lines).toEqual([
+      "Self Reports: on · this machine",
+      "Agents: claude, cursor, copilot",
+      "▲ factory: command not runnable  ·  `failproofai self-report sync`",
+      "▲ goose: not registered  ·  `failproofai self-report sync`",
     ]);
+    // No paths, URLs, categories or Cursor hint by default.
+    expect(r.lines.join("\n")).not.toMatch(/http:|cursor-agent|looping|self-report\.json/);
+  });
+
+  it("status says off in one line, and --json carries what --verbose shows", async () => {
+    writeEffectiveSelfReport({ enabled: false });
+    expect((await runSelfReportCommand(["status"], deps)).lines).toEqual(["Self Reports: off · this machine"]);
+    rmSync(join(home, "self-report.json"));
+    expect((await runSelfReportCommand(["status"], deps)).lines).toEqual(["Self Reports: on · default", "Agents: none with failproofai hooks"]);
+    writeFileSync(join(home, "self-report.json"), "{not json");
+    expect((await runSelfReportCommand(["status"], deps)).lines).toEqual([
+      "Self Reports: off · settings file unreadable  ·  `failproofai self-report enable`",
+    ]);
+
+    writeEffectiveSelfReport({ enabled: true });
+    const j = await runSelfReportCommand(["status", "--json"], {
+      skipSync: true,
+      probeEndpoint: async () => false,
+      registrations: () => [row({ agent: "copilot", transport: "stdio", endpoint: join(home, "nope") })],
+    });
+    expect(j.exitCode).toBe(0);
+    expect(j.json).toMatchObject({
+      enabled: true,
+      source: "local",
+      categories: DEFAULT_CATEGORIES.map((c) => c.name),
+      daemon: { url: "http://127.0.0.1:4319/mcp", answering: false },
+      agents: [{ agent: "copilot", transport: "stdio", healthy: false, problem: "command not runnable", fix: "failproofai self-report sync" }],
+    });
+    expect((await runSelfReportCommand(["status", "--bogus"], deps)).exitCode).toBe(1);
   });
 
   it("status with no settings file says it is on by default, and how to turn it off", async () => {
-    const r = await runSelfReportCommand(["status"], deps);
+    const r = await runSelfReportCommand(["status", "--verbose"], deps);
     expect(r.exitCode).toBe(0);
     expect(r.lines[0]).toBe("Self Reports: on");
     expect(r.lines.join("\n")).toContain("the default (no settings file yet)");
@@ -800,13 +856,13 @@ describe("failproofai self-report enable | disable | status", () => {
 
   it("status with no settings file on a Cloud-enrolled machine says it is off until Cloud sends it", async () => {
     process.env.FAILPROOFAI_CLOUD_URL = "https://example.invalid";
-    const r = await runSelfReportCommand(["status"], deps);
+    const r = await runSelfReportCommand(["status", "--verbose"], deps);
     expect(r.lines[0]).toContain("off (waiting for FailproofAI Cloud");
   });
 
   it("status with a malformed settings file says it is off", async () => {
     writeFileSync(join(home, "self-report.json"), "{not json");
-    const r = await runSelfReportCommand(["status"], deps);
+    const r = await runSelfReportCommand(["status", "--verbose"], deps);
     expect(r.lines[0]).toBe("Self Reports: off (the settings file cannot be read)");
   });
 

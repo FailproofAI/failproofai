@@ -94,7 +94,7 @@ Claude Code and Codex can load the MCP server while skipping failproofai's hooks
 - Codex 0.129 and later runs a hook from `~/.codex/hooks.json` only once a person trusted it, at its current hash. Hooks in Codex's system config (`/etc/codex/config.toml`, where `failproofai config` puts them when it has sudo) run without trust.
 - Claude Code runs no hooks with `disableAllHooks: true`, and only managed ones with a managed `allowManagedHooksOnly: true`.
 
-So the stdio server records a Claude Code or Codex report itself unless that agent's hook already recorded it: the agent runs its hook before it sends the MCP call, so the server looks for the hook's record of the same report from the last two minutes. A report is recorded once either way, and a person who trusts the hooks while the agent runs changes nothing. A report the server records goes on the session the agent's own files name (Codex's rollout, Claude Code's transcript for that directory). `self-report sync` registers such an agent over stdio, never on the daemon's endpoint, which records nothing for it. `self-report status` says who records each one's reports and, for an untrusted Codex, how to trust the hooks: re-run `failproofai config` and allow sudo, or open `codex` once and approve them.
+So the stdio server records a Claude Code or Codex report itself unless that agent's hook already recorded it: the agent runs its hook before it sends the MCP call, so the server looks for the hook's record of the same report from the last two minutes. A report is recorded once either way, and a person who trusts the hooks while the agent runs changes nothing. A report the server records goes on the session the agent's own files name (Codex's rollout, Claude Code's transcript for that directory). `self-report sync` registers such an agent over stdio, never on the daemon's endpoint, which records nothing for it. `self-report status --verbose` says who records each one's reports and, for an untrusted Codex, how to trust the hooks: re-run `failproofai config` and allow sudo, or open `codex` once and approve them.
 
 ### Other agents' servers
 
@@ -102,11 +102,19 @@ Devin also lists the MCP servers of other agents' configs: `~/.claude.json` (use
 
 ### Cursor approval
 
-If `cursor-agent mcp list` shows `failproofai_local` as "not loaded (needs approval)", run `cursor-agent mcp enable failproofai_local`. cursor-agent asks for approval of servers in a project's `.cursor/mcp.json`, so this happens, for example, when it runs with your home directory as the project. The approval is per project and per entry, so failproofai does not write it for you. The sync and `status` output say so for Cursor.
+If `cursor-agent mcp list` shows `failproofai_local` as "not loaded (needs approval)", run `cursor-agent mcp enable failproofai_local`. cursor-agent asks for approval of servers in a project's `.cursor/mcp.json`, so this happens, for example, when it runs with your home directory as the project. The approval is per project and per entry, so failproofai does not write it for you. `self-report sync` and `self-report status --verbose` say so for Cursor.
 
 On Antigravity, an MCP call can come through its `call_mcp_tool` wrapper. The hook lets that call through ahead of the policies only when the wrapper names server `failproofai_local` and tool `report`. A wrapped call to any other server goes through the policies as usual.
 
-`failproofai self-report status` shows whether the daemon's endpoint answers (`not running (agents use stdio)` when no daemon is set up here) and, per agent, whether the server is registered, over which transport, and whether that endpoint answers (HTTP) or the command can run (stdio). If an MCP server named `failproofai_local` that failproofai did not write is already there, it is left alone and reported as a conflict. A server named `failproofai`, such as the [Cloud MCP gateway](/reference/mcp), is never touched or reported: it sits next to `failproofai_local`, and its tools go through your policies like any other server's.
+`failproofai self-report status` prints one header line (on or off, and where the setting comes from), one line with the agents whose server is registered and working, and a line with the fix for each agent that has a problem: not registered, an endpoint that does not answer, a command that cannot run, a config it cannot read. `--verbose` adds the settings file, the categories, the daemon's endpoint (`not running (agents use stdio)` when no daemon is set up here) and, per agent, the transport, the URL or command, and who records its reports. `--json` prints all of it as JSON.
+
+`policies --install`, `config`, `policies --uninstall`, `enable` and `disable` each print one Self Reports line, such as `Self Reports: on for 12 agents`, which also names any agent they could not update. `self-report sync` lists every change.
+
+If an MCP server named `failproofai_local` that failproofai did not write is already there, it is left alone and reported as a conflict. A server named `failproofai`, such as the [Cloud MCP gateway](/reference/mcp), is never touched or reported: it sits next to `failproofai_local`, and its tools go through your policies like any other server's.
+
+## The daemon's log
+
+The daemon's log (`~/.failproofai/logs/daemon.log`, which machine logs upload) has a line for every Self Reports MCP event: each `initialize` and `tools/list`, each `tools/call` with the agent, the category, the session it was filed under, and whether it was recorded or skipped and why, and each sync's result. A write failure, a category the settings do not list, and an unreadable settings file are warnings. A line carries at most the first 40 characters of the report's detail, after secrets are scrubbed from it. The stdio server, which runs as a child of each agent, sends its events to the daemon over its socket and never waits for it: with no daemon, or a version that predates this, they are dropped.
 
 ## Containers
 

@@ -43,8 +43,8 @@ import { packPolicyParamKey } from "./policy-evaluator";
 import { probeDaemonPolicyEvaluation } from "./daemon-service";
 import { NO_PRINTED_COMMAND_REASON, sudoPath } from "./system-command";
 import { keepAgentSelectionTrue } from "./agent-selection";
-import { removeSelfReportMcp, selfReportSyncLines, syncSelfReportMcp } from "./self-report-install";
-import { ensureSelfReportSettingsFile } from "./self-report";
+import { removeSelfReportMcp, selfReportSummary, syncSelfReportMcp } from "./self-report-install";
+import { ensureSelfReportSettingsFile, selfReportSettingsState } from "./self-report";
 import { INDENT, colorsEnabled, optsFor, printBlock, screenKit, type ScreenKitOpts } from "./tui";
 
 const VALID_POLICY_NAMES = new Set(BUILTIN_POLICIES.map((p) => p.name));
@@ -1029,7 +1029,9 @@ async function installHooksImpl(
       alsoHooked: writtenSettingsPaths.map((written) => written.cli),
       binaryPath,
     });
-    for (const line of selfReportSyncLines(results)) console.log(line);
+    // One line; the per-agent changes are `self-report sync`'s and `status`'s.
+    const summary = selfReportSummary(results, selfReportSettingsState());
+    if (summary) console.log(summary.ok ? kit.ok(summary.text) : kit.caution(summary.text, summary.fix));
   } catch {
     // never block the install
   }
@@ -1244,7 +1246,9 @@ export async function removeHooks(policyNames?: string[], scope: HookScope | "al
   // the user-scope hooks that use it are still there.
   if (scope === "user" || scope === "all") {
     try {
-      for (const line of selfReportSyncLines(removeSelfReportMcp({ agents: selectedClis, quiet: true }))) say(line);
+      const summary = selfReportSummary(removeSelfReportMcp({ agents: selectedClis, quiet: true }), "removed");
+      const kit = screenKit(optsFor(process.stdout));
+      if (summary) say(summary.ok ? kit.ok(summary.text) : kit.caution(summary.text, summary.fix));
     } catch {
       // never block the removal
     }

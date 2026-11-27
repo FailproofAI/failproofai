@@ -222,6 +222,33 @@ pub fn tick(enrolled: Option<bool>, withdrawn: &dyn Fn() -> bool) {
     }
 }
 
+/// Log one Self Reports event that arrived over the socket (`selfReportLog`):
+/// the stdio server's MCP traffic, or a CLI sync's result. Written exactly as
+/// the HTTP server's own events, so the machine logs hold both the same way.
+/// The preview is scrubbed and cut again here: the sender is not trusted to.
+pub fn log_remote(ev: &fpai_ipc::SelfReportLogEvent) {
+    let transport = match ev.transport.as_deref() {
+        Some("cli") => "cli",
+        _ => "stdio",
+    };
+    sr::log_event(&sr::McpLog {
+        event: &ev.event,
+        transport,
+        agent: ev.agent.as_deref(),
+        outcome: ev.outcome.as_deref(),
+        reason: ev.reason.as_deref(),
+        category: ev.category.as_deref(),
+        known_category: ev.known_category,
+        session: ev.session.as_deref(),
+        detail: ev.preview.as_deref(),
+        summary: ev.summary.as_deref(),
+    });
+}
+
+/// Set on the sync child: print the sync's result on stdout (which this
+/// daemon logs) rather than send it back over the socket.
+pub const SYNC_LOG_ENV: &str = "FAILPROOFAI_SELF_REPORT_SYNC_LOG";
+
 /// The MCP port, from `FAILPROOFAI_SELF_REPORT_PORT` once per process.
 pub fn port() -> u16 {
     static PORT: std::sync::OnceLock<u16> = std::sync::OnceLock::new();
@@ -393,11 +420,16 @@ fn run_sync_once() {
         tracing::warn!("Self Reports sync skipped: {problem}");
         return;
     }
-    match run_with_timeout(
+    report_sync(run_with_timeout(
         &format!("{cli} self-report sync --quiet"),
         &home,
         SYNC_TIMEOUT,
-    ) {
+    ));
+}
+
+/// The daemon's log line for one sync child's exit.
+fn report_sync(result: io::Result<Option<i32>>) {
+    match result {
         Ok(Some(0)) => tracing::info!("Self Reports agent configs synced"),
         Ok(Some(code)) => tracing::warn!("`failproofai self-report sync` failed (exit {code})"),
         Ok(None) => tracing::warn!("`failproofai self-report sync` was killed (timeout or signal)"),
@@ -428,12 +460,33 @@ fn sync_identity_problem(home: &Path, euid: u32) -> Option<String> {
 }
 
 fn run_with_timeout(command: &str, home: &Path, timeout: Duration) -> io::Result<Option<i32>> {
+    run_with_timeout_in(command, home, timeout, None)
+}
+
+/// [`run_with_timeout`] with the child's whole environment given (tests: a
+/// service's bare `PATH` and a scratch `HOME`, nothing inherited).
+fn run_with_timeout_in(
+    command: &str,
+    home: &Path,
+    timeout: Duration,
+    only_env: Option<&[(&str, &std::ffi::OsStr)]>,
+) -> io::Result<Option<i32>> {
     use std::os::unix::process::CommandExt;
-    let mut child = Command::new("sh")
-        .arg("-c")
-        .arg(command)
+    let mut command = {
+        let mut c = Command::new("sh");
+        c.arg("-c").arg(command);
+        if let Some(env) = only_env {
+            c.env_clear();
+            for (k, v) in env {
+                c.env(k, v);
+            }
+        }
+        c
+    };
+    let mut child = command
         // The CLI resolves the same home the daemon read self-report.json from.
         .env("FAILPROOFAI_HOME", home)
+        .env(SYNC_LOG_ENV, "stdout")
         .stdin(Stdio::null())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
@@ -878,5 +931,230 @@ mod tests {
             home.display().to_string()
         );
         let _ = std::fs::remove_dir_all(&home);
+    }
+
+    /// A machine laid out like an nvm install run by a service: `node` and
+    /// npm's `failproofai` link side by side in `<root>/nvm/bin`, the package's
+    /// `dist/cli.mjs` (here a shim that runs this checkout's CLI with bun) in
+    /// `lib/node_modules`, and a scratch `HOME`. Nothing is inherited from the
+    /// test's environment, so no real agent config is ever read or written.
+    struct ServiceMachine {
+        root: PathBuf,
+        home: PathBuf,
+        bin: PathBuf,
+        /// How the service runs the CLI: `<node> …/dist/cli.mjs`.
+        cli: String,
+    }
+
+    impl ServiceMachine {
+        fn new(name: &str) -> Self {
+            let root = temp_path(name).parent().unwrap().to_path_buf();
+            let home = root.join("home");
+            let bin = root.join("nvm").join("bin");
+            let pkg = root.join("nvm/lib/node_modules/failproofai/dist");
+            std::fs::create_dir_all(home.join(".failproofai")).unwrap();
+            std::fs::create_dir_all(&bin).unwrap();
+            std::fs::create_dir_all(&pkg).unwrap();
+            let bun = std::env::var_os("PATH")
+                .and_then(|p| find_named(&p, "bun"))
+                .expect("bun on PATH (cargo test runs the TypeScript CLI with it)");
+            // A real file, not a symlink: bun reports a symlink's target as its
+            // execPath, and the point is the `node` the service was given.
+            let node = bin.join("node");
+            if std::fs::hard_link(&bun, &node).is_err() {
+                std::fs::copy(&bun, &node).unwrap();
+            }
+            let repo_cli = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../bin/failproofai.mjs");
+            let cli_mjs = pkg.join("cli.mjs");
+            std::fs::write(
+                &cli_mjs,
+                format!(
+                    "#!/usr/bin/env node\nawait import({:?});\n",
+                    repo_cli.canonicalize().unwrap().display().to_string()
+                ),
+            )
+            .unwrap();
+            {
+                use std::os::unix::fs::PermissionsExt;
+                std::fs::set_permissions(&cli_mjs, std::fs::Permissions::from_mode(0o755)).unwrap();
+            }
+            std::os::unix::fs::symlink(&cli_mjs, bin.join("failproofai")).unwrap();
+            let cli = format!("{} {}", shell_quote(&node), shell_quote(&cli_mjs));
+            ServiceMachine {
+                root,
+                home,
+                bin,
+                cli,
+            }
+        }
+
+        fn fp_home(&self) -> PathBuf {
+            self.home.join(".failproofai")
+        }
+
+        /// Run `<cli> <args>` with `PATH`, the scratch `HOME`, and nothing else.
+        fn run(&self, args: &str, path: &str) -> Option<i32> {
+            let env: [(&str, &std::ffi::OsStr); 3] = [
+                ("PATH", std::ffi::OsStr::new(path)),
+                ("HOME", self.home.as_os_str()),
+                ("FAILPROOFAI_TELEMETRY_DISABLED", std::ffi::OsStr::new("1")),
+            ];
+            run_with_timeout_in(
+                &format!("{} {args}", self.cli),
+                &self.fp_home(),
+                SYNC_TIMEOUT,
+                Some(&env),
+            )
+            .unwrap()
+        }
+
+        /// The agent configs that hold a `failproofai_local` entry.
+        fn registered(&self) -> Vec<&'static str> {
+            [
+                ("claude", ".claude.json"),
+                ("codex", ".codex/config.toml"),
+                ("cursor", ".cursor/mcp.json"),
+                ("copilot", ".copilot/mcp-config.json"),
+                ("factory", ".factory/mcp.json"),
+                ("devin", ".config/devin/mcp_config.json"),
+            ]
+            .into_iter()
+            .filter(|(_, file)| {
+                std::fs::read_to_string(self.home.join(file))
+                    .is_ok_and(|text| text.contains("failproofai_local"))
+            })
+            .map(|(agent, _)| agent)
+            .collect()
+        }
+
+        fn config(&self, file: &str) -> String {
+            std::fs::read_to_string(self.home.join(file)).unwrap_or_default()
+        }
+    }
+
+    impl Drop for ServiceMachine {
+        fn drop(&mut self) {
+            let _ = std::fs::remove_dir_all(&self.root);
+        }
+    }
+
+    fn find_named(path: &std::ffi::OsStr, name: &str) -> Option<PathBuf> {
+        std::env::split_paths(path)
+            .map(|dir| dir.join(name))
+            .find(|p| p.is_file())
+            .and_then(|p| p.canonicalize().ok())
+    }
+
+    const HOOKED: &str = "claude codex cursor copilot factory devin";
+
+    /// The laptop run, end to end: no settings file; `config` (here its hook
+    /// install) runs while the machine is enrolled with no org setting yet,
+    /// which is off, so its sync registers nothing; then the daemon writes the
+    /// org's "on". That first Cloud write must sync, and the sync, run the way
+    /// the service runs it (bare PATH, `<node> dist/cli.mjs`), must register
+    /// every hooked agent with no manual `self-report sync`.
+    #[test]
+    fn the_first_cloud_write_after_an_enrolled_config_registers_every_hooked_agent() {
+        let m = ServiceMachine::new("cloud-first-sync");
+        std::fs::write(m.fp_home().join("credentials.json"), r#"{"cloud":{}}"#).unwrap();
+        let settings = sr::settings_path(&m.fp_home());
+        assert!(!settings.exists());
+
+        // `config` runs in the user's shell, where nvm's bin is on PATH.
+        let shell_path = format!("{}:/usr/bin:/bin", m.bin.display());
+        assert_eq!(
+            m.run(
+                &format!("policies --install --cli {HOOKED} --scope user"),
+                &shell_path
+            ),
+            Some(0)
+        );
+        assert!(
+            !settings.exists(),
+            "an enrolled machine waits for the org's setting"
+        );
+        assert_eq!(
+            m.registered(),
+            Vec::<&str>::new(),
+            "enrolled with no setting is off"
+        );
+
+        // The daemon's maintenance lane, with the org's first answer.
+        let on = Desired {
+            enabled: true,
+            ..Default::default()
+        };
+        let applied = apply(&settings, Some(&on), 4319).unwrap();
+        assert_eq!(
+            applied,
+            Applied {
+                written: true,
+                needs_sync: true
+            }
+        );
+        // The sync the lane spawns, under the service's environment.
+        assert_eq!(m.run("self-report sync --quiet", "/usr/bin:/bin"), Some(0));
+        assert_eq!(
+            m.registered(),
+            vec!["claude", "codex", "cursor", "copilot", "factory", "devin"]
+        );
+        // No daemon answers here, so every entry is stdio, on npm's link
+        // beside the service's node (on no PATH the service has).
+        let link = m.bin.join("failproofai").display().to_string();
+        assert!(
+            m.config(".cursor/mcp.json").contains(&link),
+            "{}",
+            m.config(".cursor/mcp.json")
+        );
+        assert!(m.config(".codex/config.toml").contains(&link));
+        // And the same answer again changes nothing.
+        assert_eq!(
+            apply(&settings, Some(&on), 4319).unwrap(),
+            Applied {
+                written: false,
+                needs_sync: false
+            }
+        );
+    }
+
+    /// The startup sync under a service's PATH: `failproofai` is on no PATH
+    /// the service has and the CLI runs as `dist/cli.mjs`, so the only way to
+    /// a stdio command is npm's link beside the service's node. Without that
+    /// link every server-recorded agent fails and the sync exits 1.
+    #[test]
+    fn the_startup_sync_finds_the_cli_beside_the_services_node() {
+        let m = ServiceMachine::new("service-path");
+        let shell_path = format!("{}:/usr/bin:/bin", m.bin.display());
+        assert_eq!(
+            m.run(
+                &format!("policies --install --cli {HOOKED} --scope user"),
+                &shell_path
+            ),
+            Some(0)
+        );
+        // Not enrolled and no file: on by default, so the install registered them.
+        assert_eq!(m.registered().len(), 6);
+        // Start over from no entries, then the daemon's startup sync.
+        for file in [
+            ".claude.json",
+            ".codex/config.toml",
+            ".cursor/mcp.json",
+            ".copilot/mcp-config.json",
+            ".factory/mcp.json",
+            ".config/devin/mcp_config.json",
+        ] {
+            let _ = std::fs::remove_file(m.home.join(file));
+        }
+        assert_eq!(m.run("self-report sync --quiet", "/usr/bin:/bin"), Some(0));
+        assert_eq!(m.registered().len(), 6);
+        let link = m.bin.join("failproofai").display().to_string();
+        assert!(m.config(".copilot/mcp-config.json").contains(&link));
+
+        // The control: without the link the same sync fails, as it did.
+        std::fs::remove_file(m.bin.join("failproofai")).unwrap();
+        for file in [".cursor/mcp.json", ".copilot/mcp-config.json"] {
+            let _ = std::fs::remove_file(m.home.join(file));
+        }
+        assert_eq!(m.run("self-report sync --quiet", "/usr/bin:/bin"), Some(1));
     }
 }

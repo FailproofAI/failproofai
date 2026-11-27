@@ -41,7 +41,9 @@ import {
   selfReportClip,
   selfReportInputSchema,
   selfReportInstructions,
+  selfReportSettingsState,
 } from "./self-report";
+import { flushSelfReportLogs, sendSelfReportLog } from "./self-report-log";
 
 /**
  * Set to `1` in the server's environment (by `self-report test`), it writes one
@@ -406,9 +408,14 @@ export async function handleSelfReportRpc(
 
   if (!hasId) return null; // notifications/initialized and friends
 
+  const log = (event: Parameters<typeof sendSelfReportLog>[0]): void => {
+    void sendSelfReportLog({ transport: "stdio", ...(opts.agent ? { agent: opts.agent } : {}), ...event });
+  };
+
   switch (method) {
     case "initialize": {
       const instructions = selfReportServerInstructions();
+      log({ event: "initialize", outcome: instructions ? "on" : "off" });
       return ok({
         protocolVersion: typeof params.protocolVersion === "string" ? params.protocolVersion : SELF_REPORT_DEFAULT_PROTOCOL,
         capabilities: { tools: {} },
@@ -418,30 +425,44 @@ export async function handleSelfReportRpc(
     }
     case "ping":
       return ok({});
-    case "tools/list":
-      return ok({ tools: selfReportToolList() });
+    case "tools/list": {
+      const tools = selfReportToolList();
+      log({ event: "tools/list", outcome: tools.length > 0 ? "report" : "no tool (off)" });
+      return ok({ tools });
+    }
     case "tools/call": {
       if (params.name !== SELF_REPORT_TOOL_NAME) {
+        log({ event: "tools/call", outcome: "skipped", reason: "unknown tool" });
         return ok({ content: [{ type: "text", text: `Unknown tool: ${String(params.name)}` }], isError: true });
       }
       const agent = opts.agent;
-      if (agent && readEnabledSelfReport() && (await selfReportServerShouldRecord(agent, params.arguments, opts.now?.()))) {
-        const { category, detail } = selfReportArgs(params.arguments ?? {});
+      const { category, detail } = selfReportArgs(params.arguments ?? {});
+      const call = { event: "tools/call" as const, category, preview: detail };
+      const settings = readEnabledSelfReport();
+      if (!agent) {
+        log({ ...call, outcome: "skipped", reason: "no --agent" });
+      } else if (!settings) {
+        log({ ...call, outcome: "skipped", reason: selfReportSettingsState() === "unreadable" ? "settings unreadable" : "Self Reports is off" });
+      } else if (!(await selfReportServerShouldRecord(agent, params.arguments, opts.now?.()))) {
+        log({ ...call, outcome: "skipped", reason: "its hook recorded it" });
+      } else {
+        const knownCategory = settings.categories.some((c) => c.name === category);
         try {
-          const { path } = await writeSelfReportEvent({
+          const { path, event } = await writeSelfReportEvent({
             integration: agent,
             category,
             detail,
             cwd: opts.cwd ?? process.cwd(),
             now: opts.now?.(),
           });
+          log({ ...call, outcome: "recorded", knownCategory, session: String(event.session_id) });
           if (process.env[SELF_REPORT_RECEIPT_ENV] === "1") process.stderr.write(`${SELF_REPORT_RECEIPT_PREFIX}${path}\n`);
         } catch (err) {
           // The agent still hears "Recorded.": a report changes no decision,
           // and an error here would only make it retry.
-          process.stderr.write(
-            `[failproofai mcp] could not record a self report: ${err instanceof Error ? err.message : String(err)}\n`,
-          );
+          const why = err instanceof Error ? err.message : String(err);
+          log({ ...call, outcome: "failed", knownCategory, reason: `write failed: ${why}` });
+          process.stderr.write(`[failproofai mcp] could not record a self report: ${why}\n`);
         }
       }
       return ok({ content: [{ type: "text", text: SELF_REPORT_RESULT_TEXT }] });
@@ -491,7 +512,8 @@ export function runSelfReportMcpServer(opts: SelfReportMcpOptions = {}): Promise
       });
     });
     rl.on("close", () => {
-      void chain.then(() => resolveRun());
+      // Events still on their way to the daemon's log get a moment, never more.
+      void chain.then(() => flushSelfReportLogs()).then(() => resolveRun());
     });
   });
 }

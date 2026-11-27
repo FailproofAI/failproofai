@@ -66,6 +66,36 @@ Tagged JSON, `"type"` as the discriminant, camelCase field names.
 }
 ```
 
+```jsonc
+// One Self Reports MCP event from outside the daemon — the stdio server
+// `failproofai mcp` (a child of each agent) or a CLI `self-report sync` —
+// for the daemon's log, which machine logs ship. ONE-WAY: the daemon writes
+// no reply and closes the connection; the sender never reads one.
+{
+  "type": "selfReportLog",
+  "protocolVersion": 2,
+  "event": {
+    "event": "tools/call",          // initialize | tools/list | tools/call | sync | error
+    "agent": "hermes",              // every field below is optional
+    "transport": "stdio",           // stdio | cli
+    "outcome": "recorded",          // recorded | skipped | failed (calls); on | off (initialize)
+    "reason": "Self Reports is off",
+    "category": "looping",
+    "knownCategory": true,
+    "session": "…",
+    "preview": "≤ 200 chars of the detail; the daemon scrubs secrets and logs ≤ 40",
+    "summary": "added claude (stdio); failed codex (…)" // sync only
+  }
+}
+```
+
+`selfReportLog` needs no version bump: a daemon that predates it fails to parse
+the unknown `type` and closes the connection (see "Malformed input handling"),
+which drops the event — exactly what a one-way message wants. Unknown fields in
+`event` are ignored, so either side can add one. The client sends it only when
+the socket file exists, gives the whole send 250 ms, and drops it on any error,
+so an agent is never held up.
+
 `cwd` must be the *originating* CLI process's cwd, captured by the thin
 client before dispatch — never the daemon's own cwd. The daemon is a single
 long-lived process; its own `cwd` does not vary per request and must never be

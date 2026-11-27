@@ -148,7 +148,7 @@ describe("selfReportHookState (status, sync)", () => {
       agent: "codex" as const, path: "/x/config.toml", hooked: true, registered: true, transport, endpoint, conflict: false,
     });
     let rows = [row("http", "http://127.0.0.1:4319/mcp?agent=codex")];
-    const r = await runSelfReportCommand(["status"], {
+    const r = await runSelfReportCommand(["status", "--verbose"], {
       probeEndpoint: async () => true,
       daemonLive: async () => true,
       registrations: () => rows,
@@ -166,7 +166,7 @@ describe("selfReportHookState (status, sync)", () => {
     expect(text).toContain("reports recorded by the MCP server: Codex has not trusted failproofai's hooks");
     expect(text).toContain("Trust them.");
 
-    const ok = await runSelfReportCommand(["status"], {
+    const ok = await runSelfReportCommand(["status", "--verbose"], {
       probeEndpoint: async () => true, daemonLive: async () => true,
       registrations: () => [row("http", "http://127.0.0.1:4319/mcp?agent=codex")],
       hookState: () => ({ recorder: "hook" }),

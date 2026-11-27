@@ -49,6 +49,7 @@ import {
   selfReportCommandRunnable,
   selfReportRegistrationStatus,
   selfReportSyncChanged,
+  selfReportSummaryLine,
   selfReportSyncLines,
   syncSelfReportMcp,
   type SelfReportRegistration,
@@ -57,6 +58,8 @@ import {
 export interface SelfReportCliResult {
   exitCode: number;
   lines: string[];
+  /** `status --json`: printed as JSON instead of the lines. */
+  json?: unknown;
 }
 
 export interface SelfReportCliDeps {
@@ -219,7 +222,72 @@ function selfReportStranded(
   return port === null || health.get(port) !== true || owned.get(port) !== true;
 }
 
-async function selfReportStatus(deps: SelfReportCliDeps): Promise<SelfReportCliResult> {
+/** One agent's state, for every view of `status`. */
+interface SelfReportAgentView {
+  agent: string;
+  path: string;
+  hooked: boolean;
+  registered: boolean;
+  transport: SelfReportRegistration["transport"];
+  endpoint: string | null;
+  /** Registered and working: its endpoint answers as this home's daemon, or its command runs. */
+  healthy: boolean;
+  /** What is wrong, when something is, and the command that fixes it. */
+  problem?: string;
+  fix?: string;
+  /** Claude Code / Codex: who records its reports, and why when it is the server. */
+  recorder?: SelfReportHookState;
+}
+
+const SELF_REPORT_SYNC_FIX = "failproofai self-report sync";
+
+function selfReportAgentViews(
+  rows: readonly SelfReportRegistration[],
+  health: ReadonlyMap<number, boolean>,
+  owned: ReadonlyMap<number, boolean>,
+  recorders: ReadonlyMap<string, SelfReportHookState>,
+): SelfReportAgentView[] {
+  const out: SelfReportAgentView[] = [];
+  for (const r of rows.filter((x) => x.hooked || x.registered || x.conflict || x.error)) {
+    const recorder = r.registered ? recorders.get(r.agent) : undefined;
+    const view: SelfReportAgentView = {
+      agent: r.agent, path: r.path, hooked: r.hooked, registered: r.registered,
+      transport: r.transport, endpoint: r.endpoint, healthy: false,
+      ...(recorder ? { recorder } : {}),
+    };
+    if (r.error) view.problem = `config unreadable (${r.error})`;
+    else if (r.conflict) view.problem = `another "${SELF_REPORT_SERVER_NAME}" MCP server is configured; left alone`;
+    else if (!r.registered) Object.assign(view, { problem: "not registered", fix: SELF_REPORT_SYNC_FIX });
+    else if (r.transport === "http") {
+      const port = selfReportUrlPort(r.endpoint);
+      const ok = port !== null && health.get(port) === true;
+      if (ok && owned.get(port!) === true) view.healthy = true;
+      else Object.assign(view, { problem: ok ? "endpoint is another home's daemon" : "endpoint not answering", fix: SELF_REPORT_SYNC_FIX });
+    } else if (r.transport === "extension") view.healthy = true;
+    else if (r.endpoint && selfReportCommandRunnable(r.endpoint)) view.healthy = true;
+    else Object.assign(view, { problem: "command not runnable", fix: SELF_REPORT_SYNC_FIX });
+    out.push(view);
+  }
+  return out;
+}
+
+/** The lean view: a header, the healthy agents in one line, a line per problem. */
+function selfReportLeanLines(header: string, views: readonly SelfReportAgentView[], repaired: string | null): string[] {
+  const lines = [header];
+  if (repaired) lines.push(repaired);
+  const healthy = views.filter((v) => v.healthy).map((v) => v.agent).filter((a, i, all) => all.indexOf(a) === i);
+  const problems = views.filter((v) => !v.healthy && v.problem);
+  if (healthy.length > 0) lines.push(`Agents: ${healthy.join(", ")}`);
+  else if (problems.length === 0) lines.push("Agents: none with failproofai hooks");
+  for (const v of problems) lines.push(`▲ ${v.agent}: ${v.problem}${v.fix ? `  ·  \`${v.fix}\`` : ""}`);
+  return lines;
+}
+
+async function selfReportStatus(args: string[], deps: SelfReportCliDeps): Promise<SelfReportCliResult> {
+  const unknown = args.find((a) => a !== "--verbose" && a !== "-v" && a !== "--json");
+  if (unknown) return { exitCode: 1, lines: [`Unexpected argument: ${unknown}.`] };
+  const verbose = args.includes("--verbose") || args.includes("-v");
+  const asJson = args.includes("--json");
   const file = readEffectiveSelfReport();
   const settings = resolveSelfReport();
   const cloud = await selfReportCloudManaged();
@@ -228,6 +296,29 @@ async function selfReportStatus(deps: SelfReportCliDeps): Promise<SelfReportCliR
     const missing = !file && !selfReportFileExists();
     // This machine's own file, set aside while the org's setting is awaited.
     const awaitingCloud = !!file && file.source !== "cloud" && selfReportCloudEnrolled();
+    const why = awaitingCloud || (missing && selfReportCloudEnrolled()) ? "waiting" : missing ? "config" : "unreadable";
+    if (asJson) {
+      return {
+        exitCode: 0,
+        lines: [],
+        json: {
+          enabled: false,
+          reason: why === "waiting" ? "waiting for Cloud" : why === "unreadable" ? "settings unreadable" : "off in config.json",
+          settingsPath: selfReportSettingsFile(),
+          managedByCloud: cloud,
+        },
+      };
+    }
+    if (!verbose) {
+      lines.push(
+        why === "waiting"
+          ? "Self Reports: off · waiting for Cloud"
+          : why === "unreadable"
+            ? "Self Reports: off · settings file unreadable  ·  `failproofai self-report enable`"
+            : "Self Reports: off · turned off in config.json",
+      );
+      return { exitCode: 0, lines };
+    }
     lines.push(
       awaitingCloud
         ? "Self Reports: off (waiting for FailproofAI Cloud to send this machine's setting; this machine's own setting no longer applies)"
@@ -241,24 +332,7 @@ async function selfReportStatus(deps: SelfReportCliDeps): Promise<SelfReportCliR
     lines.push(cloud ? "Managed by: FailproofAI Cloud (Settings > Self Reports)" : "Turn on:    `failproofai self-report enable`");
     return { exitCode: 0, lines };
   }
-  lines.push(`Self Reports: ${settings.enabled ? "on" : "off"}`);
-  lines.push(
-    `Source:     ${
-      settings.source === "cloud" ? "FailproofAI Cloud" : file ? "this machine (config.json)" : "the default (no settings file yet)"
-    }`,
-  );
-  lines.push(`Settings:   ${selfReportSettingsFile()}`);
-  lines.push(
-    settings.source === "cloud"
-      ? "Turn off:   in the dashboard, Settings > Self Reports"
-      : settings.enabled
-        ? "Turn off:   `failproofai self-report disable`"
-        : "Turn on:    `failproofai self-report enable`",
-  );
-  if (settings.updatedAt) lines.push(`Updated:    ${settings.updatedAt}`);
-  lines.push(`Categories: ${settings.categories.map((c) => c.name).join(", ")}`);
-  lines.push(`MCP server: ${SELF_REPORT_SERVER_NAME} (tool \`${SELF_REPORT_TOOL_NAME}\`)`);
-  if (settings.guidance) lines.push(`Guidance:   ${settings.guidance.length > 60 ? `${settings.guidance.slice(0, 57)}...` : settings.guidance}`);
+  const source = settings.source === "cloud" ? "cloud" : file ? "local" : "default";
   const readRows = deps.registrations ?? (() => selfReportRegistrationStatus());
   let rows = readRows();
   let health = await selfReportHttpHealth(rows, deps);
@@ -277,25 +351,96 @@ async function selfReportStatus(deps: SelfReportCliDeps): Promise<SelfReportCliR
   // have no report tool, and one on a port another home's daemon holds would
   // report into that home. Move it (live check: stdio unless this home's
   // daemon serves the endpoint).
+  let repairedLines: string[] = [];
+  let repaired: string | null = null;
+  let repairedAgents: string[] = [];
   if (settings.enabled && !deps.skipSync && rows.some((r) => selfReportStranded(r, health, owned, recorders))) {
     try {
       const results = await (deps.sync ?? (() => syncSelfReportMcp({ quiet: true })))();
       if (selfReportSyncChanged(results)) {
-        lines.push("Repaired:   agents on an HTTP endpoint that is not this home's answering daemon, or that belong on stdio, were re-synced:");
-        lines.push(...selfReportSyncLines(results).map((l) => `  ${l}`));
+        repairedAgents = results
+          .filter((r) => r.action === "added" || r.action === "updated" || r.action === "removed")
+          .map((r) => r.agent)
+          .filter((a, i, all) => all.indexOf(a) === i);
+        repaired = `✓ Re-synced ${repairedAgents.join(", ")}`;
+        repairedLines = [
+          "Repaired:   agents on an HTTP endpoint that is not this home's answering daemon, or that belong on stdio, were re-synced:",
+          ...selfReportSyncLines(results).map((l) => `  ${l}`),
+        ];
         rows = readRows();
         health = await selfReportHttpHealth(rows, deps);
         owned = await selfReportHttpOwnership(health, deps);
       }
     } catch {
-      lines.push("▲ Could not re-sync agents whose HTTP endpoint is not answering. Run `failproofai self-report sync`.");
+      repaired = `▲ Could not re-sync agents whose HTTP endpoint is not answering  ·  \`${SELF_REPORT_SYNC_FIX}\``;
+      repairedLines = [`▲ Could not re-sync agents whose HTTP endpoint is not answering. Run \`${SELF_REPORT_SYNC_FIX}\`.`];
     }
   }
   if (!health.has(settings.mcp.port)) {
     const probe = deps.probeEndpoint ?? ((_url: string, port: number) => probeSelfReportHttp(port));
     health.set(settings.mcp.port, await probe(settings.mcp.url, settings.mcp.port));
   }
-  lines.push(selfReportDaemonLine(settings.mcp.url, health.get(settings.mcp.port) === true, deps));
+  const daemonAnswering = health.get(settings.mcp.port) === true;
+  const views = selfReportAgentViews(rows, health, owned, recorders);
+
+  if (asJson) {
+    return {
+      exitCode: 0,
+      lines: [],
+      json: {
+        enabled: settings.enabled,
+        source,
+        settingsPath: selfReportSettingsFile(),
+        updatedAt: settings.updatedAt || null,
+        categories: settings.categories.map((c) => c.name),
+        guidance: settings.guidance,
+        server: SELF_REPORT_SERVER_NAME,
+        tool: SELF_REPORT_TOOL_NAME,
+        daemon: { url: settings.mcp.url, answering: daemonAnswering },
+        repaired: repairedAgents,
+        agents: views.map((v) => ({
+          agent: v.agent,
+          path: v.path,
+          hooked: v.hooked,
+          registered: v.registered,
+          transport: v.transport,
+          endpoint: v.endpoint,
+          healthy: v.healthy,
+          problem: v.problem ?? null,
+          fix: v.fix ?? null,
+          recordedBy: v.recorder ? v.recorder.recorder : null,
+        })),
+      },
+    };
+  }
+
+  if (!verbose) {
+    const from = source === "cloud" ? "from Cloud" : source === "local" ? "this machine" : "default";
+    const header = `Self Reports: ${settings.enabled ? "on" : "off"} · ${from}`;
+    if (!settings.enabled) return { exitCode: 0, lines: [header] };
+    return { exitCode: 0, lines: selfReportLeanLines(header, views, repaired) };
+  }
+
+  lines.push(`Self Reports: ${settings.enabled ? "on" : "off"}`);
+  lines.push(
+    `Source:     ${
+      source === "cloud" ? "FailproofAI Cloud" : source === "local" ? "this machine (config.json)" : "the default (no settings file yet)"
+    }`,
+  );
+  lines.push(`Settings:   ${selfReportSettingsFile()}`);
+  lines.push(
+    settings.source === "cloud"
+      ? "Turn off:   in the dashboard, Settings > Self Reports"
+      : settings.enabled
+        ? "Turn off:   `failproofai self-report disable`"
+        : "Turn on:    `failproofai self-report enable`",
+  );
+  if (settings.updatedAt) lines.push(`Updated:    ${settings.updatedAt}`);
+  lines.push(`Categories: ${settings.categories.map((c) => c.name).join(", ")}`);
+  lines.push(`MCP server: ${SELF_REPORT_SERVER_NAME} (tool \`${SELF_REPORT_TOOL_NAME}\`)`);
+  if (settings.guidance) lines.push(`Guidance:   ${settings.guidance.length > 60 ? `${settings.guidance.slice(0, 57)}...` : settings.guidance}`);
+  lines.push(...repairedLines);
+  lines.push(selfReportDaemonLine(settings.mcp.url, daemonAnswering, deps));
   lines.push(...selfReportRegistrationLines(rows, health, owned, recorders));
   return { exitCode: 0, lines };
 }
@@ -313,17 +458,19 @@ function selfReportDaemonLine(url: string, answering: boolean, deps: SelfReportC
   return "Daemon MCP: not running (agents use stdio)";
 }
 
-/** Update every hooked agent's MCP entry to match the settings just written. */
-async function selfReportSync(deps: SelfReportCliDeps): Promise<string[]> {
-  if (deps.skipSync) return [];
+/**
+ * Update every hooked agent's MCP entry to match the settings just written,
+ * and say it in the one line enable and disable print.
+ */
+async function selfReportSyncLine(deps: SelfReportCliDeps, enabled: boolean): Promise<string> {
+  const plain = enabled ? "✓ Self Reports: on" : "✓ Self Reports: off";
+  if (deps.skipSync) return plain;
   try {
     const results = await (deps.sync ?? (() => syncSelfReportMcp({ quiet: true })))();
-    if (results.some((r) => r.status === "error")) {
-      return ["▲ Could not update every agent's MCP settings. Run `failproofai self-report sync` to see why."];
-    }
-    return selfReportSyncChanged(results) ? ["Agents updated."] : [];
+    const line = selfReportSummaryLine(results, enabled ? "on" : "off");
+    return (line ?? plain).replace(/  ·  (failproofai .+)$/, "  ·  `$1`");
   } catch {
-    return ["▲ Could not update your agents' MCP settings. Run `failproofai self-report sync` to see why."];
+    return `▲ Self Reports: ${enabled ? "on" : "off"}; agents not updated  ·  \`${SELF_REPORT_SYNC_FIX}\``;
   }
 }
 
@@ -371,14 +518,8 @@ async function selfReportEnable(args: string[], deps: SelfReportCliDeps): Promis
   }
 
   await writeLocalSelfReportConfig({ enabled: true, categories, guidance });
-  const written = writeEffectiveSelfReport({ enabled: true, categories, guidance });
-  const lines = [
-    "✓ Self Reports is on.",
-    `  Categories: ${written.categories.map((c) => c.name).join(", ")}${categories ? "" : " (defaults)"}`,
-    `  Settings:   ${selfReportSettingsFile()}`,
-    ...(await selfReportSync(deps)).map((l) => (l.startsWith("▲") ? l : `  ${l}`)),
-  ];
-  return { exitCode: 0, lines };
+  writeEffectiveSelfReport({ enabled: true, categories, guidance });
+  return { exitCode: 0, lines: [await selfReportSyncLine(deps, true)] };
 }
 
 async function selfReportDisable(args: string[], deps: SelfReportCliDeps): Promise<SelfReportCliResult> {
@@ -388,14 +529,7 @@ async function selfReportDisable(args: string[], deps: SelfReportCliDeps): Promi
   // The category list and guidance are kept, so turning it back on restores them.
   await writeLocalSelfReportConfig({ enabled: false, categories: previous?.categories, guidance: previous?.guidance });
   writeEffectiveSelfReport({ enabled: false, categories: previous?.categories, guidance: previous?.guidance });
-  return {
-    exitCode: 0,
-    lines: [
-      "✓ Self Reports is off. Agents lose the report tool and nothing is recorded.",
-      ...(await selfReportSync(deps)).map((l) => (l.startsWith("▲") ? l : `  ${l}`)),
-      "  Turn it back on with `failproofai self-report enable`.",
-    ],
-  };
+  return { exitCode: 0, lines: [await selfReportSyncLine(deps, false)] };
 }
 
 const SELF_REPORT_TEST_DETAIL = "failproofai self-report test: this is a test report, not a real problem.";
@@ -545,8 +679,7 @@ export async function runSelfReportCommand(args: string[], deps: SelfReportCliDe
   try {
     switch (verb) {
       case "status":
-        if (rest.length > 0) return { exitCode: 1, lines: [`Unexpected argument: ${rest[0]}.`] };
-        return await selfReportStatus(deps);
+        return await selfReportStatus(rest, deps);
       case "enable":
         return await selfReportEnable(rest, deps);
       case "disable":

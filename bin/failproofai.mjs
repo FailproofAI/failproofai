@@ -822,9 +822,15 @@ async function runCli() {
     if (!subArgs.includes("--quiet")) {
       const lines = selfReportSyncLines(results);
       await printLines(lines.length > 0 ? lines : ["Self Reports MCP registration is already up to date."], !failed);
-    } else if (failed) {
-      // The daemon runs this with --quiet and logs our stderr: without the
-      // failing agents' lines, "exit 1" was all its journal ever said.
+    } else {
+      // The daemon runs this with --quiet and logs our stdout and stderr: what
+      // changed (one line), and each agent that failed, so "exit 1" is never
+      // all its journal says.
+      if (process.env.FAILPROOFAI_SELF_REPORT_SYNC_LOG === "stdout") {
+        const { selfReportSyncLogLine } = await import("../src/hooks/self-report-install");
+        const changed = selfReportSyncLogLine(results.filter((x) => x.status !== "error" && x.status !== "conflict"));
+        if (changed) process.stdout.write(`${changed}\n`);
+      }
       for (const r of results.filter((x) => x.status === "error")) {
         process.stderr.write(`${r.agent}: not updated in ${r.path || "its config"}: ${r.detail ?? "error"}\n`);
       }
@@ -1087,7 +1093,7 @@ async function runCli() {
       await printHelp({
         name: "self-report",
         usage: [
-          ["failproofai self-report status", "Show whether it is on (it is by default), and where that came from"],
+          ["failproofai self-report status [--verbose] [--json]", "Whether it is on, the agents it serves, and any that need a fix"],
           ["failproofai self-report enable [options]", "Turn it back on for this machine, or change its categories"],
           ["failproofai self-report disable", "Turn it off: removes the MCP entries and stops recording"],
           ["failproofai self-report test --agent <agent>", "Send one test report end to end"],
@@ -1097,6 +1103,8 @@ async function runCli() {
           ["--categories-file <f>", "JSON list of {name, description}; replaces the defaults"],
           ["--guidance <text>", "Extra instructions appended to the tool description"],
           ["--agent <agent>", "With test: the agent to send it as"],
+          ["--verbose", "With status: paths, endpoints, categories and each agent's transport"],
+          ["--json", "With status: everything, as JSON"],
         ],
         examples: [
           "failproofai self-report status",
@@ -1109,7 +1117,8 @@ async function runCli() {
     lastSubcommand = "self-report";
     const { runSelfReportCommand } = await import("../src/hooks/self-report-cli");
     const result = await runSelfReportCommand(subArgs);
-    await printReport(`self-report ${subArgs[0]}`, result.lines, { ok: result.exitCode === 0 });
+    if (result.json !== undefined) process.stdout.write(`${JSON.stringify(result.json, null, 2)}\n`);
+    else await printReport(`self-report ${subArgs[0]}`, result.lines, { ok: result.exitCode === 0 });
     await track("cli_self_report", {
       ok: result.exitCode === 0,
       // The subcommand only — never a category, guidance text or a path.
@@ -2185,49 +2194,13 @@ async function runCli() {
     // running Hermes or OpenClaw gateway kept the plugin it loaded before (or
     // none) until someone thought to run `update`. Setup has already brought
     // the daemon to this version and the entry check migrated the home.
+    // Then Self Reports: every hooked agent's MCP entry brought in line with
+    // self-report.json. Both behind one spinner line, which leaves the Self
+    // Reports line and only what needs the user (src/hooks/setup-finish.ts).
     let updateExit = 0;
     if (result.applied) {
-      const { runUpdateSteps, markUpdated, setupNeedsUpdateSteps, setupGatewayLine, restartNewlyPlugged } =
-        await import("../src/hooks/update-run");
-      const { screenKit, colorsEnabled } = await import("../src/hooks/tui");
-      const kit = screenKit({ color: colorsEnabled(process.stdout) });
-      if (!setupNeedsUpdateSteps(version)) {
-        // Already updated on this version: only a profile this run plugged in
-        // (one created since) has a gateway still running without the plugin.
-        const gateway = setupGatewayLine(await restartNewlyPlugged(pluggedBefore).catch(() => []));
-        if (gateway) process.stdout.write(`${gateway.ok ? kit.ok(gateway.text) : kit.caution(gateway.text)}\n`);
-      } else {
-        const run = await runUpdateSteps({ layout: false, daemon: false, restart: true });
-        // One line at most, in update's own words; a Hermes failure keeps its
-        // existing ✕ line so it is not lost.
-        const gateway = setupGatewayLine(run.restarts);
-        const out = [
-          ...run.lines.filter((l) => l.startsWith("✕")),
-          ...(gateway ? [gateway.ok ? kit.ok(gateway.text) : kit.caution(gateway.text)] : []),
-        ];
-        if (out.length > 0) process.stdout.write(`${out.join("\n")}\n`);
-        if (run.ok) markUpdated(version);
-        else updateExit = 1;
-      }
-    }
-    // Self Reports (on by default): write self-report.json when it is missing
-    // off Cloud, then bring every hooked agent's MCP registration in line with
-    // it, also when setup found the machine already configured and wrote no
-    // hooks. Best-effort; prints only what changed.
-    if (result.applied) {
-      try {
-        const { ensureSelfReportSettingsFile } = await import("../src/hooks/self-report");
-        await ensureSelfReportSettingsFile();
-      } catch {
-        // the readers apply the same default without the file
-      }
-      try {
-        const { syncSelfReportMcp, selfReportSyncLines } = await import("../src/hooks/self-report-install");
-        const lines = selfReportSyncLines(await syncSelfReportMcp({ quiet: true }));
-        if (lines.length > 0) process.stdout.write(`${lines.join("\n")}\n`);
-      } catch {
-        // never fail setup over it
-      }
+      const { finishSetup } = await import("../src/hooks/setup-finish");
+      updateExit = await finishSetup({ version, pluggedBefore });
     }
     await warnTokenOnArgv();
     await track("cli_configure_invoked", {

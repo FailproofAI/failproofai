@@ -96,6 +96,7 @@ vi.mock("../../src/hooks/self-report-install", () => ({
   syncSelfReportMcp: vi.fn(() => []),
   removeSelfReportMcp: vi.fn(() => []),
   selfReportSyncLines: vi.fn(() => []),
+  selfReportSummary: vi.fn(() => null),
 }));
 
 describe("hooks/manager", () => {

@@ -233,3 +233,115 @@ fn the_pong_names_the_daemon_that_holds_the_mcp_port() {
         id.as_str()
     );
 }
+
+/// Every Self Reports MCP event lands in the daemon's log: the HTTP server's
+/// own, and a stdio server's sent over the socket (`selfReportLog`, one-way:
+/// no reply). The preview is scrubbed of secrets and cut short; nothing else
+/// of the detail is logged.
+#[test]
+fn self_report_mcp_events_reach_the_daemon_log() {
+    let port = free_port();
+    let daemon = spawn(port);
+    fpai_collect::self_report::write_settings(
+        &daemon.home.join("self-report.json"),
+        &fpai_collect::self_report::Settings {
+            version: 1,
+            enabled: true,
+            source: "local".into(),
+            categories: fpai_collect::self_report::default_categories(),
+            guidance: None,
+            mcp: fpai_collect::self_report::McpEndpoint::on_port(port),
+            updated_at: "2026-11-25T10:00:00Z".into(),
+        },
+    )
+    .unwrap();
+    wait("the MCP endpoint", || initialize(port).is_some());
+    wait("the socket", || {
+        daemon.home.join("run/failproofaid.sock").exists()
+    });
+    let secret = "sk-ant-api03-abcdefghijklmnopqrstuvwxyz0123456789ABCDEFGH";
+    let detail =
+        format!("the key {secret} was rejected with a 401 and everything after this point is long");
+    let call = serde_json::json!({
+        "jsonrpc": "2.0", "id": 3, "method": "tools/call",
+        "params": {"name": "report", "arguments": {"category": "not_a_category", "detail": detail}}
+    });
+    let client = reqwest::blocking::Client::new();
+    let url = format!("http://127.0.0.1:{port}/mcp?agent=copilot");
+    for body in [
+        serde_json::json!({"jsonrpc": "2.0", "id": 2, "method": "tools/list"}),
+        call,
+    ] {
+        let reply = client
+            .post(&url)
+            .header("Content-Type", "application/json")
+            .body(body.to_string())
+            .send()
+            .unwrap();
+        assert!(reply.status().is_success());
+    }
+    wait("the HTTP tools/call line", || {
+        daemon
+            .log
+            .lock()
+            .unwrap()
+            .contains("Self Reports MCP tools/call over http agent=copilot outcome=recorded")
+    });
+
+    // A stdio server's event, over the socket.
+    let mut stream = UnixStream::connect(daemon.home.join("run/failproofaid.sock")).unwrap();
+    write_message(
+        &mut stream,
+        &ClientMessage::SelfReportLog {
+            protocol_version: PROTOCOL_VERSION,
+            event: fpai_ipc::SelfReportLogEvent {
+                event: "tools/call".into(),
+                agent: Some("hermes".into()),
+                transport: Some("stdio".into()),
+                outcome: Some("recorded".into()),
+                category: Some("looping".into()),
+                known_category: Some(true),
+                session: Some("sess-42".into()),
+                preview: Some(detail.clone()),
+                ..Default::default()
+            },
+        },
+    )
+    .unwrap();
+    // No reply: the daemon closes the connection.
+    stream
+        .set_read_timeout(Some(Duration::from_secs(5)))
+        .unwrap();
+    let mut buf = [0u8; 1];
+    assert_eq!(std::io::Read::read(&mut stream, &mut buf).unwrap(), 0);
+    wait("the stdio tools/call line", || {
+        daemon
+            .log
+            .lock()
+            .unwrap()
+            .contains("Self Reports MCP tools/call over stdio agent=hermes outcome=recorded")
+    });
+    // The socket still answers after it.
+    ping(&daemon);
+
+    let log = daemon.log.lock().unwrap().clone();
+    assert!(
+        log.contains("Self Reports MCP tools/list over http agent=copilot"),
+        "{log}"
+    );
+    assert!(log.contains("session=sess-42"), "{log}");
+    // An unknown category is a warning; a known one is not.
+    let http_line = log
+        .lines()
+        .find(|l| l.contains("over http agent=copilot outcome=recorded"))
+        .unwrap();
+    assert!(http_line.contains("WARN"), "{http_line}");
+    assert!(http_line.contains("unknown_category=true"), "{http_line}");
+    let stdio_line = log
+        .lines()
+        .find(|l| l.contains("over stdio agent=hermes"))
+        .unwrap();
+    assert!(stdio_line.contains("INFO"), "{stdio_line}");
+    assert!(!log.contains(secret), "the key reached the log:\n{log}");
+    assert!(!log.contains("everything after this point"), "{log}");
+}

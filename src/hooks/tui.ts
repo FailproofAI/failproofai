@@ -1662,6 +1662,45 @@ function ctx(opts?: RenderOpts): { cols: number; c: ReturnType<typeof paint> } {
   return { cols: Math.max(20, opts?.cols ?? 80), c: paint(opts?.color ?? false) };
 }
 
+/**
+ * One spinner line for work that has nothing to show until it ends, drawn with
+ * the kit's `live()` block. `set` changes its text; `done` replaces it with the
+ * lines to keep (often none). Piped or under NO_COLOR nothing is drawn while it
+ * runs, and `done` prints its lines once.
+ */
+export function progressLine(out: TTYOut, text: string): { set(text: string): void; done(lines: string[]): void } {
+  if (!out.isTTY || !colorsEnabled(out)) {
+    return {
+      set() {},
+      done(lines) {
+        if (lines.length > 0) out.write(`${lines.join("\n")}\n`);
+      },
+    };
+  }
+  const c = paint(true);
+  const region = screenKit(optsFor(out)).live(out);
+  const frames = "⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏";
+  let frame = 0;
+  let label = text;
+  const draw = (): void => region.draw(() => [`${c.ink3(frames[frame % frames.length])} ${c.ink3(label)}`]);
+  draw();
+  const spin = setInterval(() => {
+    frame += 1;
+    draw();
+  }, 100);
+  spin.unref?.();
+  return {
+    set(next) {
+      label = next;
+      draw();
+    },
+    done(lines) {
+      clearInterval(spin);
+      region.done(lines);
+    },
+  };
+}
+
 /** Derive render options from a real stream, honouring NO_COLOR and non-TTY. */
 export function optsFor(stdout: TTYOut = process.stdout): Required<RenderOpts> {
   return { cols: stdout.columns || 80, color: colorsEnabled(stdout) };
@@ -2461,6 +2500,13 @@ export function screenKit(opts: ScreenKitOpts = {}) {
         timer = null;
         pending = null;
         release();
+        if (lines.length === 0) {
+          // Nothing to leave behind: erase the block and give the cursor back.
+          const clear = region.lastCount > 0 ? `${ESC}[${region.lastCount}A${ESC}[J` : "";
+          if (clear || hidden) out.write(`${clear}${hidden ? `${ESC}[?25h` : ""}`);
+          region.lastCount = 0;
+          return;
+        }
         repaint(out, region, lines, { cut: false, tail: hidden ? `${ESC}[?25h` : "" });
       },
     };

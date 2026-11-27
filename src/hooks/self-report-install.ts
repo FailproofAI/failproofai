@@ -89,6 +89,7 @@ import { codexHome } from "./codex-system-hooks";
 import { claudeConfigDir, getIntegration, readYamlDoc, writeYamlDoc, UnreadableAgentConfigError } from "./integrations";
 
 import { daemonSelfReportServer } from "./daemon-client";
+import { flushSelfReportLogs, sendSelfReportLog } from "./self-report-log";
 import { selfReportHookState } from "./self-report-hook-trust";
 import { resolveSelfReport, selfReportPort, selfReportSettingsFile, SELF_REPORT_SERVER_NAME, SELF_REPORT_SERVER_RECORDS } from "./self-report";
 import { listHermesProfiles } from "../../lib/hermes-profiles";
@@ -751,7 +752,27 @@ export async function syncSelfReportMcp(opts: SyncSelfReportMcpOptions = {}): Pr
   const wanted =
     enabled && agents.some((a) => selfReportHttpAllowed(a) && (also.includes(a) || hooked(a) || ownedRegistrationIn(a)));
   const daemonHere = wanted ? await (opts.deps?.daemonLive ?? selfReportDaemonLive)(settings.port) : false;
-  return applySelfReportMcp({ ...opts, deps: { ...opts.deps, settings, hooksInstalled: hooked } }, enabled, daemonHere);
+  const results = applySelfReportMcp({ ...opts, deps: { ...opts.deps, settings, hooksInstalled: hooked } }, enabled, daemonHere);
+  logSelfReportSync(results);
+  await flushSelfReportLogs();
+  return results;
+}
+
+/**
+ * The environment variable the daemon sets on the sync it runs itself: it
+ * logs that sync's stdout, so the result is printed there (by bin's `sync`)
+ * rather than sent back over its socket. Same name as `SYNC_LOG_ENV` in
+ * crates/failproofaid/src/self_report.rs.
+ */
+export const SELF_REPORT_SYNC_LOG_ENV = "FAILPROOFAI_SELF_REPORT_SYNC_LOG";
+
+/** A sync's result for the daemon's log, when it changed or failed anything. */
+function logSelfReportSync(results: readonly SelfReportMcpResult[]): void {
+  if (process.env[SELF_REPORT_SYNC_LOG_ENV] === "stdout") return;
+  const summary = selfReportSyncLogLine(results);
+  if (!summary) return;
+  const failed = selfReportFailedAgents(results).length > 0;
+  void sendSelfReportLog({ event: "sync", transport: "cli", outcome: failed ? "failed" : "ok", summary });
 }
 
 /**
@@ -905,7 +926,9 @@ function applySelfReportMcp(opts: SyncSelfReportMcpOptions, enabled: boolean, da
 
 /** Remove our entries from every agent (or `agents`), whatever the settings say. Needs no live check. */
 export function removeSelfReportMcp(opts: Omit<SyncSelfReportMcpOptions, "enabled"> = {}): SelfReportMcpResult[] {
-  return applySelfReportMcp({ ...opts, enabled: false }, false, false);
+  const results = applySelfReportMcp({ ...opts, enabled: false }, false, false);
+  logSelfReportSync(results);
+  return results;
 }
 
 /** Whether a sync changed any agent's file. */
@@ -936,6 +959,84 @@ export function selfReportSyncLines(results: readonly SelfReportMcpResult[]): st
     }
   }
   return out;
+}
+
+/** The distinct agents among `results` that match `pick`, in order. */
+function agentsWhere(results: readonly SelfReportMcpResult[], pick: (r: SelfReportMcpResult) => boolean): IntegrationType[] {
+  const out: IntegrationType[] = [];
+  for (const r of results) if (pick(r) && !out.includes(r.agent)) out.push(r.agent);
+  return out;
+}
+
+/** Agents a sync left registered (any transport, Pi's extension included). */
+export function selfReportRegisteredAgents(results: readonly SelfReportMcpResult[]): IntegrationType[] {
+  return agentsWhere(results, (r) => r.status === "ok" && r.action !== "removed" && r.transport !== null);
+}
+
+/** Agents a sync could not update (an error, or a `failproofai_local` that is not ours). */
+export function selfReportFailedAgents(results: readonly SelfReportMcpResult[]): IntegrationType[] {
+  return agentsWhere(results, (r) => r.status === "error" || r.status === "conflict");
+}
+
+/**
+ * The one line every command but `sync` and `status` prints about Self
+ * Reports, or null for nothing to say. `state` is the setting
+ * (`selfReportSettingsState`), or `removed` for a command that took the
+ * entries out of the agents it unhooked. A failure is named in the same line.
+ */
+export function selfReportSummaryLine(
+  results: readonly SelfReportMcpResult[],
+  state: "on" | "off" | "waiting" | "unreadable" | "removed",
+): string | null {
+  const s = selfReportSummary(results, state);
+  if (!s) return null;
+  return s.ok ? `✓ ${s.text}` : `▲ ${s.text}  ·  ${s.fix}`;
+}
+
+/** `selfReportSummaryLine` before it is drawn: for a caller with its own screen kit. */
+export function selfReportSummary(
+  results: readonly SelfReportMcpResult[],
+  state: "on" | "off" | "waiting" | "unreadable" | "removed",
+): { ok: boolean; text: string; fix?: string } | null {
+  const failed = selfReportFailedAgents(results).map(displayName);
+  const n = (k: number) => `${k} ${k === 1 ? "agent" : "agents"}`;
+  let text: string | null;
+  if (state === "on") {
+    const on = selfReportRegisteredAgents(results).length;
+    text = on > 0 ? `Self Reports: on for ${n(on)}` : null;
+  } else if (state === "removed") {
+    const removed = agentsWhere(results, (r) => r.action === "removed").length;
+    text = removed > 0 ? `Self Reports: removed from ${n(removed)}` : null;
+  } else {
+    text = state === "waiting" ? "Self Reports: off until Cloud sends this machine's setting" : "Self Reports: off";
+  }
+  if (failed.length === 0) return text ? { ok: true, text } : null;
+  const problem = `not updated for ${failed.join(", ")}`;
+  return { ok: false, text: text ? `${text}; ${problem}` : `Self Reports: ${problem}`, fix: "failproofai self-report sync" };
+}
+
+/**
+ * The daemon-log summary of one sync: `added claude (http), cursor (stdio);
+ * removed pi; failed codex (reason)`, or null when nothing changed or failed.
+ * Agents and transports only, never a path: the line can leave the machine as
+ * part of its machine logs.
+ */
+export function selfReportSyncLogLine(results: readonly SelfReportMcpResult[]): string | null {
+  const parts: string[] = [];
+  const list = (action: SelfReportMcpAction) =>
+    results
+      .filter((r) => r.action === action)
+      .map((r) => (r.transport && action !== "removed" ? `${r.agent} (${r.transport})` : r.agent))
+      .filter((v, i, all) => all.indexOf(v) === i);
+  for (const action of ["added", "updated", "removed"] as const) {
+    const items = list(action);
+    if (items.length > 0) parts.push(`${action} ${items.join(", ")}`);
+  }
+  const failed = results
+    .filter((r) => r.status === "error" || r.status === "conflict")
+    .map((r) => `${r.agent} (${r.status === "conflict" ? "another failproofai_local server is configured" : (r.detail ?? "error").slice(0, 120)})`);
+  if (failed.length > 0) parts.push(`failed ${failed.join(", ")}`);
+  return parts.length > 0 ? parts.join("; ") : null;
 }
 
 function displayName(agent: IntegrationType): string {

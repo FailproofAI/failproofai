@@ -817,7 +817,19 @@ impl Server {
                         "instanceId": instance_id(),
                     },
                 });
-                if let Some(text) = server_instructions(self.settings.current().as_ref()) {
+                let current = self.settings.current();
+                log_event(&McpLog {
+                    event: "initialize",
+                    transport: "http",
+                    agent: caller.agent.as_deref(),
+                    outcome: Some(if current.as_ref().is_some_and(|s| s.enabled) {
+                        "on"
+                    } else {
+                        "off"
+                    }),
+                    ..Default::default()
+                });
+                if let Some(text) = server_instructions(current.as_ref()) {
                     result["instructions"] = Value::String(text);
                 }
                 rpc_result(id, result)
@@ -827,11 +839,30 @@ impl Server {
                 let tools: Vec<Value> = tool_definition(self.settings.current().as_ref())
                     .into_iter()
                     .collect();
+                log_event(&McpLog {
+                    event: "tools/list",
+                    transport: "http",
+                    agent: caller.agent.as_deref(),
+                    outcome: Some(if tools.is_empty() {
+                        "no tool (off)"
+                    } else {
+                        "report"
+                    }),
+                    ..Default::default()
+                });
                 rpc_result(id, json!({"tools": tools}))
             }
             "tools/call" => {
                 let name = params.get("name").and_then(Value::as_str);
                 if name != Some(TOOL_NAME) {
+                    log_event(&McpLog {
+                        event: "tools/call",
+                        transport: "http",
+                        agent: caller.agent.as_deref(),
+                        outcome: Some("skipped"),
+                        reason: Some("unknown tool"),
+                        ..Default::default()
+                    });
                     return Some(rpc_error(id, -32602, "Unknown tool"));
                 }
                 let args = params.get("arguments").cloned().unwrap_or(Value::Null);
@@ -854,21 +885,177 @@ impl Server {
     /// still send a call. Read from disk, not the cache, so a disable is
     /// honoured on the very next call (as the stdio server does).
     fn record(&self, args: &Value, caller: &Caller) {
+        let report = Report::from_args(args);
+        let mut log = McpLog {
+            event: "tools/call",
+            transport: "http",
+            agent: caller.agent.as_deref(),
+            outcome: Some("skipped"),
+            category: Some(&report.category),
+            detail: Some(&report.detail),
+            ..Default::default()
+        };
         let Some(agent) = caller
             .agent
             .as_deref()
             .filter(|a| SERVER_RECORDS.contains(a))
         else {
+            log.reason = Some(if caller.agent.is_none() {
+                "no agent in the URL"
+            } else {
+                "its hook records it"
+            });
+            log_event(&log);
             return;
         };
-        if !effective_settings(&self.home, &*self.settings.enrolled).is_some_and(|s| s.enabled) {
-            return;
-        }
-        let report = Report::from_args(args);
+        let settings = match effective_settings(&self.home, &*self.settings.enrolled) {
+            Some(s) if s.enabled => s,
+            _ => {
+                log.reason = Some(if settings_unreadable(&self.home) {
+                    "settings unreadable"
+                } else {
+                    "Self Reports is off"
+                });
+                log_event(&log);
+                return;
+            }
+        };
+        log.known_category = Some(
+            effective_categories(&settings)
+                .iter()
+                .any(|c| c.name == report.category),
+        );
         let event = fallback_event(&self.home, agent, caller.cwd.as_deref(), &report, now_ms());
-        if let Err(err) = write_event_file(&self.home, &[event]) {
-            tracing::warn!(%err, agent, "could not record a self report");
+        let session = event
+            .get("session_id")
+            .and_then(Value::as_str)
+            .map(str::to_string);
+        log.session = session.as_deref();
+        let failure;
+        match write_event_file(&self.home, &[event]) {
+            Ok(_) => log.outcome = Some("recorded"),
+            Err(err) => {
+                failure = format!("write failed: {err}");
+                log.outcome = Some("failed");
+                log.reason = Some(&failure);
+            }
         }
+        log_event(&log);
+    }
+}
+
+// ── Logging ──────────────────────────────────────────────────────────────────
+
+/// How much of a report's detail a log line carries, after secrets are
+/// scrubbed from the whole detail.
+pub const LOG_PREVIEW_CHARS: usize = 40;
+
+/// One Self Reports MCP event, as the daemon logs it: the HTTP server's own,
+/// and the stdio server's and CLI syncs' that arrive over the socket
+/// (`selfReportLog`, crates/PROTOCOL.md).
+#[derive(Debug, Default, Clone)]
+pub struct McpLog<'a> {
+    /// `initialize`, `tools/list`, `tools/call`, `sync` or `error`.
+    pub event: &'a str,
+    /// `http`, `stdio` or `cli`.
+    pub transport: &'a str,
+    pub agent: Option<&'a str>,
+    pub outcome: Option<&'a str>,
+    pub reason: Option<&'a str>,
+    pub category: Option<&'a str>,
+    pub known_category: Option<bool>,
+    pub session: Option<&'a str>,
+    /// The report's detail; only [`log_preview`] of it is logged.
+    pub detail: Option<&'a str>,
+    pub summary: Option<&'a str>,
+}
+
+/// The detail as a log line may show it: secrets scrubbed from the whole
+/// text first (a cut token would no longer match), then one line, then the
+/// first [`LOG_PREVIEW_CHARS`] characters. Machine logs can leave the machine
+/// and scrub only the home directory and the machine key, so this is the
+/// whole of what protects the detail.
+pub fn log_preview(detail: &str) -> String {
+    let scrubbed = crate::redact::scrub_str(detail).map_or_else(|| detail.to_string(), |(s, _)| s);
+    let flat: String = scrubbed
+        .chars()
+        .map(|c| if c.is_control() { ' ' } else { c })
+        .collect();
+    let flat = flat.trim();
+    let cut = truncate_chars(flat, LOG_PREVIEW_CHARS);
+    if cut.chars().count() < flat.chars().count() {
+        format!("{cut}…")
+    } else {
+        cut
+    }
+}
+
+/// The line [`log_event`] writes (without its level).
+pub fn log_line(ev: &McpLog) -> String {
+    fn word(v: &str, max: usize) -> String {
+        let clean: String = v
+            .chars()
+            .map(|c| if c.is_control() { ' ' } else { c })
+            .collect();
+        truncate_chars(clean.trim(), max)
+    }
+    let mut line = format!(
+        "Self Reports MCP {} over {}",
+        word(ev.event, 32),
+        word(ev.transport, 16)
+    );
+    let mut field = |key: &str, value: String| line.push_str(&format!(" {key}={value}"));
+    if let Some(v) = ev.agent {
+        field("agent", word(v, 64));
+    }
+    if let Some(v) = ev.outcome {
+        field("outcome", word(v, 32));
+    }
+    if let Some(v) = ev.category {
+        field("category", format!("{:?}", word(v, 64)));
+    }
+    if ev.known_category == Some(false) {
+        field("unknown_category", "true".to_string());
+    }
+    if let Some(v) = ev.session {
+        field("session", word(v, 128));
+    }
+    if let Some(v) = ev.reason {
+        let v = crate::redact::scrub_str(v).map_or_else(|| v.to_string(), |(s, _)| s);
+        field("reason", format!("{:?}", word(&v, 300)));
+    }
+    if let Some(v) = ev.summary {
+        let v = crate::redact::scrub_str(v).map_or_else(|| v.to_string(), |(s, _)| s);
+        field("result", format!("{:?}", word(&v, 1000)));
+    }
+    if let Some(v) = ev.detail.filter(|d| !d.trim().is_empty()) {
+        field("preview", format!("{:?}", log_preview(v)));
+    }
+    line
+}
+
+/// Log one event: WARN for a failure, an `error` event, a report filed under
+/// a category the settings do not list, or settings that cannot be read;
+/// INFO otherwise.
+pub fn log_event(ev: &McpLog) {
+    let line = log_line(ev);
+    let warn = ev.event == "error"
+        || ev.outcome == Some("failed")
+        || ev.known_category == Some(false)
+        || ev.reason == Some("settings unreadable");
+    if warn {
+        tracing::warn!("{line}");
+    } else {
+        tracing::info!("{line}");
+    }
+}
+
+/// Whether `self-report.json` is there but cannot be read or parsed.
+fn settings_unreadable(home: &Path) -> bool {
+    let path = settings_path(home);
+    match fs::read_to_string(&path) {
+        Ok(text) => parse_settings(&text).is_none(),
+        Err(err) => err.kind() != io::ErrorKind::NotFound,
     }
 }
 
@@ -1165,6 +1352,60 @@ pub fn write_event_file(home: &Path, events: &[Value]) -> io::Result<PathBuf> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_log_preview_is_scrubbed_before_it_is_cut() {
+        // The key starts inside the first 40 characters and ends after them:
+        // cut first, the half left would no longer look like a key.
+        let detail =
+            "auth failed: sk-ant-api03-abcdefghijklmnopqrstuvwxyz0123456789 then more\nlines";
+        let preview = log_preview(detail);
+        assert!(!preview.contains("abcdefghij"), "{preview}");
+        assert!(preview.starts_with("auth failed: "), "{preview}");
+        assert!(
+            preview.chars().count() <= LOG_PREVIEW_CHARS + 1,
+            "{preview}"
+        );
+        assert!(!preview.contains('\n'));
+        assert_eq!(log_preview("short"), "short");
+        assert_eq!(log_preview(&"é".repeat(50)), format!("{}…", "é".repeat(40)));
+    }
+
+    #[test]
+    fn a_log_line_names_the_event_and_only_the_fields_it_has() {
+        let line = log_line(&McpLog {
+            event: "tools/call",
+            transport: "stdio",
+            agent: Some("hermes"),
+            outcome: Some("skipped"),
+            reason: Some("Self Reports is off"),
+            category: Some("looping"),
+            known_category: Some(false),
+            session: Some("s-1"),
+            detail: Some("stuck\nin a loop"),
+            summary: None,
+        });
+        assert_eq!(
+            line,
+            "Self Reports MCP tools/call over stdio agent=hermes outcome=skipped \
+             category=\"looping\" unknown_category=true session=s-1 \
+             reason=\"Self Reports is off\" preview=\"stuck in a loop\""
+        );
+        let bare = log_line(&McpLog {
+            event: "initialize",
+            transport: "http",
+            ..Default::default()
+        });
+        assert_eq!(bare, "Self Reports MCP initialize over http");
+        // A sync result is scrubbed too.
+        let sync = log_line(&McpLog {
+            event: "sync",
+            transport: "cli",
+            summary: Some("failed codex (token=sk-proj-abcdefghijklmnopqrstuvwxyz012345)"),
+            ..Default::default()
+        });
+        assert!(!sync.contains("abcdefghij"), "{sync}");
+    }
 
     fn temp_home(name: &str) -> PathBuf {
         let dir = std::env::temp_dir().join(format!(

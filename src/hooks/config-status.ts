@@ -441,8 +441,9 @@ export function pickStatusAttention(facts: StatusFacts): StatusAttention | null 
     return { severity: "caution", text: "Policies are not enforcing yet.", fix };
   }
   if (facts.codex?.kind === "untrusted") {
-    const [text, fixLine] = CODEX_UNTRUSTED_NOTICE.split("\n");
-    return { severity: "caution", text, detail: fixLine };
+    // One line: the fix that needs no one at the Codex prompt (sudo puts the
+    // hooks in Codex's system config, which runs them without trust).
+    return { severity: "caution", text: CODEX_UNTRUSTED_NOTICE.split("\n")[0], fix: "failproofai config" };
   }
   if (cloud.kind !== "none" && !daemon.answering && daemon.service !== "running") {
     const idle =

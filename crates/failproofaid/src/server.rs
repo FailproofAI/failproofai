@@ -321,6 +321,11 @@ pub fn handle_connection(stream: UnixStream, worker: &Worker) -> io::Result<()> 
         Ok(msg) => msg,
         Err(_) => return Ok(()), // malformed frame: nothing to respond to, nothing to act on
     };
+    // One-way: logged, and the connection closes with no reply.
+    if let ClientMessage::SelfReportLog { event, .. } = &request {
+        crate::self_report::log_remote(event);
+        return Ok(());
+    }
 
     // The worker call is deliberately OUTSIDE the connection budget: it is our
     // own evaluation taking time, not the peer withholding bytes, and it has
@@ -572,6 +577,14 @@ fn evaluate(request: ClientMessage, worker: &Worker) -> ServerMessage {
                     protocol_version: PROTOCOL_VERSION,
                     message: format!("worker call failed: {err}"),
                 },
+            }
+        }
+        // `handle_connection` logs these and replies nothing; never reached.
+        ClientMessage::SelfReportLog { event, .. } => {
+            crate::self_report::log_remote(&event);
+            ServerMessage::Error {
+                protocol_version: PROTOCOL_VERSION,
+                message: "selfReportLog takes no reply".to_string(),
             }
         }
     }

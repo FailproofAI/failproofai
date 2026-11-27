@@ -24,6 +24,10 @@
  *
  * Text typed into a program the shell started (a REPL, an editor) is judged as
  * shell text too: the payload does not say what reads it.
+ *
+ * Live codex-cli 0.172 runs no hook at all for `write_stdin`, so for Codex
+ * this is a second line only: codex-interactive-session.ts refuses opening the
+ * session in the first place.
  */
 import { deny, allow } from "./policy-helpers";
 import type { PolicyContext, PolicyMatcher, PolicyResult } from "./policy-types";

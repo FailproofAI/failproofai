@@ -46,6 +46,13 @@ import {
   typedInputGuardFor,
   typedShellInput,
 } from "./typed-shell-input";
+import {
+  CODEX_SESSION_GUARD_DESCRIPTION,
+  CODEX_SESSION_GUARD_MATCH,
+  CODEX_SESSION_GUARD_NAME,
+  codexCallOpensSession,
+  codexSessionGuardFor,
+} from "./codex-interactive-session";
 import { evaluatePolicies } from "./policy-evaluator";
 // Types only: the semantic (Jev) modules are loaded with a dynamic import, and
 // only once a Jev config exists, so an unconfigured machine never loads them.
@@ -744,6 +751,10 @@ export async function evaluateHookEvent(
       parsed.tool_input = { ...(parsed.tool_input as Record<string, unknown>), command: typedInput.command };
     }
     const unreadableTypedInput = typedInput?.kind === "unreadable" ? typedInput.why : undefined;
+    // Codex runs no hooks for what is typed into a shell it keeps open, so a
+    // Codex command that opens one is refused. See codex-interactive-session.ts.
+    const codexSession =
+      cli === "codex" ? codexCallOpensSession(canonicalEventType, canonicalToolName, parsed.tool_input) : null;
 
     // Extract session metadata from payload
     const sessionId = parsed.session_id as string | undefined;
@@ -921,6 +932,14 @@ export async function evaluateHookEvent(
           TYPED_INPUT_GUARD_DESCRIPTION,
           typedInputGuardFor(unreadableTypedInput),
           TYPED_INPUT_GUARD_MATCH,
+        );
+      }
+      if (codexSession !== null && typedInputGuardActive(Boolean(activePause), cloudManagedPolicies)) {
+        registerPolicy(
+          CODEX_SESSION_GUARD_NAME,
+          CODEX_SESSION_GUARD_DESCRIPTION,
+          codexSessionGuardFor(codexSession),
+          CODEX_SESSION_GUARD_MATCH,
         );
       }
       // Recorded on every row once a machine is managed, whether or not a cloud

@@ -49,6 +49,7 @@ vi.mock("../../src/hooks/pack-manifest", () => ({
 
 import { evaluateHookEvent } from "../../src/hooks/handler";
 import { TYPED_INPUT_GUARD_NAME } from "../../src/hooks/typed-shell-input";
+import { CODEX_SESSION_GUARD_NAME } from "../../src/hooks/codex-interactive-session";
 import { readActiveCloudManagedPolicies } from "../../src/hooks/cloud-managed-policies";
 import { readActivePause } from "../../src/hooks/session-pause";
 import { registerPolicy } from "../../src/hooks/policy-registry";
@@ -104,5 +105,33 @@ describe("handler: text typed into a running shell", () => {
     vi.mocked(readActiveCloudManagedPolicies).mockReturnValue([CLOUD] as never);
     await evaluateHookEvent("pre_tool_use", "codex", codex("write_stdin", { session_id: 7, chars: "x" }));
     expect(registered()).toBe(true);
+  });
+});
+
+describe("handler: a Codex command that opens an interactive session", () => {
+  const sessionGuard = () => vi.mocked(registerPolicy).mock.calls.some(([name]) => name === CODEX_SESSION_GUARD_NAME);
+
+  it("registers the guard for Codex's bash -i, the one call Codex hooks for a kept-open shell", async () => {
+    await evaluateHookEvent("pre_tool_use", "codex", codex("Bash", { command: "bash -i" }));
+    expect(sessionGuard()).toBe(true);
+  });
+
+  it("does not register it for a one-shot command, or on another CLI", async () => {
+    await evaluateHookEvent("pre_tool_use", "codex", codex("Bash", { command: "npm test" }));
+    await evaluateHookEvent(
+      "PreToolUse",
+      "claude",
+      JSON.stringify({ session_id: "s1", cwd: "/tmp/p", tool_name: "Bash", tool_input: { command: "bash -i" } }),
+    );
+    expect(sessionGuard()).toBe(false);
+  });
+
+  it("is lifted by a pause unless an enforcing Cloud policy is deployed", async () => {
+    vi.mocked(readActivePause).mockReturnValue({ sessionId: "s1" } as never);
+    await evaluateHookEvent("pre_tool_use", "codex", codex("Bash", { command: "bash -i" }));
+    expect(sessionGuard()).toBe(false);
+    vi.mocked(readActiveCloudManagedPolicies).mockReturnValue([CLOUD] as never);
+    await evaluateHookEvent("pre_tool_use", "codex", codex("Bash", { command: "bash -i" }));
+    expect(sessionGuard()).toBe(true);
   });
 });

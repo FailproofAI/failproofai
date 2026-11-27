@@ -1934,6 +1934,85 @@ const MAX_INSTRUCTION_FILE_BYTES = 1024 * 1024;
 /** curl's short options that take a value (curl 8 `--help all`); the rest of a cluster after one is that value. */
 const CURL_SHORT_VALUE_OPTIONS = "AbcCdDeEFHKmoPQrtTuUwxXyYz";
 
+/** bash's integer argument for `%d` and friends, or null for one bash would refuse or this cannot hold exactly. */
+function bashPrintfInteger(arg: string): number | null {
+  const text = arg.trim();
+  if (/^['"]/.test(text)) return text.length > 1 ? (text.codePointAt(1) ?? 0) : 0;
+  const m = /^([+-]?)(0[xX][0-9a-fA-F]+|0[0-7]*|[1-9][0-9]*)$/.exec(text);
+  if (m === null) return null;
+  const digits = m[2];
+  const magnitude = /^0[xX]/.test(digits) ? parseInt(digits.slice(2), 16) : digits.length > 1 && digits.startsWith("0") ? parseInt(digits.slice(1), 8) : parseInt(digits, 10);
+  if (!Number.isSafeInteger(magnitude)) return null;
+  return m[1] === "-" ? -magnitude : magnitude;
+}
+
+/**
+ * `printf FORMAT ARGS…` as bash computes it, for `%s`, `%b` (escapes left in,
+ * so the caller can refuse them), `%q` of a plain word, `%c` and the integer
+ * conversions `%d`, `%i`, `%u`, `%o`, `%x`, `%X`, with the flags `-`, `0`,
+ * `+`, space and `#`, a width and a precision, the format reused until the
+ * arguments run out. Null for anything else: a `*` width, a conversion it does
+ * not compute, or an argument bash would reject.
+ */
+function bashPrintf(format: string, args: readonly string[]): string | null {
+  const SPEC = /%(%|([-0+ #]*)(\d*)(?:\.(\d*))?([^%]?))/g;
+  const conversions = (format.match(/%[^%]/g) ?? []).length;
+  let k = 0;
+  let out = "";
+  let passes = 0;
+  const pad = (text: string, width: number, left: boolean, zero: boolean): string => {
+    if (text.length >= width) return text;
+    if (left) return text + " ".repeat(width - text.length);
+    if (!zero) return " ".repeat(width - text.length) + text;
+    const sign = /^[+ -]/.test(text) ? text[0] : "";
+    const prefix = /^[+ -]?0[xX]/.test(text) ? text.slice(sign.length, sign.length + 2) : "";
+    const digits = text.slice(sign.length + prefix.length);
+    return sign + prefix + "0".repeat(width - text.length) + digits;
+  };
+  do {
+    let failed = false;
+    out += format.replace(SPEC, (whole, spec: string, flags = "", widthText = "", precisionText: string | undefined, c = "") => {
+      if (spec === "%") return "%";
+      if (/[*]/.test(whole) || widthText.length > 4 || (precisionText ?? "").length > 4) {
+        failed = true;
+        return "";
+      }
+      const arg = args[k++] ?? "";
+      const width = widthText === "" ? 0 : Number(widthText);
+      const precision = precisionText === undefined ? undefined : precisionText === "" ? 0 : Number(precisionText);
+      const left = flags.includes("-");
+      let text: string;
+      if (c === "s" || c === "b") text = precision === undefined ? arg : arg.slice(0, precision);
+      else if (c === "c") text = arg.charAt(0);
+      else if (c === "q") {
+        if (arg === "" || !/^[A-Za-z0-9_./:@%+=,-]*$/.test(arg)) {
+          failed = true;
+          return "";
+        }
+        text = arg;
+      } else if (c !== "" && "diuoxX".includes(c)) {
+        const n = arg === "" ? 0 : bashPrintfInteger(arg);
+        // A negative number in an unsigned form is its 64-bit two's complement, past what a number holds exactly.
+        if (n === null || (n < 0 && c !== "d" && c !== "i")) {
+          failed = true;
+          return "";
+        }
+        let digits = c === "o" ? n.toString(8) : c === "x" ? n.toString(16) : c === "X" ? n.toString(16).toUpperCase() : String(Math.abs(n));
+        if (precision !== undefined) digits = precision === 0 && n === 0 ? "" : digits.padStart(precision, "0");
+        if (flags.includes("#") && n !== 0) digits = c === "o" ? (digits.startsWith("0") ? digits : `0${digits}`) : c === "x" ? `0x${digits}` : c === "X" ? `0X${digits}` : digits;
+        const sign = (c === "d" || c === "i") && n < 0 ? "-" : (c === "d" || c === "i") && flags.includes("+") ? "+" : (c === "d" || c === "i") && flags.includes(" ") ? " " : "";
+        return pad(sign + digits, width, left, flags.includes("0") && precision === undefined);
+      } else {
+        failed = true;
+        return "";
+      }
+      return pad(text, width, left, false);
+    });
+    if (failed) return null;
+  } while (conversions > 0 && k < args.length && ++passes < 64);
+  return k < args.length ? null : out;
+}
+
 /** tar's short options other than `-C` that take a value (GNU tar and bsdtar). */
 const TAR_SHORT_VALUE_OPTIONS = "fbFgHIKLNTVX";
 
@@ -3463,14 +3542,14 @@ function destroysFailproofaiState(command: string, depth = 0, startDir?: string,
       const args = words.slice(4).map(expand);
       // bash reuses the format until every argument is used (`printf -v D
       // '%s' ho ok` is `hook`; found by hermes on FailproofAI/failproofai#1058).
-      let k = 0;
-      let value = "";
-      let passes = 0;
-      const conversions = (format.match(/%[sbqd]/g) ?? []).length;
-      do {
-        value += format.replace(/%(%|[sbqd])/g, (_, c: string) => (c === "%" ? "%" : (args[k++] ?? "")));
-      } while (conversions > 0 && k < args.length && ++passes < 64);
-      setVariable(words[2], /[%\\]/.test(value) || k < args.length ? [] : [value]);
+      // Numbers are converted as bash converts them (`%d` of `0x10` is `16`;
+      // found by hermes on FailproofAI/failproofai#1058); a form this does not
+      // compute leaves the variable unknown.
+      const value = bashPrintf(format, args);
+      // Unquoted, a value with spaces splits into words (`%2d` of 16 is ` 16`):
+      // each is a value the variable may stand for.
+      const fields = value === null ? [] : value.split(/\s+/).filter((field) => field !== "" && field !== value);
+      setVariable(words[2], value === null || /\\/.test(value) ? [] : [value, ...fields]);
     } else if (head === "mapfile" || head === "readarray") {
       const named = words.slice(1).filter((word, k, all) => !word.startsWith("-") && !/^-[A-Za-z]*[dnOsuC]$/.test(all[k - 1] ?? ""));
       setVariable(named[named.length - 1] ?? "MAPFILE", []);
@@ -3562,6 +3641,17 @@ function destroysFailproofaiState(command: string, depth = 0, startDir?: string,
     const head = list.length > 0 ? commandBasename(list[0]) : "";
     const args = list.slice(1);
     let into = ".";
+    // tar takes each `-C` from the directory the one before it left, and a
+    // member goes to the `-C` before it on the line, so every one is a place
+    // the archive may write (`-C bins failproofai -C out other`; found by
+    // hermes on FailproofAI/failproofai#1058).
+    const intos: string[] = [];
+    const changeDir = (dir: string) => {
+      if (dir === "") return;
+      const previous = intos[intos.length - 1];
+      intos.push(dir);
+      if (previous !== undefined && previous !== "." && !dir.startsWith("/") && !dir.startsWith("~")) intos.push(`${previous.replace(/\/+$/, "")}/${dir}`);
+    };
     let extracting = false;
     if (head === "tar" || head === "gtar" || head === "bsdtar") {
       for (let k = 0; k < args.length; k++) {
@@ -3569,7 +3659,7 @@ function destroysFailproofaiState(command: string, depth = 0, startDir?: string,
         if (arg.startsWith("--")) {
           const eq = arg.indexOf("=");
           const name = arg.slice(2, eq === -1 ? undefined : eq);
-          if (name.length >= 3 && "directory".startsWith(name)) into = eq === -1 ? (args[++k] ?? into) : arg.slice(eq + 1);
+          if (name.length >= 3 && "directory".startsWith(name)) changeDir(eq === -1 ? (args[++k] ?? "") : arg.slice(eq + 1));
           else if (name.length >= 3 && ("extract".startsWith(name) || name === "get")) extracting = true;
           continue;
         }
@@ -3579,7 +3669,7 @@ function destroysFailproofaiState(command: string, depth = 0, startDir?: string,
           if (k > 0) continue;
           if (arg.includes("x")) extracting = true;
           for (const letter of arg) {
-            if (letter === "C") into = args[++k] ?? into;
+            if (letter === "C") changeDir(args[++k] ?? "");
             else if (TAR_SHORT_VALUE_OPTIONS.includes(letter)) k++;
           }
           continue;
@@ -3592,7 +3682,7 @@ function destroysFailproofaiState(command: string, depth = 0, startDir?: string,
           if (letter === "x") extracting = true;
           if (letter !== "C" && !TAR_SHORT_VALUE_OPTIONS.includes(letter)) continue;
           const value = i + 1 < arg.length ? arg.slice(i + 1) : (args[++k] ?? "");
-          if (letter === "C") into = value || into;
+          if (letter === "C") changeDir(value);
           break;
         }
       }
@@ -3607,7 +3697,9 @@ function destroysFailproofaiState(command: string, depth = 0, startDir?: string,
       const out = args.find((arg) => arg.startsWith("-o"));
       if (out !== undefined) into = out.slice(2);
     }
-    return extracting && isBinDir(into === "" ? "." : into);
+    if (!extracting) return false;
+    const places = intos.length > 0 ? [into, ...intos] : [into];
+    return places.some((place) => isBinDir(place === "" ? "." : place));
   };
   // curl reads options from `-K FILE` / `--config FILE` as if they were on
   // the line, so they are read onto it; one it cannot read is refused. A

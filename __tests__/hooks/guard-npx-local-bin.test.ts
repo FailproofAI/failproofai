@@ -1486,3 +1486,47 @@ describe("block-failproofai-commands — option clusters, nested configs and ope
     expect(await bashIn(proj, command)).toBe("allow");
   });
 });
+
+// hermes's ninth round on e0d88d81.
+describe("block-failproofai-commands — printf conversions and tar's -C order, round nine", () => {
+  let root: string;
+  let proj: string;
+
+  beforeAll(() => {
+    root = mkdtempSync(join(tmpdir(), "fpai-round9-"));
+    proj = join(root, "proj");
+    mkdirSync(join(proj, "node_modules", ".bin"), { recursive: true });
+    mkdirSync(join(proj, "out"), { recursive: true });
+    const entry = join(proj, "node_modules", ".bin", "failproofai");
+    symlinkSync(entry, join(proj, "16"));
+    symlinkSync(entry, join(proj, "8"));
+    symlinkSync(entry, join(proj, "ff"));
+    symlinkSync(join(proj, "node_modules", ".bin"), join(proj, "bins"));
+  });
+
+  afterAll(() => {
+    rmSync(root, { recursive: true, force: true });
+  });
+
+  it.each([
+    ["a hexadecimal %d", "printf -v D '%d' 0x10; cp stub $D"],
+    ["an octal %d", "printf -v D '%d' 010; cp stub $D"],
+    ["%i", "printf -v D '%i' 0x10; cp stub $D"],
+    ["%x", "printf -v D '%x' 255; cp stub $D"],
+    ["%u of a hexadecimal", "printf -v D '%u' 0x10; cp stub $D"],
+    ["a width this does not compute", "printf -v D '%2d' 16; cp stub $D"],
+    ["tar extracting one member into an earlier -C", 'tar -xfstub.tar -C bins failproofai -C "$PWD/out" other'],
+    ["tar's -C relative to the one before it", "tar -xf stub.tar -C node_modules -C .bin"],
+    ["tar's --directory before another -C", "tar -x -f stub.tar --directory=bins failproofai -C out x"],
+  ])("denies %s", async (_label, command) => {
+    expect(await bashIn(proj, command)).toBe("deny");
+  });
+
+  it.each([
+    "printf -v D '%d' 42; cp stub out/$D",
+    "printf -v N '%03d' 7; echo $N",
+    "tar -xf stub.tar -C out a -C out b",
+  ])("still allows %s", async (command) => {
+    expect(await bashIn(proj, command)).toBe("allow");
+  });
+});

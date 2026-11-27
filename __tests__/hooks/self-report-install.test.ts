@@ -640,3 +640,26 @@ describe("on by default: install, disable, enable", () => {
     expect(entryIn("claude")).toBeUndefined();
   });
 });
+
+describe("the test-only real-home guard", () => {
+  it("refuses to write an agent config under the developer's real home", async () => {
+    const { userInfo } = await import("node:os");
+    const { join } = await import("node:path");
+    const realHome = userInfo().homedir;
+    const prev = process.env.HOME;
+    // Simulate a test that forgot to move HOME: the writer resolves the real home.
+    process.env.HOME = realHome;
+    try {
+      const mod = await import("../../src/hooks/self-report-install");
+      const results = await mod.syncSelfReportMcp({ enabled: true, quiet: true, agents: ["cursor"], alsoHooked: ["cursor"] } as never);
+      const target = join(realHome, ".cursor", "mcp.json");
+      const written = results.find((r: { agent: string; path?: string; action?: string }) => r.agent === "cursor");
+      expect(written?.action).not.toBe("added");
+      expect(written?.action).not.toBe("updated");
+      expect(String(written?.path ?? target).startsWith(realHome)).toBe(true);
+    } finally {
+      if (prev === undefined) delete process.env.HOME;
+      else process.env.HOME = prev;
+    }
+  });
+});

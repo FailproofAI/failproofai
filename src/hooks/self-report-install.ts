@@ -76,20 +76,47 @@
  */
 import { accessSync, constants as fsConstants, existsSync, readFileSync, realpathSync } from "node:fs";
 import { execSync } from "node:child_process";
-import { homedir } from "node:os";
-import { basename, resolve } from "node:path";
+import { homedir, userInfo } from "node:os";
+import { basename, resolve, sep } from "node:path";
 import { parse as parseToml } from "smol-toml";
 import { applyEdits, modify, parse as parseJsonc, type ParseError } from "jsonc-parser/lib/esm/main.js";
 import { isMap, type Document } from "yaml";
 import { writeConfigFileAtomic } from "./safe-config-write";
 import { codexHome } from "./codex-system-hooks";
 import { claudeConfigDir, getIntegration, readYamlDoc, writeYamlDoc, UnreadableAgentConfigError } from "./integrations";
+
 import { daemonSelfReportServer } from "./daemon-client";
 import { resolveSelfReport, selfReportPort, selfReportSettingsFile, SELF_REPORT_SERVER_NAME, SELF_REPORT_SERVER_RECORDS } from "./self-report";
 import { listHermesProfiles } from "../../lib/hermes-profiles";
 import { listOpenClawProfiles } from "../../lib/openclaw-profiles";
 import { INTEGRATION_TYPES, type IntegrationType } from "./types";
 import { mergeTomlManagedBlock, readTomlManagedBlock, tomlString, type TomlBlockMarkers } from "./toml-managed-block";
+
+/**
+ * Test-only guard: a test that forgot to isolate HOME must never write the
+ * developer's real agent configs. `os.userInfo().homedir` ignores `$HOME`, so it
+ * names the real home even when a test moved `$HOME`; under Vitest a write into
+ * it throws. Production (no `VITEST` in the environment) is unaffected.
+ */
+function assertNotRealHomeUnderTest(path: string): void {
+  if (!process.env.VITEST) return;
+  let real = "";
+  try {
+    real = userInfo().homedir;
+  } catch {
+    return;
+  }
+  if (!real) return;
+  const target = resolve(path);
+  if (target === real || target.startsWith(real.endsWith(sep) ? real : real + sep)) {
+    throw new Error(`refusing to write ${target} under test: set HOME to a temp dir`);
+  }
+}
+
+function guardedWriteConfig(path: string, text: string): void {
+  assertNotRealHomeUnderTest(path);
+  writeConfigFileAtomic(path, text);
+}
 
 // ── Settings (CONTRACT §4) ──────────────────────────────────────────────────
 
@@ -472,7 +499,7 @@ function jsonOps(target: McpTarget, path: string): FileOps {
       });
       let next = applyEdits(base, edits);
       if (!next.endsWith("\n")) next += "\n";
-      writeConfigFileAtomic(path, next);
+      guardedWriteConfig(path, next);
     },
   };
 }
@@ -530,7 +557,7 @@ function tomlOps(path: string): FileOps {
         throw new Error(`the result would not be valid TOML (${err instanceof Error ? err.message.split("\n")[0] : String(err)})`);
       }
       if (entry && getIn(check, keyPath) === undefined) throw new Error("the written entry did not read back");
-      writeConfigFileAtomic(path, next);
+      guardedWriteConfig(path, next);
     },
   };
 }
@@ -563,6 +590,7 @@ function yamlOps(target: McpTarget, path: string): FileOps {
       } else {
         doc.deleteIn(keyPath);
       }
+      assertNotRealHomeUnderTest(path);
       writeYamlDoc(path, doc);
     },
   };

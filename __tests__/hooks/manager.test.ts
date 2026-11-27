@@ -196,6 +196,18 @@ describe("hooks/manager", () => {
       });
     });
 
+    it("a project-scope install never touches the agents' user-wide MCP configs", async () => {
+      vi.mocked(existsSync).mockReturnValue(true);
+      vi.mocked(readFileSync).mockReturnValue("{}");
+      const sr = await import("../../src/hooks/self-report-install");
+      vi.mocked(sr.syncSelfReportMcp).mockClear();
+
+      const { installHooks } = await import("../../src/hooks/manager");
+      await installHooks(undefined, "project", "/tmp/some-project");
+
+      expect(sr.syncSelfReportMcp).not.toHaveBeenCalled();
+    });
+
     // `--install` with no names WIRES HOOKS. It does not choose policies, and
     // it used to: a second picker opened here over BUILTIN_POLICIES — the
     // compiled catalog, which is not how policies arrive any more — and wrote

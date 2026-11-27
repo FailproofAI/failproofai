@@ -1015,6 +1015,9 @@ async function installHooksImpl(
   // when it is). The settings file is written first when it is missing (off
   // Cloud), so every reader agrees. Best-effort: a config it cannot change is
   // reported, never a failed install.
+  // Only a user-scope install touches the agents' user-wide MCP configs: a
+  // project or local install must not register anything outside that project.
+  if (scope === "user") {
   try {
     await ensureSelfReportSettingsFile();
   } catch {
@@ -1029,6 +1032,7 @@ async function installHooksImpl(
     for (const line of selfReportSyncLines(results)) console.log(line);
   } catch {
     // never block the install
+  }
   }
 
   // Last, after everything above: the agents whose hooks were actually written.

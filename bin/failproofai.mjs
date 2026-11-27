@@ -822,6 +822,12 @@ async function runCli() {
     if (!subArgs.includes("--quiet")) {
       const lines = selfReportSyncLines(results);
       await printLines(lines.length > 0 ? lines : ["Self Reports MCP registration is already up to date."], !failed);
+    } else if (failed) {
+      // The daemon runs this with --quiet and logs our stderr: without the
+      // failing agents' lines, "exit 1" was all its journal ever said.
+      for (const r of results.filter((x) => x.status === "error")) {
+        process.stderr.write(`${r.agent}: not updated in ${r.path || "its config"}: ${r.detail ?? "error"}\n`);
+      }
     }
     lastSubcommand = null;
     await exitAfterFlush(failed ? 1 : 0);

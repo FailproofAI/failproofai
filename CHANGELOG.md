@@ -1,5 +1,20 @@
 # Changelog
 
+## 1.0.18-beta.3 — 2026-11-27
+
+### Fixes
+
+- Self Reports: the daemon's sync after a Cloud setting failed with exit 1 for every agent the MCP server records (Copilot, Cursor, OpenCode, Hermes, OpenClaw, Factory, Devin, Antigravity, Goose): under the service's `PATH` no `failproofai` was found and the CLI it runs is named `cli.mjs`, so there was no stdio command to write. The sync now takes the `failproofai` npm installed beside the daemon's Node (then npm's and bun's global bins), `self-report sync --quiet` names each agent it could not update on stderr, and the daemon logs those lines as warnings ahead of its verdict (#1062)
+- Self Reports: the daemon also syncs the agents when it first writes the Cloud settings file and when the file's source changes, not only when `enabled` or the port does. A machine that enrolled with its own settings file (which reads as off until Cloud answers) got the org's "on" with no sync, so no agent was registered until a manual `self-report sync` (#1062)
+- Self Reports: a Codex report is no longer lost when Codex does not run failproofai's hooks (Codex 0.129+ runs an untrusted `~/.codex/hooks.json` hook never), nor a Claude Code one with `disableAllHooks`. The stdio server records a Claude Code or Codex report unless the agent's hook already recorded that report (the hook runs before the MCP call), filed on the session the agent's own rollout or transcript names; such an agent is registered over stdio rather than on the daemon's endpoint, `status` says who records each one's reports and how to trust the Codex hooks, and `self-report test` follows the same path (#1062)
+- Self Reports on Pi: Pi before 0.99 has no MCP at all, so the `failproofai_local` entry in `~/.pi/agent/mcp.json` never reached the model, `exposure: "direct"` or not. failproofai's Pi extension now registers `mcp__failproofai_local__report` itself, with the server's description, categories and instructions (as a system-prompt guideline), and hands each call to `failproofai mcp --agent pi`, which records it; sync no longer writes a Pi MCP entry and removes the old one. Verified with Pi 0.85.1 on gpt-5-nano, which reported an expired token unprompted (#1062)
+- Self Reports: the tool description and the server's instructions now say to call it before the final answer whenever something the agent cannot fix stopped it, with concrete triggers (a missing or expired token or key, a 401 or 403, a command or tool that keeps failing, information it cannot get, a request it cannot do); weaker models mostly ignored the old wording. Same text in the CLI, the daemon and both SDKs (#1062)
+- `block-failproofai-commands` no longer blocks reads and mentions it mistook for tampering: a `jq` filter with a `|` in it, a `grep`/`rg` pattern with a `(`, a heredoc that only writes text mentioning the CLI (to a file outside failproofai's state, with nothing in the same command that could run it), and a `python -c` program that can only read. It still denies running the CLI however it is spelled, pausing, uninstalling, and every write, move, delete, `chmod` or redirect into failproofai's state, including `yq -i`, which it had read as a reader (#1062)
+
+### Docs
+
+- Self Reports: when Claude Code's or Codex's hooks do not run, Pi's tool coming from failproofai's Pi extension, and where the extra servers in `devin mcp list` come from (Devin also lists other agents' servers, such as a Claude Code project's) (#1062)
+
 ## 1.0.18-beta.2 — 2026-11-27
 
 ### Fixes

@@ -43,6 +43,7 @@ function enabledOpts(extra: Partial<SyncSelfReportMcpOptions> = {}, daemon = tru
     deps: {
       daemonLive: async () => daemon,
       hooksInstalled: () => true,
+      hookRecords: () => true,
       settings: { enabled: true, port: 4319 },
       ...extra.deps,
     },
@@ -101,7 +102,7 @@ const USER_JSON = (container: string[]) => {
 };
 
 describe("syncSelfReportMcp: every agent round-trips", () => {
-  for (const agent of INTEGRATION_TYPES) {
+  for (const agent of INTEGRATION_TYPES.filter((a) => !SELF_REPORT_MCP_TARGETS[a].extension)) {
     const target = SELF_REPORT_MCP_TARGETS[agent];
     it(`${agent}: adds, is idempotent, keeps the user's entries, removes only ours`, async () => {
       const path = pathOf(agent);
@@ -157,7 +158,7 @@ describe("transport choice", () => {
     expect(INTEGRATION_TYPES.filter((a) => selfReportHttpAllowed(a))).toEqual(["claude", "codex"]);
     for (const a of SELF_REPORT_SERVER_RECORDS) expect(selfReportHttpAllowed(a as IntegrationType)).toBe(false);
     const r = await syncSelfReportMcp(enabledOpts({}, true));
-    for (const x of r) expect(x.transport).toBe(selfReportHttpAllowed(x.agent) ? "http" : "stdio");
+    for (const x of r) expect(x.transport).toBe(x.agent === "pi" ? "extension" : selfReportHttpAllowed(x.agent) ? "http" : "stdio");
     // Every agent's HTTP shape is still one we recognise (a stale one is moved).
     for (const a of INTEGRATION_TYPES) {
       const t = SELF_REPORT_MCP_TARGETS[a];
@@ -186,15 +187,32 @@ describe("transport choice", () => {
     expect(entryIn("goose")).toMatchObject({ type: "stdio", cmd: CLI, args: ["mcp", "--agent", "goose"], enabled: true });
   });
 
-  it("exposes Pi's entry directly, on both transports, and moves an old entry to it", async () => {
-    await syncSelfReportMcp(enabledOpts({ agents: ["pi"] }, false));
-    expect(entryIn("pi")).toEqual({ command: CLI, args: ["mcp", "--agent", "pi"], exposure: "direct" });
-    // An older HTTP entry, written before `exposure` was set, is ours: it is
-    // moved to stdio (Pi is server-recorded) with exposure set.
-    put(pathOf("pi"), JSON.stringify({ mcpServers: { failproofai_local: { url: "http://127.0.0.1:4319/mcp?agent=pi" } } }));
-    const r = await syncSelfReportMcp(enabledOpts({ agents: ["pi"] }, true));
-    expect(r[0]).toMatchObject({ action: "updated", transport: "stdio" });
-    expect(entryIn("pi")).toEqual({ command: CLI, args: ["mcp", "--agent", "pi"], exposure: "direct" });
+  // Pi before 0.99 has no MCP, so an mcp.json entry never reached its model:
+  // failproofai's Pi extension offers the tool instead (pi-extension/index.ts).
+  it("writes no Pi MCP entry, takes out one an earlier version wrote, and keeps the user's", async () => {
+    const r0 = await syncSelfReportMcp(enabledOpts({ agents: ["pi"] }, false));
+    expect(r0).toEqual([{ agent: "pi", path: "", action: "unchanged", transport: "extension", status: "ok" }]);
+    expect(existsSync(pathOf("pi"))).toBe(false);
+    for (const old of [
+      { command: CLI, args: ["mcp", "--agent", "pi"], exposure: "direct" },
+      { url: "http://127.0.0.1:4319/mcp?agent=pi" },
+    ]) {
+      put(pathOf("pi"), JSON.stringify({ mcpServers: { failproofai_local: old, mine: { command: "node", args: ["x.js"] } } }));
+      const r = await syncSelfReportMcp(enabledOpts({ agents: ["pi"] }, true));
+      expect(r[0]).toMatchObject({ action: "removed", status: "ok" });
+      expect(r[1]).toMatchObject({ action: "unchanged", transport: "extension" });
+      expect(entryIn("pi")).toBeUndefined();
+      expect(read(pathOf("pi"))).toContain("mine");
+    }
+    // A failproofai_local of the user's own is not ours: left alone.
+    put(pathOf("pi"), JSON.stringify({ mcpServers: { failproofai_local: { command: "node", args: ["mine.js"] } } }));
+    await syncSelfReportMcp(enabledOpts({ agents: ["pi"] }, true));
+    expect(entryIn("pi")).toEqual({ command: "node", args: ["mine.js"] });
+    // Off, or not hooked: no tool from the extension either.
+    const off = await syncSelfReportMcp(enabledOpts({ agents: ["pi"], enabled: false }, true));
+    expect(off.at(-1)).toMatchObject({ transport: null, status: "ok" });
+    const unhooked = await syncSelfReportMcp(enabledOpts({ agents: ["pi"], deps: { hooksInstalled: () => false } }, true));
+    expect(unhooked.at(-1)).toMatchObject({ transport: null, status: "not-hooked" });
   });
 
   it("tells the user how cursor-agent approves the server when Cursor's entry is written", async () => {

@@ -293,7 +293,10 @@ async fn the_tool_list_follows_the_settings_file() {
         json!(["org_custom"])
     );
     let text = instructions(server.rpc("", init.clone()).await.1).unwrap();
-    assert!(text.as_str().unwrap().contains("(org_custom)"), "{text}");
+    assert!(
+        text.as_str().unwrap().contains("(one of: org_custom)"),
+        "{text}"
+    );
     assert!(
         text.as_str().unwrap().ends_with("\n\nPrefer one report."),
         "{text}"

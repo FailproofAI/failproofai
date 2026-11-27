@@ -36,7 +36,7 @@ import { runSelfReportCommand } from "../../src/hooks/self-report-cli";
 
 const BINARY = resolve(__dirname, "..", "..", "bin", "failproofai.mjs");
 
-const EXPECTED_DESCRIPTION = `Report to FailproofAI that you are stuck. Call this only when you are blocked and cannot make progress on your own; do not call it for normal work, clarifying questions or a single error. One call per distinct problem.
+const EXPECTED_DESCRIPTION = `Report to FailproofAI that you are blocked. Call this BEFORE your final answer whenever something stops you that you cannot fix yourself, for example a missing, invalid or expired token or API key, a 401 or 403, a command, tool or MCP server that keeps failing, information or access you cannot get, or a request you cannot do here. Do not call it for normal work, clarifying questions or an error you then fixed. One call per distinct problem.
 Reporting does not unblock you and changes no decision: afterwards, work around the problem or tell the user what is blocking you. There is no need to mention this report to the user.
 
 Categories:
@@ -437,7 +437,8 @@ describe("self-report sync on a stale home", () => {
 const INIT = { jsonrpc: "2.0", id: 1, method: "initialize", params: { protocolVersion: "2025-06-18", capabilities: {}, clientInfo: { name: "t", version: "1" } } };
 const INITIALIZED = { jsonrpc: "2.0", method: "notifications/initialized" };
 const LIST = { jsonrpc: "2.0", id: 2, method: "tools/list" };
-const CALL = { jsonrpc: "2.0", id: 3, method: "tools/call", params: { name: "report", arguments: { category: "looping", detail: "stuck in a retry loop" } } };
+const CALL_ARGS = { category: "looping", detail: "stuck in a retry loop" };
+const CALL = { jsonrpc: "2.0", id: 3, method: "tools/call", params: { name: "report", arguments: CALL_ARGS } };
 const PING = { jsonrpc: "2.0", id: 4, method: "ping" };
 
 describe("failproofai mcp (stdio, spawned)", () => {
@@ -482,10 +483,35 @@ describe("failproofai mcp (stdio, spawned)", () => {
     expect(() => readdirSync(join(home, "custom-agents", "events"))).toThrow();
   }, 30_000);
 
-  it("writes no event for a hook-recorded agent (claude)", async () => {
+  // Claude Code and Codex: the hook records, so the server writes nothing for
+  // a call the hook already recorded. The hook runs before the MCP call is
+  // sent, so its row is there first.
+  it("writes no event for a hook-recorded agent (claude) whose hook recorded the call", async () => {
     writeEffectiveSelfReport({ enabled: true });
+    mkdirSync(join(home, "hook-activity"), { recursive: true });
+    writeFileSync(
+      join(home, "hook-activity", "current.jsonl"),
+      JSON.stringify({
+        timestamp: Date.now() - 500, eventType: "PreToolUse", integration: "claude", sessionId: "c1", decision: "allow",
+        toolName: "mcp__failproofai_local__report", selfReport: { ...CALL_ARGS, source: "mcp" },
+      }) + "\n",
+    );
     await runMcp(["--agent", "claude"], [INIT, CALL], home);
     expect(() => readdirSync(join(home, "custom-agents", "events"))).toThrow();
+  }, 30_000);
+
+  // ...and records it when the hook did not (an untrusted Codex runs no hook):
+  // otherwise the report would be lost.
+  it("records a hook-recorded agent's report when its hook did not", async () => {
+    writeEffectiveSelfReport({ enabled: true });
+    for (const agent of ["codex", "claude"]) {
+      await runMcp(["--agent", agent], [INIT, CALL], home);
+    }
+    const files = readdirSync(join(home, "custom-agents", "events"));
+    expect(files).toHaveLength(2);
+    const events = files.map((f) => JSON.parse(readFileSync(join(home, "custom-agents", "events", f), "utf8")));
+    expect(events.map((e) => e.integration).sort()).toEqual(["claude", "codex"]);
+    for (const e of events) expect(e).toMatchObject({ type: "self_report", ...CALL_ARGS, source: "mcp" });
   }, 30_000);
 
   it("writes one self_report event in the SDK spool format for a server-recorded agent, attributed to its session", async () => {

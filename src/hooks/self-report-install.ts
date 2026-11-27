@@ -80,7 +80,7 @@
 import { accessSync, constants as fsConstants, existsSync, readFileSync, realpathSync } from "node:fs";
 import { execSync } from "node:child_process";
 import { homedir, userInfo } from "node:os";
-import { basename, resolve, sep } from "node:path";
+import { basename, dirname, resolve, sep } from "node:path";
 import { parse as parseToml } from "smol-toml";
 import { applyEdits, modify, parse as parseJsonc, type ParseError } from "jsonc-parser/lib/esm/main.js";
 import { isMap, type Document } from "yaml";
@@ -89,6 +89,7 @@ import { codexHome } from "./codex-system-hooks";
 import { claudeConfigDir, getIntegration, readYamlDoc, writeYamlDoc, UnreadableAgentConfigError } from "./integrations";
 
 import { daemonSelfReportServer } from "./daemon-client";
+import { selfReportHookState } from "./self-report-hook-trust";
 import { resolveSelfReport, selfReportPort, selfReportSettingsFile, SELF_REPORT_SERVER_NAME, SELF_REPORT_SERVER_RECORDS } from "./self-report";
 import { listHermesProfiles } from "../../lib/hermes-profiles";
 import { listOpenClawProfiles } from "../../lib/openclaw-profiles";
@@ -290,6 +291,12 @@ interface McpTarget {
   container(parsed: Record<string, unknown>): string[];
   /** The entry to write, given the container path chosen above. */
   entry(t: SelfReportTransport, container: string[]): Record<string, unknown>;
+  /**
+   * The tool comes from failproofai's own extension for this agent, not from
+   * an MCP entry (Pi): sync writes none, and takes out one an earlier version
+   * wrote.
+   */
+  extension?: true;
 }
 
 const plainEntry = (t: SelfReportTransport, urlKey = "url"): Record<string, unknown> =>
@@ -374,9 +381,13 @@ export const SELF_REPORT_MCP_TARGETS: Record<IntegrationType, McpTarget> = {
     agent: "pi", format: "json", http: true,
     paths: () => [resolve(process.env.PI_CODING_AGENT_DIR?.trim() || resolve(homedir(), ".pi", "agent"), "mcp.json")],
     container: () => ["mcpServers"],
-    // Pi's default exposure, `codemode`, puts only the server's name in the
-    // prompt; `direct` declares `report` and its description like a built-in.
+    // Pi before 0.99 has no MCP at all, so an entry here reached no model on
+    // the Pi this was verified against (0.85.1). failproofai's Pi extension,
+    // which a hooked Pi already loads, registers the tool itself
+    // (pi-extension/index.ts); this file only loses an entry an earlier
+    // version wrote. The entry shape is kept so that one is recognised.
     entry: (t) => ({ ...plainEntry(t), exposure: "direct" }),
+    extension: true,
   },
   hermes: {
     agent: "hermes", format: "yaml", http: true,
@@ -628,7 +639,8 @@ export interface SelfReportMcpResult {
   agent: IntegrationType;
   path: string;
   action: SelfReportMcpAction;
-  transport: "http" | "stdio" | null;
+  /** `extension`: the agent's tool comes from failproofai's own extension (Pi). */
+  transport: "http" | "stdio" | "extension" | null;
   status: SelfReportMcpStatus;
   detail?: string;
 }
@@ -652,6 +664,12 @@ export interface SyncSelfReportMcpOptions {
     /** The live check (default `selfReportDaemonLive`); asked only when an agent wants the server. */
     daemonLive?: (port: number) => Promise<boolean>;
     hooksInstalled?: (agent: IntegrationType) => boolean;
+    /**
+     * Whether a hook-recorded agent's user-scope hook will run (default
+     * `selfReportHookState`): only then may it be on the daemon's HTTP endpoint,
+     * which records nothing for it.
+     */
+    hookRecords?: (agent: IntegrationType) => boolean;
     settings?: SelfReportMcpSettings;
     resolveCliPath?: () => string | null;
   };
@@ -668,6 +686,17 @@ export function resolveSelfReportCliPath(): string | null {
   } catch {
     // not on PATH (a daemon's service environment, say)
   }
+  // A daemon's service has no login PATH (an nvm node is on no system PATH),
+  // and it runs the CLI as `<node> …/failproofai/dist/cli.mjs`, whose name is
+  // not one an entry can be recognised by. npm puts the `failproofai` link in
+  // the same bin directory as the node that installed it, so look there, then
+  // where the daemon looks for the CLI (`global_bin_dirs` in
+  // crates/failproofaid/src/self_report.rs). Without this the daemon's sync
+  // had no stdio command and failed every server-recorded agent.
+  for (const dir of selfReportCliDirs()) {
+    const candidate = resolve(dir, process.platform === "win32" ? "failproofai.cmd" : "failproofai");
+    if (selfReportCommandRunnable(candidate)) return candidate;
+  }
   const self = process.argv[1];
   if (self && basename(self).toLowerCase().includes("failproofai")) {
     try {
@@ -677,6 +706,15 @@ export function resolveSelfReportCliPath(): string | null {
     }
   }
   return null;
+}
+
+/** Bin directories that hold an npm/bun global `failproofai` when PATH does not. */
+export function selfReportCliDirs(env: Record<string, string | undefined> = process.env, execPath = process.execPath, home = homedir()): string[] {
+  const dirs = [dirname(execPath)];
+  const prefix = (env.NPM_CONFIG_PREFIX ?? env.npm_config_prefix)?.trim();
+  if (prefix) dirs.push(resolve(prefix, "bin"));
+  dirs.push(resolve(home, ".npm-global", "bin"), "/usr/local/bin", resolve(home, ".bun", "bin"));
+  return [...new Set(dirs)];
 }
 
 function defaultHooksInstalled(agent: IntegrationType): boolean {
@@ -743,6 +781,9 @@ function applySelfReportMcp(opts: SyncSelfReportMcpOptions, enabled: boolean, da
   const agents = opts.agents ?? INTEGRATION_TYPES;
   const hooked = opts.deps?.hooksInstalled ?? defaultHooksInstalled;
   const also = new Set(opts.alsoHooked ?? []);
+  const hookRecords =
+    opts.deps?.hookRecords ??
+    ((a: IntegrationType) => selfReportHookState(a, { userHooksInstalled: (x) => hooked(x as IntegrationType) }).recorder === "hook");
   let cliPath: string | null | undefined = opts.binaryPath;
   const results: SelfReportMcpResult[] = [];
 
@@ -761,11 +802,34 @@ function applySelfReportMcp(opts: SyncSelfReportMcpOptions, enabled: boolean, da
     }
     const agentHooked = enabled && (also.has(agent) || hooked(agent));
 
+    if (target.extension) {
+      for (const path of paths) {
+        try {
+          const ops = existsSync(path) ? opsFor(target, path) : null;
+          const cur = ops?.current();
+          if (ops && cur?.state === "ours") {
+            ops.write(null);
+            results.push({ agent, path, action: "removed", transport: transportOf(cur.entry), status: "ok" });
+          }
+        } catch (err) {
+          results.push({ agent, path, action: "skipped", transport: null, status: "error", detail: errText(err) });
+        }
+      }
+      results.push({
+        agent, path: "", action: "unchanged", transport: agentHooked ? "extension" : null,
+        status: enabled && !agentHooked ? "not-hooked" : "ok",
+      });
+      continue;
+    }
+
     let chosen: SelfReportTransport | null | undefined;
     const transportFor = (): SelfReportTransport | null => {
       if (chosen !== undefined) return chosen;
       chosen = null;
-      if (daemonHere && selfReportHttpAllowed(agent)) {
+      // HTTP only while the hook will record: an untrusted Codex, or a Claude
+      // Code with hooks off, gets stdio, whose server records what the hook
+      // did not.
+      if (daemonHere && selfReportHttpAllowed(agent) && hookRecords(agent)) {
         chosen = { kind: "http", url: selfReportHttpUrl(settings.port, agent) };
       } else {
         if (cliPath === undefined) cliPath = (opts.deps?.resolveCliPath ?? resolveSelfReportCliPath)();
@@ -889,9 +953,9 @@ export interface SelfReportRegistration {
   path: string;
   /** failproofai hooks are installed for this agent (user scope). */
   hooked: boolean;
-  /** Our entry is in this file. */
+  /** Our entry is in this file (or, for Pi, its extension offers the tool). */
   registered: boolean;
-  transport: "http" | "stdio" | null;
+  transport: "http" | "stdio" | "extension" | null;
   /** The URL (http) or command (stdio) our entry points at. */
   endpoint: string | null;
   /** A `failproofai_local` server that is not ours is there. */
@@ -910,6 +974,10 @@ export function selfReportRegistrationStatus(
     const target = SELF_REPORT_MCP_TARGETS[agent];
     if (!target) continue;
     const isHooked = hooked(agent);
+    if (target.extension) {
+      out.push({ agent, path: "", hooked: isHooked, registered: isHooked, transport: isHooked ? "extension" : null, endpoint: null, conflict: false });
+      continue;
+    }
     let paths: string[] = [];
     try {
       paths = target.paths();

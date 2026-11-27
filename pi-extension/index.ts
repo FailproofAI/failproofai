@@ -25,7 +25,7 @@
  * spawns extensions with an undefined cwd contract, so paths are resolved
  * relative to this file via `import.meta.url`, NOT process.cwd().
  */
-import { spawnSync } from "node:child_process";
+import { spawn, spawnSync } from "node:child_process";
 import { resolve, dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { existsSync, readdirSync, statSync } from "node:fs";
@@ -333,9 +333,138 @@ interface PiBeforeAgentStartEvent {
 
 interface PiExtensionApi {
   on(event: string, handler: (event: unknown) => unknown): void;
+  /** Pi's custom tools (every Pi failproofai supports has it; checked anyway). */
+  registerTool?(tool: Record<string, unknown>): void;
 }
 
-export default function failproofaiBridge(pi: PiExtensionApi) {
+// ── Self Reports ────────────────────────────────────────────────────────────
+//
+// Pi has no MCP of its own before 0.99 (its README: "No MCP."), so the
+// `failproofai_local` entry in ~/.pi/agent/mcp.json reached no model there,
+// with or without `exposure: "direct"`. This extension, which every hooked Pi
+// already loads, offers the report tool itself instead, on every Pi version.
+// The tool's text and the recording both come from failproofai's own stdio MCP
+// server (`failproofai mcp --agent pi`), so this file holds no copy of either:
+// at load it asks the server for the tool (none while Self Reports is off),
+// and a call is handed to the server, which records it against Pi's session.
+
+/** Pi spells it like Claude Code: one of the names the hook lets past every policy. */
+const SELF_REPORT_PI_TOOL = "mcp__failproofai_local__report";
+
+interface SelfReportTool {
+  description: string;
+  inputSchema: Record<string, unknown>;
+  instructions?: string;
+}
+
+/** Send JSON-RPC lines to `failproofai mcp --agent pi`; resolves with the replies by id. */
+function selfReportServer(lines: unknown[], cwd: string, timeoutMs: number): Promise<Map<number, Record<string, unknown>>> {
+  const { cmd, args } = resolveSpawn();
+  return new Promise((resolveRun) => {
+    const replies = new Map<number, Record<string, unknown>>();
+    let out = "";
+    let settled = false;
+    let child: ReturnType<typeof spawn>;
+    try {
+      child = spawn(cmd, [...args, "mcp", "--agent", "pi"], { cwd, stdio: ["pipe", "pipe", "ignore"] });
+    } catch {
+      resolveRun(replies);
+      return;
+    }
+    const timer = setTimeout(() => child.kill("SIGKILL"), timeoutMs);
+    child.stdout?.on("data", (b: Buffer) => (out += b.toString("utf8")));
+    const done = () => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      for (const line of out.split("\n")) {
+        try {
+          const msg = JSON.parse(line) as { id?: unknown; result?: Record<string, unknown> };
+          if (typeof msg.id === "number" && msg.result) replies.set(msg.id, msg.result);
+        } catch {
+          // not a reply
+        }
+      }
+      resolveRun(replies);
+    };
+    child.on("error", done);
+    child.on("close", done);
+    child.stdin?.on("error", () => {});
+    child.stdin?.end(lines.map((l) => JSON.stringify(l)).join("\n") + "\n");
+  });
+}
+
+const SELF_REPORT_INIT = {
+  jsonrpc: "2.0",
+  id: 1,
+  method: "initialize",
+  params: { protocolVersion: "2025-06-18", capabilities: {}, clientInfo: { name: "failproofai-pi-extension", version: "1" } },
+};
+
+/** The report tool as the server offers it right now, or null (off, or no server). */
+async function selfReportToolFromServer(): Promise<SelfReportTool | null> {
+  const replies = await selfReportServer(
+    [SELF_REPORT_INIT, { jsonrpc: "2.0", method: "notifications/initialized" }, { jsonrpc: "2.0", id: 2, method: "tools/list" }],
+    process.cwd(),
+    10_000,
+  );
+  const tools = replies.get(2)?.tools;
+  const tool = Array.isArray(tools) ? (tools[0] as Record<string, unknown> | undefined) : undefined;
+  if (!tool || typeof tool.description !== "string" || !tool.inputSchema || typeof tool.inputSchema !== "object") return null;
+  const instructions = replies.get(1)?.instructions;
+  return {
+    description: tool.description,
+    inputSchema: tool.inputSchema as Record<string, unknown>,
+    ...(typeof instructions === "string" ? { instructions } : {}),
+  };
+}
+
+/** The first non-empty string among `keys` (the server accepts the same aliases). */
+function selfReportPick(args: Record<string, unknown>, keys: string[]): string {
+  for (const k of keys) {
+    const v = args[k];
+    if (typeof v === "string" && v.trim() !== "") return v;
+  }
+  return "";
+}
+
+function registerSelfReportTool(pi: PiExtensionApi, tool: SelfReportTool): void {
+  if (typeof pi.registerTool !== "function") return;
+  pi.registerTool({
+    name: SELF_REPORT_PI_TOOL,
+    label: "Report (FailproofAI)",
+    description: tool.description,
+    // The server's instructions go into Pi's system prompt, as an MCP client
+    // that honours them would put them.
+    ...(tool.instructions ? { promptSnippet: "Report to FailproofAI when you are blocked", promptGuidelines: [tool.instructions] } : {}),
+    parameters: tool.inputSchema,
+    // A model that guessed the argument names still reports (contract §3).
+    prepareArguments: (raw: unknown) => {
+      const a = raw && typeof raw === "object" && !Array.isArray(raw) ? (raw as Record<string, unknown>) : {};
+      return {
+        category: selfReportPick(a, ["category", "type", "kind"]),
+        detail: selfReportPick(a, ["detail", "summary", "sentence", "message", "description", "reason", "text", "details"]),
+      };
+    },
+    async execute(_id: string, params: Record<string, unknown>, _signal: unknown, _update: unknown, ctx?: { cwd?: string }) {
+      const replies = await selfReportServer(
+        [
+          SELF_REPORT_INIT,
+          { jsonrpc: "2.0", method: "notifications/initialized" },
+          { jsonrpc: "2.0", id: 2, method: "tools/call", params: { name: "report", arguments: params } },
+        ],
+        ctx?.cwd ?? process.cwd(),
+        20_000,
+      );
+      const content = replies.get(2)?.content;
+      const first = Array.isArray(content) ? (content[0] as { text?: unknown } | undefined) : undefined;
+      const text = typeof first?.text === "string" ? first.text : "Recorded.";
+      return { content: [{ type: "text", text }], details: {} };
+    },
+  });
+}
+
+export default async function failproofaiBridge(pi: PiExtensionApi) {
   // tool_call → PreToolUse. Block tool execution when failproofai denies.
   pi.on("tool_call", (event: unknown): unknown => {
     const e = event as PiToolCallEvent;
@@ -534,4 +663,12 @@ export default function failproofaiBridge(pi: PiExtensionApi) {
     if (sessionId) pendingStopBlockBySession.delete(sessionId);
     return undefined;
   });
+
+  // Last, so the policy hooks above are in place whatever this does.
+  try {
+    const tool = await selfReportToolFromServer();
+    if (tool) registerSelfReportTool(pi, tool);
+  } catch (err) {
+    debug(`self-report tool not registered: ${err instanceof Error ? err.message : String(err)}`);
+  }
 }

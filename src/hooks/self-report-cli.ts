@@ -35,6 +35,13 @@ import { INTEGRATION_TYPES } from "./types";
 import { daemonSocketPresent, isDaemonConfigured } from "./daemon-client";
 import { SELF_REPORT_RECEIPT_ENV, SELF_REPORT_RECEIPT_PREFIX } from "./self-report-mcp";
 import {
+  SELF_REPORT_HOOK_RECORDED_AGENTS,
+  claudeHooksBlockedReason,
+  codexReportHookRuns,
+  selfReportHookState,
+  type SelfReportHookState,
+} from "./self-report-hook-trust";
+import {
   SELF_REPORT_CURSOR_APPROVAL_HINT,
   probeSelfReportHttp,
   selfReportDaemonLive,
@@ -65,6 +72,8 @@ export interface SelfReportCliDeps {
   sync?: () => Promise<import("./self-report-install").SelfReportMcpResult[]>;
   /** Override (tests): is a daemon configured here, or its socket file present? */
   daemonExpected?: () => boolean;
+  /** Who records a hook-recorded agent's reports (tests; default `selfReportHookState`). */
+  hookState?: (agent: string) => SelfReportHookState;
   /** Skip the agent sync after enable/disable (tests). */
   skipSync?: boolean;
   cwd?: string;
@@ -153,6 +162,7 @@ function selfReportRegistrationLines(
   rows: readonly SelfReportRegistration[],
   health: ReadonlyMap<number, boolean>,
   owned: ReadonlyMap<number, boolean>,
+  recorders: ReadonlyMap<string, SelfReportHookState> = new Map(),
 ): string[] {
   const hooked = rows.filter((r) => r.hooked || r.registered || r.conflict || r.error);
   if (hooked.length === 0) return ["Agents:     none with failproofai hooks"];
@@ -167,13 +177,23 @@ function selfReportRegistrationLines(
         const ok = port !== null && health.get(port) === true;
         const mine = ok && owned.get(port!) === true;
         state = `http   ${r.endpoint ?? "?"} ${mine ? "(answering)" : ok ? "(answering, but NOT this home's daemon)" : "(NOT answering)"}`;
+      } else if (r.registered && r.transport === "extension") {
+        state = "tool offered by failproofai's Pi extension (loaded with its hooks)";
       } else if (r.registered) {
         const ok = !!r.endpoint && selfReportCommandRunnable(r.endpoint);
         state = `stdio  ${r.endpoint ?? "?"} ${ok ? "(runnable)" : "(NOT runnable)"}`;
       } else state = r.hooked ? "not registered" : "registered, no hooks";
       if (r.registered && !r.hooked) state += ", no hooks";
       const line = `  ${r.agent.padEnd(12)} ${state}`;
-      return r.agent === "cursor" && r.registered ? [line, `  ${"".padEnd(12)} ${SELF_REPORT_CURSOR_APPROVAL_HINT}`] : [line];
+      const pad = `  ${"".padEnd(12)} `;
+      if (r.agent === "cursor" && r.registered) return [line, `${pad}${SELF_REPORT_CURSOR_APPROVAL_HINT}`];
+      const recorder = recorders.get(r.agent);
+      if (recorder && r.registered) {
+        return recorder.recorder === "hook"
+          ? [line, `${pad}reports recorded by its hook`]
+          : [line, `${pad}reports recorded by the MCP server: ${recorder.reason}.`, `${pad}${recorder.fix}`];
+      }
+      return [line];
     }).flat(),
   ];
 }
@@ -188,9 +208,13 @@ function selfReportStranded(
   r: SelfReportRegistration,
   health: ReadonlyMap<number, boolean>,
   owned: ReadonlyMap<number, boolean>,
+  recorders: ReadonlyMap<string, SelfReportHookState> = new Map(),
 ): boolean {
   if (!r.registered || r.transport !== "http") return false;
   if (!selfReportHttpAllowed(r.agent)) return true;
+  // The daemon's endpoint records nothing for Claude Code or Codex, so one
+  // whose hook will not run (an untrusted Codex) would lose every report there.
+  if (recorders.get(r.agent)?.recorder === "server") return true;
   const port = selfReportUrlPort(r.endpoint);
   return port === null || health.get(port) !== true || owned.get(port) !== true;
 }
@@ -239,11 +263,21 @@ async function selfReportStatus(deps: SelfReportCliDeps): Promise<SelfReportCliR
   let rows = readRows();
   let health = await selfReportHttpHealth(rows, deps);
   let owned = await selfReportHttpOwnership(health, deps);
+  const recorders = new Map<string, SelfReportHookState>();
+  for (const agent of SELF_REPORT_HOOK_RECORDED_AGENTS) {
+    if (!rows.some((r) => r.agent === agent && (r.registered || r.hooked))) continue;
+    try {
+      const hooked = (a: string) => rows.some((r) => r.agent === a && r.hooked);
+      recorders.set(agent, deps.hookState ? deps.hookState(agent) : selfReportHookState(agent, { userHooksInstalled: hooked }));
+    } catch {
+      // unknown: show nothing for it
+    }
+  }
   // An agent left on the daemon's HTTP endpoint after the daemon died would
   // have no report tool, and one on a port another home's daemon holds would
   // report into that home. Move it (live check: stdio unless this home's
   // daemon serves the endpoint).
-  if (settings.enabled && !deps.skipSync && rows.some((r) => selfReportStranded(r, health, owned))) {
+  if (settings.enabled && !deps.skipSync && rows.some((r) => selfReportStranded(r, health, owned, recorders))) {
     try {
       const results = await (deps.sync ?? (() => syncSelfReportMcp({ quiet: true })))();
       if (selfReportSyncChanged(results)) {
@@ -262,7 +296,7 @@ async function selfReportStatus(deps: SelfReportCliDeps): Promise<SelfReportCliR
     health.set(settings.mcp.port, await probe(settings.mcp.url, settings.mcp.port));
   }
   lines.push(selfReportDaemonLine(settings.mcp.url, health.get(settings.mcp.port) === true, deps));
-  lines.push(...selfReportRegistrationLines(rows, health, owned));
+  lines.push(...selfReportRegistrationLines(rows, health, owned, recorders));
   return { exitCode: 0, lines };
 }
 
@@ -366,6 +400,18 @@ async function selfReportDisable(args: string[], deps: SelfReportCliDeps): Promi
 
 const SELF_REPORT_TEST_DETAIL = "failproofai self-report test: this is a test report, not a real problem.";
 
+/**
+ * Whether a Claude Code or Codex session started in `cwd` would skip
+ * failproofai's hook, so its report is the server's to record: Codex has not
+ * trusted the hook (or has none of ours to run), or Claude Code has hooks off.
+ * A Claude Code without user-scope hooks may still have them in the project,
+ * so that alone does not count.
+ */
+function selfReportTestHookSkipped(agent: string, cwd: string, deps: SelfReportCliDeps): boolean {
+  if (deps.hookState) return deps.hookState(agent).recorder === "server";
+  return agent === "codex" ? !codexReportHookRuns(cwd) : claudeHooksBlockedReason(cwd) !== null;
+}
+
 async function selfReportTest(args: string[], deps: SelfReportCliDeps): Promise<SelfReportCliResult> {
   const agentFlag = selfReportFlag(args, "--agent");
   if (agentFlag.error || !agentFlag.value) {
@@ -383,9 +429,12 @@ async function selfReportTest(args: string[], deps: SelfReportCliDeps): Promise<
   const cwd = deps.cwd ?? process.cwd();
   const cli = selfReportCliCommand(deps);
 
-  if (SELF_REPORT_SERVER_RECORDS.includes(agent)) {
-    // This agent's hooks do not see MCP calls: the MCP server records. Drive
-    // the stdio server exactly as the agent would.
+  if (
+    SELF_REPORT_SERVER_RECORDS.includes(agent) ||
+    (SELF_REPORT_HOOK_RECORDED_AGENTS.includes(agent) && selfReportTestHookSkipped(agent, cwd, deps))
+  ) {
+    // This agent's hooks do not see MCP calls, or will not run (an untrusted
+    // Codex): the MCP server records. Drive the stdio server as the agent would.
     const dir = customAgentsEventsDir();
     const stdin = [
       { jsonrpc: "2.0", id: 1, method: "initialize", params: { protocolVersion: "2025-06-18", capabilities: {}, clientInfo: { name: "failproofai-self-report-test", version: "1" } } },

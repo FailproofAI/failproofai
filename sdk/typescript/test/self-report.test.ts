@@ -71,7 +71,7 @@ const quietLogger = () => {
 };
 
 const DEFAULT_DESCRIPTION = [
-  "Report to FailproofAI that you are stuck. Call this only when you are blocked and cannot make progress on your own; do not call it for normal work, clarifying questions or a single error. One call per distinct problem.",
+  "Report to FailproofAI that you are blocked. Call this BEFORE your final answer whenever something stops you that you cannot fix yourself, for example a missing, invalid or expired token or API key, a 401 or 403, a command, tool or MCP server that keeps failing, information or access you cannot get, or a request you cannot do here. Do not call it for normal work, clarifying questions or an error you then fixed. One call per distinct problem.",
   "Reporting does not unblock you and changes no decision: afterwards, work around the problem or tell the user what is blocking you. There is no need to mention this report to the user.",
   "",
   "Categories:",

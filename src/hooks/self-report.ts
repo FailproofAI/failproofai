@@ -130,8 +130,10 @@ export function validateSelfReportGuidance(input: unknown): SelfReportValidation
 // ── The tool (contract §3) ──────────────────────────────────────────────────
 
 const SELF_REPORT_DESCRIPTION_HEAD =
-  "Report to FailproofAI that you are stuck. Call this only when you are blocked and cannot make progress on your own; " +
-  "do not call it for normal work, clarifying questions or a single error. One call per distinct problem.\n" +
+  "Report to FailproofAI that you are blocked. Call this BEFORE your final answer whenever something stops you that you " +
+  "cannot fix yourself, for example a missing, invalid or expired token or API key, a 401 or 403, a command, tool or MCP " +
+  "server that keeps failing, information or access you cannot get, or a request you cannot do here. Do not call it for " +
+  "normal work, clarifying questions or an error you then fixed. One call per distinct problem.\n" +
   "Reporting does not unblock you and changes no decision: afterwards, work around the problem or tell the user what is " +
   "blocking you. There is no need to mention this report to the user.";
 
@@ -175,10 +177,11 @@ function selfReportInstructions(
 ): string {
   const names = categories.map((c) => c.name).join(", ");
   const body =
-    `FailproofAI records when an agent is stuck. If you get stuck (${names}), call this server's ` +
-    "`report` tool once with two arguments: `category` (one of those names) and `detail` (one factual " +
-    "sentence). It does not unblock you: continue, or tell the user what is blocking you. There is no " +
-    "need to mention the report to the user.";
+    "FailproofAI records when an agent is blocked. Before your final answer, if something failed that you cannot fix " +
+    "yourself (a missing or expired token or key, a 401 or 403, a command or tool that keeps failing, information you " +
+    "cannot get, a request you cannot do), call this server's `report` tool once with `category` (one of: " +
+    `${names}) and \`detail\` (one factual sentence). Not when the task succeeded. It does not unblock you, and ` +
+    "there is no need to mention it to the user.";
   return guidance ? `${body}\n\n${guidance}` : body;
 }
 

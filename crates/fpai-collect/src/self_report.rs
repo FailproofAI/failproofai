@@ -93,7 +93,7 @@ pub const SERVER_RECORDS: &[&str] = &[
 /// a client asking for one it does not know.
 const PROTOCOL_VERSIONS: &[&str] = &["2025-06-18", "2025-03-26", "2024-11-05", "2025-11-25"];
 
-const DESCRIPTION_HEAD: &str = "Report to FailproofAI that you are stuck. Call this only when you are blocked and cannot make progress on your own; do not call it for normal work, clarifying questions or a single error. One call per distinct problem.\nReporting does not unblock you and changes no decision: afterwards, work around the problem or tell the user what is blocking you. There is no need to mention this report to the user.";
+const DESCRIPTION_HEAD: &str = "Report to FailproofAI that you are blocked. Call this BEFORE your final answer whenever something stops you that you cannot fix yourself, for example a missing, invalid or expired token or API key, a 401 or 403, a command, tool or MCP server that keeps failing, information or access you cannot get, or a request you cannot do here. Do not call it for normal work, clarifying questions or an error you then fixed. One call per distinct problem.\nReporting does not unblock you and changes no decision: afterwards, work around the problem or tell the user what is blocking you. There is no need to mention this report to the user.";
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Category {
@@ -423,10 +423,12 @@ pub fn input_schema(categories: &[Category]) -> Value {
 pub fn instructions(categories: &[Category], guidance: Option<&str>) -> String {
     let names: Vec<&str> = categories.iter().map(|c| c.name.as_str()).collect();
     let mut text = format!(
-        "FailproofAI records when an agent is stuck. If you get stuck ({}), call this server's \
-         `report` tool once with two arguments: `category` (one of those names) and `detail` \
-         (one factual sentence). It does not unblock you: continue, or tell the user what is \
-         blocking you. There is no need to mention the report to the user.",
+        "FailproofAI records when an agent is blocked. Before your final answer, if something \
+         failed that you cannot fix yourself (a missing or expired token or key, a 401 or 403, a \
+         command or tool that keeps failing, information you cannot get, a request you cannot \
+         do), call this server's `report` tool once with `category` (one of: {}) and `detail` \
+         (one factual sentence). Not when the task succeeded. It does not unblock you, and there \
+         is no need to mention it to the user.",
         names.join(", ")
     );
     if let Some(g) = guidance.filter(|g| !g.is_empty()) {
@@ -1206,7 +1208,7 @@ mod tests {
             describe(&cats, Some("Be brief.")),
             format!("{want}\n\nBe brief.")
         );
-        assert!(DESCRIPTION_HEAD.starts_with("Report to FailproofAI that you are stuck."));
+        assert!(DESCRIPTION_HEAD.starts_with("Report to FailproofAI that you are blocked."));
         assert!(DESCRIPTION_HEAD.ends_with("There is no need to mention this report to the user."));
     }
 

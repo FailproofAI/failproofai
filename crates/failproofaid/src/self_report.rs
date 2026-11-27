@@ -94,8 +94,30 @@ pub fn effective(desired: Option<&Desired>, port: u16, updated_at: String) -> Se
 #[derive(Debug, PartialEq, Eq)]
 pub struct Applied {
     pub written: bool,
-    /// `enabled` or the port changed: agent configs need `self-report sync`.
+    /// What an agent's entry would be may have changed: agent configs need
+    /// `self-report sync`.
     pub needs_sync: bool,
+}
+
+/// Whether going from `previous` to `next` can change what `self-report sync`
+/// writes into an agent's config. Categories and guidance never do (the server
+/// reads them on every request); everything an entry is built from does:
+///
+/// - no file before: this is the first Cloud write. Before it the machine was
+///   either on by default (it just enrolled) or off while it waited for this
+///   answer (`failproofai config` syncs then and removes every entry), so no
+///   file says nothing about what the agents hold;
+/// - `source`: a local file is set aside while the org's setting is awaited,
+///   which reads as off, so an org "on" that matches the old local "on" still
+///   has agents to register;
+/// - `enabled`, and the endpoint while on (its port is in the HTTP entries).
+fn entries_may_change(previous: Option<&Settings>, next: &Settings) -> bool {
+    let Some(previous) = previous else {
+        return true;
+    };
+    previous.source != next.source
+        || previous.enabled != next.enabled
+        || (next.enabled && previous.mcp != next.mcp)
 }
 
 /// Write `path` for this response, only when its content (not `updatedAt`)
@@ -110,11 +132,9 @@ pub fn apply(path: &Path, desired: Option<&Desired>, port: u16) -> io::Result<Ap
         });
     }
     sr::write_settings(path, &next)?;
-    let was_enabled = previous.as_ref().is_some_and(|p| p.enabled);
-    let port_changed = previous.as_ref().is_some_and(|p| p.mcp.port != port);
     Ok(Applied {
         written: true,
-        needs_sync: was_enabled != next.enabled || (next.enabled && port_changed),
+        needs_sync: entries_may_change(previous.as_ref(), &next),
     })
 }
 
@@ -419,6 +439,8 @@ fn run_with_timeout(command: &str, home: &Path, timeout: Duration) -> io::Result
         .stderr(Stdio::piped())
         .process_group(0)
         .spawn()?;
+    let (done_tx, done_rx) = std::sync::mpsc::channel::<()>();
+    let mut readers = 0;
     for (label, pipe) in [
         (
             "stdout",
@@ -435,26 +457,47 @@ fn run_with_timeout(command: &str, home: &Path, timeout: Duration) -> io::Result
                 .map(|p| Box::new(p) as Box<dyn io::Read + Send>),
         ),
     ] {
+        // `sync --quiet` prints nothing on success and one line per agent it
+        // could not update on stderr, so a failure in the journal says which
+        // agent and why. stderr is a warning; anything on stdout is info.
         if let Some(pipe) = pipe {
+            let done = done_tx.clone();
             std::thread::spawn(move || {
                 use std::io::BufRead;
                 for line in io::BufReader::new(pipe).lines().map_while(Result::ok) {
-                    tracing::info!("self-report sync {label}: {line}");
+                    if label == "stderr" {
+                        tracing::warn!("self-report sync: {line}");
+                    } else {
+                        tracing::info!("self-report sync: {line}");
+                    }
                 }
+                let _ = done.send(());
             });
+            readers += 1;
         }
     }
+    drop(done_tx);
     let started = Instant::now();
-    loop {
+    let code = loop {
         if let Some(status) = child.try_wait()? {
-            return Ok(status.code());
+            break status.code();
         }
         if started.elapsed() > timeout {
             kill_group(&mut child);
-            return Ok(None);
+            break None;
         }
         std::thread::sleep(Duration::from_millis(100));
+    };
+    // Let the output reach the log ahead of the caller's verdict line, but
+    // never wait on a pipe some leftover grandchild still holds.
+    let deadline = Instant::now() + Duration::from_secs(1);
+    for _ in 0..readers {
+        let left = deadline.saturating_duration_since(Instant::now());
+        if done_rx.recv_timeout(left).is_err() {
+            break;
+        }
     }
+    Ok(code)
 }
 
 fn kill_group(child: &mut Child) {
@@ -543,12 +586,13 @@ mod tests {
             guidance: None,
         };
 
-        // First write while off: nothing was registered, nothing to sync.
+        // First write, even while off: before it the machine was on by default
+        // (or off while it waited), so the agents' entries are unknown.
         assert_eq!(
             apply(&path, None, 4319).unwrap(),
             Applied {
                 written: true,
-                needs_sync: false
+                needs_sync: true
             }
         );
         let first = std::fs::read_to_string(&path).unwrap();
@@ -608,6 +652,57 @@ mod tests {
             std::fs::metadata(&path).unwrap().permissions().mode() & 0o777,
             0o644
         );
+    }
+
+    #[test]
+    fn the_first_cloud_write_syncs_even_when_it_matches_the_local_file() {
+        // The laptop run: `config` wrote a local, enabled file, then synced
+        // while enrolled (a local file then reads as off) and removed every
+        // entry. The org's first answer, "on", matched the old `enabled`.
+        let on = Desired {
+            enabled: true,
+            ..Default::default()
+        };
+        let path = temp_path("first-cloud");
+        assert_eq!(
+            apply(&path, Some(&on), 4319).unwrap(),
+            Applied {
+                written: true,
+                needs_sync: true
+            },
+            "no file before"
+        );
+
+        let path = temp_path("local-to-cloud");
+        let mut local = effective(Some(&on), 4319, "t".into());
+        local.source = "local".into();
+        sr::write_settings(&path, &local).unwrap();
+        assert_eq!(
+            apply(&path, Some(&on), 4319).unwrap(),
+            Applied {
+                written: true,
+                needs_sync: true
+            },
+            "a local file replaced by the org's"
+        );
+        // From then on, only a change an entry is built from syncs.
+        assert_eq!(
+            apply(
+                &path,
+                Some(&Desired {
+                    enabled: true,
+                    guidance: Some("Be brief.".into()),
+                    ..Default::default()
+                }),
+                4319
+            )
+            .unwrap(),
+            Applied {
+                written: true,
+                needs_sync: false
+            }
+        );
+        let _ = std::fs::remove_dir_all(path.parent().unwrap());
     }
 
     #[test]

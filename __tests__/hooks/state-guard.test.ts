@@ -673,10 +673,14 @@ describe("block-failproofai-commands — the state guard", () => {
     // enforcement silently; an allowlist miss denies a command the operator can
     // see and report. These two are misses of the second kind — a backup and a
     // read — and they are pinned so the next person knows they are a decision
-    // rather than an accident.
-    it("over-denies a tar backup and an interpreter read, which is the chosen failure", async () => {
+    // rather than an accident. A `python -c` read used to be the second one;
+    // it is allowed now only when `pythonCodeOnlyReads` can vet the program
+    // (see "reads and mentions are not tampering" below), and an interpreter
+    // program it cannot vet is still over-denied.
+    it("over-denies a tar backup and an interpreter read it cannot vet, which is the chosen failure", async () => {
       expect(await decide("tar -cf /tmp/backup.tar ~/.failproofai")).toBe("deny");
-      expect(await decide("python3 -c \"print(open('/home/u/.failproofai/policies-config.json').read())\"")).toBe("deny");
+      expect(await decide("python3 -c \"import os; print(open('/home/u/.failproofai/policies-config.json').read())\"")).toBe("deny");
+      expect(await decide("node -e \"console.log(require('fs').readFileSync('/home/u/.failproofai/policies-config.json','utf8'))\"")).toBe("deny");
     });
   });
 
@@ -803,6 +807,105 @@ describe("block-failproofai-commands — the state guard", () => {
     it("explains that the state is what was protected", async () => {
       expect(await reason("find ~/.failproofai -delete")).toMatch(/switch enforcement off/);
       expect(await reason("failproofai config --pause")).toMatch(/human action/);
+    });
+  });
+
+  // Found by a full end-to-end run: an agent diagnosing Self Reports was denied
+  // a read-only jq and python read of self-report.json, a grep for the MCP
+  // server's name, and a heredoc that only wrote notes mentioning the CLI.
+  describe("reads and mentions are not tampering", () => {
+    const F = "fail" + "proofai";
+    it("allows a jq whose filter has a pipe, and a vetted python -c read", async () => {
+      for (const c of [
+        `jq '.categories | length' ~/.${F}/self-report.json`,
+        `jq -r '.enabled, .source' ~/.${F}/self-report.json`,
+        `python3 -c "import json; print(json.load(open('/home/u/.${F}/self-report.json'))['enabled'])"`,
+        `python3 -c 'import json,sys; d=json.load(open(sys.argv[1])); print(d["source"])' ~/.${F}/self-report.json`,
+        `python3 -c "import json; print(open('/home/u/.${F}/self-report.json', 'r', encoding='utf-8').read())"`,
+      ]) expect(await decide(c), c).toBe("allow");
+    });
+
+    it("allows a grep whose pattern names the CLI or the MCP server", async () => {
+      for (const c of [
+        `grep '${F}_local' ~/.codex/config.toml`,
+        `grep -E '(${F}_local|kiln)' ~/.codex/config.toml`,
+        `grep -rn '${F} config --pause' docs/`,
+        `rg '(${F}_local)' ~/.config`,
+        `grep -r 'npm uninstall -g ${F}' docs`,
+      ]) expect(await decide(c), c).toBe("allow");
+    });
+
+    it("allows a heredoc that only writes text mentioning the CLI", async () => {
+      for (const c of [
+        `cat > ~/Desktop/notes.md <<'EOF'\nRun ${F} self-report sync to fix it.\n${F} config --pause is for people.\nEOF`,
+        `cat > ~/Desktop/n.md <<'EOF'\nnpm uninstall -g ${F}\nrm -rf ~/.${F}\nEOF`,
+        `cat <<-EOF > ~/Desktop/n.md\n\t${F} policies --install\n\tEOF`,
+        `tee ~/Desktop/n.md <<'EOF'\n${F} self-report status\nEOF`,
+      ]) expect(await decide(c), c).toBe("allow");
+    });
+
+    it("still denies running the CLI, pausing and uninstalling, however the command is dressed", async () => {
+      for (const c of [
+        `${F} self-report sync`,
+        `npx ${F} config --pause`,
+        `npx -y ${F}@latest policies --uninstall`,
+        `npm uninstall -g ${F}`,
+        `fail"proof"ai config --pause`,
+        `grep x f; fail\\proofai self-report sync`,
+        `grep -e '(x' f ; ${F} policies`,
+        `grep "$(${F} config --pause)" f`,
+        `jq -n "$(${F} config --pause)"`,
+        `python3 -c "print(1)" ; ${F} config --pause`,
+      ]) expect(await decide(c), c).toBe("deny");
+    });
+
+    it("still runs a heredoc's body when it can execute", async () => {
+      for (const c of [
+        `sh <<'EOF'\n${F} config --pause\nEOF`,
+        `bash -s <<'EOF'\n${F} self-report disable\nEOF`,
+        `cat <<'EOF' | sh\n${F} config --pause\nEOF`,
+        `cat > /tmp/p.sh <<'EOF'\n${F} config --pause\nEOF\nsh /tmp/p.sh`,
+        `cat <<'EOF' > /tmp/x\n${F} config --pause\nEOF\nchmod +x /tmp/x && /tmp/x`,
+        // An unquoted delimiter expands $(...) and backticks while writing.
+        `cat > n <<EOF\n$(${F} config --pause)\nEOF`,
+        "cat > n <<EOF\nrun `" + F + " config --pause`\nEOF",
+        // A command after the heredoc, on its line or after its end.
+        `cat > n <<'EOF'\nx\nEOF\n${F} config --pause`,
+        `cat > f <<'EOF' ; ${F} config --pause\nbody\nEOF`,
+      ]) expect(await decide(c), c).toBe("deny");
+    });
+
+    it("still denies every write, move, delete, chmod and redirect into the state", async () => {
+      for (const c of [
+        `rm ~/.${F}/self-report.json`,
+        `echo '{}' > ~/.${F}/self-report.json`,
+        `echo x >> ~/.${F}/policies-config.json`,
+        `chmod 000 ~/.${F}/policies-config.json`,
+        `mv ~/.${F} /tmp/x`,
+        `jq '.enabled=false' ~/.${F}/self-report.json > /tmp/t && mv /tmp/t ~/.${F}/self-report.json`,
+        `jq '.' ~/.${F}/a | tee ~/.${F}/b`,
+        `grep x ~/.${F}/f > ~/.${F}/g`,
+        `yq -i '.a=1' ~/.${F}/x.yaml`,
+        `tee ~/.${F}/self-report.json <<'EOF'\n{}\nEOF`,
+        `cat > ~/.${F}/self-report.json <<'EOF'\n{}\nEOF`,
+        `python3 -c "import json; json.load(open('/x/.${F}/a'))" > ~/.${F}/b`,
+      ]) expect(await denialIsAboutState(c), c).toBe(true);
+    });
+
+    it("denies a python -c it cannot vet as a read", async () => {
+      for (const c of [
+        `python3 -c "import os; os.remove('/home/u/.${F}/self-report.json')"`,
+        `python3 -c "open('/home/u/.${F}/self-report.json','w').write('{}')"`,
+        `python3 -c "import json;o=open;o('/x/.${F}/a','w')"`,
+        `python3 -c "open('/x/.${F}/a', mode='w')"`,
+        `python3 -c "open('/x/.${F}/a', 'r+')"`,
+        `python3 -c "import os; print(open('/x/.${F}/a').read())"`,
+        `python3 -c "import json; getattr(json, 'load')(open('/x/.${F}/a'))"`,
+        `python3 -c "__import__('os').remove('/x/.${F}/a')"`,
+        `python3 -c "import json; print(open('/x/.${F}/a').read())" -c "x"; rm ~/.${F}/a`,
+        `python3 -c "import shutil; shutil.rmtree('/x/.${F}')"`,
+        `python3 -c "import json; exec('\\x6f')" ~/.${F}/a`,
+      ]) expect(await decide(c), c).toBe("deny");
     });
   });
 });

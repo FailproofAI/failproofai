@@ -22,7 +22,8 @@
  *
  * Top-level names are prefixed for the same bundle reason as self-report.ts.
  */
-import { closeSync, fsyncSync, mkdirSync, openSync, renameSync, rmSync, writeSync, constants as fsConstants } from "node:fs";
+import { closeSync, fsyncSync, mkdirSync, openSync, readdirSync, readSync, renameSync, rmSync, statSync, writeSync, constants as fsConstants } from "node:fs";
+import { homedir } from "node:os";
 import { join } from "node:path";
 import { createInterface } from "node:readline";
 import type { Readable, Writable } from "node:stream";
@@ -224,7 +225,15 @@ export interface SelfReportEventInput {
  */
 export async function writeSelfReportEvent(input: SelfReportEventInput): Promise<{ path: string; event: Record<string, unknown> }> {
   const now = input.now ?? Date.now();
-  const match = input.sessionId === undefined ? selfReportFindSessionMatch(input.integration, input.cwd, now) : null;
+  const match =
+    input.sessionId === undefined
+      ? selfReportFindSessionMatch(input.integration, input.cwd, now) ??
+        (input.integration === "codex"
+          ? selfReportCodexRolloutSession(input.cwd, now)
+          : input.integration === "claude"
+            ? selfReportClaudeTranscriptSession(input.cwd, now)
+            : null)
+      : null;
   const sessionId = input.sessionId ?? match?.sessionId ?? "unattributed";
   const event: Record<string, unknown> = {
     timestamp: new Date(now).toISOString(),
@@ -261,6 +270,116 @@ export async function writeSelfReportEvent(input: SelfReportEventInput): Promise
     throw err;
   }
   return { path: finalPath, event };
+}
+
+/**
+ * Whether this server records a report from `agent`: always for an agent in
+ * `SELF_REPORT_SERVER_RECORDS`; for Claude Code and Codex, whose hook is the
+ * recorder, only when that hook did not already record this call — it was
+ * not trusted (Codex), hooks are off (Claude Code), or none is installed where
+ * the agent runs. The hook runs before the agent sends the MCP call, so its
+ * row is already on disk (self-report-hook-trust.ts).
+ */
+export async function selfReportServerShouldRecord(agent: string, args: unknown, now?: number): Promise<boolean> {
+  if (SELF_REPORT_SERVER_RECORDS.includes(agent)) return true;
+  const { SELF_REPORT_HOOK_RECORDED_AGENTS, selfReportHookRecordedRecently } = await import("./self-report-hook-trust");
+  if (!SELF_REPORT_HOOK_RECORDED_AGENTS.includes(agent)) return false;
+  return !selfReportHookRecordedRecently(agent, args ?? {}, now ?? Date.now());
+}
+
+/**
+ * Codex's own record of its newest session in (or around) `cwd`, from its
+ * rollout files (`$CODEX_HOME/sessions/YYYY/MM/DD/rollout-*.jsonl`, whose first
+ * line is `session_meta` with the session `id` and `cwd`), for a report its
+ * hooks never saw: an untrusted Codex runs no hook, so there is no hook row to
+ * attribute to. The session id is the one Codex's hooks would have carried.
+ */
+export function selfReportCodexRolloutSession(
+  cwd: string,
+  now: number = Date.now(),
+  home: string = process.env.CODEX_HOME?.trim() || join(homedirForCodex(), ".codex"),
+): SelfReportSessionMatch | null {
+  const dayDirs = new Set<string>();
+  for (const t of [now, now - SELF_REPORT_SESSION_WINDOW_MS]) {
+    const d = new Date(t);
+    const pad = (n: number) => String(n).padStart(2, "0");
+    dayDirs.add(join(home, "sessions", String(d.getFullYear()), pad(d.getMonth() + 1), pad(d.getDate())));
+  }
+  let best: { rank: number; mtime: number; id: string; cwd: string } | null = null;
+  for (const dir of dayDirs) {
+    let names: string[];
+    try {
+      names = readdirSync(dir).filter((n) => n.startsWith("rollout-") && n.endsWith(".jsonl"));
+    } catch {
+      continue;
+    }
+    for (const name of names) {
+      const file = join(dir, name);
+      try {
+        const mtime = statSync(file).mtimeMs;
+        if (now - mtime > SELF_REPORT_SESSION_WINDOW_MS) continue;
+        const head = readFirstLine(file);
+        const meta = JSON.parse(head) as { type?: unknown; payload?: { id?: unknown; cwd?: unknown } };
+        if (meta.type !== "session_meta" || typeof meta.payload?.id !== "string" || typeof meta.payload.cwd !== "string") continue;
+        const rank = selfReportCwdAffinity(cwd, meta.payload.cwd);
+        if (rank === 0) continue;
+        if (!best || rank > best.rank || (rank === best.rank && mtime > best.mtime)) {
+          best = { rank, mtime, id: meta.payload.id, cwd: meta.payload.cwd };
+        }
+      } catch {
+        // unreadable or not a rollout: skip it
+      }
+    }
+  }
+  return best ? { sessionId: best.id, cwd: best.cwd } : null;
+}
+
+/**
+ * Claude Code's newest session in exactly `cwd`, from its transcripts
+ * (`<config dir>/projects/<cwd with every non-alphanumeric as "-">/<session>.jsonl`),
+ * for a report its hooks never saw (`disableAllHooks`).
+ */
+export function selfReportClaudeTranscriptSession(
+  cwd: string,
+  now: number = Date.now(),
+  configDir: string = process.env.CLAUDE_CONFIG_DIR?.trim() || join(homedirForCodex(), ".claude"),
+): SelfReportSessionMatch | null {
+  const dir = join(configDir, "projects", cwd.replace(/\/+$/, "").replace(/[^A-Za-z0-9]/g, "-"));
+  let best: { mtime: number; id: string } | null = null;
+  let names: string[];
+  try {
+    names = readdirSync(dir).filter((n) => /^[0-9a-f-]{36}\.jsonl$/i.test(n));
+  } catch {
+    return null;
+  }
+  for (const name of names) {
+    try {
+      const mtime = statSync(join(dir, name)).mtimeMs;
+      if (now - mtime > SELF_REPORT_SESSION_WINDOW_MS) continue;
+      if (!best || mtime > best.mtime) best = { mtime, id: name.slice(0, -".jsonl".length) };
+    } catch {
+      // gone since the listing
+    }
+  }
+  return best ? { sessionId: best.id, cwd } : null;
+}
+
+function homedirForCodex(): string {
+  return process.env.HOME?.trim() || homedir();
+}
+
+/** The first line of a file, reading at most 1 MiB (session_meta carries the base instructions). */
+function readFirstLine(file: string): string {
+  const fd = openSync(file, "r");
+  try {
+    const buf = Buffer.alloc(1 << 20);
+    const n = readSync(fd, buf, 0, buf.length, 0);
+    const text = buf.subarray(0, n).toString("utf8");
+    const nl = text.indexOf("\n");
+    return nl < 0 ? text : text.slice(0, nl);
+  } finally {
+    closeSync(fd);
+  }
 }
 
 // ── JSON-RPC ────────────────────────────────────────────────────────────────
@@ -306,7 +425,7 @@ export async function handleSelfReportRpc(
         return ok({ content: [{ type: "text", text: `Unknown tool: ${String(params.name)}` }], isError: true });
       }
       const agent = opts.agent;
-      if (agent && SELF_REPORT_SERVER_RECORDS.includes(agent) && readEnabledSelfReport()) {
+      if (agent && readEnabledSelfReport() && (await selfReportServerShouldRecord(agent, params.arguments, opts.now?.()))) {
         const { category, detail } = selfReportArgs(params.arguments ?? {});
         try {
           const { path } = await writeSelfReportEvent({

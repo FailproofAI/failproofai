@@ -20,7 +20,7 @@ export const sleepPollingLoop: Detector = {
       return { example: cmd.replace(/\s+/g, " ").trim().slice(0, 160) };
     }
     // Standalone long sleep. parseFloat so `sleep 0.5m` (= 30s) isn't dropped.
-    const match = /\bsleep\s+(\d+(?:\.\d+)?)(m|h|d)?\b/.exec(cmd);
+    const match = /\bsleep\s+(\d+(?:\.\d+)?)(s|m|h|d)?\b/.exec(cmd);
     if (match) {
       const n = parseFloat(match[1]);
       const unit = match[2] ?? "s";
